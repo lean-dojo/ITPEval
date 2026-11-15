@@ -1,8 +1,9 @@
 # ITPEval: Benchmarking Formal Translation Across Interactive Theorem Provers
 
-ITPEval evaluates formal statement translation across **ten theorem provers**:
-Lean 4, Rocq (Coq), Isabelle/HOL, HOL Light, ACL2, Agda, HOL4, Metamath,
-Mizar, and PVS.
+![ITPEval overview](images/overview.jpg)
+
+ITPEval is the first benchmark for evaluating formal statement translation across **ten theorem provers**: Lean 4, Rocq (Coq), Isabelle/HOL, HOL Light, ACL2, Agda, HOL4, Metamath,
+Mizar, and PVS. 
 
 The extended statement corpus contains **2,634 aligned items / 26,340 prover
 records from eight datasets**. Each included item has representations in all
@@ -11,12 +12,6 @@ An item can be a topic file with several lemmas, a catalogue entry, an axiom,
 a competition problem, or a program-verification condition. These are inventory
 counts, not counts of independent proved theorems or certified equivalences.
 
-```mermaid
-flowchart LR
-    S[Eight source datasets] --> E[2,634 statement items]
-    E --> T[Ten prover representations per item]
-    T --> P[237,060 directed statement pairs]
-```
 
 ## Dataset scope
 
