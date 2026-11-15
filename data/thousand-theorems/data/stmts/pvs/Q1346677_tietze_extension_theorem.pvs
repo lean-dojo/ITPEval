@@ -1,0 +1,256 @@
+% Statement-only formalization of the Thousand Theorems artifact Q1346677,
+% "Tietze extension theorem": a bounded continuous real-valued function along
+% a closed embedding into a normal space has an extension of the same norm.
+% This file contains no proof.
+
+tietze_extension_theorem_Q1346677[
+  X, Y: TYPE,
+  x_carrier: [X -> bool],
+  y_carrier: [Y -> bool],
+  x_open: [[X -> bool] -> bool],
+  y_open: [[Y -> bool] -> bool]
+]: THEORY
+BEGIN
+  x_set: TYPE = [X -> bool]
+  y_set: TYPE = [Y -> bool]
+  x_set_family: TYPE = [x_set -> bool]
+  y_set_family: TYPE = [y_set -> bool]
+  x_real_function: TYPE = [X -> real]
+  y_real_function: TYPE = [Y -> real]
+  embedding_function: TYPE = [X -> Y]
+
+  empty_x_set: x_set =
+    LAMBDA (x: X): FALSE
+
+  empty_y_set: y_set =
+    LAMBDA (y: Y): FALSE
+
+  whole_x_carrier: x_set =
+    LAMBDA (x: X): x_carrier(x)
+
+  whole_y_carrier: y_set =
+    LAMBDA (y: Y): y_carrier(y)
+
+  x_subset(A, B: x_set): bool =
+    FORALL (x: X):
+      A(x) IMPLIES B(x)
+
+  y_subset(A, B: y_set): bool =
+    FORALL (y: Y):
+      A(y) IMPLIES B(y)
+
+  x_intersection(A, B: x_set): x_set =
+    LAMBDA (x: X):
+      A(x) AND B(x)
+
+  y_intersection(A, B: y_set): y_set =
+    LAMBDA (y: Y):
+      A(y) AND B(y)
+
+  x_union(family: x_set_family): x_set =
+    LAMBDA (x: X):
+      x_carrier(x)
+        AND EXISTS (U: x_set):
+          family(U) AND U(x)
+
+  y_union(family: y_set_family): y_set =
+    LAMBDA (y: Y):
+      y_carrier(y)
+        AND EXISTS (U: y_set):
+          family(U) AND U(y)
+
+  x_topology_laws: bool =
+    x_open(empty_x_set)
+      AND x_open(whole_x_carrier)
+      AND
+        (FORALL (U: x_set):
+          x_open(U) IMPLIES x_subset(U, whole_x_carrier))
+      AND
+        (FORALL (U, V: x_set):
+          (x_open(U) AND x_open(V))
+            IMPLIES x_open(x_intersection(U, V)))
+      AND
+        (FORALL (family: x_set_family):
+          (FORALL (U: x_set):
+            family(U) IMPLIES x_open(U))
+          IMPLIES x_open(x_union(family)))
+
+  y_topology_laws: bool =
+    y_open(empty_y_set)
+      AND y_open(whole_y_carrier)
+      AND
+        (FORALL (U: y_set):
+          y_open(U) IMPLIES y_subset(U, whole_y_carrier))
+      AND
+        (FORALL (U, V: y_set):
+          (y_open(U) AND y_open(V))
+            IMPLIES y_open(y_intersection(U, V)))
+      AND
+        (FORALL (family: y_set_family):
+          (FORALL (U: y_set):
+            family(U) IMPLIES y_open(U))
+          IMPLIES y_open(y_union(family)))
+
+  y_complement(A: y_set): y_set =
+    LAMBDA (y: Y):
+      y_carrier(y) AND NOT A(y)
+
+  y_closed(A: y_set): bool =
+    y_subset(A, whole_y_carrier)
+      AND y_open(y_complement(A))
+
+  y_disjoint(A, B: y_set): bool =
+    FORALL (y: Y):
+      NOT (A(y) AND B(y))
+
+  y_normal_space: bool =
+    FORALL (A, B: y_set):
+      (y_closed(A) AND y_closed(B) AND y_disjoint(A, B))
+        IMPLIES
+          EXISTS (U, V: y_set):
+            y_open(U)
+              AND y_open(V)
+              AND y_subset(A, U)
+              AND y_subset(B, V)
+              AND y_disjoint(U, V)
+
+  continuous_real_on_x(f: x_real_function): bool =
+    FORALL (x: X):
+      x_carrier(x)
+        IMPLIES
+          FORALL (epsilon_value: real):
+            0 < epsilon_value
+              IMPLIES
+                EXISTS (U: x_set):
+                  x_open(U)
+                    AND U(x)
+                    AND
+                      (FORALL (z: X):
+                        U(z)
+                          IMPLIES
+                            abs(f(z) - f(x)) < epsilon_value)
+
+  continuous_real_on_y(g: y_real_function): bool =
+    FORALL (y: Y):
+      y_carrier(y)
+        IMPLIES
+          FORALL (epsilon_value: real):
+            0 < epsilon_value
+              IMPLIES
+                EXISTS (V: y_set):
+                  y_open(V)
+                    AND V(y)
+                    AND
+                      (FORALL (z: Y):
+                        V(z)
+                          IMPLIES
+                            abs(g(z) - g(y)) < epsilon_value)
+
+  bounded_on_x(f: x_real_function): bool =
+    EXISTS (bound: real):
+      0 <= bound
+        AND
+          FORALL (x: X):
+            x_carrier(x) IMPLIES abs(f(x)) <= bound
+
+  bounded_on_y(g: y_real_function): bool =
+    EXISTS (bound: real):
+      0 <= bound
+        AND
+          FORALL (y: Y):
+            y_carrier(y) IMPLIES abs(g(y)) <= bound
+
+  bounded_continuous_on_x(f: x_real_function): bool =
+    bounded_on_x(f) AND continuous_real_on_x(f)
+
+  bounded_continuous_on_y(g: y_real_function): bool =
+    bounded_on_y(g) AND continuous_real_on_y(g)
+
+  uniform_bound_on_x(f: x_real_function, bound: real): bool =
+    0 <= bound
+      AND
+        FORALL (x: X):
+          x_carrier(x) IMPLIES abs(f(x)) <= bound
+
+  uniform_bound_on_y(g: y_real_function, bound: real): bool =
+    0 <= bound
+      AND
+        FORALL (y: Y):
+          y_carrier(y) IMPLIES abs(g(y)) <= bound
+
+  sup_norm_on_x(f: x_real_function, norm_value: real): bool =
+    uniform_bound_on_x(f, norm_value)
+      AND
+        FORALL (bound: real):
+          uniform_bound_on_x(f, bound)
+            IMPLIES norm_value <= bound
+
+  sup_norm_on_y(g: y_real_function, norm_value: real): bool =
+    uniform_bound_on_y(g, norm_value)
+      AND
+        FORALL (bound: real):
+          uniform_bound_on_y(g, bound)
+            IMPLIES norm_value <= bound
+
+  embedding_range(e: embedding_function): y_set =
+    LAMBDA (y: Y):
+      y_carrier(y)
+        AND EXISTS (x: X):
+          x_carrier(x) AND e(x) = y
+
+  maps_x_into_y(e: embedding_function): bool =
+    FORALL (x: X):
+      x_carrier(x) IMPLIES y_carrier(e(x))
+
+  injective_on_x(e: embedding_function): bool =
+    FORALL (x1, x2: X):
+      (x_carrier(x1)
+        AND x_carrier(x2)
+        AND e(x1) = e(x2))
+        IMPLIES x1 = x2
+
+  induces_x_topology(e: embedding_function): bool =
+    FORALL (U: x_set):
+      x_open(U)
+        IFF
+          EXISTS (V: y_set):
+            y_open(V)
+              AND
+                (FORALL (x: X):
+                  U(x)
+                    IFF
+                      (x_carrier(x) AND V(e(x))))
+
+  closed_embedding(e: embedding_function): bool =
+    maps_x_into_y(e)
+      AND injective_on_x(e)
+      AND induces_x_topology(e)
+      AND y_closed(embedding_range(e))
+
+  extends_along(
+      f: x_real_function,
+      e: embedding_function,
+      g: y_real_function): bool =
+    FORALL (x: X):
+      x_carrier(x) IMPLIES g(e(x)) = f(x)
+
+  same_sup_norm(
+      f: x_real_function,
+      g: y_real_function): bool =
+    EXISTS (norm_value: real):
+      sup_norm_on_x(f, norm_value)
+        AND sup_norm_on_y(g, norm_value)
+
+  exists_extension_norm_eq_of_isClosedEmbedding: bool =
+    (x_topology_laws
+      AND y_topology_laws
+      AND y_normal_space)
+      IMPLIES
+        FORALL (f: x_real_function), (e: embedding_function):
+          (bounded_continuous_on_x(f) AND closed_embedding(e))
+            IMPLIES
+              EXISTS (g: y_real_function):
+                bounded_continuous_on_y(g)
+                  AND same_sup_norm(f, g)
+                  AND extends_along(f, e, g)
+END tietze_extension_theorem_Q1346677

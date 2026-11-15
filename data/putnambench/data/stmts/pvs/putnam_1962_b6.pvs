@@ -1,0 +1,117 @@
+% Statement-only formalization of PutnamBench artifact putnam_1962_b6:
+% a bounded real trigonometric polynomial attaining absolute value one at
+% 2n points is either constant or a phase-shifted cosine. This file contains no proof.
+
+putnam_1962_b6: THEORY
+BEGIN
+  IMPORTING finite_sets[real]
+
+  real_function: TYPE = [real -> real]
+  real_sequence: TYPE = [nat -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  sine_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        sine_partial(x, count - 1)
+          + safe_div(
+              ((-1 :: real) ^ index) * x ^ (2 * index + 1),
+              factorial(2 * index + 1) :: real)
+    ENDIF
+  MEASURE count
+
+  cosine_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        cosine_partial(x, count - 1)
+          + safe_div(
+              ((-1 :: real) ^ index) * x ^ (2 * index),
+              factorial(2 * index) :: real)
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  sine(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat): sine_partial(x, count),
+          value))
+
+  cosine(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat): cosine_partial(x, count),
+          value))
+
+  pi: real =
+    epsilon(
+      LAMBDA (value: real):
+        3 < value
+          AND value < 4
+          AND cosine(value / 2) = 0)
+
+  trigonometric_sum(
+      a, b: real_sequence,
+      x: real,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        trigonometric_sum(a, b, x, count - 1)
+          + a(index) * sine((index :: real) * x)
+          + b(index) * cosine((index :: real) * x)
+    ENDIF
+  MEASURE count
+
+  constant_function(f: real_function): bool =
+    EXISTS (constant: real):
+      f = (LAMBDA (x: real): constant)
+
+  putnam_1962_b6: bool =
+    FORALL
+        (n: nat),
+        (a, b: real_sequence),
+        (xs: finite_set[real]),
+        (f: real_function):
+      ((f = (LAMBDA (x: real):
+          trigonometric_sum(a, b, x, n + 1)))
+        AND (FORALL (x: real):
+          0 <= x AND x <= 2 * pi IMPLIES abs(f(x)) <= 1)
+        AND card(xs) = 2 * n
+        AND (FORALL (x: real):
+          xs(x) IMPLIES 0 <= x AND x < 2 * pi)
+        AND (FORALL (x: real):
+          xs(x) IMPLIES abs(f(x)) = 1))
+      IMPLIES
+        (NOT constant_function(f) IMPLIES
+          EXISTS (phase: real):
+            f = (LAMBDA (x: real):
+              cosine((n :: real) * x + phase)))
+END putnam_1962_b6

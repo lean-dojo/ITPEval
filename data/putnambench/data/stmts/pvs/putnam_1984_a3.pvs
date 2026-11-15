@@ -1,0 +1,189 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1984_a3:
+% the punctured limit at a of a normalized determinant of a parity-patterned
+% 2n-by-2n real matrix equals n^2 times (a^2 - b^2). This file contains no
+% proof.
+
+putnam_1984_a3: THEORY
+BEGIN
+  square_matrix: TYPE = [nat, nat -> real]
+  real_function: TYPE = [real -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  quotient_aux(
+      numerator, denominator, fuel: nat): RECURSIVE nat =
+    IF fuel = 0
+        OR denominator = 0
+        OR numerator < denominator THEN
+      0
+    ELSE
+      1
+        + quotient_aux(
+            numerator - denominator,
+            denominator,
+            fuel - 1)
+    ENDIF
+  MEASURE fuel
+
+  remainder_aux(
+      numerator, denominator, fuel: nat): RECURSIVE nat =
+    IF fuel = 0
+        OR denominator = 0
+        OR numerator < denominator THEN
+      numerator
+    ELSE
+      remainder_aux(
+        numerator - denominator,
+        denominator,
+        fuel - 1)
+    ENDIF
+  MEASURE fuel
+
+  safe_ndiv(numerator, denominator: nat): nat =
+    quotient_aux(
+      numerator,
+      denominator,
+      numerator + 1)
+
+  safe_mod(numerator, denominator: nat): nat =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      remainder_aux(
+        numerator,
+        denominator,
+        numerator + 1)
+    ENDIF
+
+  function_code_count(size: nat): nat =
+    IF size = 0 THEN 1 ELSE size ^ size ENDIF
+
+  permutation_entry(code, row, size: nat): nat =
+    IF size = 0 THEN
+      0
+    ELSE
+      safe_mod(safe_ndiv(code, size ^ row), size)
+    ENDIF
+
+  permutation_code(code, size: nat): bool =
+    code < function_code_count(size)
+      AND (FORALL (row_1, row_2: nat):
+        (row_1 < size
+          AND row_2 < size
+          AND permutation_entry(code, row_1, size)
+            = permutation_entry(code, row_2, size))
+        IMPLIES row_1 = row_2)
+
+  pair_row(pair, size: nat): nat =
+    safe_ndiv(pair, size)
+
+  pair_column(pair, size: nat): nat =
+    safe_mod(pair, size)
+
+  inversion_at(code, pair, size: nat): bool =
+    pair_row(pair, size) < size
+      AND pair_column(pair, size) < size
+      AND pair_row(pair, size) < pair_column(pair, size)
+      AND permutation_entry(code, pair_row(pair, size), size)
+        > permutation_entry(code, pair_column(pair, size), size)
+
+  count_true(
+      property: [nat -> bool],
+      count: nat): RECURSIVE nat =
+    IF count = 0 THEN
+      0
+    ELSE
+      count_true(property, count - 1)
+        + IF property(count - 1) THEN 1 ELSE 0 ENDIF
+    ENDIF
+  MEASURE count
+
+  inversion_count(code, size: nat): nat =
+    count_true(
+      (LAMBDA (pair: nat): inversion_at(code, pair, size)),
+      size * size)
+
+  permutation_sign(code, size: nat): real =
+    IF mod(inversion_count(code, size), 2) = 0 THEN
+      1
+    ELSE
+      -1
+    ENDIF
+
+  permutation_product(
+      A: square_matrix,
+      code, size, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      1
+    ELSE
+      permutation_product(A, code, size, count - 1)
+        * A(
+            count - 1,
+            permutation_entry(code, count - 1, size))
+    ENDIF
+  MEASURE count
+
+  determinant_sum(
+      A: square_matrix,
+      size, limit: nat): RECURSIVE real =
+    IF limit = 0 THEN
+      0
+    ELSE
+      LET code: nat = limit - 1 IN
+        determinant_sum(A, size, limit - 1)
+          + IF permutation_code(code, size) THEN
+              permutation_sign(code, size)
+                * permutation_product(A, code, size, size)
+            ELSE
+              0
+            ENDIF
+    ENDIF
+  MEASURE limit
+
+  determinant(A: square_matrix, size: nat): real =
+    determinant_sum(A, size, function_code_count(size))
+
+  putnam_matrix(n: nat, a, b, x: real): square_matrix =
+    LAMBDA (i, j: nat):
+      IF i = j THEN
+        x
+      ELSIF mod(i + j, 2) = 0 THEN
+        a
+      ELSE
+        b
+      ENDIF
+
+  normalized_determinant(n: nat, a, b, x: real): real =
+    IF n = 0 THEN
+      0
+    ELSE
+      safe_div(
+        determinant(putnam_matrix(n, a, b, x), 2 * n),
+        (x - a) ^ (2 * n - 2))
+    ENDIF
+
+  tends_to_at(f: real_function, limit, point: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (delta: posreal):
+        FORALL (x: real):
+          (0 < abs(x - point) AND abs(x - point) < delta)
+            IMPLIES abs(f(x) - limit) < epsilon_value
+
+  putnam_1984_a3_solution(n: nat, a, b: real): real =
+    (n :: real) ^ 2 * (a ^ 2 - b ^ 2)
+
+  putnam_1984_a3: bool =
+    FORALL (n: nat), (a, b: real):
+      (n > 0 AND a /= b)
+      IMPLIES
+        tends_to_at(
+          LAMBDA (x: real):
+            normalized_determinant(n, a, b, x),
+          putnam_1984_a3_solution(n, a, b),
+          a)
+END putnam_1984_a3

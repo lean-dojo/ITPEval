@@ -1,0 +1,98 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2012_a5:
+% affine maps on finite-dimensional vector spaces over prime fields have a
+% full orbit from zero exactly in dimensions one, or two over F_2. This file
+% contains no proof.
+
+putnam_2012_a5: THEORY
+BEGIN
+  vector(n: posnat): TYPE = [below(n) -> nat]
+  matrix(n: posnat): TYPE = [below(n), below(n) -> nat]
+
+  nat_divides(divisor: posnat, value: nat): bool =
+    EXISTS (quotient: nat):
+      value = divisor * quotient
+
+  prime_nat(value: nat): bool =
+    value >= 2
+      AND FORALL (divisor: posnat):
+        nat_divides(divisor, value)
+          IMPLIES divisor = 1 OR divisor = value
+
+  valid_vector(n, p: posnat, x: vector(n)): bool =
+    FORALL (coordinate: below(n)):
+      x(coordinate) < p
+
+  valid_matrix(n, p: posnat, M: matrix(n)): bool =
+    FORALL (row, column: below(n)):
+      M(row, column) < p
+
+  modular_dot_sum(
+      n, p: posnat,
+      M: matrix(n),
+      x: vector(n),
+      row: below(n),
+      count: nat): RECURSIVE nat =
+    IF count = 0 THEN
+      0
+    ELSE
+      mod(
+        modular_dot_sum(n, p, M, x, row, count - 1)
+          + IF count <= n THEN
+              M(row, count - 1) * x(count - 1)
+            ELSE
+              0
+            ENDIF,
+        p)
+    ENDIF
+  MEASURE count
+
+  zero_vector(n: posnat): vector(n) =
+    LAMBDA (coordinate: below(n)): 0
+
+  affine_apply(
+      n, p: posnat,
+      M: matrix(n),
+      v, x: vector(n)): vector(n) =
+    LAMBDA (row: below(n)):
+      mod(v(row) + modular_dot_sum(n, p, M, x, row, n), p)
+
+  affine_iterate(
+      n, p: posnat,
+      M: matrix(n),
+      v: vector(n),
+      count: nat): RECURSIVE vector(n) =
+    IF count = 0 THEN
+      zero_vector(n)
+    ELSE
+      affine_apply(
+        n,
+        p,
+        M,
+        v,
+        affine_iterate(n, p, M, v, count - 1))
+    ENDIF
+  MEASURE count
+
+  has_full_affine_orbit(n, p: posnat): bool =
+    EXISTS (M: matrix(n)), (v: vector(n)):
+      valid_matrix(n, p, M)
+        AND valid_vector(n, p, v)
+        AND (FORALL (i, j: nat):
+          (1 <= i
+            AND i <= p ^ n
+            AND 1 <= j
+            AND j <= p ^ n
+            AND affine_iterate(n, p, M, v, i)
+              = affine_iterate(n, p, M, v, j))
+          IMPLIES i = j)
+
+  putnam_2012_a5_solution(n, p: posnat): bool =
+    n = 1 OR (n = 2 AND p = 2)
+
+  putnam_2012_a5: bool =
+    FORALL (n, p: posnat):
+      prime_nat(p)
+        IMPLIES
+          (has_full_affine_orbit(n, p)
+            IFF putnam_2012_a5_solution(n, p))
+END putnam_2012_a5

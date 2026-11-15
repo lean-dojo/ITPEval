@@ -1,0 +1,101 @@
+% Statement-only formalization of the VERINA corpus artifact verina_basic_30,
+% catalog title "elementWiseModulo": mapping two equal-length nonempty integer
+% arrays to their elementwise Euclidean remainders under nonzero divisors and
+% stating the exact size and indexwise correctness contract. This file contains no proof.
+
+verina_basic_30: THEORY
+BEGIN
+
+  % Finite PVS lists preserve the exact contents and order of Lean arrays.
+  int_list_length(values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        int_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  % Lean's Array.get! on integer arrays returns zero outside the array.
+  int_list_get_bang(
+      index: nat,
+      values: list[int]): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          int_list_get_bang(index - 1, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  % Lean Int.emod returns a nonnegative remainder modulo the divisor's
+  % absolute value; unlike PVS mod, its result is independent of divisor sign.
+  % Lean also defines dividend % 0 to be dividend.
+  lean_int_emod(
+      dividend, divisor: int): int =
+    IF divisor = 0 THEN
+      dividend
+    ELSE
+      mod(dividend, abs(divisor))
+    ENDIF
+
+  elementWiseModulo_precond(
+      a, b: list[int]): bool =
+    int_list_length(a) = int_list_length(b)
+      AND int_list_length(a) > 0
+      AND
+        (FORALL (i: nat):
+          i < int_list_length(b)
+            IMPLIES int_list_get_bang(i, b) /= 0)
+
+  % This recursion is exactly Array.mapIdx: it traverses every element of a in
+  % order and reads b with Lean's defaulting Array.get! at the same index.
+  elementWiseModulo_map(
+      remaining, b: list[int],
+      index: nat): RECURSIVE list[int] =
+    CASES remaining OF
+      null:
+        null[int],
+      cons(head, tail):
+        cons(
+          lean_int_emod(
+            head,
+            int_list_get_bang(index, b)),
+          elementWiseModulo_map(
+            tail,
+            b,
+            index + 1))
+    ENDCASES
+  MEASURE remaining BY <<
+
+  % The source precondition proof argument is computationally irrelevant.
+  elementWiseModulo(
+      a, b: list[int]): list[int] =
+    elementWiseModulo_map(a, b, 0)
+
+  elementWiseModulo_postcond(
+      a, b, result: list[int]): bool =
+    int_list_length(result) = int_list_length(a)
+      AND
+        (FORALL (i: nat):
+          i < int_list_length(result)
+            IMPLIES
+              int_list_get_bang(i, result)
+                = lean_int_emod(
+                    int_list_get_bang(i, a),
+                    int_list_get_bang(i, b)))
+
+  elementWiseModulo_spec_satisfied: bool =
+    FORALL (a, b: list[int]):
+      elementWiseModulo_precond(a, b)
+        IMPLIES
+          elementWiseModulo_postcond(
+            a,
+            b,
+            elementWiseModulo(a, b))
+
+END verina_basic_30

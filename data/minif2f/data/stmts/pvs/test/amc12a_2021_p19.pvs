@@ -1,0 +1,81 @@
+% Statement-only formalization of miniF2F test problem amc12a_2021_p19: the real
+% solutions in [0, pi] of sin((pi / 2) * cos(x)) = cos((pi / 2) * sin(x)) form
+% a set of cardinality two. This file contains no proof.
+
+amc12a_2021_p19: THEORY
+BEGIN
+  IMPORTING finite_sets[real]
+
+  safe_div(x, y: real): real =
+    IF y = 0 THEN 0 ELSE x / y ENDIF
+
+  nat_factorial(n: nat): RECURSIVE nat =
+    IF n = 0 THEN
+      1
+    ELSE
+      n * nat_factorial(n - 1)
+    ENDIF
+  MEASURE n
+
+  sine_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET j: nat = count - 1 IN
+        sine_partial(x, count - 1)
+          + safe_div(
+              ((-1 :: real) ^ j) * x ^ (2 * j + 1),
+              nat_factorial(2 * j + 1) :: real)
+    ENDIF
+  MEASURE count
+
+  cosine_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET j: nat = count - 1 IN
+        cosine_partial(x, count - 1)
+          + safe_div(
+              ((-1 :: real) ^ j) * x ^ (2 * j),
+              nat_factorial(2 * j) :: real)
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: [nat -> real], value: real): bool =
+    FORALL (eps: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < eps
+
+  sine_value(x, value: real): bool =
+    converges_to(
+      (LAMBDA (count: nat): sine_partial(x, count)),
+      value)
+
+  cosine_value(x, value: real): bool =
+    converges_to(
+      (LAMBDA (count: nat): cosine_partial(x, count)),
+      value)
+
+  pi_value(p: posreal): bool =
+    3 < p AND p < 4 AND cosine_value(p / 2, 0)
+
+  solution(x: real, p: posreal): bool =
+    0 <= x
+      AND x <= p
+      AND EXISTS (sin_x, cos_x, left_side, right_side: real):
+        sine_value(x, sin_x)
+          AND cosine_value(x, cos_x)
+          AND sine_value((p / 2) * cos_x, left_side)
+          AND cosine_value((p / 2) * sin_x, right_side)
+          AND left_side = right_side
+
+  amc12a_2021_p19: bool =
+    FORALL (p: posreal):
+      pi_value(p) IMPLIES
+        EXISTS (S: finite_set[real]):
+          card(S) = 2
+            AND (FORALL (x: real):
+              S(x) IFF solution(x, p))
+END amc12a_2021_p19

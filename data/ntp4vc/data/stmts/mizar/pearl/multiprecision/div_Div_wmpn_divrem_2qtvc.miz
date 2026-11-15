@@ -1,0 +1,542 @@
+:: Statement-only formalization of the NTP4VC corpus artifact
+:: pearl/multiprecision/div_Div_wmpn_divrem_2qtvc: the verification
+:: condition for normalized two-limb multiprecision division, including
+:: reciprocal quotient estimation, loop-invariant preservation, quotient
+:: updates, and final remainder storage. This file contains no proof.
+
+environ
+  vocabularies TARSKI, XBOOLE_0, SUBSET_1, RELAT_1, FUNCT_1,
+    FUNCT_2, PARTFUN1, ZFMISC_1, NUMBERS, XREAL_0, CARD_1,
+    XXREAL_0, ARYTM_1, ARYTM_3, REAL_1, INT_1, NAT_1,
+    VALUED_0, VALUED_1, ORDINAL1, MCART_1, MARGREL1,
+    XBOOLEAN, NEWTON, FINSEQ_1, FINSEQ_2;
+  notations TARSKI, XBOOLE_0, SUBSET_1, ZFMISC_1, XTUPLE_0,
+    MCART_1, RELAT_1, FUNCT_1, RELSET_1, PARTFUN1, FUNCT_2,
+    ORDINAL1, CARD_1, NUMBERS, XCMPLX_0, XREAL_0, REAL_1,
+    INT_1, NAT_1, NAT_D, NEWTON, XXREAL_0, MARGREL1, XBOOLEAN,
+    FINSEQ_1, FINSEQ_2;
+  constructors FUNCT_1, RELSET_1, PARTFUN1, FUNCT_2, CARD_1,
+    REAL_1, INT_1, XXREAL_0, ZFMISC_1, MCART_1, NAT_1,
+    NAT_D, NEWTON, MARGREL1, FINSEQ_1, FINSEQ_2;
+  registrations XBOOLE_0, SUBSET_1, RELAT_1, FUNCT_1,
+    RELSET_1, FUNCT_2, NUMBERS, CARD_1, XXREAL_0, MEMBERED,
+    VALUED_0, VALUED_1, XCMPLX_0, XREAL_0, ORDINAL1, INT_1,
+    NAT_1, NEWTON, MARGREL1, XBOOLEAN, FINSEQ_1, FINSEQ_2;
+  requirements REAL, NUMERALS, SUBSET, BOOLE, ARITHM;
+  equalities XBOOLEAN;
+
+begin
+
+::$P-
+theorem
+  for P,Z being non empty set,
+      Data being Function of P,INT*,
+      Offset,Minimum,Maximum being Function of P,INT,
+      Writable being Function of P,BOOLEAN,
+      Zone being Function of P,Z,
+      Signed32 being Function of INT,INT,
+      Pelt being Function of [:P,INT:],INT,
+      VSub being Function of [:P,[:INT,INT:]:],INT,
+      Pow being Function of INT,INT,
+      x,y,q being Element of P,
+      sx being Element of INT
+  st
+    (for w being Integer st 0 <= w & w < (2 |^ 32) holds
+      (w < (2 |^ 31) implies Signed32.w = w) &
+      (not w < (2 |^ 31) implies
+        Signed32.w = w - (2 |^ 32))) &
+    (for p being Element of P, k being Nat st k in dom (Data.p)
+     holds
+       ex d being Integer st
+         d = (Data.p).k & 0 <= d & d < (2 |^ 64)) &
+    (for p being Element of P, j being Integer holds
+      0 <= Pelt/.[p,j] & Pelt/.[p,j] < (2 |^ 64)) &
+    Pow/.0 = 1 &
+    (for n being Element of INT st n < 0 holds Pow/.n = 1) &
+    (for n being Element of INT st 0 <= n holds
+      Pow/.(n+1) = (2 |^ 64) * Pow/.n) &
+    (for p being Element of P, n,m being Element of INT holds
+      (n < m implies
+        (for v,pn,vnext being Integer st
+           v = VSub/.[p,[n,m]] &
+           pn = Pelt/.[p,n] &
+           vnext = VSub/.[p,[n+1,m]]
+         holds v = pn + (2 |^ 64) * vnext)) &
+      (not n < m implies VSub/.[p,[n,m]] = 0)) &
+    0 <= sx & sx < (2 |^ 32) &
+    -(2 |^ 31) <= Signed32.sx &
+    Signed32.sx <= 2147483647 &
+    2 <= Signed32.sx &
+    0 <= Minimum.x &
+    Minimum.x <= Offset.x &
+    Offset.x + Signed32.sx <= Maximum.x &
+    Maximum.x <= len (Data.x) &
+    0 <= Minimum.y &
+    Minimum.y <= Offset.y &
+    Offset.y + 2 <= Maximum.y &
+    Maximum.y <= len (Data.y) &
+    0 <= Minimum.q &
+    Minimum.q <= Offset.q &
+    Offset.q + (Signed32.sx-2) <= Maximum.q &
+    Maximum.q <= len (Data.q) &
+    (2 |^ 63) <= Pelt/.[y,Offset.y+1] &
+    Writable.q = TRUE &
+    Writable.x = TRUE
+  holds
+    -(2 |^ 31) <= Signed32.sx - 2 &
+    Signed32.sx - 2 <= 2147483647 &
+    (for o1 being Element of INT st
+       0 <= o1 & o1 < (2 |^ 32) &
+       Signed32.o1 = Signed32.sx - 2
+     holds
+       Minimum.x <= Offset.x + Signed32.o1 &
+       Offset.x + Signed32.o1 <= Maximum.x &
+       (for o2 being Element of P st
+          Offset.o2 = Offset.x + Signed32.o1 &
+          len (Data.o2) = len (Data.x) &
+          Minimum.o2 = Minimum.x &
+          Maximum.o2 = Maximum.x &
+          Writable.o2 = Writable.x &
+          Zone.o2 = Zone.x &
+          Data.o2 = Data.x &
+          (for j being Element of INT holds
+            Pelt/.[o2,j] = Pelt/.[x,j])
+        holds
+          Minimum.y <= Offset.y + 1 &
+          Offset.y + 1 < Maximum.y &
+          (for dh being Integer st
+             dh = Pelt/.[y,Offset.y+1] &
+             0 <= dh & dh < (2 |^ 64)
+           holds
+             Minimum.y <= Offset.y &
+             Offset.y < Maximum.y &
+             (for dl being Integer st
+                dl = Pelt/.[y,Offset.y] &
+                0 <= dl & dl < (2 |^ 64)
+              holds
+                Minimum.o2 <= Offset.o2 + 1 &
+                Offset.o2 + 1 < Maximum.o2 &
+                (for o3 being Integer st
+                   o3 = Pelt/.[o2,Offset.o2+1] &
+                   0 <= o3 & o3 < (2 |^ 64)
+                 holds
+                   Minimum.o2 <= Offset.o2 &
+                   Offset.o2 < Maximum.o2 &
+                   (for o4 being Integer st
+                      o4 = Pelt/.[o2,Offset.o2] &
+                      0 <= o4 & o4 < (2 |^ 64)
+                    holds
+                      -(2 |^ 31) <= Signed32.o1 &
+                      Signed32.o1 <= 2147483647 &
+                      (for o5 being Element of INT st
+                         0 <= o5 & o5 < (2 |^ 32) &
+                         Signed32.o5 = Signed32.o1
+                       holds
+                         (2 |^ 63) <= dh &
+                         (for dinv being Integer st
+                            0 <= dinv & dinv < (2 |^ 64) &
+                            dinv + (2 |^ 64) =
+                              (((2 |^ 64) * (2 |^ 64) *
+                                (2 |^ 64))-1) div
+                              (dl + (2 |^ 64) * dh)
+                          holds
+                            (((dh <= o3 &
+                               (dh < o3 or dl <= o4)) implies
+                               (0 <= 0 & 0 <= 1) &
+                               (for r0,b being Integer st
+                                  0 <= r0 & r0 < (2 |^ 64) &
+                                  0 <= b & b < (2 |^ 64) &
+                                  r0 - (2 |^ 64) * b =
+                                    o4 - dl - 0 &
+                                  0 <= b & b <= 1
+                                holds 0 <= b & b <= 1)) &
+                             (for rh,rl,qh being Integer st
+                                0 <= rh & rh < (2 |^ 64) &
+                                0 <= rl & rl < (2 |^ 64) &
+                                0 <= qh & qh < (2 |^ 64) &
+                                ((dh <= o3 &
+                                  (dh < o3 or dl <= o4)) implies
+                                  (ex d,d1 being Integer st
+                                    0 <= d & d < (2 |^ 64) &
+                                    0 <= d1 & d1 < (2 |^ 64) &
+                                    rl - (2 |^ 64) * d =
+                                      o4 - dl - 0 &
+                                    0 <= d & d <= 1 &
+                                    rh - (2 |^ 64) * d1 =
+                                      o3 - dh - d &
+                                    0 <= d1 & d1 <= 1 &
+                                    qh = 1)) &
+                                ((not (dh <= o3 &
+                                  (dh < o3 or dl <= o4))) implies
+                                  rh = o3 & rl = o4 & qh = 0)
+                              holds
+                                0 <= Signed32.o5 &
+                                Signed32.o5 <= Signed32.sx - 2 &
+                                Offset.o2 =
+                                  Offset.x + Signed32.o5 &
+                                len (Data.o2) = len (Data.x) &
+                                Minimum.o2 = Minimum.x &
+                                Maximum.o2 = Maximum.x &
+                                Writable.o2 = Writable.x &
+                                Zone.o2 = Zone.x &
+                                (for j being Element of INT holds
+                                  Pelt/.[o2,j] = Pelt/.[x,j]) &
+                                VSub/.[x,
+                                  [Offset.x,
+                                   Offset.x+Signed32.sx]] =
+                                  (VSub/.[q,
+                                    [Offset.q+Signed32.o5,
+                                     Offset.q+
+                                     (Signed32.sx-2)]] +
+                                   qh * Pow/.
+                                     ((Signed32.sx-2)-
+                                      Signed32.o5)) *
+                                  VSub/.[y,
+                                    [Offset.y,Offset.y+2]] *
+                                  Pow/.(Signed32.o5) +
+                                  VSub/.[x,
+                                    [Offset.x,
+                                     Offset.x+Signed32.o5]] +
+                                  Pow/.(Signed32.o5) *
+                                    (rl + (2 |^ 64) * rh) &
+                                rl + (2 |^ 64) * rh <
+                                  dl + (2 |^ 64) * dh &
+                                (for i being Element of INT,
+                                     rl1,rh1 being Integer,
+                                     xp,q1 being Element of P
+                                   st
+                                     0 <= i & i < (2 |^ 32) &
+                                     0 <= rl1 &
+                                     rl1 < (2 |^ 64) &
+                                     0 <= rh1 &
+                                     rh1 < (2 |^ 64) &
+                                     len (Data.q1) =
+                                       len (Data.q) &
+                                     Offset.q1 = Offset.q &
+                                     Minimum.q1 = Minimum.q &
+                                     Maximum.q1 = Maximum.q &
+                                     Writable.q1 = Writable.q &
+                                     Zone.q1 = Zone.q &
+                                     0 <= Signed32.i &
+                                     Signed32.i <=
+                                       Signed32.sx - 2 &
+                                     Offset.xp =
+                                       Offset.x + Signed32.i &
+                                     len (Data.xp) =
+                                       len (Data.x) &
+                                     Minimum.xp = Minimum.x &
+                                     Maximum.xp = Maximum.x &
+                                     Writable.xp = Writable.x &
+                                     Zone.xp = Zone.x &
+                                     (for j being Element of INT
+                                      holds
+                                       Pelt/.[xp,j] =
+                                         Pelt/.[x,j]) &
+                                     VSub/.[x,
+                                       [Offset.x,
+                                        Offset.x+Signed32.sx]] =
+                                       (VSub/.[q1,
+                                         [Offset.q1+
+                                          Signed32.i,
+                                          Offset.q1+
+                                          (Signed32.sx-2)]] +
+                                        qh * Pow/.
+                                          ((Signed32.sx-2)-
+                                           Signed32.i)) *
+                                       VSub/.[y,
+                                         [Offset.y,
+                                          Offset.y+2]] *
+                                       Pow/.(Signed32.i) +
+                                       VSub/.[x,
+                                         [Offset.x,
+                                          Offset.x+Signed32.i]] +
+                                       Pow/.(Signed32.i) *
+                                         (rl1 +
+                                          (2 |^ 64) * rh1) &
+                                     rl1 + (2 |^ 64) * rh1 <
+                                       dl + (2 |^ 64) * dh
+                                   holds
+                                     ((0 < Signed32.i implies
+                                       Minimum.xp <=
+                                         Offset.xp - 1 &
+                                       Offset.xp - 1 <=
+                                         Maximum.xp &
+                                       (for o6 being Element of P
+                                          st
+                                            Offset.o6 =
+                                              Offset.xp - 1 &
+                                            len (Data.o6) =
+                                              len (Data.xp) &
+                                            Minimum.o6 =
+                                              Minimum.xp &
+                                            Maximum.o6 =
+                                              Maximum.xp &
+                                            Writable.o6 =
+                                              Writable.xp &
+                                            Zone.o6 = Zone.xp &
+                                            Data.o6 = Data.xp &
+                                            (for j being
+                                               Element of INT
+                                             holds
+                                               Pelt/.[o6,j] =
+                                                 Pelt/.[xp,j])
+                                        holds
+                                          Minimum.o6 <=
+                                            Offset.o6 &
+                                          Offset.o6 <
+                                            Maximum.o6 &
+                                          (2 |^ 63) <= dh &
+                                          dinv + (2 |^ 64) =
+                                            (((2 |^ 64) *
+                                              (2 |^ 64) *
+                                              (2 |^ 64))-1)
+                                            div
+                                            (dl + (2 |^ 64)*dh) &
+                                          rl1 +
+                                            (2 |^ 64) * rh1 <
+                                            dl + (2 |^ 64) * dh &
+                                          (for qu,r0,r1 being
+                                               Integer
+                                             st
+                                               0 <= qu &
+                                               qu < (2 |^ 64) &
+                                               0 <= r0 &
+                                               r0 < (2 |^ 64) &
+                                               0 <= r1 &
+                                               r1 < (2 |^ 64) &
+                                               qu *
+                                                 dl +
+                                               (2 |^ 64) *
+                                                 qu * dh +
+                                               r0 +
+                                               (2 |^ 64) * r1 =
+                                               Pelt/.[o6,
+                                                 Offset.o6] +
+                                               (2 |^ 64) * rl1 +
+                                               (2 |^ 64) *
+                                               (2 |^ 64) * rh1 &
+                                               0 <=
+                                                 r0 +
+                                                 (2 |^ 64) * r1 &
+                                               r0 +
+                                               (2 |^ 64) * r1 <
+                                               dl +
+                                               (2 |^ 64) * dh
+                                           holds
+                                             -(2 |^ 31) <=
+                                               Signed32.i - 1 &
+                                             Signed32.i - 1 <=
+                                               2147483647 &
+                                             (for o7 being
+                                                  Element of INT
+                                                st
+                                                  0 <= o7 &
+                                                  o7 <
+                                                    (2 |^ 32) &
+                                                  Signed32.o7 =
+                                                    Signed32.i-1
+                                              holds
+                                                Minimum.q1 <=
+                                                  Offset.q1 +
+                                                  Signed32.o7 &
+                                                Offset.q1 +
+                                                  Signed32.o7 <
+                                                  Maximum.q1 &
+                                                Writable.q1 =
+                                                  TRUE &
+                                                (for q2 being
+                                                     Element of P
+                                                   st
+                                                     len (Data.q2)
+                                                       =
+                                                     len (Data.q1)
+                                                     &
+                                                     Offset.q2 =
+                                                       Offset.q1 &
+                                                     Minimum.q2 =
+                                                       Minimum.q1 &
+                                                     Maximum.q2 =
+                                                       Maximum.q1 &
+                                                     Writable.q2 =
+                                                       Writable.q1 &
+                                                     Zone.q2 =
+                                                       Zone.q1
+                                                 holds
+                                                   (((for j being
+                                                        Element
+                                                        of INT
+                                                      holds
+                                                        (j =
+                                                          Offset.q2+
+                                                          Signed32.o7
+                                                         implies
+                                                          Pelt/.[q2,j]
+                                                            = qu) &
+                                                        (j <>
+                                                          Offset.q2+
+                                                          Signed32.o7
+                                                         implies
+                                                          Pelt/.[q2,j]
+                                                            =
+                                                          Pelt/.[q1,j]))
+                                                     &
+                                                     Pelt/.[q2,
+                                                       Offset.q2+
+                                                       Signed32.o7]
+                                                       = qu)
+                                                    implies
+                                                     Signed32.o7 <
+                                                       Signed32.i &
+                                                     0 <=
+                                                       Signed32.o7 &
+                                                     Signed32.o7 <=
+                                                       Signed32.sx-2
+                                                     &
+                                                     Offset.o6 =
+                                                       Offset.x +
+                                                       Signed32.o7 &
+                                                     len (Data.o6) =
+                                                       len (Data.x) &
+                                                     Minimum.o6 =
+                                                       Minimum.x &
+                                                     Maximum.o6 =
+                                                       Maximum.x &
+                                                     Writable.o6 =
+                                                       Writable.x &
+                                                     Zone.o6 =
+                                                       Zone.x &
+                                                     (for j being
+                                                        Element
+                                                        of INT
+                                                      holds
+                                                        Pelt/.[o6,j] =
+                                                          Pelt/.[x,j])
+                                                     &
+                                                     VSub/.[x,
+                                                       [Offset.x,
+                                                        Offset.x+
+                                                        Signed32.sx]]
+                                                       =
+                                                       (VSub/.[q2,
+                                                         [Offset.q2+
+                                                          Signed32.o7,
+                                                          Offset.q2+
+                                                          (Signed32.sx-
+                                                           2)]] +
+                                                        qh * Pow/.
+                                                          ((Signed32.sx-
+                                                            2)-
+                                                           Signed32.o7)) *
+                                                       VSub/.[y,
+                                                         [Offset.y,
+                                                          Offset.y+2]] *
+                                                       Pow/.(Signed32.o7) +
+                                                       VSub/.[x,
+                                                         [Offset.x,
+                                                          Offset.x+
+                                                          Signed32.o7]] +
+                                                       Pow/.(Signed32.o7) *
+                                                         (r0 +
+                                                          (2 |^ 64) * r1)
+                                                     &
+                                                     r0 +
+                                                       (2 |^ 64) * r1 <
+                                                       dl +
+                                                       (2 |^ 64) * dh)))) &
+                                      ((not 0 < Signed32.i) implies
+                                       Minimum.x <= Offset.x + 1 &
+                                       Offset.x + 1 < Maximum.x &
+                                       Writable.x = TRUE &
+                                       (for x1 being Element of P
+                                          st
+                                            len (Data.x1) =
+                                              len (Data.x) &
+                                            Offset.x1 = Offset.x &
+                                            Minimum.x1 = Minimum.x &
+                                            Maximum.x1 = Maximum.x &
+                                            Writable.x1 = Writable.x &
+                                            Zone.x1 = Zone.x
+                                        holds
+                                          (((for j being
+                                               Element of INT
+                                             holds
+                                               (j = Offset.x1+1
+                                                implies
+                                                  Pelt/.[x1,j] =
+                                                    rh1) &
+                                               (j <> Offset.x1+1
+                                                implies
+                                                  Pelt/.[x1,j] =
+                                                    Pelt/.[x,j]))
+                                            &
+                                            Pelt/.[x1,Offset.x1+1]
+                                              = rh1)
+                                           implies
+                                            Minimum.x1 <=
+                                              Offset.x1 &
+                                            Offset.x1 <
+                                              Maximum.x1 &
+                                            Writable.x1 = TRUE &
+                                            (for x2 being
+                                                 Element of P
+                                               st
+                                                 len (Data.x2) =
+                                                   len (Data.x1) &
+                                                 Offset.x2 =
+                                                   Offset.x1 &
+                                                 Minimum.x2 =
+                                                   Minimum.x1 &
+                                                 Maximum.x2 =
+                                                   Maximum.x1 &
+                                                 Writable.x2 =
+                                                   Writable.x1 &
+                                                 Zone.x2 = Zone.x1
+                                             holds
+                                               (((for j being
+                                                    Element of INT
+                                                  holds
+                                                    (j = Offset.x2
+                                                     implies
+                                                       Pelt/.[x2,j] =
+                                                         rl1) &
+                                                    (j <> Offset.x2
+                                                     implies
+                                                       Pelt/.[x2,j] =
+                                                         Pelt/.[x1,j]))
+                                                  &
+                                                  Pelt/.[x2,Offset.x2]
+                                                    = rl1)
+                                                implies
+                                                  VSub/.[x,
+                                                    [Offset.x,
+                                                     Offset.x+
+                                                     Signed32.sx]]
+                                                    =
+                                                    (VSub/.[q1,
+                                                      [Offset.q1,
+                                                       Offset.q1+
+                                                       (Signed32.sx-
+                                                        2)]] +
+                                                     Pow/.
+                                                       (Signed32.sx-
+                                                        2) * qh) *
+                                                    VSub/.[y,
+                                                      [Offset.y,
+                                                       Offset.y+2]] +
+                                                    VSub/.[x2,
+                                                      [Offset.x2,
+                                                       Offset.x2+2]]
+                                                  &
+                                                  VSub/.[x2,
+                                                    [Offset.x2,
+                                                     Offset.x2+2]]
+                                                    <
+                                                    VSub/.[y,
+                                                      [Offset.y,
+                                                       Offset.y+2]]
+                                                  &
+                                                  0 <= qh & qh <= 1
+                                               )))))))))))))))))))
+proof
+end;
+::$P+

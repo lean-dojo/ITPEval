@@ -1,0 +1,64 @@
+% Statement-only formalization of the Thousand Theorems artifact Q3527102,
+% "Kruskal–Katona theorem": among uniform families of subsets of Fin n, a
+% colex initial segment of no greater cardinality has no larger shadow. This
+% file contains no proof.
+
+Q3527102_kruskal_katona_theorem[n: nat]: THEORY
+BEGIN
+  element: TYPE = below(n)
+  element_set: TYPE = [element -> bool]
+  finite_family: TYPE = [element_set -> bool]
+
+  has_cardinality(member_set: element_set, r: nat): bool =
+    EXISTS (enumeration: [below(r) -> (member_set)]):
+      bijective?(enumeration)
+
+  uniform_family(family: finite_family, r: nat): bool =
+    FORALL (member_set: element_set):
+      family(member_set) IMPLIES has_cardinality(member_set, r)
+
+  colex_lt(left, right: element_set): bool =
+    EXISTS (pivot: element):
+      right(pivot)
+        AND NOT left(pivot)
+        AND
+          (FORALL (larger: element):
+            pivot < larger IMPLIES
+              (left(larger) IFF right(larger)))
+
+  colex_le(left, right: element_set): bool =
+    left = right OR colex_lt(left, right)
+
+  initial_colex_segment(family: finite_family, r: nat): bool =
+    uniform_family(family, r)
+      AND
+        (FORALL (included_set, earlier_set: element_set):
+          family(included_set)
+            AND has_cardinality(earlier_set, r)
+            AND colex_le(earlier_set, included_set)
+          IMPLIES family(earlier_set))
+
+  insert_element(
+      inserted_element: element,
+      member_set: element_set): element_set =
+    LAMBDA (candidate: element):
+      candidate = inserted_element OR member_set(candidate)
+
+  shadow(family: finite_family): finite_family =
+    LAMBDA (smaller_set: element_set):
+      EXISTS (removed_element: element):
+        NOT smaller_set(removed_element)
+          AND family(insert_element(removed_element, smaller_set))
+
+  cardinality_le(smaller, larger: finite_family): bool =
+    EXISTS (embedding: [(smaller) -> (larger)]):
+      injective?(embedding)
+
+  kruskal_katona_theorem: bool =
+    FORALL (r: nat), (family, initial_segment: finite_family):
+      (uniform_family(family, r)
+        AND cardinality_le(initial_segment, family)
+        AND initial_colex_segment(initial_segment, r))
+      IMPLIES
+        cardinality_le(shadow(initial_segment), shadow(family))
+END Q3527102_kruskal_katona_theorem

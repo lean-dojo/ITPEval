@@ -1,0 +1,67 @@
+% Statement-only formalization of the Logipedia corpus artifact
+% sigma_pi.exp_pi_bc (catalog title "sigma_pi.exp_pi_bc"): distributing a
+% constant natural factor across a shifted finite prefix product equals
+% multiplication by its corresponding natural power, using truncated natural
+% subtraction for the prefix length. This file contains no proof.
+
+sigma_pi_exp_pi_bc: THEORY
+BEGIN
+
+  source_equal(left, right: nat): bool =
+    FORALL (property: [nat -> bool]):
+      property(left) IMPLIES property(right)
+
+  truncated_subtraction(minuend, subtrahend: nat): nat =
+    IF subtrahend <= minuend THEN
+      minuend - subtrahend
+    ELSE
+      0
+    ENDIF
+
+  source_power(base, exponent: nat): RECURSIVE nat =
+    IF exponent = 0 THEN
+      1
+    ELSE
+      base * source_power(base, exponent - 1)
+    ENDIF
+  MEASURE exponent
+
+  source_bigop(
+      count: nat,
+      predicate: [nat -> bool],
+      nil: nat,
+      op: [nat -> [nat -> nat]],
+      value: [nat -> nat]): RECURSIVE nat =
+    IF count = 0 THEN
+      nil
+    ELSIF predicate(count - 1) THEN
+      op(value(count - 1))(
+        source_bigop(count - 1, predicate, nil, op, value))
+    ELSE
+      source_bigop(count - 1, predicate, nil, op, value)
+    ENDIF
+  MEASURE count
+
+  exp_pi_bc_statement: bool =
+    FORALL (a, b, c: nat), (f: [nat -> nat]):
+      LET count: nat = truncated_subtraction(c, b),
+          multiply: [nat -> [nat -> nat]] =
+            (LAMBDA (left: nat):
+              (LAMBDA (right: nat): left * right))
+      IN
+        source_equal(
+          source_power(a, count)
+            * source_bigop(
+                count,
+                (LAMBDA (i: nat): TRUE),
+                1,
+                multiply,
+                (LAMBDA (i: nat): f(i + b))),
+          source_bigop(
+            count,
+            (LAMBDA (i: nat): TRUE),
+            1,
+            multiply,
+            (LAMBDA (i: nat): a * f(i + b))))
+
+END sigma_pi_exp_pi_bc

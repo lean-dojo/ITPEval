@@ -1,0 +1,106 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2010_a3:
+% every bounded continuously differentiable real function on the real plane
+% satisfying the stated constant-coefficient first-order partial differential
+% equation is identically zero. This file contains no proof.
+
+putnam_2010_a3: THEORY
+BEGIN
+  coordinate: TYPE = below(2)
+  vector: TYPE = [coordinate -> real]
+  scalar_field: TYPE = [vector -> real]
+
+  replace_coordinate(
+      x: vector,
+      i: coordinate,
+      value: real): vector =
+    LAMBDA (j: coordinate):
+      IF j = i THEN value ELSE x(j) ENDIF
+
+  vectors_close(x, y: vector, radius: real): bool =
+    FORALL (i: coordinate):
+      abs(x(i) - y(i)) < radius
+
+  continuous_at(f: scalar_field, x: vector): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (delta: posreal):
+        FORALL (y: vector):
+          vectors_close(y, x, delta)
+            IMPLIES abs(f(y) - f(x)) < epsilon_value
+
+  continuous_field(f: scalar_field): bool =
+    FORALL (x: vector):
+      continuous_at(f, x)
+
+  has_partial_derivative_at(
+      f: scalar_field,
+      i: coordinate,
+      derivative: real,
+      x: vector): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (delta: posreal):
+        FORALL (value: real):
+          (value /= x(i)
+            AND abs(value - x(i)) < delta)
+          IMPLIES
+            abs(
+              f(replace_coordinate(x, i, value)) - f(x)
+                - derivative * (value - x(i)))
+              < epsilon_value * abs(value - x(i))
+
+  partial_differentiable_at(
+      f: scalar_field,
+      i: coordinate,
+      x: vector): bool =
+    EXISTS (derivative: real):
+      has_partial_derivative_at(f, i, derivative, x)
+
+  partial_derivative_value(
+      f: scalar_field,
+      i: coordinate,
+      x: vector): real =
+    IF partial_differentiable_at(f, i, x) THEN
+      epsilon(
+        LAMBDA (derivative: real):
+          has_partial_derivative_at(f, i, derivative, x))
+    ELSE
+      0
+    ENDIF
+
+  first_partial(
+      f: scalar_field,
+      i: coordinate): scalar_field =
+    LAMBDA (x: vector):
+      partial_derivative_value(f, i, x)
+
+  continuously_differentiable(f: scalar_field): bool =
+    continuous_field(f)
+      AND (FORALL (i: coordinate), (x: vector):
+        partial_differentiable_at(f, i, x))
+      AND (FORALL (i: coordinate):
+        continuous_field(first_partial(f, i)))
+
+  satisfies_differential_equation(
+      h: scalar_field,
+      a, b: real): bool =
+    FORALL (x: vector):
+      h(x)
+        = a * partial_derivative_value(h, 0, x)
+            + b * partial_derivative_value(h, 1, x)
+
+  bounded_by(h: scalar_field, M: real): bool =
+    FORALL (x: vector):
+      abs(h(x)) <= M
+
+  identically_zero(h: scalar_field): bool =
+    FORALL (x: vector):
+      h(x) = 0
+
+  putnam_2010_a3: bool =
+    FORALL
+        (h: scalar_field),
+        (a, b, M: real):
+      (continuously_differentiable(h)
+        AND satisfies_differential_equation(h, a, b)
+        AND bounded_by(h, M))
+      IMPLIES identically_zero(h)
+END putnam_2010_a3

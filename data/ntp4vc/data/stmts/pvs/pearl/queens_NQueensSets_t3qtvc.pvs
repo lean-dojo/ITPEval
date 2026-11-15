@@ -1,0 +1,462 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/queens_NQueensSets_t3qtvc: the finite-integer-set verification
+% condition for one recursive iteration of the N-queens solution enumerator,
+% including its loop invariant and recursive postcondition. This file contains
+% no proof.
+
+queens_NQueensSets_t3qtvc: THEORY
+BEGIN
+
+  IMPORTING finite_sets[int], finite_sets@finite_sets_minmax[int, <=]
+
+  solution: TYPE = [int -> int]
+  solutions: TYPE = [int -> solution]
+
+  update_solution(
+      values: solution,
+      index, value: int): solution =
+    values WITH [(index) := value]
+
+  update_solutions(
+      values: solutions,
+      index: int,
+      value: solution): solutions =
+    values WITH [(index) := value]
+
+  eq_prefix(
+      left, right: solution,
+      bound: int): bool =
+    FORALL (index: int):
+      (0 <= index AND index < bound)
+        IMPLIES left(index) = right(index)
+
+  eq_solutions_prefix(
+      left, right: solutions,
+      bound: int): bool =
+    FORALL (index: int):
+      (0 <= index AND index < bound)
+        IMPLIES left(index) = right(index)
+
+  partial_solution(
+      n, k: int,
+      columns: solution): bool =
+    FORALL (i: int):
+      (0 <= i AND i < k)
+        IMPLIES
+          (0 <= columns(i) AND columns(i) < n)
+          AND
+          (FORALL (j: int):
+            (0 <= j AND j < i)
+              IMPLIES
+                columns(i) /= columns(j)
+                AND columns(i) - columns(j) /= i - j
+                AND columns(i) - columns(j) /= j - i)
+
+  lt_solution(
+      n: int,
+      left, right: solution): bool =
+    EXISTS (index: int):
+      (0 <= index AND index < n)
+      AND eq_prefix(left, right, index)
+      AND left(index) < right(index)
+
+  sorted(
+      n: int,
+      values: solutions,
+      lower, upper: int): bool =
+    FORALL (i, j: int):
+      (lower <= i AND i < j AND j < upper)
+        IMPLIES lt_solution(n, values(i), values(j))
+
+  available_columns(
+      n, k: int,
+      available: finite_set[int],
+      columns: solution): bool =
+    FORALL (i: int):
+      available(i)
+        IFF
+          (0 <= i AND i < n)
+          AND
+          (FORALL (j: int):
+            (0 <= j AND j < k)
+              IMPLIES columns(j) /= i)
+
+  unused_ascending(
+      k: int,
+      ascending: finite_set[int],
+      columns: solution): bool =
+    FORALL (i: int):
+      0 <= i
+        IMPLIES
+          ((NOT ascending(i))
+           IFF
+             (FORALL (j: int):
+               (0 <= j AND j < k)
+                 IMPLIES columns(j) /= i + j - k))
+
+  unused_descending(
+      k: int,
+      descending: finite_set[int],
+      columns: solution): bool =
+    FORALL (i: int):
+      0 <= i
+        IMPLIES
+          ((NOT descending(i))
+           IFF
+             (FORALL (j: int):
+               (0 <= j AND j < k)
+                 IMPLIES columns(j) /= i + k - j))
+
+  call_preconditions(
+      n, k: int,
+      available: finite_set[int],
+      next_slot: int,
+      columns: solution,
+      ascending, descending: finite_set[int]): bool =
+    0 <= k
+    AND k + (card(available) :: int) = n
+    AND 0 <= next_slot
+    AND available_columns(n, k, available, columns)
+    AND unused_ascending(k, ascending, columns)
+    AND unused_descending(k, descending, columns)
+    AND partial_solution(n, k, columns)
+
+  insert_condition(
+      value: int,
+      base, result: finite_set[int]): bool =
+    result = add(value, base)
+    AND
+    (IF base(value)
+     THEN card(result) = card(base)
+     ELSE (card(result) :: int) = (card(base) :: int) + 1
+     ENDIF)
+
+  remove_condition(
+      value: int,
+      base, result: finite_set[int]): bool =
+    result = remove(value, base)
+    AND
+    (IF base(value)
+     THEN (card(result) :: int) = (card(base) :: int) - 1
+     ELSE card(result) = card(base)
+     ENDIF)
+
+  descending_shift_condition(
+      source, result: finite_set[int]): bool =
+    FORALL (i: int):
+      result(i) IFF (0 <= i AND source(i + 1))
+
+  ascending_shift_condition(
+      source, result: finite_set[int]): bool =
+    FORALL (i: int):
+      result(i) IFF (1 <= i AND source(i - 1))
+
+  cardinality_decrease(
+      before, after: finite_set[int]): bool =
+    0 <= (card(before) :: int)
+    AND (card(after) :: int) < (card(before) :: int)
+
+  loop_invariant(
+      n, k: int,
+      available, ascending, descending: finite_set[int],
+      start: int,
+      initial_columns: solution,
+      initial_solutions: solutions,
+      original, remaining: finite_set[int],
+      finish: int,
+      columns: solution,
+      current_solutions: solutions): bool =
+    0 <= finish - start
+    AND subset?(
+          remaining,
+          difference(difference(available, ascending), descending))
+    AND partial_solution(n, k, columns)
+    AND sorted(n, current_solutions, start, finish)
+    AND
+    (FORALL (i, j: int):
+      difference(original, remaining)(i)
+        IMPLIES remaining(j)
+        IMPLIES i < j)
+    AND
+    (FORALL (i: int):
+      (start <= i AND i < finish)
+        IMPLIES
+          partial_solution(n, n, current_solutions(i))
+          AND eq_prefix(columns, current_solutions(i), k)
+          AND difference(original, remaining)(current_solutions(i)(k)))
+    AND
+    (FORALL (candidate: solution):
+      partial_solution(n, n, candidate)
+      AND eq_prefix(columns, candidate, k)
+      AND difference(original, remaining)(candidate(k))
+        IMPLIES
+          original(candidate(k))
+          AND NOT remaining(candidate(k))
+          AND
+          (EXISTS (i: int):
+            (start <= i AND i < finish)
+            AND eq_prefix(candidate, current_solutions(i), n)))
+    AND eq_prefix(initial_columns, columns, k)
+    AND eq_solutions_prefix(initial_solutions, current_solutions, start)
+
+  postcondition(
+      n, k: int,
+      initial_columns: solution,
+      initial_solutions: solutions,
+      start, finish: int,
+      columns: solution,
+      current_solutions: solutions): bool =
+    0 <= finish - start
+    AND sorted(n, current_solutions, start, finish)
+    AND
+    (FORALL (candidate: solution):
+      (partial_solution(n, n, candidate)
+       AND eq_prefix(columns, candidate, k))
+        IFF
+          (EXISTS (i: int):
+            (start <= i AND i < finish)
+            AND eq_prefix(candidate, current_solutions(i), n)))
+    AND eq_prefix(initial_columns, columns, k)
+    AND eq_solutions_prefix(initial_solutions, current_solutions, start)
+
+  recursive_iteration(
+      n, k: int,
+      available, ascending, descending: finite_set[int],
+      start: int,
+      initial_columns: solution,
+      initial_solutions: solutions,
+      original, remaining: finite_set[int],
+      finish: int,
+      columns: solution,
+      current_solutions: solutions,
+      chosen: int): bool =
+    FORALL (new_descending: finite_set[int]):
+      insert_condition(chosen, descending, new_descending)
+        IMPLIES
+          (FORALL (shifted_descending: finite_set[int]):
+            descending_shift_condition(
+              new_descending, shifted_descending)
+              IMPLIES
+                (FORALL (new_ascending: finite_set[int]):
+                  insert_condition(chosen, ascending, new_ascending)
+                    IMPLIES
+                      (FORALL (shifted_ascending: finite_set[int]):
+                        ascending_shift_condition(
+                          new_ascending, shifted_ascending)
+                          IMPLIES
+                            (FORALL (new_available: finite_set[int]):
+                              remove_condition(
+                                chosen, available, new_available)
+                                IMPLIES
+                                  (cardinality_decrease(
+                                     available, new_available)
+                                   AND
+                                   call_preconditions(
+                                     n,
+                                     k + 1,
+                                     new_available,
+                                     finish,
+                                     update_solution(
+                                       columns, k, chosen),
+                                     shifted_ascending,
+                                     shifted_descending))
+                                  AND
+                                  (FORALL
+                                      (new_finish: int),
+                                      (new_solutions: solutions),
+                                      (new_columns: solution):
+                                    postcondition(
+                                      n,
+                                      k + 1,
+                                      update_solution(
+                                        columns, k, chosen),
+                                      current_solutions,
+                                      finish,
+                                      new_finish,
+                                      new_columns,
+                                      new_solutions)
+                                      IMPLIES
+                                        (FORALL
+                                            (new_remaining:
+                                              finite_set[int]):
+                                          remove_condition(
+                                            chosen,
+                                            remaining,
+                                            new_remaining)
+                                            IMPLIES
+                                              cardinality_decrease(
+                                                remaining,
+                                                new_remaining)
+                                              AND
+                                              finish - start
+                                                + (new_finish - finish)
+                                                = new_finish - start
+                                              AND k + 1 - 1 = k
+                                              AND
+                                              loop_invariant(
+                                                n,
+                                                k + 1 - 1,
+                                                available,
+                                                ascending,
+                                                descending,
+                                                start,
+                                                initial_columns,
+                                                initial_solutions,
+                                                original,
+                                                new_remaining,
+                                                new_finish,
+                                                new_columns,
+                                                new_solutions)))))))
+
+  loop_result(
+      n, k: int,
+      available, ascending, descending: finite_set[int],
+      start: int,
+      initial_columns: solution,
+      initial_solutions: solutions,
+      original, remaining: finite_set[int],
+      finish: int,
+      columns: solution,
+      current_solutions: solutions): bool =
+    IF remaining /= emptyset[int]
+    THEN
+      remaining /= emptyset[int]
+      AND
+      recursive_iteration(
+        n,
+        k,
+        available,
+        ascending,
+        descending,
+        start,
+        initial_columns,
+        initial_solutions,
+        original,
+        remaining,
+        finish,
+        columns,
+        current_solutions,
+        min(remaining))
+    ELSE
+      postcondition(
+        n,
+        k,
+        initial_columns,
+        initial_solutions,
+        start,
+        finish,
+        columns,
+        current_solutions)
+    ENDIF
+
+  all_loop_states(
+      n, k: int,
+      available, ascending, descending: finite_set[int],
+      start: int,
+      initial_columns: solution,
+      initial_solutions: solutions,
+      original: finite_set[int]): bool =
+    FORALL
+        (remaining: finite_set[int]),
+        (finish: int),
+        (current_solutions: solutions),
+        (columns: solution):
+      loop_invariant(
+        n,
+        k,
+        available,
+        ascending,
+        descending,
+        start,
+        initial_columns,
+        initial_solutions,
+        original,
+        remaining,
+        finish,
+        columns,
+        current_solutions)
+        IMPLIES
+          loop_result(
+            n,
+            k,
+            available,
+            ascending,
+            descending,
+            start,
+            initial_columns,
+            initial_solutions,
+            original,
+            remaining,
+            finish,
+            columns,
+            current_solutions)
+
+  t3_vc: bool =
+    FORALL
+        (n, k: int),
+        (available: finite_set[int]),
+        (start: int),
+        (columns: solution),
+        (ascending, descending: finite_set[int]),
+        (current_solutions: solutions):
+      call_preconditions(
+        n,
+        k,
+        available,
+        start,
+        columns,
+        ascending,
+        descending)
+        IMPLIES
+          (IF available /= emptyset[int]
+           THEN
+             FORALL (first_difference: finite_set[int]):
+               first_difference = difference(available, ascending)
+                 IMPLIES
+                   (FORALL (original: finite_set[int]):
+                     original =
+                       difference(first_difference, descending)
+                       IMPLIES
+                         ((0 = start - start
+                           AND
+                           loop_invariant(
+                             n,
+                             k,
+                             available,
+                             ascending,
+                             descending,
+                             start,
+                             columns,
+                             current_solutions,
+                             original,
+                             original,
+                             start,
+                             columns,
+                             current_solutions))
+                          AND
+                          all_loop_states(
+                            n,
+                            k,
+                            available,
+                            ascending,
+                            descending,
+                            start,
+                            columns,
+                            current_solutions,
+                            original)))
+           ELSE
+             1 = start + 1 - start
+             AND
+             postcondition(
+               n,
+               k,
+               columns,
+               current_solutions,
+               start,
+               start + 1,
+               columns,
+               update_solutions(
+                 current_solutions, start, columns))
+           ENDIF)
+
+END queens_NQueensSets_t3qtvc

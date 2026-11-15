@@ -1,0 +1,158 @@
+% Statement-only formalization of the thousand-theorems corpus artifact Q1687147,
+% "Sprague–Grundy theorem": every impartial combinatorial game is equivalent
+% to the Nim game indexed by its recursively defined Grundy nimber. This file
+% contains no proof.
+
+Q1687147_sprague_grundy_theorem[
+  Game: TYPE+,
+  Nimber: TYPE+,
+  left_move: [Game, Game -> bool],
+  right_move: [Game, Game -> bool],
+  game_neg: [Game -> Game],
+  nimber_lt: [Nimber, Nimber -> bool],
+  nim: [Nimber -> Game],
+  grundy: [Game -> Nimber],
+  game_le: [Game, Game -> bool],
+  impartial_game: [Game -> bool]
+]: THEORY
+BEGIN
+  game_set: TYPE = [Game -> bool]
+  nimber_set: TYPE = [Nimber -> bool]
+
+  is_move(parent, child: Game): bool =
+    left_move(parent, child) OR right_move(parent, child)
+
+  well_founded_game_trees: bool =
+    FORALL (positions: game_set):
+      (EXISTS (position: Game): positions(position))
+        IMPLIES
+          EXISTS (minimal_position: Game):
+            positions(minimal_position)
+              AND
+            (FORALL (option: Game):
+              is_move(minimal_position, option)
+                IMPLIES NOT positions(option))
+
+  strict_well_ordered_nimbers: bool =
+    (FORALL (a: Nimber): NOT nimber_lt(a, a))
+      AND
+    (FORALL (a, b, c: Nimber):
+      nimber_lt(a, b) AND nimber_lt(b, c)
+        IMPLIES nimber_lt(a, c))
+      AND
+    (FORALL (a, b: Nimber):
+      nimber_lt(a, b) OR a = b OR nimber_lt(b, a))
+      AND
+    (FORALL (values: nimber_set):
+      (EXISTS (a: Nimber): values(a))
+        IMPLIES
+          EXISTS (least_value: Nimber):
+            values(least_value)
+              AND
+            (FORALL (a: Nimber):
+              values(a)
+                IMPLIES NOT nimber_lt(a, least_value)))
+
+  conway_order_equation: bool =
+    FORALL (left_game, right_game: Game):
+      game_le(left_game, right_game)
+        IFF
+          (FORALL (left_option: Game):
+            left_move(left_game, left_option)
+              IMPLIES NOT game_le(right_game, left_option))
+          AND
+          (FORALL (right_option: Game):
+            right_move(right_game, right_option)
+              IMPLIES NOT game_le(right_option, left_game))
+
+  game_equivalent(left_game, right_game: Game): bool =
+    game_le(left_game, right_game)
+      AND game_le(right_game, left_game)
+
+  game_negation_laws: bool =
+    (FORALL (position: Game):
+      game_neg(game_neg(position)) = position)
+      AND
+    (FORALL (position, option: Game):
+      left_move(game_neg(position), option)
+        IFF
+          EXISTS (original_option: Game):
+            right_move(position, original_option)
+              AND option = game_neg(original_option))
+      AND
+    (FORALL (position, option: Game):
+      right_move(game_neg(position), option)
+        IFF
+          EXISTS (original_option: Game):
+            left_move(position, original_option)
+              AND option = game_neg(original_option))
+
+  recursive_impartiality_equation: bool =
+    FORALL (position: Game):
+      impartial_game(position)
+        IFF
+          game_equivalent(position, game_neg(position))
+            AND
+          (FORALL (left_option: Game):
+            left_move(position, left_option)
+              IMPLIES impartial_game(left_option))
+            AND
+          (FORALL (right_option: Game):
+            right_move(position, right_option)
+              IMPLIES impartial_game(right_option))
+
+  nim_embedding_laws: bool =
+    (FORALL (a, b: Nimber):
+      nim(a) = nim(b) IMPLIES a = b)
+      AND
+    (FORALL (a: Nimber):
+      game_neg(nim(a)) = nim(a))
+      AND
+    (FORALL (a: Nimber), (option: Game):
+      left_move(nim(a), option)
+        IFF
+          EXISTS (b: Nimber):
+            nimber_lt(b, a) AND option = nim(b))
+      AND
+    (FORALL (a: Nimber), (option: Game):
+      right_move(nim(a), option)
+        IFF
+          EXISTS (b: Nimber):
+            nimber_lt(b, a) AND option = nim(b))
+
+  option_grundy_values(position: Game): nimber_set =
+    LAMBDA (value: Nimber):
+      EXISTS (option: Game):
+        right_move(position, option)
+          AND value = grundy(option)
+
+  is_minimum_excluded(values: nimber_set, value: Nimber): bool =
+    NOT values(value)
+      AND
+    (FORALL (smaller: Nimber):
+      nimber_lt(smaller, value) IMPLIES values(smaller))
+
+  grundy_equation: bool =
+    FORALL (position: Game):
+      impartial_game(position)
+        IMPLIES
+          is_minimum_excluded(
+            option_grundy_values(position),
+            grundy(position))
+
+  sprague_grundy_theorem: bool =
+    (well_founded_game_trees
+      AND strict_well_ordered_nimbers
+      AND conway_order_equation
+      AND game_negation_laws
+      AND recursive_impartiality_equation
+      AND nim_embedding_laws
+      AND grundy_equation)
+    IMPLIES
+      FORALL (position: Game):
+        impartial_game(position)
+          IMPLIES
+            game_equivalent(
+              nim(grundy(position)),
+              position)
+END Q1687147_sprague_grundy_theorem

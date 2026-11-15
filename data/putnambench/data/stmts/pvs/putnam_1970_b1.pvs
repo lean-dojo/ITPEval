@@ -1,0 +1,166 @@
+% Statement-only formalization of PutnamBench artifact putnam_1970_b1:
+% the specified normalized finite products converge to
+% exp(2 * ln(5) - 4 + 2 * arctan(2)). This file contains no proof.
+
+putnam_1970_b1: THEORY
+BEGIN
+  real_sequence: TYPE = [nat -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  nat_factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * nat_factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  exponential_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        exponential_partial(x, count - 1)
+          + safe_div(
+              x ^ index,
+              nat_factorial(index) :: real)
+    ENDIF
+  MEASURE count
+
+  real_exponential(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat):
+            exponential_partial(x, count),
+          value))
+
+  natural_log(x: real): real =
+    IF x > 0 THEN
+      epsilon(
+        LAMBDA (value: real):
+          real_exponential(value) = x)
+    ELSE
+      0
+    ENDIF
+
+  real_power(base, exponent: real): real =
+    IF base > 0 THEN
+      real_exponential(exponent * natural_log(base))
+    ELSIF base = 0 AND exponent = 0 THEN
+      1
+    ELSE
+      0
+    ENDIF
+
+  alternating_sign(index: nat): RECURSIVE real =
+    IF index = 0 THEN
+      1
+    ELSE
+      -alternating_sign(index - 1)
+    ENDIF
+  MEASURE index
+
+  leibniz_partial_sum(count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        leibniz_partial_sum(count - 1)
+          + safe_div(
+              alternating_sign(index),
+              (2 * index + 1) :: real)
+    ENDIF
+  MEASURE count
+
+  pi: real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat):
+            4 * leibniz_partial_sum(count),
+          value))
+
+  sine_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        sine_partial(x, count - 1)
+          + safe_div(
+              alternating_sign(index) * x ^ (2 * index + 1),
+              nat_factorial(2 * index + 1) :: real)
+    ENDIF
+  MEASURE count
+
+  cosine_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        cosine_partial(x, count - 1)
+          + safe_div(
+              alternating_sign(index) * x ^ (2 * index),
+              nat_factorial(2 * index) :: real)
+    ENDIF
+  MEASURE count
+
+  real_sine(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat):
+            sine_partial(x, count),
+          value))
+
+  real_cosine(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat):
+            cosine_partial(x, count),
+          value))
+
+  real_arctangent(x: real): real =
+    epsilon(
+      LAMBDA (angle: real):
+        -pi / 2 < angle
+          AND angle < pi / 2
+          AND real_sine(angle) = x * real_cosine(angle))
+
+  product_1_to_count(n, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      1
+    ELSE
+      product_1_to_count(n, count - 1)
+        * real_power(
+            (n :: real) ^ 2 + (count :: real) ^ 2,
+            safe_div(1, n :: real))
+    ENDIF
+  MEASURE count
+
+  normalized_product(n: nat): real =
+    safe_div(1, (n :: real) ^ 4)
+      * product_1_to_count(n, 2 * n)
+
+  putnam_1970_b1: bool =
+    converges_to(
+      normalized_product,
+      real_exponential(
+        2 * natural_log(5)
+          - 4
+          + 2 * real_arctangent(2)))
+END putnam_1970_b1

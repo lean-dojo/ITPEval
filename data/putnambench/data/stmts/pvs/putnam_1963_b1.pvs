@@ -1,0 +1,92 @@
+% Statement-only formalization of PutnamBench artifact putnam_1963_b1:
+% the integer a for which x^2 - x + a divides x^13 + x + 90 is exactly 2.
+% This file contains no proof.
+
+putnam_1963_b1: THEORY
+BEGIN
+  polynomial_coefficient(p: list[real], degree: nat): RECURSIVE real =
+    CASES p OF
+      null: 0,
+      cons(coefficient, tail):
+        IF degree = 0 THEN
+          coefficient
+        ELSE
+          polynomial_coefficient(tail, degree - 1)
+        ENDIF
+    ENDCASES
+  MEASURE p BY <<
+
+  polynomial_equal(p, q: list[real]): bool =
+    FORALL (degree: nat):
+      polynomial_coefficient(p, degree)
+        = polynomial_coefficient(q, degree)
+
+  polynomial_add(p, q: list[real]): RECURSIVE list[real] =
+    CASES p OF
+      null: q,
+      cons(left_coefficient, left_tail):
+        CASES q OF
+          null: p,
+          cons(right_coefficient, right_tail):
+            cons(
+              left_coefficient + right_coefficient,
+              polynomial_add(left_tail, right_tail))
+        ENDCASES
+    ENDCASES
+  MEASURE p BY <<
+
+  polynomial_scale(value: real, p: list[real]): RECURSIVE list[real] =
+    CASES p OF
+      null: null,
+      cons(coefficient, tail):
+        cons(
+          value * coefficient,
+          polynomial_scale(value, tail))
+    ENDCASES
+  MEASURE p BY <<
+
+  polynomial_multiply(p, q: list[real]): RECURSIVE list[real] =
+    CASES p OF
+      null: null,
+      cons(coefficient, tail):
+        polynomial_add(
+          polynomial_scale(coefficient, q),
+          cons(0, polynomial_multiply(tail, q)))
+    ENDCASES
+  MEASURE p BY <<
+
+  monomial(coefficient: real, degree: nat): RECURSIVE list[real] =
+    IF degree = 0 THEN
+      cons(coefficient, null)
+    ELSE
+      cons(0, monomial(coefficient, degree - 1))
+    ENDIF
+  MEASURE degree
+
+  polynomial_divides(divisor, dividend: list[real]): bool =
+    EXISTS (quotient: list[real]):
+      polynomial_equal(
+        dividend,
+        polynomial_multiply(divisor, quotient))
+
+  quadratic(a: int): list[real] =
+    polynomial_add(
+      monomial(1, 2),
+      polynomial_add(
+        monomial(-1, 1),
+        monomial((a :: real), 0)))
+
+  dividend: list[real] =
+    polynomial_add(
+      monomial(1, 13),
+      polynomial_add(
+        monomial(1, 1),
+        monomial(90, 0)))
+
+  putnam_1963_b1_solution: int = 2
+
+  putnam_1963_b1: bool =
+    FORALL (a: int):
+      polynomial_divides(quadratic(a), dividend)
+        IFF a = putnam_1963_b1_solution
+END putnam_1963_b1

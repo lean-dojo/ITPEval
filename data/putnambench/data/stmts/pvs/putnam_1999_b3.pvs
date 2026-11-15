@@ -1,0 +1,86 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1999_b3:
+% the iterated positive-integer double power series in the sector
+% 1/2 <= m/n <= 2 has the stated normalized limit as (x,y) approaches
+% (1,1) within 0 <= x,y < 1. This file contains no proof.
+
+putnam_1999_b3: THEORY
+BEGIN
+  real_sequence: TYPE = [nat -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  partial_sum(
+      values: real_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      partial_sum(values, count - 1) + values(count - 1)
+    ENDIF
+  MEASURE count
+
+  series_sums_to(values: real_sequence, total: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (count: nat):
+          cutoff <= count IMPLIES
+            abs(partial_sum(values, count) - total) < epsilon_value
+
+  series_value(values: real_sequence): real =
+    IF EXISTS (total: real): series_sums_to(values, total) THEN
+      epsilon(
+        LAMBDA (total: real):
+          series_sums_to(values, total))
+    ELSE
+      0
+    ENDIF
+
+  admissible_indices(m, n: nat): bool =
+    m > 0
+      AND n > 0
+      AND safe_div(1, 2) <= safe_div(m :: real, n :: real)
+      AND safe_div(m :: real, n :: real) <= 2
+
+  series_term(m, n: nat, x, y: real): real =
+    IF admissible_indices(m, n) THEN
+      x ^ m * y ^ n
+    ELSE
+      0
+    ENDIF
+
+  inner_series_value(m: nat, x, y: real): real =
+    series_value(
+      LAMBDA (n: nat):
+        series_term(m, n, x, y))
+
+  S(x, y: real): real =
+    series_value(
+      LAMBDA (m: nat):
+        inner_series_value(m, x, y))
+
+  unit_square(x, y: real): bool =
+    0 <= x AND x < 1 AND 0 <= y AND y < 1
+
+  squared_distance_to_one(x, y: real): real =
+    (x - 1) ^ 2 + (y - 1) ^ 2
+
+  normalized_series(x, y: real): real =
+    (1 - x * y ^ 2) * (1 - x ^ 2 * y) * S(x, y)
+
+  tends_to_three_within_unit_square: bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (delta: posreal):
+        FORALL (x, y: real):
+          (unit_square(x, y)
+            AND squared_distance_to_one(x, y) < delta ^ 2)
+          IMPLIES
+            abs(normalized_series(x, y) - 3) < epsilon_value
+
+  putnam_1999_b3: bool =
+    tends_to_three_within_unit_square
+END putnam_1999_b3

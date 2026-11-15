@@ -1,0 +1,455 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/multiprecision/sub_1_Sub_1_wmpn_decr_1qtvc: the verification
+% condition for decrementing a positive-length multiprecision integer in
+% place by one, including borrow-loop invariants, pointer updates, and memory
+% framing. This file contains no proof.
+
+sub_1_Sub_1_wmpn_decr_1qtvc[zone: TYPE+]: THEORY
+BEGIN
+
+  IMPORTING
+    bv[32], bv[64],
+    bv_nat[32], bv_nat[64]
+
+  word32: TYPE = bvec[32]
+  word64: TYPE = bvec[64]
+
+  ptr: TYPE =
+    [# data_length: nat,
+       cells: [int -> word64],
+       pointer_offset: int,
+       pointer_min: int,
+       pointer_max: int,
+       is_writable: bool,
+       pointer_zone: zone #]
+
+  radix: int = 18446744073709551616
+
+  unsigned64(value: word64): int =
+    bv2nat[64](value)
+
+  signed32(value: word32): int =
+    IF value(31) THEN
+      bv2nat[32](value) - 4294967296
+    ELSE
+      bv2nat[32](value)
+    ENDIF
+
+  word64_of(value: below(exp2(64))): word64 =
+    nat2bv[64](value)
+
+  zero32: word32 = fill[32](FALSE)
+  zero64: word64 = fill[64](FALSE)
+  one64: word64 = word64_of(1)
+
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  nat_power(base: int, exponent: nat): RECURSIVE int =
+    IF exponent = 0 THEN
+      1
+    ELSE
+      base * nat_power(base, exponent - 1)
+    ENDIF
+  MEASURE exponent
+
+  int_power(base, exponent: int): int =
+    nat_power(base, int_to_nat(exponent))
+
+  value_from(
+      values: [int -> word64],
+      start: int,
+      count: nat): RECURSIVE int =
+    IF count = 0 THEN
+      0
+    ELSE
+      unsigned64(values(start))
+        + radix * value_from(values, start + 1, count - 1)
+    ENDIF
+  MEASURE count
+
+  value(p: ptr, size: int): int =
+    value_from(
+      cells(p),
+      pointer_offset(p),
+      int_to_nat(size))
+
+  int32_in_bounds(value1: int): bool =
+    -2147483648 <= value1 AND value1 <= 2147483647
+
+  valid(p: ptr, size: int): bool =
+    int32_in_bounds(size)
+      AND 0 <= size
+      AND 0 <= pointer_min(p)
+      AND pointer_min(p) <= pointer_offset(p)
+      AND pointer_offset(p) + size <= pointer_max(p)
+      AND pointer_max(p) <= (data_length(p) :: int)
+
+  same_pelts(left, right: ptr): bool =
+    cells(left) = cells(right)
+
+  data_eq(left, right: ptr): bool =
+    data_length(left) = data_length(right)
+      AND same_pelts(left, right)
+
+  single_update(
+      new, old: ptr,
+      index: int,
+      replacement: word64): bool =
+    cells(new) = cells(old) WITH [(index) := replacement]
+
+  shifted_pointer(
+      shifted, base: ptr,
+      amount: int): bool =
+    pointer_offset(shifted) = pointer_offset(base) + amount
+      AND data_length(shifted) = data_length(base)
+      AND same_pelts(shifted, base)
+      AND data_eq(shifted, base)
+      AND pointer_min(shifted) = pointer_min(base)
+      AND pointer_max(shifted) = pointer_max(base)
+      AND pointer_zone(shifted) = pointer_zone(base)
+      AND is_writable(shifted) = is_writable(base)
+
+  loop_memory_metadata(memory, old: ptr): bool =
+    data_length(memory) = data_length(old)
+      AND pointer_offset(memory) = pointer_offset(old)
+      AND pointer_min(memory) = pointer_min(old)
+      AND pointer_max(memory) = pointer_max(old)
+      AND is_writable(memory) = is_writable(old)
+      AND pointer_zone(memory) = pointer_zone(old)
+
+  loop_pointer(
+      pointer, memory: ptr,
+      index: int): bool =
+    pointer_offset(pointer) = pointer_offset(memory) + index
+      AND same_pelts(pointer, memory)
+      AND data_length(pointer) = data_length(memory)
+      AND pointer_min(pointer) = pointer_min(memory)
+      AND pointer_max(pointer) = pointer_max(memory)
+
+  tail_unchanged(
+      new, old: ptr,
+      start, size: int): bool =
+    FORALL (j: int):
+      start <= j AND j < size
+        IMPLIES
+          cells(new)(pointer_offset(new) + j)
+            = cells(old)(pointer_offset(new) + j)
+
+  frame(
+      new, old: ptr,
+      size: int): bool =
+    FORALL (j: int):
+      j < pointer_offset(new)
+        OR pointer_offset(new) + size <= j
+      IMPLIES cells(new)(j) = cells(old)(j)
+
+  initial_invariant(
+      pointer, old: ptr,
+      size: word32): bool =
+    ((0 <= 0 AND 0 <= signed32(size))
+      AND NOT (zero32 = size)
+      AND pointer_offset(pointer) = pointer_offset(old) + 0
+      AND same_pelts(pointer, old)
+      AND data_length(pointer) = data_length(old)
+      AND pointer_min(pointer) = pointer_min(old)
+      AND pointer_max(pointer) = pointer_max(old)
+      AND NOT (1 = 0)
+      AND (0 <= 1 AND 1 <= 1)
+      AND
+        value(old, 0) - int_power(radix, 0) * 1
+          = value(old, 0) - 1
+      AND is_writable(pointer) = TRUE)
+
+  loop_invariant(
+      old: ptr,
+      size: word32,
+      pointer: ptr,
+      index: word32,
+      last, borrow: word64,
+      memory: ptr): bool =
+    (0 <= signed32(index)
+      AND signed32(index) <= signed32(size))
+      AND
+        (index = size
+          IMPLIES NOT (unsigned64(last) = 0))
+      AND loop_pointer(pointer, memory, signed32(index))
+      AND
+        ((NOT (unsigned64(last) = 0))
+          IFF unsigned64(borrow) = 0)
+      AND
+        (0 <= unsigned64(borrow)
+          AND unsigned64(borrow) <= 1)
+      AND
+        value(memory, signed32(index))
+            - int_power(radix, signed32(index))
+                * unsigned64(borrow)
+          =
+        value(old, signed32(index)) - 1
+      AND is_writable(pointer) = TRUE
+      AND
+        tail_unchanged(
+          memory,
+          old,
+          signed32(index),
+          signed32(size))
+      AND frame(memory, old, signed32(size))
+
+  final_state(
+      memory, old: ptr,
+      size: word32): bool =
+    value(memory, signed32(size))
+        = value(old, signed32(size)) - 1
+      AND frame(memory, old, signed32(size))
+
+  write_metadata(
+      updated, post_write, before_write: ptr): bool =
+    data_eq(updated, post_write)
+      AND data_length(post_write) = data_length(before_write)
+      AND pointer_offset(updated) = pointer_offset(before_write)
+      AND pointer_min(updated) = pointer_min(before_write)
+      AND pointer_max(updated) = pointer_max(before_write)
+      AND is_writable(updated) = is_writable(before_write)
+      AND pointer_zone(updated) = pointer_zone(before_write)
+
+  next_loop_invariant(
+      old: ptr,
+      size, previous_index: word32,
+      last: word64,
+      memory: ptr,
+      next_index: word32,
+      borrow: word64,
+      pointer: ptr): bool =
+    (0 <= signed32(size) - signed32(previous_index)
+      AND
+        signed32(size) - signed32(next_index)
+          < signed32(size) - signed32(previous_index))
+      AND
+        (0 <= signed32(next_index)
+          AND signed32(next_index) <= signed32(size))
+      AND
+        (next_index = size
+          IMPLIES NOT (unsigned64(last) = 0))
+      AND loop_pointer(pointer, memory, signed32(next_index))
+      AND
+        ((NOT (unsigned64(last) = 0))
+          IFF unsigned64(borrow) = 0)
+      AND
+        (0 <= unsigned64(borrow)
+          AND unsigned64(borrow) <= 1)
+      AND
+        value(memory, signed32(next_index))
+            - int_power(radix, signed32(next_index))
+                * unsigned64(borrow)
+          =
+        value(old, signed32(next_index)) - 1
+      AND is_writable(pointer) = TRUE
+      AND
+        tail_unchanged(
+          memory,
+          old,
+          signed32(next_index),
+          signed32(size))
+      AND frame(memory, old, signed32(size))
+
+  write_continuation(
+      old: ptr,
+      size: word32,
+      pointer, memory: ptr,
+      index: word32,
+      last, result, borrow: word64): bool =
+    FORALL (updated, post_write: ptr):
+      write_metadata(updated, post_write, pointer)
+        IMPLIES
+          write_metadata(updated, post_write, pointer)
+        IMPLIES
+          loop_memory_metadata(post_write, memory)
+        IMPLIES
+          single_update(
+            updated,
+            pointer,
+            pointer_offset(updated),
+            result)
+        IMPLIES
+          int32_in_bounds(signed32(index) + 1)
+            AND
+              (FORALL (next_index: word32):
+                signed32(next_index) = signed32(index) + 1
+                  IMPLIES
+                    (pointer_min(updated)
+                        <= pointer_offset(updated) + 1
+                      AND
+                        pointer_offset(updated) + 1
+                          <= pointer_max(updated))
+                    AND
+                      (FORALL (next_pointer: ptr):
+                        shifted_pointer(
+                          next_pointer,
+                          updated,
+                          1)
+                          IMPLIES
+                            next_loop_invariant(
+                              old,
+                              size,
+                              index,
+                              last,
+                              post_write,
+                              next_index,
+                              borrow,
+                              next_pointer)))
+
+  after_zero_test(
+      old: ptr,
+      size: word32,
+      pointer, memory: ptr,
+      index: word32,
+      last, result, borrow: word64): bool =
+    (pointer_min(pointer) <= pointer_offset(pointer)
+      AND pointer_offset(pointer) < pointer_max(pointer))
+      AND is_writable(pointer) = TRUE
+      AND
+        write_continuation(
+          old,
+          size,
+          pointer,
+          memory,
+          index,
+          last,
+          result,
+          borrow)
+
+  result_continuation(
+      old: ptr,
+      size: word32,
+      pointer, memory: ptr,
+      index: word32): bool =
+    FORALL (result: word64):
+      unsigned64(result)
+          =
+          mod(
+            unsigned64(cells(pointer)(pointer_offset(pointer))) - 1,
+            radix)
+        IMPLIES
+          (FORALL (zero_test: bool):
+            ((unsigned64(cells(pointer)(pointer_offset(pointer)))
+                  = unsigned64(zero64)
+                IMPLIES zero_test = TRUE)
+              AND
+                (zero_test = TRUE
+                  IMPLIES
+                    cells(pointer)(pointer_offset(pointer)) = zero64))
+              IMPLIES
+                IF zero_test = TRUE THEN
+                  after_zero_test(
+                    old,
+                    size,
+                    pointer,
+                    memory,
+                    index,
+                    cells(pointer)(pointer_offset(pointer)),
+                    result,
+                    one64)
+                ELSE
+                  after_zero_test(
+                    old,
+                    size,
+                    pointer,
+                    memory,
+                    index,
+                    cells(pointer)(pointer_offset(pointer)),
+                    result,
+                    zero64)
+                ENDIF)
+
+  zero_last_branch(
+      old: ptr,
+      size: word32,
+      pointer, memory: ptr,
+      index: word32): bool =
+    (pointer_min(pointer) <= pointer_offset(pointer)
+      AND pointer_offset(pointer) < pointer_max(pointer))
+      AND
+        result_continuation(
+          old,
+          size,
+          pointer,
+          memory,
+          index)
+
+  loop_result_continuation(
+      old: ptr,
+      size: word32,
+      pointer, memory: ptr,
+      index: word32,
+      last: word64): bool =
+    FORALL (zero_test: bool):
+      ((unsigned64(last) = unsigned64(zero64)
+          IMPLIES zero_test = TRUE)
+        AND
+          (zero_test = TRUE
+            IMPLIES last = zero64))
+        IMPLIES
+          IF zero_test = TRUE THEN
+            zero_last_branch(
+              old,
+              size,
+              pointer,
+              memory,
+              index)
+          ELSE
+            final_state(memory, old, size)
+          ENDIF
+
+  loop_states(
+      old: ptr,
+      size: word32): bool =
+    FORALL
+        (pointer: ptr),
+        (index: word32),
+        (last, borrow: word64),
+        (memory: ptr):
+      loop_memory_metadata(memory, old)
+        IMPLIES
+          loop_invariant(
+            old,
+            size,
+            pointer,
+            index,
+            last,
+            borrow,
+            memory)
+        IMPLIES
+          loop_result_continuation(
+            old,
+            size,
+            pointer,
+            memory,
+            index,
+            last)
+
+  initial_continuation(
+      old: ptr,
+      size: word32): bool =
+    FORALL (pointer: ptr):
+      shifted_pointer(pointer, old, 0)
+        IMPLIES
+          initial_invariant(pointer, old, size)
+            AND loop_states(old, size)
+
+  wmpn_decr_1_vc: bool =
+    FORALL
+        (x: ptr),
+        (size: word32):
+      valid(x, signed32(size))
+        IMPLIES
+          0 < signed32(size)
+        IMPLIES
+          0 <= value(x, signed32(size)) - 1
+        IMPLIES
+          is_writable(x) = TRUE
+        IMPLIES
+          pointer_min(x) <= pointer_offset(x) + 0
+            AND pointer_offset(x) + 0 <= pointer_max(x)
+            AND initial_continuation(x, size)
+
+END sub_1_Sub_1_wmpn_decr_1qtvc

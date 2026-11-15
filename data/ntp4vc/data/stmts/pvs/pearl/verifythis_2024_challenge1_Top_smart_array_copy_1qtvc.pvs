@@ -1,0 +1,1054 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/verifythis_2024_challenge1_Top_smart_array_copy_1qtvc: the
+% verification condition for copying an array through independently shuffled
+% source and destination subsegments while maintaining inverse index maps,
+% followed by an identity-mapped remainder segment. This file contains no proof.
+
+verifythis_2024_challenge1_Top_smart_array_copy_1qtvc[
+  elt: TYPE+
+]: THEORY
+BEGIN
+
+  elt_array: TYPE =
+    [# array_length: nat,
+       array_values: [int -> elt] #]
+
+  int_array: TYPE =
+    [# int_array_length: nat,
+       int_array_values: [int -> int] #]
+
+  write_elt(a: elt_array, index: int, value: elt): elt_array =
+    (# array_length := array_length(a),
+       array_values :=
+         array_values(a) WITH [(index) := value] #)
+
+  write_int(a: int_array, index, value: int): int_array =
+    (# int_array_length := int_array_length(a),
+       int_array_values :=
+         int_array_values(a) WITH [(index) := value] #)
+
+  identity_array(length: nat): int_array =
+    (# int_array_length := length,
+       int_array_values := LAMBDA (i: int): i #)
+
+  identity_values(a: int_array, length: int): bool =
+    FORALL (i: int):
+      (0 <= i AND i < length)
+        IMPLIES int_array_values(a)(i) = i
+
+  permutation(length: int, p: int_array): bool =
+    (0 <= length AND length <= int_array_length(p))
+      AND
+    (FORALL (i: int):
+      (0 <= i AND i < length)
+        IMPLIES
+          (0 <= int_array_values(p)(i)
+            AND int_array_values(p)(i) < length))
+      AND
+    (FORALL (i, j: int):
+      (0 <= i AND i < length)
+        IMPLIES
+          (0 <= j AND j < length)
+            IMPLIES
+              i /= j
+                IMPLIES
+                  int_array_values(p)(i)
+                    /= int_array_values(p)(j))
+
+  permutation_pair(
+      length: int,
+      p, inverse: int_array): bool =
+    permutation(length, p)
+      AND permutation(length, inverse)
+      AND
+    (FORALL (i: int):
+      (0 <= i AND i < length)
+        IMPLIES
+          int_array_values(p)(
+            int_array_values(inverse)(i)) = i)
+      AND
+    (FORALL (i: int):
+      (0 <= i AND i < length)
+        IMPLIES
+          int_array_values(inverse)(
+            int_array_values(p)(i)) = i)
+
+  valid_chunk(
+      a: elt_array,
+      offset, chunk_length: int): bool =
+    0 <= offset
+      AND offset <= offset + chunk_length
+      AND offset + chunk_length <= array_length(a)
+
+  copy_to(
+      source, destination: elt_array,
+      source_offset, destination_offset, chunk_length: int): bool =
+    valid_chunk(source, source_offset, chunk_length)
+      AND valid_chunk(destination, destination_offset, chunk_length)
+      AND array_length(source) = array_length(destination)
+      AND
+    (FORALL (i: int):
+      (0 <= i AND i < chunk_length)
+        IMPLIES
+          array_values(destination)(destination_offset + i)
+            = array_values(source)(source_offset + i))
+      AND
+    (FORALL (i: int):
+      (destination_offset <= i
+        AND i < destination_offset + chunk_length)
+        IMPLIES
+          array_values(destination)(i)
+            =
+          array_values(source)(
+            i + (source_offset - destination_offset)))
+
+  copy_perm(
+      source, destination: elt_array,
+      size: int,
+      p, inverse: int_array): bool =
+    valid_chunk(source, 0, size)
+      AND array_length(source) = array_length(destination)
+      AND permutation_pair(size, p, inverse)
+      AND
+    (FORALL (i: int):
+      (0 <= i AND i < size)
+        IMPLIES
+          (0 <= int_array_values(p)(i)
+            AND int_array_values(p)(i) < size))
+      AND
+    (FORALL (i: int):
+      (0 <= i AND i < size)
+        IMPLIES
+          (0 <= int_array_values(inverse)(i)
+            AND int_array_values(inverse)(i) < size))
+      AND
+    (FORALL (i: int):
+      (0 <= i AND i < size)
+        IMPLIES
+          array_values(destination)(i)
+            = array_values(source)(int_array_values(p)(i)))
+      AND
+    (FORALL (i: int):
+      (0 <= i AND i < size)
+        IMPLIES
+          array_values(source)(i)
+            = array_values(destination)(int_array_values(inverse)(i)))
+
+  copy_subsegment(
+      source, destination: elt_array,
+      s, k, l, j: int,
+      sigma, tau, p, inverse: int_array): bool =
+    LET start: int = s * (k * l),
+        source_start: int =
+          start + int_array_values(sigma)(j) * k,
+        destination_start: int =
+          start
+            + int_array_values(tau)(
+                int_array_values(sigma)(j)) * k
+    IN
+      copy_to(
+        source, destination, source_start, destination_start, k)
+        AND
+      (FORALL (i: int):
+        (0 <= i AND i < k)
+          IMPLIES
+            int_array_values(p)(destination_start + i)
+              = source_start + i)
+        AND
+      (FORALL (i: int):
+        (0 <= i AND i < k)
+          IMPLIES
+            int_array_values(inverse)(source_start + i)
+              = destination_start + i)
+
+  frame_elt(
+      before, after: elt_array,
+      offset, frame_length: int): bool =
+    array_length(after) = array_length(before)
+      AND
+    (FORALL (i: int):
+      (0 <= i AND i < offset)
+        IMPLIES
+          array_values(after)(i) = array_values(before)(i))
+      AND
+    (FORALL (i: int):
+      (offset + frame_length <= i
+        AND i < array_length(after))
+        IMPLIES
+          array_values(after)(i) = array_values(before)(i))
+
+  frame_int(
+      before, after: int_array,
+      offset, frame_length: int): bool =
+    int_array_length(after) = int_array_length(before)
+      AND
+    (FORALL (i: int):
+      (0 <= i AND i < offset)
+        IMPLIES
+          int_array_values(after)(i) = int_array_values(before)(i))
+      AND
+    (FORALL (i: int):
+      (offset + frame_length <= i
+        AND i < int_array_length(after))
+        IMPLIES
+          int_array_values(after)(i) = int_array_values(before)(i))
+
+  all_subsegments_before(
+      source, destination: elt_array,
+      s, k, l, upper: int,
+      sigma, tau, p, inverse: int_array): bool =
+    FORALL (j_prime: int):
+      (0 <= j_prime AND j_prime < upper)
+        IMPLIES
+          copy_subsegment(
+            source,
+            destination,
+            s,
+            k,
+            l,
+            j_prime,
+            sigma,
+            tau,
+            p,
+            inverse)
+
+  index_prefix(
+      a: int_array,
+      index_base, value_base, upper: int): bool =
+    FORALL (i: int):
+      (0 <= i AND i < upper)
+        IMPLIES
+          int_array_values(a)(index_base + i) = value_base + i
+
+  elt_update_equation(a: elt_array, index: int, value: elt): bool =
+    array_values(write_elt(a, index, value))
+      = array_values(a) WITH [(index) := value]
+
+  int_update_equation(a: int_array, index, value: int): bool =
+    int_array_values(write_int(a, index, value))
+      = int_array_values(a) WITH [(index) := value]
+
+  inner_update_result(
+      source: elt_array,
+      destination_before, destination: elt_array,
+      p_before, p, inverse_before, inverse: int_array,
+      s, k, l, j: int,
+      sigma, tau: int_array,
+      m, source_start, destination_start, i: int): bool =
+    LET source_index: int = source_start + i,
+        value: elt = array_values(source)(source_index),
+        destination_index: int = destination_start + i,
+        destination_next: elt_array =
+          write_elt(destination, destination_index, value),
+        p_value: int = source_start + i,
+        p_index: int = destination_start + i,
+        p_next: int_array = write_int(p, p_index, p_value),
+        inverse_value: int = destination_start + i,
+        inverse_index: int = source_start + i,
+        inverse_next: int_array =
+          write_int(inverse, inverse_index, inverse_value)
+    IN
+      (0 <= source_index
+        AND source_index < array_length(source))
+        AND
+      (0 <= destination_index
+        AND destination_index < array_length(destination))
+        AND
+      (array_length(destination_next) = array_length(destination)
+        IMPLIES
+          elt_update_equation(destination, destination_index, value)
+            IMPLIES
+              (0 <= p_index
+                AND p_index < int_array_length(p))
+                AND
+              (int_array_length(p_next) = int_array_length(p)
+                IMPLIES
+                  int_update_equation(p, p_index, p_value)
+                    IMPLIES
+                      (0 <= inverse_index
+                        AND inverse_index < int_array_length(inverse))
+                        AND
+                      (int_array_length(inverse_next)
+                          = int_array_length(inverse)
+                        IMPLIES
+                          int_update_equation(
+                            inverse, inverse_index, inverse_value)
+                            IMPLIES
+                              frame_elt(
+                                destination_before,
+                                destination_next,
+                                destination_start,
+                                k)
+                                AND
+                              frame_int(
+                                p_before,
+                                p_next,
+                                destination_start,
+                                k)
+                                AND
+                              frame_int(
+                                inverse_before,
+                                inverse_next,
+                                source_start,
+                                k)
+                                AND
+                              permutation_pair(
+                                s * m, p_next, inverse_next)
+                                AND
+                              copy_perm(
+                                source,
+                                destination_next,
+                                s * m,
+                                p_next,
+                                inverse_next)
+                                AND
+                              copy_to(
+                                source,
+                                destination_next,
+                                source_start,
+                                destination_start,
+                                i + 1)
+                                AND
+                              index_prefix(
+                                p_next,
+                                destination_start,
+                                source_start,
+                                i + 1)
+                                AND
+                              index_prefix(
+                                inverse_next,
+                                source_start,
+                                destination_start,
+                                i + 1)
+                                AND
+                              all_subsegments_before(
+                                source,
+                                destination_next,
+                                s,
+                                k,
+                                l,
+                                j,
+                                sigma,
+                                tau,
+                                p_next,
+                                inverse_next))))
+
+  all_inner_indices(
+      source: elt_array,
+      destination_before, destination: elt_array,
+      p_before, p, inverse_before, inverse: int_array,
+      s, k, l, j: int,
+      sigma, tau: int_array,
+      m, source_start, destination_start, upper: int): bool =
+    FORALL (i: int):
+      ((0 <= i AND i <= upper)
+        AND frame_elt(
+          destination_before, destination, destination_start, k)
+        AND frame_int(p_before, p, destination_start, k)
+        AND frame_int(inverse_before, inverse, source_start, k)
+        AND permutation_pair(s * m, p, inverse)
+        AND copy_perm(source, destination, s * m, p, inverse)
+        AND copy_to(
+          source, destination, source_start, destination_start, i)
+        AND index_prefix(p, destination_start, source_start, i)
+        AND index_prefix(inverse, source_start, destination_start, i)
+        AND all_subsegments_before(
+          source,
+          destination,
+          s,
+          k,
+          l,
+          j,
+          sigma,
+          tau,
+          p,
+          inverse))
+        IMPLIES
+          inner_update_result(
+            source,
+            destination_before,
+            destination,
+            p_before,
+            p,
+            inverse_before,
+            inverse,
+            s,
+            k,
+            l,
+            j,
+            sigma,
+            tau,
+            m,
+            source_start,
+            destination_start,
+            i)
+
+  inner_state_body(
+      source: elt_array,
+      destination_before, destination: elt_array,
+      p_before, p, inverse_before, inverse: int_array,
+      s, k, l, j: int,
+      sigma, tau: int_array,
+      m, source_start, destination_start, upper: int): bool =
+    all_inner_indices(
+      source,
+      destination_before,
+      destination,
+      p_before,
+      p,
+      inverse_before,
+      inverse,
+      s,
+      k,
+      l,
+      j,
+      sigma,
+      tau,
+      m,
+      source_start,
+      destination_start,
+      upper)
+      AND
+    ((frame_elt(
+        destination_before, destination, destination_start, k)
+      AND frame_int(p_before, p, destination_start, k)
+      AND frame_int(inverse_before, inverse, source_start, k)
+      AND permutation_pair(s * m, p, inverse)
+      AND copy_perm(source, destination, s * m, p, inverse)
+      AND copy_to(
+        source,
+        destination,
+        source_start,
+        destination_start,
+        upper + 1)
+      AND index_prefix(
+        p, destination_start, source_start, upper + 1)
+      AND index_prefix(
+        inverse, source_start, destination_start, upper + 1)
+      AND all_subsegments_before(
+        source,
+        destination,
+        s,
+        k,
+        l,
+        j,
+        sigma,
+        tau,
+        p,
+        inverse))
+      IMPLIES
+        (permutation_pair(s * m, p, inverse)
+          AND copy_perm(source, destination, s * m, p, inverse)
+          AND all_subsegments_before(
+            source,
+            destination,
+            s,
+            k,
+            l,
+            j + 1,
+            sigma,
+            tau,
+            p,
+            inverse)))
+
+  all_inner_states(
+      source: elt_array,
+      destination_before: elt_array,
+      p_before, inverse_before: int_array,
+      s, k, l, j: int,
+      sigma, tau: int_array,
+      m, source_start, destination_start, upper: int): bool =
+    FORALL (inverse, p: int_array):
+      FORALL (destination: elt_array):
+        int_array_length(inverse) = int_array_length(inverse_before)
+          IMPLIES
+            int_array_length(p) = int_array_length(p_before)
+              IMPLIES
+                array_length(destination)
+                    = array_length(destination_before)
+                  IMPLIES
+                    inner_state_body(
+                      source,
+                      destination_before,
+                      destination,
+                      p_before,
+                      p,
+                      inverse_before,
+                      inverse,
+                      s,
+                      k,
+                      l,
+                      j,
+                      sigma,
+                      tau,
+                      m,
+                      source_start,
+                      destination_start,
+                      upper)
+
+  inner_loop_vc(
+      source, destination: elt_array,
+      p, inverse: int_array,
+      s, k, l, j: int,
+      sigma, tau: int_array,
+      m, source_start, destination_start: int): bool =
+    LET upper: int = k - 1
+    IN
+      (0 <= upper + 1
+        IMPLIES
+          ((frame_elt(
+              destination, destination, destination_start, k)
+            AND frame_int(p, p, destination_start, k)
+            AND frame_int(inverse, inverse, source_start, k)
+            AND permutation_pair(s * m, p, inverse)
+            AND copy_perm(source, destination, s * m, p, inverse)
+            AND copy_to(
+              source, destination, source_start, destination_start, 0)
+            AND index_prefix(p, destination_start, source_start, 0)
+            AND index_prefix(
+              inverse, source_start, destination_start, 0)
+            AND all_subsegments_before(
+              source,
+              destination,
+              s,
+              k,
+              l,
+              j,
+              sigma,
+              tau,
+              p,
+              inverse))
+            AND
+          all_inner_states(
+            source,
+            destination,
+            p,
+            inverse,
+            s,
+            k,
+            l,
+            j,
+            sigma,
+            tau,
+            m,
+            source_start,
+            destination_start,
+            upper)))
+        AND
+      (upper + 1 < 0
+        IMPLIES
+          (permutation_pair(s * m, p, inverse)
+            AND copy_perm(source, destination, s * m, p, inverse)
+            AND all_subsegments_before(
+              source,
+              destination,
+              s,
+              k,
+              l,
+              j + 1,
+              sigma,
+              tau,
+              p,
+              inverse)))
+
+  subsegment_step_result(
+      source, destination: elt_array,
+      p, inverse: int_array,
+      s, k, l, j: int,
+      sigma, tau: int_array,
+      m, start: int): bool =
+    (0 <= j AND j < int_array_length(sigma))
+      AND
+    (LET source_start: int =
+       start + int_array_values(sigma)(j) * k
+     IN
+       (0 <= j AND j < int_array_length(sigma))
+         AND
+       (LET sigma_value: int = int_array_values(sigma)(j)
+        IN
+          (0 <= sigma_value
+            AND sigma_value < int_array_length(tau))
+            AND
+          (LET destination_start: int =
+             start + int_array_values(tau)(sigma_value) * k
+           IN
+             inner_loop_vc(
+               source,
+               destination,
+               p,
+               inverse,
+               s,
+               k,
+               l,
+               j,
+               sigma,
+               tau,
+               m,
+               source_start,
+               destination_start))))
+
+  all_subsegment_indices(
+      source, destination: elt_array,
+      p, inverse: int_array,
+      s, k, l: int,
+      sigma, tau: int_array,
+      m, start, upper: int): bool =
+    FORALL (j: int):
+      ((0 <= j AND j <= upper)
+        AND permutation_pair(s * m, p, inverse)
+        AND copy_perm(source, destination, s * m, p, inverse)
+        AND all_subsegments_before(
+          source,
+          destination,
+          s,
+          k,
+          l,
+          j,
+          sigma,
+          tau,
+          p,
+          inverse))
+        IMPLIES
+          subsegment_step_result(
+            source,
+            destination,
+            p,
+            inverse,
+            s,
+            k,
+            l,
+            j,
+            sigma,
+            tau,
+            m,
+            start)
+
+  subsegment_state_body(
+      source, destination: elt_array,
+      p, inverse: int_array,
+      s, k, l: int,
+      sigma, tau: int_array,
+      m, start, upper: int): bool =
+    all_subsegment_indices(
+      source,
+      destination,
+      p,
+      inverse,
+      s,
+      k,
+      l,
+      sigma,
+      tau,
+      m,
+      start,
+      upper)
+      AND
+    ((permutation_pair(s * m, p, inverse)
+      AND copy_perm(source, destination, s * m, p, inverse)
+      AND all_subsegments_before(
+        source,
+        destination,
+        s,
+        k,
+        l,
+        upper + 1,
+        sigma,
+        tau,
+        p,
+        inverse))
+      IMPLIES
+        (permutation_pair((s + 1) * m, p, inverse)
+          AND copy_perm(
+            source, destination, (s + 1) * m, p, inverse)))
+
+  all_subsegment_states(
+      source, destination_before: elt_array,
+      p_before, inverse_before: int_array,
+      s, k, l: int,
+      sigma, tau: int_array,
+      m, start, upper: int): bool =
+    FORALL (inverse, p: int_array):
+      FORALL (destination: elt_array):
+        int_array_length(inverse) = int_array_length(inverse_before)
+          IMPLIES
+            int_array_length(p) = int_array_length(p_before)
+              IMPLIES
+                array_length(destination)
+                    = array_length(destination_before)
+                  IMPLIES
+                    subsegment_state_body(
+                      source,
+                      destination,
+                      p,
+                      inverse,
+                      s,
+                      k,
+                      l,
+                      sigma,
+                      tau,
+                      m,
+                      start,
+                      upper)
+
+  tau_loop_vc(
+      source, destination: elt_array,
+      p, inverse: int_array,
+      s, k, l: int,
+      sigma, tau: int_array,
+      m: int): bool =
+    LET upper: int = l - 1,
+        start: int = s * m
+    IN
+      (0 <= upper + 1
+        IMPLIES
+          ((permutation_pair(s * m, p, inverse)
+            AND copy_perm(source, destination, s * m, p, inverse)
+            AND all_subsegments_before(
+              source,
+              destination,
+              s,
+              k,
+              l,
+              0,
+              sigma,
+              tau,
+              p,
+              inverse))
+            AND
+          all_subsegment_states(
+            source,
+            destination,
+            p,
+            inverse,
+            s,
+            k,
+            l,
+            sigma,
+            tau,
+            m,
+            start,
+            upper)))
+        AND
+      (upper + 1 < 0
+        IMPLIES
+          (permutation_pair((s + 1) * m, p, inverse)
+            AND copy_perm(
+              source, destination, (s + 1) * m, p, inverse)))
+
+  all_tau_permutations(
+      source, destination: elt_array,
+      p, inverse: int_array,
+      s, k, l: int,
+      sigma: int_array,
+      m: int): bool =
+    FORALL (tau, inverse_tau: int_array):
+      ((int_array_length(tau) = int_array_length(inverse_tau)
+        AND int_array_length(inverse_tau) = l)
+        AND permutation_pair(l, tau, inverse_tau))
+        IMPLIES
+          tau_loop_vc(
+            source,
+            destination,
+            p,
+            inverse,
+            s,
+            k,
+            l,
+            sigma,
+            tau,
+            m)
+
+  all_sigma_permutations(
+      source, destination: elt_array,
+      p, inverse: int_array,
+      s, k, l, m: int): bool =
+    FORALL (sigma, inverse_sigma: int_array):
+      ((int_array_length(sigma) = int_array_length(inverse_sigma)
+        AND int_array_length(inverse_sigma) = l)
+        AND permutation_pair(l, sigma, inverse_sigma))
+        IMPLIES
+          (0 < l
+            AND all_tau_permutations(
+              source,
+              destination,
+              p,
+              inverse,
+              s,
+              k,
+              l,
+              sigma,
+              m))
+
+  segment_step_result(
+      source, destination: elt_array,
+      p, inverse: int_array,
+      s, k, l, m: int): bool =
+    0 < l
+      AND all_sigma_permutations(
+        source, destination, p, inverse, s, k, l, m)
+
+  all_segment_indices(
+      source, destination: elt_array,
+      p, inverse: int_array,
+      k, l, m, upper: int): bool =
+    FORALL (s: int):
+      ((0 <= s AND s <= upper)
+        AND permutation_pair(s * m, p, inverse)
+        AND copy_perm(source, destination, s * m, p, inverse))
+        IMPLIES
+          segment_step_result(
+            source, destination, p, inverse, s, k, l, m)
+
+  tail_step_result(
+      source, destination: elt_array,
+      p, inverse: int_array,
+      last, i: int): bool =
+    LET source_index: int = last + i,
+        value: elt = array_values(source)(source_index),
+        destination_index: int = last + i,
+        destination_next: elt_array =
+          write_elt(destination, destination_index, value),
+        p_value: int = last + i,
+        p_index: int = last + i,
+        p_next: int_array = write_int(p, p_index, p_value),
+        inverse_value: int = last + i,
+        inverse_index: int = last + i,
+        inverse_next: int_array =
+          write_int(inverse, inverse_index, inverse_value)
+    IN
+      (0 <= source_index
+        AND source_index < array_length(source))
+        AND
+      (0 <= destination_index
+        AND destination_index < array_length(destination))
+        AND
+      (array_length(destination_next) = array_length(destination)
+        IMPLIES
+          elt_update_equation(destination, destination_index, value)
+            IMPLIES
+              (0 <= p_index
+                AND p_index < int_array_length(p))
+                AND
+              (int_array_length(p_next) = int_array_length(p)
+                IMPLIES
+                  int_update_equation(p, p_index, p_value)
+                    IMPLIES
+                      (0 <= inverse_index
+                        AND inverse_index < int_array_length(inverse))
+                        AND
+                      (int_array_length(inverse_next)
+                          = int_array_length(inverse)
+                        IMPLIES
+                          int_update_equation(
+                            inverse, inverse_index, inverse_value)
+                            IMPLIES
+                              (permutation_pair(
+                                last + (i + 1),
+                                p_next,
+                                inverse_next)
+                                AND
+                              copy_perm(
+                                source,
+                                destination_next,
+                                last + (i + 1),
+                                p_next,
+                                inverse_next)))))
+
+  all_tail_indices(
+      source, destination: elt_array,
+      p, inverse: int_array,
+      last, upper: int): bool =
+    FORALL (i: int):
+      ((0 <= i AND i <= upper)
+        AND permutation_pair(last + i, p, inverse)
+        AND copy_perm(source, destination, last + i, p, inverse))
+        IMPLIES
+          tail_step_result(
+            source, destination, p, inverse, last, i)
+
+  tail_state_body(
+      source, destination: elt_array,
+      p, inverse: int_array,
+      last, upper, full_length: int): bool =
+    all_tail_indices(
+      source, destination, p, inverse, last, upper)
+      AND
+    ((permutation_pair(last + (upper + 1), p, inverse)
+      AND copy_perm(
+        source, destination, last + (upper + 1), p, inverse))
+      IMPLIES
+        copy_perm(source, destination, full_length, p, inverse))
+
+  all_tail_states(
+      source, destination_before: elt_array,
+      p_before, inverse_before: int_array,
+      last, upper, full_length: int): bool =
+    FORALL (inverse, p: int_array):
+      FORALL (destination: elt_array):
+        int_array_length(inverse) = int_array_length(inverse_before)
+          IMPLIES
+            int_array_length(p) = int_array_length(p_before)
+              IMPLIES
+                array_length(destination)
+                    = array_length(destination_before)
+                  IMPLIES
+                    tail_state_body(
+                      source,
+                      destination,
+                      p,
+                      inverse,
+                      last,
+                      upper,
+                      full_length)
+
+  tail_vc(
+      source, destination: elt_array,
+      p, inverse: int_array,
+      last, r, full_length: int): bool =
+    LET upper: int = r - 1
+    IN
+      (0 <= upper + 1
+        IMPLIES
+          ((permutation_pair(last + 0, p, inverse)
+            AND copy_perm(
+              source, destination, last + 0, p, inverse))
+            AND
+          all_tail_states(
+            source,
+            destination,
+            p,
+            inverse,
+            last,
+            upper,
+            full_length)))
+        AND
+      (upper + 1 < 0
+        IMPLIES
+          copy_perm(source, destination, full_length, p, inverse))
+
+  outer_state_body(
+      source, destination: elt_array,
+      p, inverse: int_array,
+      k, l, q, r, m, upper, full_length: int): bool =
+    all_segment_indices(
+      source, destination, p, inverse, k, l, m, upper)
+      AND
+    ((permutation_pair((upper + 1) * m, p, inverse)
+      AND copy_perm(
+        source, destination, (upper + 1) * m, p, inverse))
+      IMPLIES
+        tail_vc(
+          source,
+          destination,
+          p,
+          inverse,
+          q * m,
+          r,
+          full_length))
+
+  all_outer_states(
+      source, destination_before: elt_array,
+      p_before, inverse_before: int_array,
+      k, l, q, r, m, upper, full_length: int): bool =
+    FORALL (inverse, p: int_array):
+      FORALL (destination: elt_array):
+        int_array_length(inverse) = int_array_length(inverse_before)
+          IMPLIES
+            int_array_length(p) = int_array_length(p_before)
+              IMPLIES
+                array_length(destination)
+                    = array_length(destination_before)
+                  IMPLIES
+                    outer_state_body(
+                      source,
+                      destination,
+                      p,
+                      inverse,
+                      k,
+                      l,
+                      q,
+                      r,
+                      m,
+                      upper,
+                      full_length)
+
+  outer_loop_vc(
+      source, destination: elt_array,
+      p, inverse: int_array,
+      k, l, q, r, full_length: int): bool =
+    LET m: int = k * l,
+        upper: int = q - 1
+    IN
+      (0 <= upper + 1
+        IMPLIES
+          ((permutation_pair(0 * m, p, inverse)
+            AND copy_perm(source, destination, 0 * m, p, inverse))
+            AND
+          all_outer_states(
+            source,
+            destination,
+            p,
+            inverse,
+            k,
+            l,
+            q,
+            r,
+            m,
+            upper,
+            full_length)))
+        AND
+      (upper + 1 < 0
+        IMPLIES
+          tail_vc(
+            source,
+            destination,
+            p,
+            inverse,
+            q * m,
+            r,
+            full_length))
+
+  smart_array_copy_1_vc: bool =
+    FORALL
+        (source, destination: elt_array),
+        (k, l, q, r: int):
+      (array_length(source) = array_length(destination)
+        AND 0 < array_length(destination)
+        AND 0 < k
+        AND 0 < l
+        AND 0 <= q
+        AND 0 <= r
+        AND r < k * l
+        AND array_length(destination) = q * k * l + r)
+      IMPLIES
+        (0 < array_length(destination)
+          AND
+        (LET full_length: int = array_length(destination),
+             p: int_array = identity_array(array_length(destination))
+         IN
+           ((int_array_length(p) = array_length(destination)
+             AND identity_values(p, full_length)
+             AND permutation_pair(full_length, p, p))
+            IMPLIES
+              (0 < array_length(destination)
+                AND
+              (LET inverse: int_array =
+                 identity_array(array_length(destination))
+               IN
+                 ((int_array_length(inverse)
+                     = array_length(destination)
+                   AND identity_values(inverse, full_length)
+                   AND permutation_pair(full_length, inverse, inverse))
+                  IMPLIES
+                    outer_loop_vc(
+                      source,
+                      destination,
+                      p,
+                      inverse,
+                      k,
+                      l,
+                      q,
+                      r,
+                      full_length)))))))
+
+END verifythis_2024_challenge1_Top_smart_array_copy_1qtvc

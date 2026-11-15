@@ -1,0 +1,106 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/defunctionalization_ReductionSemantics_eval_2qtvc: the verification
+% condition for structural decrease and preservation of direct evaluation
+% when an integer value is evaluated through a subtraction reduction context.
+% This file contains no proof.
+
+defunctionalization_ReductionSemantics_eval_2qtvc: THEORY
+BEGIN
+
+  expr: DATATYPE
+  BEGIN
+    Cte(constant_value: int): Cte?
+    Sub(left_expression, right_expression: expr): Sub?
+  END expr
+
+  context: DATATYPE
+  BEGIN
+    Empty: Empty?
+    Left(previous_context: context, pending_expression: expr): Left?
+    Right(saved_value: int, previous_context: context): Right?
+  END context
+
+  eval_0(expression: expr): RECURSIVE int =
+    CASES expression OF
+      Cte(value):
+        value,
+      Sub(left, right):
+        eval_0(left) - eval_0(right)
+    ENDCASES
+  MEASURE expression BY <<
+
+  size_e(expression: expr): RECURSIVE int =
+    CASES expression OF
+      Cte(value):
+        1,
+      Sub(left, right):
+        3 + size_e(left) + size_e(right)
+    ENDCASES
+  MEASURE expression BY <<
+
+  recompose(
+      current_context: context,
+      expression: expr): RECURSIVE expr =
+    CASES current_context OF
+      Empty:
+        expression,
+      Left(previous, right):
+        recompose(previous, Sub(expression, right)),
+      Right(left_value, previous):
+        recompose(previous, Sub(Cte(left_value), expression))
+    ENDCASES
+  MEASURE current_context BY <<
+
+  size_c(current_context: context): RECURSIVE int =
+    CASES current_context OF
+      Empty:
+        0,
+      Left(previous, expression):
+        2 + size_c(previous) + size_e(expression),
+      Right(value, previous):
+        1 + size_c(previous)
+    ENDCASES
+  MEASURE current_context BY <<
+
+  decrease_obligation(
+      current_context: context,
+      n: int): bool =
+    CASES current_context OF
+      Empty:
+        TRUE,
+      Left(previous, expression):
+        0 <= 1 + 2 * size_c(current_context)
+          AND
+        2 * (size_c(Right(n, previous)) + size_e(expression))
+          < 1 + 2 * size_c(current_context),
+      Right(saved, previous):
+        0 <= 1 + 2 * size_c(current_context)
+          AND
+        2 * (size_c(previous) + size_e(Cte(saved - n)))
+          < 1 + 2 * size_c(current_context)
+    ENDCASES
+
+  evaluation_premise(
+      current_context: context,
+      n, result: int): bool =
+    CASES current_context OF
+      Empty:
+        result = n,
+      Left(previous, expression):
+        result =
+          eval_0(recompose(Right(n, previous), expression)),
+      Right(saved, previous):
+        result =
+          eval_0(recompose(previous, Cte(saved - n)))
+    ENDCASES
+
+  eval_2_vc: bool =
+    FORALL (current_context: context), (n: int):
+      decrease_obligation(current_context, n)
+        AND
+      (FORALL (result: int):
+        evaluation_premise(current_context, n, result)
+          IMPLIES
+        result = eval_0(recompose(current_context, Cte(n))))
+
+END defunctionalization_ReductionSemantics_eval_2qtvc

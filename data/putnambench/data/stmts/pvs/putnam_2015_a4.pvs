@@ -1,0 +1,73 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2015_a4:
+% the greatest uniform lower bound on [0,1) of the dyadic series indexed by
+% positive integers n for which floor(n*x) is even is 4/7. This file contains
+% no proof.
+
+putnam_2015_a4: THEORY
+BEGIN
+  real_function: TYPE = [real -> real]
+  real_sequence: TYPE = [nat -> real]
+
+  integer_even(value: int): bool =
+    EXISTS (factor: int):
+      value = 2 * factor
+
+  power_of_two(exponent: nat): real =
+    (2 :: real) ^ exponent
+
+  dyadic_terms(x: real): real_sequence =
+    LAMBDA (index: nat):
+      LET n: nat = index + 1 IN
+        IF integer_even(floor((n :: real) * x)) THEN
+          1 / power_of_two(n)
+        ELSE
+          0
+        ENDIF
+
+  partial_sum(values: real_sequence, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      partial_sum(values, count - 1) + values(count - 1)
+    ENDIF
+  MEASURE count
+
+  series_sums_to(values: real_sequence, total: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (count: nat):
+          cutoff <= count IMPLIES
+            abs(partial_sum(values, count) - total) < epsilon_value
+
+  series_value(x: real): real =
+    IF EXISTS (total: real):
+        series_sums_to(dyadic_terms(x), total)
+    THEN
+      epsilon(
+        LAMBDA (total: real):
+          series_sums_to(dyadic_terms(x), total))
+    ELSE
+      0
+    ENDIF
+
+  lower_bound_on_unit_interval(
+      f: real_function,
+      bound: real): bool =
+    FORALL (x: real):
+      (0 <= x AND x < 1) IMPLIES bound <= f(x)
+
+  is_greatest_lower_bound(
+      f: real_function,
+      value: real): bool =
+    lower_bound_on_unit_interval(f, value)
+      AND FORALL (bound: real):
+        lower_bound_on_unit_interval(f, bound)
+          IMPLIES bound <= value
+
+  putnam_2015_a4_solution: real = 4 / 7
+
+  putnam_2015_a4_statement: bool =
+    is_greatest_lower_bound(
+      series_value,
+      putnam_2015_a4_solution)
+END putnam_2015_a4

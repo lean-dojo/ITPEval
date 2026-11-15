@@ -1,0 +1,107 @@
+% Statement-only formalization of NTP4VC corpus artifact
+% frama_c/verker/strcat_Why3_ide_VCstrcat_loop_inv_2_preserved_goal3:
+% preservation of a valid-string loop invariant after advancing an address by one,
+% under the source address-order, uint64-conversion, and string-length laws.
+% This file contains no proof.
+
+strcat_Why3_ide_VCstrcat_loop_inv_2_preserved_goal3: THEORY
+BEGIN
+
+  addr: TYPE = [# base: int, offset: int #]
+
+  shift(p: addr, k: int): addr =
+    (# base := base(p), offset := offset(p) + k #)
+
+  is_sint8(x: int): bool =
+    -128 <= x AND x < 128
+
+  is_uint64(x: int): bool =
+    0 <= x AND x < 18446744073709551616
+
+  valid_rw(malloc_0: [int -> int], p: addr, n: int): bool =
+    0 < n IMPLIES
+      0 < base(p)
+        AND 0 <= offset(p)
+        AND offset(p) + n <= malloc_0(base(p))
+
+  p_valid_str(
+      malloc_0: [int -> int],
+      mchar_0: [addr -> int],
+      s: addr): bool =
+    EXISTS (i: int):
+      mchar_0(shift(s, i)) = 0
+        AND is_uint64(i)
+        AND valid_rw(malloc_0, shift(s, 0), 1 + i)
+        AND (FORALL (j: int):
+          j <= i IMPLIES is_sint8(mchar_0(shift(s, j))))
+
+  addr_le_law(addr_le: [addr, addr -> bool]): bool =
+    FORALL (p, q: addr):
+      base(p) = base(q)
+        IMPLIES (addr_le(p, q) IFF offset(p) <= offset(q))
+
+  uint64_conversion_laws(to_uint64: [int -> int]): bool =
+    (FORALL (x: int): is_uint64(to_uint64(x)))
+      AND (FORALL (x: int):
+        is_uint64(x) IMPLIES to_uint64(x) = x)
+      AND (FORALL (x: int):
+        to_uint64(to_uint64(x)) = to_uint64(x))
+
+  l_strlen_laws(
+      l_strlen: [[addr -> int], addr -> int],
+      to_uint64: [int -> int]): bool =
+    (FORALL (mchar_0: [addr -> int], s: addr):
+      IF mchar_0(shift(s, 0)) = 0
+      THEN l_strlen(mchar_0, s) = 0
+      ELSE
+        to_uint64(1 + l_strlen(mchar_0, shift(s, 1)))
+          = l_strlen(mchar_0, s)
+      ENDIF)
+      AND (FORALL (mchar_0: [addr -> int], s: addr):
+        is_uint64(l_strlen(mchar_0, s)))
+
+  goal3: bool =
+    FORALL
+        (l_strlen: [[addr -> int], addr -> int],
+         to_uint64: [int -> int],
+         region: [int -> int],
+         linked: [[int -> int] -> bool],
+         sconst: [[addr -> int] -> bool],
+         addr_le: [addr, addr -> bool],
+         t_1: [addr -> int],
+         a_2, a, a_1: addr,
+         t: [int -> int]):
+      LET x: int = t_1(a_2),
+          x_1: int = l_strlen(t_1, a),
+          a_3: addr = shift(a, x_1),
+          x_2: int = l_strlen(t_1, a_1)
+      IN
+        addr_le_law(addr_le)
+          IMPLIES uint64_conversion_laws(to_uint64)
+          IMPLIES l_strlen_laws(l_strlen, to_uint64)
+          IMPLIES NOT (x = 0)
+          IMPLIES t_1(a_3) = 0
+          IMPLIES region(base(a)) <= 0
+          IMPLIES region(base(a_1)) <= 0
+          IMPLIES x_1 + x_2 <= 18446744073709551615
+          IMPLIES linked(t)
+          IMPLIES sconst(t_1)
+          IMPLIES addr_le(a, a_2)
+          IMPLIES is_sint8(x)
+          IMPLIES p_valid_str(t, t_1, a)
+          IMPLIES p_valid_str(t, t_1, a_1)
+          IMPLIES p_valid_str(t, t_1, a_2)
+          IMPLIES is_uint64(x_1)
+          IMPLIES addr_le(a_2, a_3)
+          IMPLIES valid_rw(t, shift(a, 0), 1 + x_1 + x_2)
+          IMPLIES (FORALL (i: int):
+            0 <= i
+              IMPLIES i < x_1
+              IMPLIES NOT (t_1(shift(a, i)) = 0))
+          IMPLIES (FORALL (i: int):
+            0 <= i
+              IMPLIES i + offset(a) < offset(a_2)
+              IMPLIES NOT (t_1(shift(a, i)) = 0))
+          IMPLIES p_valid_str(t, t_1, shift(a_2, 1))
+
+END strcat_Why3_ide_VCstrcat_loop_inv_2_preserved_goal3

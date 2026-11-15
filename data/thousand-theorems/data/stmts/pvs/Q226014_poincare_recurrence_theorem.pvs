@@ -1,0 +1,238 @@
+% Statement-only formalization of the Thousand Theorems corpus artifact Q226014,
+% "Poincaré recurrence theorem": for a conservative measurable dynamical system,
+% almost every point of a null-measurable set returns to that set infinitely often.
+% This file contains no proof.
+
+Q226014_poincare_recurrence_theorem[Alpha: TYPE]: THEORY
+BEGIN
+  event: TYPE = [Alpha -> bool]
+  event_sequence: TYPE = [nat -> event]
+  sigma_algebra: TYPE = [event -> bool]
+
+  measure_value: TYPE =
+    [# infinite_flag: bool, finite_part: real #]
+  measure_value_sequence: TYPE = [nat -> measure_value]
+  measure_map: TYPE = [event -> measure_value]
+  real_sequence: TYPE = [nat -> real]
+
+  zero_measure_value: measure_value =
+    (# infinite_flag := FALSE, finite_part := 0 #)
+
+  canonical_measure_value(value: measure_value): bool =
+    IF infinite_flag(value) THEN
+      finite_part(value) = 0
+    ELSE
+      0 <= finite_part(value)
+    ENDIF
+
+  event_subset(A, B: event): bool =
+    FORALL (x: Alpha):
+      A(x) IMPLIES B(x)
+
+  empty_event: event =
+    LAMBDA (x: Alpha): FALSE
+
+  full_event: event =
+    LAMBDA (x: Alpha): TRUE
+
+  event_complement(A: event): event =
+    LAMBDA (x: Alpha):
+      NOT A(x)
+
+  countable_union(events: event_sequence): event =
+    LAMBDA (x: Alpha):
+      EXISTS (n: nat):
+        events(n)(x)
+
+  symmetric_difference(A, B: event): event =
+    LAMBDA (x: Alpha):
+      (A(x) AND NOT B(x)) OR (B(x) AND NOT A(x))
+
+  preimage(f: [Alpha -> Alpha], A: event): event =
+    LAMBDA (x: Alpha):
+      A(f(x))
+
+  pairwise_disjoint(events: event_sequence): bool =
+    FORALL (i, j: nat):
+      i /= j IMPLIES
+        FORALL (x: Alpha):
+          NOT (events(i)(x) AND events(j)(x))
+
+  finite_real_sum(values: real_sequence, count: nat):
+      RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      finite_real_sum(values, count - 1)
+        + values(count - 1)
+    ENDIF
+  MEASURE count
+
+  converges_to_real(values: real_sequence, limit: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(values(index) - limit) < epsilon_value
+
+  unbounded_above(values: real_sequence): bool =
+    FORALL (bound: real):
+      EXISTS (index: nat):
+        bound < values(index)
+
+  partial_measure_sum(
+      values: measure_value_sequence,
+      count: nat): real =
+    finite_real_sum(
+      LAMBDA (index: nat):
+        finite_part(values(index)),
+      count)
+
+  extended_nonnegative_sum(
+      values: measure_value_sequence,
+      total: measure_value): bool =
+    canonical_measure_value(total)
+      AND (FORALL (index: nat):
+        canonical_measure_value(values(index)))
+      AND IF infinite_flag(total) THEN
+        (EXISTS (index: nat):
+          infinite_flag(values(index)))
+          OR ((FORALL (index: nat):
+                NOT infinite_flag(values(index)))
+            AND unbounded_above(
+              LAMBDA (count: nat):
+                partial_measure_sum(values, count)))
+      ELSE
+        (FORALL (index: nat):
+          NOT infinite_flag(values(index)))
+          AND converges_to_real(
+            LAMBDA (count: nat):
+              partial_measure_sum(values, count),
+            finite_part(total))
+      ENDIF
+
+  is_sigma_algebra(Sigma: sigma_algebra): bool =
+    Sigma(full_event)
+      AND (FORALL (A: event):
+        Sigma(A) IMPLIES Sigma(event_complement(A)))
+      AND (FORALL (events: event_sequence):
+        (FORALL (n: nat):
+          Sigma(events(n)))
+        IMPLIES Sigma(countable_union(events)))
+
+  is_measure(mu: measure_map, Sigma: sigma_algebra): bool =
+    is_sigma_algebra(Sigma)
+      AND mu(empty_event) = zero_measure_value
+      AND (FORALL (A: event):
+        Sigma(A) IMPLIES
+          canonical_measure_value(mu(A)))
+      AND (FORALL (events: event_sequence):
+        ((FORALL (n: nat):
+            Sigma(events(n)))
+          AND pairwise_disjoint(events))
+        IMPLIES
+          extended_nonnegative_sum(
+            LAMBDA (n: nat):
+              mu(events(n)),
+            mu(countable_union(events))))
+
+  null_event(
+      mu: measure_map,
+      Sigma: sigma_algebra,
+      A: event): bool =
+    EXISTS (N: event):
+      Sigma(N)
+        AND mu(N) = zero_measure_value
+        AND event_subset(A, N)
+
+  null_measurable_set(
+      mu: measure_map,
+      Sigma: sigma_algebra,
+      A: event): bool =
+    EXISTS (B: event):
+      Sigma(B)
+        AND null_event(
+          mu,
+          Sigma,
+          symmetric_difference(A, B))
+
+  measurable_map(
+      Sigma: sigma_algebra,
+      f: [Alpha -> Alpha]): bool =
+    FORALL (A: event):
+      Sigma(A) IMPLIES
+        Sigma(preimage(f, A))
+
+  quasi_measure_preserving(
+      mu: measure_map,
+      Sigma: sigma_algebra,
+      f: [Alpha -> Alpha]): bool =
+    measurable_map(Sigma, f)
+      AND (FORALL (A: event):
+        null_event(mu, Sigma, A)
+        IMPLIES
+          null_event(
+            mu,
+            Sigma,
+            preimage(f, A)))
+
+  iterate(
+      f: [Alpha -> Alpha],
+      count: nat,
+      x: Alpha): RECURSIVE Alpha =
+    IF count = 0 THEN
+      x
+    ELSE
+      f(iterate(f, count - 1, x))
+    ENDIF
+  MEASURE count
+
+  conservative(
+      mu: measure_map,
+      Sigma: sigma_algebra,
+      f: [Alpha -> Alpha]): bool =
+    quasi_measure_preserving(mu, Sigma, f)
+      AND (FORALL (A: event):
+        (Sigma(A)
+          AND mu(A) /= zero_measure_value)
+        IMPLIES
+          EXISTS (x: Alpha), (count: nat):
+            A(x)
+              AND count /= 0
+              AND A(iterate(f, count, x)))
+
+  returns_infinitely_often(
+      f: [Alpha -> Alpha],
+      A: event,
+      x: Alpha): bool =
+    FORALL (cutoff: nat):
+      EXISTS (count: nat):
+        cutoff <= count
+          AND A(iterate(f, count, x))
+
+  almost_everywhere(
+      mu: measure_map,
+      Sigma: sigma_algebra,
+      predicate: event): bool =
+    null_event(
+      mu,
+      Sigma,
+      event_complement(predicate))
+
+  poincare_recurrence_theorem: bool =
+    FORALL
+        (Sigma: sigma_algebra),
+        (mu: measure_map),
+        (f: [Alpha -> Alpha]),
+        (A: event):
+      (is_measure(mu, Sigma)
+        AND conservative(mu, Sigma, f)
+        AND null_measurable_set(mu, Sigma, A))
+      IMPLIES
+        almost_everywhere(
+          mu,
+          Sigma,
+          LAMBDA (x: Alpha):
+            A(x) IMPLIES
+              returns_infinitely_often(f, A, x))
+END Q226014_poincare_recurrence_theorem

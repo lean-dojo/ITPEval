@@ -1,0 +1,130 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2023_a6:
+% Bob has a parity-goal winning strategy in the alternating permutation game
+% on 1 through n for exactly every positive natural n. This file contains no
+% proof.
+
+putnam_2023_a6: THEORY
+BEGIN
+  game: TYPE = list[nat]
+  strategy: TYPE = [game -> nat]
+
+  game_length(g: game): RECURSIVE nat =
+    CASES g OF
+      null: 0,
+      cons(value, tail): 1 + game_length(tail)
+    ENDCASES
+  MEASURE g BY <<
+
+  contains_value(g: game, value: nat): RECURSIVE bool =
+    CASES g OF
+      null: FALSE,
+      cons(head_value, tail):
+        head_value = value OR contains_value(tail, value)
+    ENDCASES
+  MEASURE g BY <<
+
+  has_no_duplicates(g: game): RECURSIVE bool =
+    CASES g OF
+      null: TRUE,
+      cons(value, tail):
+        NOT contains_value(tail, value)
+          AND has_no_duplicates(tail)
+    ENDCASES
+  MEASURE g BY <<
+
+  values_between_one_and(
+      g: game,
+      n: nat): RECURSIVE bool =
+    CASES g OF
+      null: TRUE,
+      cons(value, tail):
+        1 <= value
+          AND value <= n
+          AND values_between_one_and(tail, n)
+    ENDCASES
+  MEASURE g BY <<
+
+  take_prefix(
+      g: game,
+      count: nat): RECURSIVE game =
+    IF count = 0 THEN
+      null
+    ELSE
+      CASES g OF
+        null: null,
+        cons(value, tail):
+          cons(value, take_prefix(tail, count - 1))
+      ENDCASES
+    ENDIF
+  MEASURE count
+
+  entry_at(
+      g: game,
+      index: nat): RECURSIVE nat =
+    CASES g OF
+      null: 0,
+      cons(value, tail):
+        IF index = 0 THEN
+          value
+        ELSE
+          entry_at(tail, index - 1)
+        ENDIF
+    ENDCASES
+  MEASURE g BY <<
+
+  fixed_point_count_from(
+      g: game,
+      index: nat): RECURSIVE nat =
+    CASES g OF
+      null: 0,
+      cons(value, tail):
+        (IF value = index + 1 THEN 1 ELSE 0 ENDIF)
+          + fixed_point_count_from(tail, index + 1)
+    ENDCASES
+  MEASURE g BY <<
+
+  fixed_point_parity(g: game): nat =
+    mod(fixed_point_count_from(g, 0), 2)
+
+  valid_partial_game(n: nat, g: game): bool =
+    game_length(g) <= n
+      AND has_no_duplicates(g)
+      AND values_between_one_and(g, n)
+
+  valid_game(n: nat, g: game): bool =
+    game_length(g) = n
+      AND has_no_duplicates(g)
+      AND values_between_one_and(g, n)
+
+  valid_bob_strategy(n: nat, s: strategy): bool =
+    FORALL (history: game):
+      (valid_partial_game(n, history)
+        AND game_length(history) < n
+        AND mod(game_length(history), 2) = 1)
+      IMPLIES
+        1 <= s(history)
+          AND s(history) <= n
+          AND NOT contains_value(history, s(history))
+
+  conforms_to_strategy(g: game, s: strategy): bool =
+    FORALL (index: nat):
+      (index < game_length(g) AND mod(index, 2) = 1)
+      IMPLIES
+        entry_at(g, index) = s(take_prefix(g, index))
+
+  is_winning_for(n: nat, s: strategy): bool =
+    valid_bob_strategy(n, s)
+      AND EXISTS (goal: nat):
+        goal < 2
+          AND FORALL (g: game):
+            (valid_game(n, g) AND conforms_to_strategy(g, s))
+            IMPLIES fixed_point_parity(g) = goal
+
+  putnam_2023_a6_solution(n: nat): bool =
+    n > 0
+
+  putnam_2023_a6: bool =
+    FORALL (n: nat):
+      (n > 0 AND EXISTS (s: strategy): is_winning_for(n, s))
+        IFF putnam_2023_a6_solution(n)
+END putnam_2023_a6

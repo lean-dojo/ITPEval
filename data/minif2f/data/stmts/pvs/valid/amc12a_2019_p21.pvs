@@ -1,0 +1,95 @@
+% Statement-only formalization of miniF2F valid problem amc12a_2019_p21. This file contains no
+% proof.
+
+amc12a_2019_p21: THEORY
+BEGIN
+  complex: TYPE = [# real_part: real, imag_part: real #]
+
+  complex_zero: complex =
+    (# real_part := 0, imag_part := 0 #)
+
+  complex_one: complex =
+    (# real_part := 1, imag_part := 0 #)
+
+  complex_of_real(x: real): complex =
+    (# real_part := x, imag_part := 0 #)
+
+  imaginary_unit: complex =
+    (# real_part := 0, imag_part := 1 #)
+
+  complex_add(x, y: complex): complex =
+    (# real_part := real_part(x) + real_part(y),
+       imag_part := imag_part(x) + imag_part(y) #)
+
+  complex_mul(x, y: complex): complex =
+    (# real_part := real_part(x) * real_part(y)
+                       - imag_part(x) * imag_part(y),
+       imag_part := real_part(x) * imag_part(y)
+                       + imag_part(x) * real_part(y) #)
+
+  squared_modulus(x: complex): real =
+    real_part(x)^2 + imag_part(x)^2
+
+  safe_real_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  complex_inverse(x: complex): complex =
+    (# real_part :=
+         safe_real_div(real_part(x), squared_modulus(x)),
+       imag_part :=
+         safe_real_div(-imag_part(x), squared_modulus(x)) #)
+
+  complex_div(x, y: complex): complex =
+    complex_mul(x, complex_inverse(y))
+
+  complex_power(base: complex, exponent: nat): RECURSIVE complex =
+    IF exponent = 0 THEN
+      complex_one
+    ELSE
+      complex_mul(
+        complex_power(base, exponent - 1),
+        base)
+    ENDIF
+  MEASURE exponent
+
+  complex_prefix_sum(
+      term: [nat -> complex],
+      count: nat): RECURSIVE complex =
+    IF count = 0 THEN
+      complex_zero
+    ELSE
+      complex_add(
+        complex_prefix_sum(term, count - 1),
+        term(count - 1))
+    ENDIF
+  MEASURE count
+
+  sqrt_value(root, radicand: real): bool =
+    0 <= root AND root * root = radicand
+
+  amc12a_2019_p21: bool =
+    FORALL (z: complex):
+      (EXISTS (sqrt_2: real):
+        sqrt_value(sqrt_2, 2)
+          AND z =
+            complex_div(
+              complex_add(complex_one, imaginary_unit),
+              complex_of_real(sqrt_2)))
+      IMPLIES
+        complex_mul(
+          complex_prefix_sum(
+            (LAMBDA (offset: nat):
+              complex_power(z, (offset + 1)^2)),
+            12),
+          complex_prefix_sum(
+            (LAMBDA (offset: nat):
+              complex_div(
+                complex_one,
+                complex_power(z, (offset + 1)^2))),
+            12))
+          = complex_of_real(36)
+END amc12a_2019_p21

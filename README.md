@@ -1,109 +1,132 @@
 # ITPEval: Benchmarking Formal Translation Across Interactive Theorem Provers
 
-![ITPEval overview](images/overview.jpg)
+ITPEval evaluates formal statement translation across **ten theorem provers**:
+Lean 4, Rocq (Coq), Isabelle/HOL, HOL Light, ACL2, Agda, HOL4, Metamath,
+Mizar, and PVS.
 
-**ITPEval** is the first benchmark for evaluating automated formal proof translation across four major interactive theorem provers (ITPs): Lean 4, Rocq (Coq), Isabelle/HOL, and HOL Light.
+The extended statement corpus contains **2,634 aligned items / 26,340 prover
+records from eight datasets**. Each included item has representations in all
+ten systems, yielding **90 directed pairs per item / 237,060 possible pairs**.
+An item can be a topic file with several lemmas, a catalogue entry, an axiom,
+a competition problem, or a program-verification condition. These are inventory
+counts, not counts of independent proved theorems or certified equivalences.
 
-## Benchmark
-
-ITPEval comprises **390 aligned files** spanning 1,712 theorems and lemmas, each formalized in all four ITPs:
-
-- Lean 4: Calculus of Inductive Constructions (`.lean`)
-- Rocq (Coq): Calculus of Inductive Constructions (`.v`)
-- Isabelle/HOL: higher-order logic (`.thy`)
-- HOL Light: higher-order logic (`.ml`)
-
-The benchmark is organized into two tiers that isolate distinct aspects of translation difficulty:
-
-| Tier | Source | Files | Description |
-|---|---|---|---|
-| A (Controlled) | Babel-formal | 16 | Self-contained, axiomatized theorems (165 lemmas). Isolates foundational translation difficulty. |
-| B (Ecosystem) | Hundred Theorems | 58 | Classical theorems from real ITP libraries (1,231 lemmas). Tests library API and tactic translation. |
-| B (Ecosystem) | miniF2F | 316 | Competition math statements. Tests pure statement translation without multi-lemma structure. |
-
-Every file is formalized in all four ITPs (4-way intersection), yielding **12 balanced directed translation pairs** per file. Two translation modes are evaluated:
-
-- **Statement translation** (`stmts`): all 390 files, 4,680 directed pairs per model
-- **Proof translation** (`proofs`): Babel-formal + Hundred Theorems (74 files), 888 directed pairs per model
-
-## Repository Structure
-
-```
-itp-interop/
-├── eval/                # LLM translation, verification & Lean 4 BEq pipeline
-│   ├── data/            # Benchmark JSON files (stmts.json, proofs.json)
-│   ├── pipeline/        # Pipeline implementation (translation/ + cycle/ + beq/ subpackages)
-│   └── results/         # Local generated outputs
-├── itpeval/             # ITP toolchain installer and verification harness
-├── data/                # Raw benchmark data and preprocessing scripts
-    ├── babel-formal/
-    ├── hundred-theorems/
-    └── minif2f/
+```mermaid
+flowchart LR
+    S[Eight source datasets] --> E[2,634 statement items]
+    E --> T[Ten prover representations per item]
+    T --> P[237,060 directed statement pairs]
 ```
 
-## Quick Start
+## Dataset scope
 
-### 1. Install ITP toolchains
+| Dataset | Aligned statement items | Statement records |
+|---|---:|---:|
+| Babel-formal | 15 | 150 |
+| Hundred Theorems | 100 | 1,000 |
+| miniF2F | 455 | 4,550 |
+| PutnamBench | 657 | 6,570 |
+| nTP4VC | 597 | 5,970 |
+| Logipedia | 394 | 3,940 |
+| Thousand Theorems | 227 | 2,270 |
+| VERINA | 189 | 1,890 |
+| **Total** | **2,634** | **26,340** |
 
-```bash
-cd itpeval
-./bin/bootstrap-macos.sh          # or bootstrap-system.sh on Linux
-./bin/itpeval install lean4 rocq isabelle hol-light
-./bin/itpeval check  lean4 rocq isabelle hol-light
-```
+All ten provers use the same statement corpus and translation interface.
+Proof data is a separate modality: the available export contains **74 items /
+296 records / 888 pairs** in Lean 4, Rocq, Isabelle/HOL, and HOL Light.
+There are 73 identities shared by the statement and proof components; Babel's
+`supinf` is outside the ten-way statement intersection. ACL2r is not counted as
+ordinary ACL2 and is not one of this release's adapters.
 
-See [`itpeval/README.md`](itpeval/README.md) for per-prover details.
+See [the dataset description](docs/new_data_description.md) for exact membership,
+source provenance, identity aliases, exclusions, and validation boundaries.
+Native acceptance of a statement does not establish equivalence or proof completion.
 
-### 2. Install Python dependencies
+## Quick start
+
+Use a repository checkout and Python 3.10 or newer:
 
 ```bash
 pip install -e .
-```
-
-### 3. Set API keys
-
-```bash
 cp eval/.env.example eval/.env
-# fill in ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, OPENROUTER_API_KEY
+# Set the API keys for the providers you use.
 ```
 
-### 4. Run an eval
+On Amazon Linux 2023, install the bootstrap dependencies and desired provers:
 
 ```bash
-# Submit batch translation jobs
+./itpeval/bin/bootstrap-system.sh
+./itpeval/bin/itpeval install lean4 rocq isabelle hol-light acl2 agda hol4 metamath mizar pvs
+./itpeval/bin/itpeval check --task hello lean4 rocq isabelle hol-light acl2 agda hol4 metamath mizar pvs
+```
+
+On macOS use `bootstrap-macos.sh`. The supported automatic installation set is
+`lean4 rocq isabelle hol-light agda hol4 metamath pvs`; ACL2 requires an existing
+installation, and the Mizar adapter requires Linux/x86. See
+[the harness guide](itpeval/README.md) for platform details and version overrides.
+
+Preview one extended statement translation without API calls or prover execution:
+
+```bash
+python3 -m eval.pipeline.translation.run \
+  --sources babel-formal --ids 1 \
+  --src lean4 --tgt pvs --model gpt-5.5 --dry-run
+```
+
+Remove `--dry-run` to generate and verify. Statement translation is the default;
+`--src` and `--tgt` accept any of the ten prover IDs through the same interface.
+Use `--mode proofs` for the available proof records:
+
+```bash
+python3 -m eval.pipeline.translation.run \
+  --mode proofs --sources babel-formal --ids 1 \
+  --src lean4 --tgt rocq --model gpt-5.5 --dry-run
+```
+
+For batch jobs, inspect the selection before submission:
+
+```bash
 python3 -m eval.pipeline.translation.batch_run submit \
-    --mode stmts --sources babel-formal,hundred-theorems,minif2f
-
-# Collect results and verify (requires ITP toolchains)
-python3 -m eval.pipeline.translation.batch_run collect eval/results/batch_jobs/<timestamp>.json
+  --sources babel-formal --ids 1 --src lean4 --tgt agda \
+  --models gpt-5.5 --dry-run
 ```
 
-See [`eval/README.md`](eval/README.md) for full pipeline documentation.
+See [eval/README.md](eval/README.md) for collection, checkpointing, and filters.
+The existing BEq implementation supports **Lean 4 targets only** and is not yet
+connected to the statement shards. Native statement checking supports all ten
+provers; semantic equivalence requires a separate checker.
 
-### 5. BEq equivalence checking
-
-After verification, check whether verified Lean 4 translations are semantically equivalent to reference statements:
-
-```bash
-python3 -m eval.pipeline.beq.beq_check \
-    eval/results/verified/stmts_claude-sonnet-4-6_20260426.jsonl \
-    --source minif2f \
-    --target lean4
-```
-
-### 6. Using the benchmark data directly
+## Data access and validation
 
 ```python
-import json
+from eval.pipeline.translation.data import load_statement_records
 
-stmts  = json.load(open("eval/data/stmts.json"))   # 1,560 records
-proofs = json.load(open("eval/data/proofs.json"))   # 296 records
-
-# All Lean 4 statements
-lean4_stmts = [r for r in stmts if r["prover"] == "lean4"]
-
-# All 4 ITP variants of one theorem
-theorem_1 = [r for r in stmts if r["theorem_id"] == 1]
+statements = load_statement_records()  # 26,340 records, checksum-verified shards
+lean_statements = [r for r in statements if r["prover"] == "lean4"]
 ```
 
-See [`eval/data/README.md`](eval/data/README.md) for the full record schema.
+```bash
+python3 data/build_eval_jsons.py --check
+python3 docs/audit_extended_dataset.py
+python3 -m unittest discover -s eval/pipeline/tests
+python3 -m unittest discover -s itpeval/tests
+```
+
+The build check compares exports with source bytes without writing. The inventory
+audit counts representations; neither command runs theorem provers. Unit tests
+use local fixtures and mocked verifier executables.
+
+## Repository layout
+
+- `data/`: benchmark sources, metadata, and deterministic export utilities.
+- `eval/data/extended/`: one JSON shard per dataset and a checksum manifest.
+- `eval/data/proofs.json`: available proof records.
+- `eval/data/stmts.json`: archived reference export used by the existing BEq runner.
+- `eval/subsets/`: statement membership and stable identity manifests.
+- `eval/pipeline/`: generation, native verification, cycle, and existing BEq code.
+- `itpeval/`: ten native adapters, shared runner, and smoke tasks.
+- `docs/`: detailed dataset scope and a standalone inventory audit.
+
+The root [LICENSE](LICENSE) covers original repository material. Third-party
+source notices are indexed in [data/third_party_licenses/README.md](data/third_party_licenses/README.md).

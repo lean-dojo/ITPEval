@@ -1,0 +1,71 @@
+% Statement-only formalization of PutnamBench artifact putnam_1973_a2:
+% convergence of a harmonic series with an eight-term periodic sign pattern,
+% including sufficiency and necessity of four positive signs per period.
+% This file contains no proof.
+
+putnam_1973_a2: THEORY
+BEGIN
+  block_index: TYPE = below(8)
+  sign_block: TYPE = [block_index -> real]
+  real_sequence: TYPE = [nat -> real]
+
+  periodic_index(index: nat): block_index =
+    mod(index, 8)
+
+  valid_sign_block(block: sign_block): bool =
+    FORALL (index: block_index):
+      block(index) = 1 OR block(index) = -1
+
+  positive_sign_count(
+      block: sign_block,
+      count: nat): RECURSIVE nat =
+    IF count = 0 THEN
+      0
+    ELSE
+      positive_sign_count(block, count - 1)
+        + IF block(periodic_index(count - 1)) = 1
+          THEN 1
+          ELSE 0
+          ENDIF
+    ENDIF
+  MEASURE count
+
+  pluses(block: sign_block): nat =
+    positive_sign_count(block, 8)
+
+  partial_sum(
+      block: sign_block,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      partial_sum(block, count - 1)
+        + block(periodic_index(count)) / (count :: real)
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: real_sequence, limit: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (count: nat):
+          cutoff <= count IMPLIES
+            abs(sequence(count) - limit) < epsilon_value
+
+  series_converges(block: sign_block): bool =
+    EXISTS (limit: real):
+      converges_to(
+        LAMBDA (count: nat):
+          partial_sum(block, count),
+        limit)
+
+  putnam_1973_a2_solution: bool = TRUE
+
+  putnam_1973_a2_statement: bool =
+    FORALL (block: sign_block):
+      valid_sign_block(block) IMPLIES
+        ((pluses(block) = 4 IMPLIES series_converges(block))
+          AND
+            (putnam_1973_a2_solution IFF
+              (series_converges(block) IMPLIES
+                pluses(block) = 4)))
+END putnam_1973_a2

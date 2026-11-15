@@ -1,0 +1,53 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2007_a4:
+% classification of real polynomials that map every base-10 repunit to a
+% base-10 repunit. This file contains no proof.
+
+putnam_2007_a4: THEORY
+BEGIN
+  polynomial: TYPE = list[real]
+
+  polynomial_value(p: polynomial, x: real): RECURSIVE real =
+    CASES p OF
+      null: 0,
+      cons(coefficient, tail):
+        coefficient + x * polynomial_value(tail, x)
+    ENDCASES
+  MEASURE p BY <<
+
+  decimal_repunit(last_index: nat): RECURSIVE nat =
+    IF last_index = 0 THEN
+      1
+    ELSE
+      10 * decimal_repunit(last_index - 1) + 1
+    ENDIF
+  MEASURE last_index
+
+  repunit(x: real): bool =
+    EXISTS (last_index: nat):
+      x = (decimal_repunit(last_index) :: real)
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN 0 ELSE numerator / denominator ENDIF
+
+  preserves_repunits(f: polynomial): bool =
+    FORALL (n: real):
+      repunit(n) IMPLIES repunit(polynomial_value(f, n))
+
+  classified_polynomial(f: polynomial): bool =
+    EXISTS (d, p, q: nat):
+      (p :: int) - (q :: int) >= 1 - (d :: int)
+        AND
+      (FORALL (x: real):
+        polynomial_value(f, x)
+          = safe_div(
+              safe_div(
+                (10 :: real) ^ p,
+                (10 :: real) ^ q)
+                * (9 * x + 1) ^ d
+                - 1,
+              9))
+
+  putnam_2007_a4: bool =
+    FORALL (f: polynomial):
+      preserves_repunits(f) IFF classified_polynomial(f)
+END putnam_2007_a4

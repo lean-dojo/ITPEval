@@ -1,0 +1,113 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1995_a5:
+% finite systems of differentiable real functions satisfying a constant
+% linear ODE with strictly positive coefficients and tending to zero at
+% positive infinity are linearly dependent. This file contains no proof.
+
+putnam_1995_a5: THEORY
+BEGIN
+  real_function: TYPE = [real -> real]
+  real_function_sequence: TYPE = [nat -> real_function]
+  real_sequence: TYPE = [nat -> real]
+  real_matrix: TYPE = [nat, nat -> real]
+
+  finite_sum(values: real_sequence, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      finite_sum(values, count - 1) + values(count - 1)
+    ENDIF
+  MEASURE count
+
+  has_derivative_at(
+      f: real_function,
+      derivative, point: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (delta: posreal):
+        FORALL (h: real):
+          (h /= 0 AND abs(h) < delta)
+            IMPLIES
+              abs(
+                f(point + h) - f(point)
+                  - derivative * h)
+                < epsilon_value * abs(h)
+
+  differentiable(f: real_function): bool =
+    FORALL (point: real):
+      EXISTS (derivative: real):
+        has_derivative_at(f, derivative, point)
+
+  derivative_value(
+      f: real_function,
+      point: real): real =
+    IF EXISTS (derivative: real):
+        has_derivative_at(f, derivative, point)
+    THEN
+      epsilon(
+        LAMBDA (derivative: real):
+          has_derivative_at(f, derivative, point))
+    ELSE
+      0
+    ENDIF
+
+  tends_to_zero_at_positive_infinity(
+      f: real_function): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (threshold: real):
+        FORALL (point: real):
+          threshold <= point IMPLIES
+            abs(f(point)) < epsilon_value
+
+  positive_coefficients(
+      n: nat,
+      coefficients: real_matrix): bool =
+    FORALL (row, column: nat):
+      (row < n AND column < n)
+        IMPLIES coefficients(row, column) > 0
+
+  satisfies_system(
+      n: nat,
+      functions: real_function_sequence,
+      coefficients: real_matrix): bool =
+    FORALL (point: real), (row: nat):
+      row < n IMPLIES
+        derivative_value(functions(row), point)
+          =
+            finite_sum(
+              LAMBDA (column: nat):
+                coefficients(row, column)
+                  * functions(column)(point),
+              n)
+
+  linearly_independent(
+      n: nat,
+      functions: real_function_sequence): bool =
+    FORALL (weights: real_sequence):
+      (FORALL (point: real):
+        finite_sum(
+          LAMBDA (index: nat):
+            weights(index) * functions(index)(point),
+          n)
+          = 0)
+      IMPLIES
+        FORALL (index: nat):
+          index < n IMPLIES weights(index) = 0
+
+  putnam_1995_a5_solution: bool = TRUE
+
+  putnam_1995_a5: bool =
+    putnam_1995_a5_solution IFF
+      FORALL
+          (n: nat),
+          (functions: real_function_sequence),
+          (coefficients: real_matrix):
+        (n > 0
+          AND (FORALL (index: nat):
+            index < n IMPLIES differentiable(functions(index)))
+          AND positive_coefficients(n, coefficients)
+          AND satisfies_system(n, functions, coefficients)
+          AND (FORALL (index: nat):
+            index < n IMPLIES
+              tends_to_zero_at_positive_infinity(functions(index))))
+        IMPLIES
+          NOT linearly_independent(n, functions)
+END putnam_1995_a5

@@ -1,0 +1,91 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% frama_c/contiki_list/index_of_Why3_ide_VCindex_of_post_part2_goal1:
+% correctness of the first matching index returned by a pointer-array index
+% operation under integer and memory-safety invariants. This file contains no proof.
+
+index_of_Why3_ide_VCindex_of_post_part2_goal1[
+  region: [int -> int],
+  linked: [[int -> int] -> bool]
+]: THEORY
+BEGIN
+  addr: TYPE = [# base: int, offset: int #]
+  pointer_memory: TYPE = [addr -> addr]
+  allocation_table: TYPE = [int -> int]
+  index_function: TYPE =
+    [pointer_memory, addr, addr, int, int -> int]
+
+  shift(p: addr, k: int): addr =
+    (# base := base(p), offset := offset(p) + k #)
+
+  valid_rw(malloc: allocation_table, p: addr, size: int): bool =
+    0 < size IMPLIES
+      0 < base(p)
+        AND 0 <= offset(p)
+        AND offset(p) + size <= malloc(base(p))
+
+  framed(memory: pointer_memory): bool =
+    FORALL (p: addr): region(base(memory(p))) <= 0
+
+  is_sint32(value: int): bool =
+    -2147483648 <= value AND value < 2147483648
+
+  index_axioms(l_index_of: index_function): bool =
+    (FORALL (up_0, down_0: int),
+            (mptr_0: pointer_memory),
+            (item_0, array_0: addr):
+       (up_0 <= down_0 AND 0 <= up_0)
+         IMPLIES
+           l_index_of(mptr_0, item_0, array_0, down_0, up_0) = up_0)
+      AND
+    (FORALL (down_0, up_0: int),
+            (mptr_0: pointer_memory),
+            (array_0, item_0: addr):
+       (mptr_0(shift(array_0, down_0)) = item_0
+         AND 0 <= down_0
+         AND down_0 < up_0)
+         IMPLIES
+           l_index_of(mptr_0, item_0, array_0, down_0, up_0) = down_0)
+      AND
+    (FORALL (down_0, up_0: int),
+            (mptr_0: pointer_memory),
+            (array_0, item_0: addr):
+       (mptr_0(shift(array_0, down_0)) /= item_0
+         AND 0 <= down_0
+         AND down_0 < up_0)
+         IMPLIES
+           l_index_of(mptr_0, item_0, array_0, 1 + down_0, up_0)
+             = l_index_of(mptr_0, item_0, array_0, down_0, up_0))
+
+  goal1: bool =
+    FORALL (l_index_of: index_function):
+      index_axioms(l_index_of)
+        IMPLIES
+          (FORALL (t_1: pointer_memory),
+                  (a: addr),
+                  (i_1, i, i_2: int),
+                  (t: allocation_table):
+             LET a_1: addr = t_1(shift(a, i_1))
+             IN
+               (0 <= i
+                 AND i_1 <= i
+                 AND i_1 < i
+                 AND i_2 <= i_1
+                 AND 0 <= i_2
+                 AND i_2 < i
+                 AND region(base(a)) <= 0
+                 AND region(base(a_1)) <= 0
+                 AND framed(t_1)
+                 AND linked(t)
+                 AND is_sint32(i)
+                 AND is_sint32(i_1)
+                 AND is_sint32(i_2)
+                 AND (i_2 <= i
+                   IMPLIES valid_rw(t, shift(a, i_2), i - i_2))
+                 AND
+                   (FORALL (i_3: int):
+                     i_3 < i_1
+                       IMPLIES i_2 <= i_3
+                         IMPLIES a_1 /= t_1(shift(a, i_3))))
+                 IMPLIES
+                   l_index_of(t_1, a_1, a, i_2, i) = i_1)
+END index_of_Why3_ide_VCindex_of_post_part2_goal1

@@ -1,0 +1,142 @@
+% Statement-only formalization of the Thousand Theorems artifact Q468391,
+% "Bolzano–Weierstrass theorem": in a proper pseudometric space, a sequence
+% frequently contained in a bounded set, or entirely contained in it, has a
+% convergent strictly monotone subsequence with limit in the set's closure.
+% This file contains no proof.
+
+bolzano_weierstrass_theorem_Q468391[
+  X: TYPE,
+  distance: [X, X -> real]
+]: THEORY
+BEGIN
+  point_set: TYPE = [X -> bool]
+  set_family: TYPE = [point_set -> bool]
+  set_sequence: TYPE = [nat -> point_set]
+  point_sequence: TYPE = [nat -> X]
+  index_sequence: TYPE = [nat -> nat]
+
+  pseudometric_space: bool =
+    (FORALL (x, y: X):
+      distance(x, y) >= 0)
+      AND (FORALL (x: X):
+        distance(x, x) = 0)
+      AND (FORALL (x, y: X):
+        distance(x, y) = distance(y, x))
+      AND (FORALL (x, y, z: X):
+        distance(x, z)
+          <= distance(x, y) + distance(y, z))
+
+  strictly_increasing(indices: index_sequence): bool =
+    FORALL (left_index, right_index: nat):
+      left_index < right_index IMPLIES
+        indices(left_index) < indices(right_index)
+
+  converges(
+      values: point_sequence,
+      limit_value: X): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            distance(values(index), limit_value) < epsilon_value
+
+  subsequence(
+      values: point_sequence,
+      indices: index_sequence): point_sequence =
+    LAMBDA (index: nat):
+      values(indices(index))
+
+  metric_open(U: point_set): bool =
+    FORALL (x: X):
+      U(x) IMPLIES
+        EXISTS (radius: posreal):
+          FORALL (y: X):
+            distance(x, y) < radius IMPLIES U(y)
+
+  open_cover(cover: set_family, S: point_set): bool =
+    (FORALL (U: point_set):
+      cover(U) IMPLIES metric_open(U))
+      AND (FORALL (x: X):
+        S(x) IMPLIES
+          EXISTS (U: point_set):
+            cover(U) AND U(x))
+
+  finite_subcover(
+      cover: set_family,
+      S: point_set): bool =
+    EXISTS
+        (count: nat),
+        (chosen: set_sequence):
+      (FORALL (index: nat):
+        index < count IMPLIES cover(chosen(index)))
+        AND (FORALL (x: X):
+          S(x) IMPLIES
+            EXISTS (index: nat):
+              index < count AND chosen(index)(x))
+
+  compact_set(S: point_set): bool =
+    FORALL (cover: set_family):
+      open_cover(cover, S) IMPLIES
+        finite_subcover(cover, S)
+
+  closed_ball(center: X, radius: real): point_set =
+    LAMBDA (x: X):
+      distance(x, center) <= radius
+
+  proper_space: bool =
+    FORALL (center: X), (radius: real):
+      compact_set(closed_ball(center, radius))
+
+  bounded_set(S: point_set): bool =
+    EXISTS (bound: real):
+      FORALL (x, y: X):
+        S(x) AND S(y) IMPLIES
+          distance(x, y) <= bound
+
+  closure_member(limit_value: X, S: point_set): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (x: X):
+        S(x)
+          AND distance(limit_value, x) < epsilon_value
+
+  frequently_in(
+      values: point_sequence,
+      S: point_set): bool =
+    FORALL (cutoff: nat):
+      EXISTS (index: nat):
+        cutoff <= index AND S(values(index))
+
+  entirely_in(
+      values: point_sequence,
+      S: point_set): bool =
+    FORALL (index: nat):
+      S(values(index))
+
+  has_convergent_subsequence_in_closure(
+      values: point_sequence,
+      S: point_set): bool =
+    EXISTS
+        (limit_value: X),
+        (indices: index_sequence):
+      closure_member(limit_value, S)
+        AND strictly_increasing(indices)
+        AND converges(
+          subsequence(values, indices),
+          limit_value)
+
+  tendsto_subseq_of_frequently_bounded: bool =
+    (pseudometric_space AND proper_space)
+    IMPLIES
+      FORALL (S: point_set), (values: point_sequence):
+        (bounded_set(S) AND frequently_in(values, S))
+        IMPLIES
+          has_convergent_subsequence_in_closure(values, S)
+
+  tendsto_subseq_of_bounded: bool =
+    (pseudometric_space AND proper_space)
+    IMPLIES
+      FORALL (S: point_set), (values: point_sequence):
+        (bounded_set(S) AND entirely_in(values, S))
+        IMPLIES
+          has_convergent_subsequence_in_closure(values, S)
+END bolzano_weierstrass_theorem_Q468391

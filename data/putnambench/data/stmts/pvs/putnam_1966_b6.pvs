@@ -1,0 +1,105 @@
+% Statement-only formalization of PutnamBench artifact putnam_1966_b6:
+% every globally twice-differentiable real solution of y'' + exp(x) * y = 0
+% is bounded above and below for all sufficiently large inputs. This file
+% contains no proof.
+
+putnam_1966_b6: THEORY
+BEGIN
+  real_function: TYPE = [real -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  nat_factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * nat_factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  exponential_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        exponential_partial(x, count - 1)
+          + safe_div(
+              x ^ index,
+              nat_factorial(index) :: real)
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: [nat -> real], value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  real_exponential(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          (LAMBDA (count: nat):
+            exponential_partial(x, count)),
+          value))
+
+  has_derivative_at(
+      f: real_function,
+      derivative, x: real): bool =
+    FORALL (epsilon_value: real):
+      epsilon_value > 0 IMPLIES
+        EXISTS (delta: real):
+          delta > 0
+            AND FORALL (h: real):
+              (NOT (h = 0) AND abs(h) < delta)
+                IMPLIES
+                  abs(
+                    f(x + h) - f(x)
+                      - derivative * h)
+                    < epsilon_value * abs(h)
+
+  differentiable_at(f: real_function, x: real): bool =
+    EXISTS (derivative: real):
+      has_derivative_at(f, derivative, x)
+
+  derivative_value(f: real_function, x: real): real =
+    IF differentiable_at(f, x) THEN
+      epsilon(
+        LAMBDA (derivative: real):
+          has_derivative_at(f, derivative, x))
+    ELSE
+      0
+    ENDIF
+
+  derivative_function(f: real_function): real_function =
+    LAMBDA (x: real): derivative_value(f, x)
+
+  twice_differentiable(f: real_function): bool =
+    FORALL (x: real):
+      differentiable_at(f, x)
+        AND differentiable_at(derivative_function(f), x)
+
+  satisfies_differential_equation(y: real_function): bool =
+    FORALL (x: real):
+      derivative_function(derivative_function(y))(x)
+        + real_exponential(x) * y(x)
+        = 0
+
+  eventually_bounded(y: real_function): bool =
+    EXISTS (lower_bound, upper_bound, threshold: real):
+      FORALL (x: real):
+        x > threshold IMPLIES
+          lower_bound <= y(x) AND y(x) <= upper_bound
+
+  putnam_1966_b6: bool =
+    FORALL (y: real_function):
+      (twice_differentiable(y)
+        AND satisfies_differential_equation(y))
+      IMPLIES eventually_bounded(y)
+END putnam_1966_b6

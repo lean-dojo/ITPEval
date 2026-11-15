@@ -1,0 +1,163 @@
+% Statement-only formalization of the VERINA corpus artifact
+% verina_advanced_59, catalog title "palindromeIgnoreNonAlnum": deciding
+% whether a Unicode-scalar string is a palindrome after filtering to ASCII
+% alphanumeric characters and lowercasing ASCII letters. This file contains no proof.
+
+verina_advanced_59: THEORY
+BEGIN
+
+  % Lean String.data is observed extensionally as its finite list of Unicode
+  % scalar characters.
+  lean_char: TYPE =
+    {codepoint: nat |
+      codepoint < 1114112
+        AND (codepoint < 55296 OR codepoint >= 57344)}
+
+  lean_string: TYPE = list[lean_char]
+
+  lean_char_option: DATATYPE
+  BEGIN
+    NoLeanChar: NoLeanChar?
+    SomeLeanChar(option_value: lean_char): SomeLeanChar?
+  END lean_char_option
+
+  is_upper_alpha(c: lean_char): bool =
+    c >= 65 AND c <= 90
+
+  is_lower_alpha(c: lean_char): bool =
+    c >= 97 AND c <= 122
+
+  lean_char_is_alpha(c: lean_char): bool =
+    is_upper_alpha(c) OR is_lower_alpha(c)
+
+  lean_char_is_digit(c: lean_char): bool =
+    c >= 48 AND c <= 57
+
+  lean_char_to_lower(c: lean_char): lean_char =
+    IF is_upper_alpha(c) THEN c + 32 ELSE c ENDIF
+
+  filter_alphanumeric(
+      chars: list[lean_char]): RECURSIVE list[lean_char] =
+    CASES chars OF
+      null:
+        null[lean_char],
+      cons(head, tail):
+        IF lean_char_is_alpha(head) OR lean_char_is_digit(head) THEN
+          cons(head, filter_alphanumeric(tail))
+        ELSE
+          filter_alphanumeric(tail)
+        ENDIF
+    ENDCASES
+  MEASURE chars BY <<
+
+  map_to_lower(
+      chars: list[lean_char]): RECURSIVE list[lean_char] =
+    CASES chars OF
+      null:
+        null[lean_char],
+      cons(head, tail):
+        cons(
+          lean_char_to_lower(head),
+          map_to_lower(tail))
+    ENDCASES
+  MEASURE chars BY <<
+
+  cleaned_string(s: lean_string): list[lean_char] =
+    map_to_lower(filter_alphanumeric(s))
+
+  lean_char_list_length(
+      chars: list[lean_char]): RECURSIVE nat =
+    CASES chars OF
+      null:
+        0,
+      cons(head, tail):
+        lean_char_list_length(tail) + 1
+    ENDCASES
+  MEASURE chars BY <<
+
+  lean_char_at(
+      index: nat,
+      chars: list[lean_char]): RECURSIVE lean_char_option =
+    CASES chars OF
+      null:
+        NoLeanChar,
+      cons(head, tail):
+        IF index = 0 THEN
+          SomeLeanChar(head)
+        ELSE
+          lean_char_at(index - 1, tail)
+        ENDIF
+    ENDCASES
+  MEASURE chars BY <<
+
+  palindrome_check(
+      left, right: nat,
+      chars: list[lean_char]): RECURSIVE bool =
+    IF left >= right THEN
+      TRUE
+    ELSE
+      IF lean_char_at(left, chars) = lean_char_at(right, chars) THEN
+        palindrome_check(left + 1, right - 1, chars)
+      ELSE
+        FALSE
+      ENDIF
+    ENDIF
+  MEASURE right
+
+  palindromeIgnoreNonAlnum_precond(s: lean_string): bool =
+    TRUE
+
+  % The Lean precondition proof is computationally irrelevant. This is the
+  % exact proof-erased filter/map and inward-index executable computation.
+  palindromeIgnoreNonAlnum(s: lean_string): bool =
+    LET cleaned: list[lean_char] = cleaned_string(s),
+        length: nat = lean_char_list_length(cleaned),
+        start_index: nat = 0,
+        end_index: nat =
+          IF length = 0 THEN 0 ELSE length - 1 ENDIF
+    IN
+      palindrome_check(
+        start_index,
+        end_index,
+        cleaned)
+
+  reverse_lean_char_list_acc(
+      chars, accumulator: list[lean_char]):
+      RECURSIVE list[lean_char] =
+    CASES chars OF
+      null:
+        accumulator,
+      cons(head, tail):
+        reverse_lean_char_list_acc(
+          tail,
+          cons(head, accumulator))
+    ENDCASES
+  MEASURE chars BY <<
+
+  reverse_lean_char_list(
+      chars: list[lean_char]): list[lean_char] =
+    reverse_lean_char_list_acc(chars, null[lean_char])
+
+  palindromeIgnoreNonAlnum_postcond(
+      s: lean_string,
+      result: bool): bool =
+    LET cleaned: list[lean_char] = cleaned_string(s),
+        forward: list[lean_char] = cleaned,
+        backward: list[lean_char] =
+          reverse_lean_char_list(cleaned)
+    IN
+      IF result THEN
+        forward = backward
+      ELSE
+        forward /= backward
+      ENDIF
+
+  palindromeIgnoreNonAlnum_spec_satisfied: bool =
+    FORALL (s: lean_string):
+      palindromeIgnoreNonAlnum_precond(s)
+        IMPLIES
+          palindromeIgnoreNonAlnum_postcond(
+            s,
+            palindromeIgnoreNonAlnum(s))
+
+END verina_advanced_59

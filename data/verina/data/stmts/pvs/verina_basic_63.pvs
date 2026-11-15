@@ -1,0 +1,334 @@
+% Statement-only formalization of the VERINA corpus artifact verina_basic_63
+% (verina__pvs__verina_basic_63), catalog title "has_close_elements": an
+% executable nested scan decides whether two finite binary64 list elements
+% have rounded absolute difference below a non-NaN, nonnegative binary64
+% threshold. This file contains no proof.
+
+verina_basic_63: THEORY
+BEGIN
+
+  two_to_52: nat = 4503599627370496
+  two_to_53: nat = 9007199254740992
+  two_to_54: nat = 18014398509481984
+  two_to_63: nat = 9223372036854775808
+  two_to_64: nat = 18446744073709551616
+
+  % Lean Float values are IEEE-754 binary64 bit patterns.
+  float64: TYPE = {bits: nat | bits < two_to_64}
+
+  binary64_fraction(bits: float64): nat =
+    mod(bits, two_to_52)
+
+  binary64_exponent_field(bits: float64): nat =
+    mod(ndiv(bits, two_to_52), 2048)
+
+  binary64_magnitude_bits(bits: float64): nat =
+    mod(bits, two_to_63)
+
+  binary64_negative(bits: float64): bool =
+    bits >= two_to_63
+
+  binary64_is_nan(bits: float64): bool =
+    binary64_exponent_field(bits) = 2047
+      AND binary64_fraction(bits) /= 0
+
+  binary64_is_infinite(bits: float64): bool =
+    binary64_exponent_field(bits) = 2047
+      AND binary64_fraction(bits) = 0
+
+  binary64_is_finite(bits: float64): bool =
+    binary64_exponent_field(bits) < 2047
+
+  binary64_is_zero(bits: float64): bool =
+    binary64_exponent_field(bits) = 0
+      AND binary64_fraction(bits) = 0
+
+  binary64_nonnegative_finite(bits: float64): bool =
+    NOT binary64_negative(bits)
+      AND binary64_is_finite(bits)
+
+  % Exact magnitude of every finite binary64 value.
+  binary64_magnitude_value(bits: float64): real =
+    LET exponent: nat = binary64_exponent_field(bits),
+        fraction: nat = binary64_fraction(bits)
+    IN
+      IF exponent = 0 THEN
+        (fraction :: real) / ((2 :: real) ^ 1074)
+      ELSIF exponent <= 1075 THEN
+        ((two_to_52 + fraction) :: real)
+          / ((2 :: real) ^ (1075 - exponent))
+      ELSE
+        ((two_to_52 + fraction) :: real)
+          * ((2 :: real) ^ (exponent - 1075))
+      ENDIF
+
+  binary64_signed_value(bits: float64): real =
+    IF binary64_negative(bits) THEN
+      -binary64_magnitude_value(bits)
+    ELSE
+      binary64_magnitude_value(bits)
+    ENDIF
+
+  binary64_even_significand(bits: float64): bool =
+    mod(bits, 2) = 0
+
+  float64_positive_zero: float64 = 0
+
+  float64_positive_infinity: float64 =
+    2047 * two_to_52
+
+  % Under round-to-nearest, ties-to-even, this is the first nonnegative real
+  % magnitude whose binary64 result is positive infinity.
+  binary64_overflow_midpoint: real =
+    ((two_to_54 - 1) :: real) * ((2 :: real) ^ 970)
+
+  % Exact IEEE-754 round-to-nearest, ties-to-even graph for a nonnegative real.
+  % The finite branch chooses a closest representable finite value; the
+  % midpoint branch captures binary64 overflow to positive infinity.
+  binary64_rounds_nonnegative(
+      value: real,
+      rounded: float64): bool =
+    value >= 0
+      AND
+        (IF value >= binary64_overflow_midpoint THEN
+          rounded = float64_positive_infinity
+        ELSE
+          binary64_nonnegative_finite(rounded)
+            AND
+              (FORALL (candidate: float64):
+                binary64_nonnegative_finite(candidate)
+                  IMPLIES
+                    abs(value - binary64_magnitude_value(rounded))
+                      <= abs(value - binary64_magnitude_value(candidate)))
+            AND
+              ((EXISTS (candidate: float64):
+                binary64_nonnegative_finite(candidate)
+                  AND candidate /= rounded
+                  AND
+                    abs(value - binary64_magnitude_value(rounded))
+                      = abs(value - binary64_magnitude_value(candidate)))
+                IMPLIES binary64_even_significand(rounded))
+        ENDIF)
+
+  % IEEE numeric equality: NaNs compare unequal and signed zeros compare equal.
+  float64_equal(left, right: float64): bool =
+    NOT binary64_is_nan(left)
+      AND NOT binary64_is_nan(right)
+      AND
+        (left = right
+          OR
+            (binary64_is_zero(left)
+              AND binary64_is_zero(right)))
+
+  % Exact IEEE strict order on all non-NaN binary64 values.
+  float64_less_than(left, right: float64): bool =
+    IF binary64_is_nan(left) OR binary64_is_nan(right) THEN
+      FALSE
+    ELSIF binary64_is_zero(left) AND binary64_is_zero(right) THEN
+      FALSE
+    ELSIF binary64_negative(left) AND NOT binary64_negative(right) THEN
+      TRUE
+    ELSIF NOT binary64_negative(left) AND binary64_negative(right) THEN
+      FALSE
+    ELSIF NOT binary64_negative(left) THEN
+      left < right
+    ELSE
+      left > right
+    ENDIF
+
+  float64_less_equal(left, right: float64): bool =
+    float64_less_than(left, right)
+      OR float64_equal(left, right)
+
+  % For finite a and b, Lean's absDiff first rounds a - b and, exactly when
+  % that result is negative, rounds b - a. Round-to-nearest is sign-symmetric,
+  % so its order comparisons are exactly characterized by this graph for the
+  % rounded nonnegative magnitude. Canonicalizing a possible -0 result to +0
+  % preserves both comparisons used by the implementation and postcondition.
+  absDiff_rounds(
+      a, b, rounded: float64): bool =
+    binary64_is_finite(a)
+      AND binary64_is_finite(b)
+      AND
+        binary64_rounds_nonnegative(
+          abs(binary64_signed_value(a) - binary64_signed_value(b)),
+          rounded)
+
+  absDiff_less_than(
+      a, b, threshold: float64): bool =
+    EXISTS (rounded: float64):
+      absDiff_rounds(a, b, rounded)
+        AND float64_less_than(rounded, threshold)
+
+  absDiff_greater_equal(
+      a, b, threshold: float64): bool =
+    EXISTS (rounded: float64):
+      absDiff_rounds(a, b, rounded)
+        AND float64_less_equal(threshold, rounded)
+
+  float64_list_length(
+      values: list[float64]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        float64_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  % This is Lean List.getD with positive zero as its default.
+  float64_list_get_default(
+      index: nat,
+      values: list[float64]): RECURSIVE float64 =
+    CASES values OF
+      null:
+        float64_positive_zero,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          float64_list_get_default(index - 1, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  binary64_list_all_finite(
+      values: list[float64]): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        binary64_is_finite(head)
+          AND binary64_list_all_finite(tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  has_close_elements_precond(
+      numbers: list[float64],
+      threshold: float64): bool =
+    float64_less_equal(float64_positive_zero, threshold)
+      AND NOT binary64_is_nan(threshold)
+      AND binary64_list_all_finite(numbers)
+
+  % Lean natural-number subtraction is truncated at zero.
+  nat_subtract(first, second: nat): nat =
+    IF first >= second THEN first - second ELSE 0 ENDIF
+
+  % The remaining argument counts exactly the source inner-loop iterations
+  % with idx2 < idx.
+  has_close_elements_inner_steps(
+      numbers: list[float64],
+      threshold: float64,
+      idx, idx2, remaining: nat): RECURSIVE bool =
+    IF remaining = 0 THEN
+      FALSE
+    ELSE
+      LET a: float64 =
+            float64_list_get_default(idx2, numbers),
+          b: float64 =
+            float64_list_get_default(idx, numbers)
+      IN
+        IF absDiff_less_than(a, b, threshold) THEN
+          TRUE
+        ELSE
+          has_close_elements_inner_steps(
+            numbers,
+            threshold,
+            idx,
+            idx2 + 1,
+            remaining - 1)
+        ENDIF
+    ENDIF
+  MEASURE remaining
+
+  has_close_elements_inner(
+      numbers: list[float64],
+      threshold: float64,
+      idx: nat): bool =
+    has_close_elements_inner_steps(
+      numbers,
+      threshold,
+      idx,
+      0,
+      idx)
+
+  % The remaining argument counts exactly the source outer-loop iterations
+  % with idx < numbers.length.
+  has_close_elements_outer_steps(
+      numbers: list[float64],
+      threshold: float64,
+      idx, remaining: nat): RECURSIVE bool =
+    IF remaining = 0 THEN
+      FALSE
+    ELSIF has_close_elements_inner(numbers, threshold, idx) THEN
+      TRUE
+    ELSE
+      has_close_elements_outer_steps(
+        numbers,
+        threshold,
+        idx + 1,
+        remaining - 1)
+    ENDIF
+  MEASURE remaining
+
+  has_close_elements_outer(
+      numbers: list[float64],
+      threshold: float64,
+      idx: nat): bool =
+    has_close_elements_outer_steps(
+      numbers,
+      threshold,
+      idx,
+      nat_subtract(float64_list_length(numbers), idx))
+
+  % The source precondition proof argument is computationally irrelevant.
+  has_close_elements(
+      numbers: list[float64],
+      threshold: float64): bool =
+    has_close_elements_outer(numbers, threshold, 0)
+
+  absDiff_head_greater_equal(
+      head: float64,
+      tail: list[float64],
+      threshold: float64): RECURSIVE bool =
+    CASES tail OF
+      null:
+        TRUE,
+      cons(next, rest):
+        absDiff_greater_equal(head, next, threshold)
+          AND absDiff_head_greater_equal(head, rest, threshold)
+    ENDCASES
+  MEASURE tail BY <<
+
+  % This is Lean List.Pairwise (fun a b => absDiff a b >= threshold).
+  absDiff_pairwise_greater_equal(
+      numbers: list[float64],
+      threshold: float64): RECURSIVE bool =
+    CASES numbers OF
+      null:
+        TRUE,
+      cons(head, tail):
+        absDiff_head_greater_equal(head, tail, threshold)
+          AND absDiff_pairwise_greater_equal(tail, threshold)
+    ENDCASES
+  MEASURE numbers BY <<
+
+  has_close_elements_postcond(
+      numbers: list[float64],
+      threshold: float64,
+      result: bool): bool =
+    (NOT result)
+      IFF absDiff_pairwise_greater_equal(numbers, threshold)
+
+  has_close_elements_spec_satisfied: bool =
+    FORALL (
+        numbers: list[float64],
+        threshold: float64):
+      has_close_elements_precond(numbers, threshold)
+        IMPLIES
+          has_close_elements_postcond(
+            numbers,
+            threshold,
+            has_close_elements(numbers, threshold))
+
+END verina_basic_63

@@ -1,0 +1,248 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1997_a3:
+% the improper integral of the product of two specified real power series
+% equals the nonnegative square root of exp(1). This file contains no proof.
+
+putnam_1997_a3: THEORY
+BEGIN
+  real_function: TYPE = [real -> real]
+  real_sequence: TYPE = [nat -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  alternating_sign(index: nat): RECURSIVE real =
+    IF index = 0 THEN
+      1
+    ELSE
+      -alternating_sign(index - 1)
+    ENDIF
+  MEASURE index
+
+  even_factorial(index: nat): RECURSIVE real =
+    IF index = 0 THEN
+      1
+    ELSE
+      2 * (index :: real) * even_factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  even_factorial_squared(index: nat): RECURSIVE real =
+    IF index = 0 THEN
+      1
+    ELSE
+      (2 * (index :: real)) ^ 2
+        * even_factorial_squared(index - 1)
+    ENDIF
+  MEASURE index
+
+  first_series_term(x: real, index: nat): real =
+    safe_div(
+      alternating_sign(index) * x ^ (2 * index + 1),
+      even_factorial(index))
+
+  second_series_term(x: real, index: nat): real =
+    safe_div(
+      x ^ (2 * index),
+      even_factorial_squared(index))
+
+  first_series_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      first_series_partial(x, count - 1)
+        + first_series_term(x, count - 1)
+    ENDIF
+  MEASURE count
+
+  second_series_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      second_series_partial(x, count - 1)
+        + second_series_term(x, count - 1)
+    ENDIF
+  MEASURE count
+
+  first_power_series(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat):
+            first_series_partial(x, count),
+          value))
+
+  second_power_series(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat):
+            second_series_partial(x, count),
+          value))
+
+  nat_factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * nat_factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  exponential_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        exponential_partial(x, count - 1)
+          + safe_div(
+              x ^ index,
+              nat_factorial(index) :: real)
+    ENDIF
+  MEASURE count
+
+  real_exponential(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat):
+            exponential_partial(x, count),
+          value))
+
+  nonnegative_square_root(x: real): real =
+    IF x >= 0 THEN
+      epsilon(
+        LAMBDA (root: real):
+          root >= 0 AND root * root = x)
+    ELSE
+      0
+    ENDIF
+
+  valid_tagged_partition(
+      left, right: real,
+      points, tags: real_sequence,
+      count: nat): bool =
+    count > 0
+      AND points(0) = left
+      AND points(count) = right
+      AND FORALL (index: nat):
+        index < count IMPLIES
+          (points(index) < points(index + 1)
+            AND points(index) <= tags(index)
+            AND tags(index) <= points(index + 1))
+
+  mesh_less_than(
+      points: real_sequence,
+      count: nat,
+      bound: real): bool =
+    FORALL (index: nat):
+      index < count IMPLIES
+        points(index + 1) - points(index) < bound
+
+  riemann_sum(
+      function_value: real_function,
+      points, tags: real_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      riemann_sum(
+        function_value, points, tags, count - 1)
+        + function_value(tags(count - 1))
+            * (points(count) - points(count - 1))
+    ENDIF
+  MEASURE count
+
+  has_interval_integral(
+      function_value: real_function,
+      left, right, integral_value: real): bool =
+    left < right
+      AND FORALL (epsilon_value: posreal):
+        EXISTS (mesh_bound: posreal):
+          FORALL
+              (points, tags: real_sequence),
+              (count: nat):
+            (valid_tagged_partition(
+                left, right, points, tags, count)
+              AND mesh_less_than(
+                points, count, mesh_bound))
+            IMPLIES
+              abs(
+                riemann_sum(
+                  function_value, points, tags, count)
+                  - integral_value)
+                < epsilon_value
+
+  interval_integral(
+      function_value: real_function,
+      left, right: real): real =
+    IF left = right THEN
+      0
+    ELSIF left < right THEN
+      IF EXISTS (integral_value: real):
+          has_interval_integral(
+            function_value, left, right, integral_value)
+      THEN
+        epsilon(
+          LAMBDA (integral_value: real):
+            has_interval_integral(
+              function_value, left, right, integral_value))
+      ELSE
+        0
+      ENDIF
+    ELSE
+      IF EXISTS (integral_value: real):
+          has_interval_integral(
+            function_value, right, left, integral_value)
+      THEN
+        -epsilon(
+          LAMBDA (integral_value: real):
+            has_interval_integral(
+              function_value, right, left, integral_value))
+      ELSE
+        0
+      ENDIF
+    ENDIF
+
+  truncated_integral(
+      series1, series2: real_function,
+      t: real): real =
+    interval_integral(
+      LAMBDA (x: real): series1(x) * series2(x),
+      0,
+      t)
+
+  converges_at_real_top(
+      function_value: real_function,
+      limit_value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: real):
+        FORALL (t: real):
+          cutoff <= t IMPLIES
+            abs(function_value(t) - limit_value)
+              < epsilon_value
+
+  putnam_1997_a3_solution: real =
+    nonnegative_square_root(real_exponential(1))
+
+  putnam_1997_a3: bool =
+    FORALL (series1, series2: real_function):
+      ((FORALL (x: real):
+          series1(x) = first_power_series(x))
+        AND (FORALL (x: real):
+          series2(x) = second_power_series(x)))
+      IMPLIES
+        converges_at_real_top(
+          LAMBDA (t: real):
+            truncated_integral(series1, series2, t),
+          putnam_1997_a3_solution)
+END putnam_1997_a3

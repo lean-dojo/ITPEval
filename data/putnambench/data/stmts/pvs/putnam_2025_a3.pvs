@@ -1,0 +1,98 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2025_a3:
+% in the no-repetition game on length-n strings over the digits 0, 1, and 2,
+% where each move changes one digit by 1, Bob wins for every positive n.
+% This file contains no proof.
+
+putnam_2025_a3: THEORY
+BEGIN
+  game_string(n: posnat): TYPE = [below(n) -> below(3)]
+  game_play(n: posnat): TYPE = list[game_string(n)]
+
+  initial_state(n: posnat): game_string(n) =
+    LAMBDA (index: below(n)): 0
+
+  is_valid_move(
+      n: posnat,
+      before, after: game_string(n)): bool =
+    (EXISTS (changed: below(n)):
+      before(changed) /= after(changed)
+        AND (FORALL (index: below(n)):
+          before(index) /= after(index)
+            IMPLIES index = changed))
+      AND
+    (FORALL (index: below(n)):
+      before(index) /= after(index)
+        IMPLIES
+          before(index) + 1 = after(index)
+            OR after(index) + 1 = before(index))
+
+  move_chain(
+      n: posnat,
+      previous: game_string(n),
+      play: game_play(n)): RECURSIVE bool =
+    CASES play OF
+      null: TRUE,
+      cons(current, tail):
+        is_valid_move(n, previous, current)
+          AND move_chain(n, current, tail)
+    ENDCASES
+  MEASURE length(play)
+
+  contains_state(
+      n: posnat,
+      state: game_string(n),
+      play: game_play(n)): RECURSIVE bool =
+    CASES play OF
+      null: FALSE,
+      cons(current, tail):
+        state = current OR contains_state(n, state, tail)
+    ENDCASES
+  MEASURE length(play)
+
+  has_no_duplicates(
+      n: posnat,
+      play: game_play(n)): RECURSIVE bool =
+    CASES play OF
+      null: TRUE,
+      cons(current, tail):
+        NOT contains_state(n, current, tail)
+          AND has_no_duplicates(n, tail)
+    ENDCASES
+  MEASURE length(play)
+
+  is_valid_game_play(n: posnat, play: game_play(n)): bool =
+    move_chain(n, initial_state(n), play)
+      AND has_no_duplicates(n, cons(initial_state(n), play))
+
+  has_winning_strategy(
+      n: posnat,
+      play: game_play(n)): INDUCTIVE bool =
+    EXISTS (alice_move: game_string(n)):
+      is_valid_game_play(
+        n,
+        append(play, cons(alice_move, null)))
+        AND
+      (FORALL (bob_move: game_string(n)):
+        is_valid_game_play(
+          n,
+          append(
+            play,
+            cons(alice_move, cons(bob_move, null))))
+          IMPLIES
+            has_winning_strategy(
+              n,
+              append(
+                play,
+                cons(alice_move, cons(bob_move, null)))))
+
+  alice_has_winning_strategy(n: posnat): bool =
+    has_winning_strategy(n, null)
+
+  putnam_2025_a3_solution(n: posnat): bool =
+    FALSE
+
+  putnam_2025_a3: bool =
+    FORALL (n: posnat):
+      putnam_2025_a3_solution(n)
+        IFF alice_has_winning_strategy(n)
+END putnam_2025_a3

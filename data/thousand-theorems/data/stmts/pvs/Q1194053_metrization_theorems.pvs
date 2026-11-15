@@ -1,0 +1,142 @@
+% Statement-only formalization of the Thousand Theorems artifact Q1194053,
+% "Metrization theorems": every T3 second-countable topological space has a
+% metric inducing its topology. This file contains no proof.
+
+metrization_theorems_Q1194053[
+  X: TYPE,
+  carrier: [X -> bool],
+  open_sets: [[X -> bool] -> bool]
+]: THEORY
+BEGIN
+  point_set: TYPE = [X -> bool]
+  set_family: TYPE = [point_set -> bool]
+  countable_basis: TYPE = [nat -> point_set]
+  distance_function: TYPE = [X, X -> real]
+
+  empty_point_set: point_set =
+    LAMBDA (x: X): FALSE
+
+  whole_point_set: point_set =
+    LAMBDA (x: X): carrier(x)
+
+  set_on_carrier(A: point_set): bool =
+    FORALL (x: X):
+      A(x) IMPLIES carrier(x)
+
+  complement(A: point_set): point_set =
+    LAMBDA (x: X):
+      carrier(x) AND NOT A(x)
+
+  binary_intersection(A, B: point_set): point_set =
+    LAMBDA (x: X): A(x) AND B(x)
+
+  union_of_family(F: set_family): point_set =
+    LAMBDA (x: X):
+      carrier(x)
+        AND EXISTS (U: point_set):
+          F(U) AND U(x)
+
+  subset_of(A, B: point_set): bool =
+    FORALL (x: X):
+      A(x) IMPLIES B(x)
+
+  disjoint(A, B: point_set): bool =
+    FORALL (x: X):
+      NOT (A(x) AND B(x))
+
+  topology_laws: bool =
+    open_sets(empty_point_set)
+      AND open_sets(whole_point_set)
+      AND
+        (FORALL (U: point_set):
+          open_sets(U) IMPLIES set_on_carrier(U))
+      AND
+        (FORALL (A, B: point_set):
+          (open_sets(A) AND open_sets(B))
+            IMPLIES open_sets(binary_intersection(A, B)))
+      AND
+        (FORALL (F: set_family):
+          (FORALL (U: point_set):
+            F(U) IMPLIES open_sets(U))
+          IMPLIES open_sets(union_of_family(F)))
+
+  closed_point_set(C: point_set): bool =
+    set_on_carrier(C)
+      AND open_sets(complement(C))
+
+  t0_space: bool =
+    FORALL (x, y: X):
+      (carrier(x) AND carrier(y) AND x /= y)
+        IMPLIES
+          EXISTS (U: point_set):
+            open_sets(U)
+              AND
+                ((U(x) AND NOT U(y))
+                  OR (U(y) AND NOT U(x)))
+
+  regular_space: bool =
+    FORALL (C: point_set), (x: X):
+      (closed_point_set(C) AND carrier(x) AND NOT C(x))
+        IMPLIES
+          EXISTS (U, V: point_set):
+            open_sets(U)
+              AND open_sets(V)
+              AND U(x)
+              AND subset_of(C, V)
+              AND disjoint(U, V)
+
+  t3_space: bool =
+    t0_space AND regular_space
+
+  second_countable: bool =
+    EXISTS (B: countable_basis):
+      (FORALL (n: nat):
+        open_sets(B(n)))
+        AND
+          (FORALL (U: point_set), (x: X):
+            (open_sets(U) AND carrier(x) AND U(x))
+              IMPLIES
+                EXISTS (n: nat):
+                  B(n)(x) AND subset_of(B(n), U))
+
+  metric_laws(d: distance_function): bool =
+    (FORALL (x, y: X):
+      (carrier(x) AND carrier(y))
+        IMPLIES 0 <= d(x, y))
+      AND
+        (FORALL (x, y: X):
+          (carrier(x) AND carrier(y))
+            IMPLIES (d(x, y) = 0 IFF x = y))
+      AND
+        (FORALL (x, y: X):
+          (carrier(x) AND carrier(y))
+            IMPLIES d(x, y) = d(y, x))
+      AND
+        (FORALL (x, y, z: X):
+          (carrier(x) AND carrier(y) AND carrier(z))
+            IMPLIES d(x, z) <= d(x, y) + d(y, z))
+
+  metric_open(d: distance_function, U: point_set): bool =
+    set_on_carrier(U)
+      AND
+        FORALL (x: X):
+          (carrier(x) AND U(x))
+            IMPLIES
+              EXISTS (epsilon: real):
+                0 < epsilon
+                  AND
+                    FORALL (y: X):
+                      (carrier(y) AND d(x, y) < epsilon)
+                        IMPLIES U(y)
+
+  metrizable_space: bool =
+    EXISTS (d: distance_function):
+      metric_laws(d)
+        AND
+          (FORALL (U: point_set):
+            open_sets(U) IFF metric_open(d, U))
+
+  metrizableSpace_of_t3_secondCountable: bool =
+    (topology_laws AND t3_space AND second_countable)
+      IMPLIES metrizable_space
+END metrization_theorems_Q1194053

@@ -1,0 +1,58 @@
+% Statement-only formalization of PutnamBench artifact putnam_1962_a1:
+% among five points in the real plane with no three collinear, some four are
+% the vertices of a convex quadrilateral. This file contains no proof.
+
+putnam_1962_a1: THEORY
+BEGIN
+  point: TYPE = [# x_coord: real, y_coord: real #]
+  point_set: TYPE = [point -> bool]
+
+  IMPORTING finite_sets[point]
+
+  affine_combination(t: real, P, Q: point): point =
+    (# x_coord := (1 - t) * x_coord(P) + t * x_coord(Q),
+       y_coord := (1 - t) * y_coord(P) + t * y_coord(Q) #)
+
+  point_subset(A, B: point_set): bool =
+    FORALL (P: point): A(P) IMPLIES B(P)
+
+  finite_subset(A, B: finite_set[point]): bool =
+    FORALL (P: point): A(P) IMPLIES B(P)
+
+  convex(A: point_set): bool =
+    FORALL (P, Q: point), (t: real):
+      A(P) AND A(Q) AND 0 <= t AND t <= 1
+        IMPLIES A(affine_combination(t, P, Q))
+
+  convex_hull(A: point_set): point_set =
+    LAMBDA (P: point):
+      FORALL (C: point_set):
+        convex(C) AND point_subset(A, C) IMPLIES C(P)
+
+  cross_from(P, Q, R: point): real =
+    (x_coord(Q) - x_coord(P)) * (y_coord(R) - y_coord(P))
+      - (y_coord(Q) - y_coord(P)) * (x_coord(R) - x_coord(P))
+
+  collinear(P, Q, R: point): bool =
+    cross_from(P, Q, R) = 0
+
+  collinear_set(A: finite_set[point]): bool =
+    FORALL (P, Q, R: point):
+      A(P) AND A(Q) AND A(R) IMPLIES collinear(P, Q, R)
+
+  remove_point(A: finite_set[point], P: point): point_set =
+    LAMBDA (Q: point): A(Q) AND Q /= P
+
+  putnam_1962_a1: bool =
+    FORALL (S: finite_set[point]):
+      (card(S) = 5
+        AND FORALL (U: finite_set[point]):
+          finite_subset(U, S) AND card(U) = 3
+            IMPLIES NOT collinear_set(U))
+      IMPLIES
+        EXISTS (T: finite_set[point]):
+          finite_subset(T, S)
+            AND card(T) = 4
+            AND NOT (EXISTS (P: point):
+              T(P) AND convex_hull(remove_point(T, P))(P))
+END putnam_1962_a1

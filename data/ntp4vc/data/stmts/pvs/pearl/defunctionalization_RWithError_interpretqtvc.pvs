@@ -1,0 +1,87 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/defunctionalization_RWithError_interpretqtvc: underflow-aware
+% evaluation is unchanged when an expression is recomposed with the empty
+% context. This file contains no proof.
+
+defunctionalization_RWithError_interpretqtvc: THEORY
+BEGIN
+
+  expr: DATATYPE
+  BEGIN
+    Cte(constant_value: int): Cte?
+    Sub(left_expression, right_expression: expr): Sub?
+  END expr
+
+  value: DATATYPE
+  BEGIN
+    Vnum(numeric_value: int): Vnum?
+    Underflow: Underflow?
+  END value
+
+  context: DATATYPE
+  BEGIN
+    Empty: Empty?
+    Left(previous_context: context, pending_expression: expr): Left?
+    Right(saved_value: int, previous_context: context): Right?
+  END context
+
+  size_e(expression: expr): RECURSIVE int =
+    CASES expression OF
+      Cte(value):
+        1,
+      Sub(left, right):
+        3 + size_e(left) + size_e(right)
+    ENDCASES
+  MEASURE expression BY <<
+
+  eval_0(expression: expr): RECURSIVE value =
+    CASES expression OF
+      Cte(n):
+        IF 0 <= n THEN Vnum(n) ELSE Underflow ENDIF,
+      Sub(left, right):
+        CASES eval_0(left) OF
+          Underflow:
+            Underflow,
+          Vnum(left_value):
+            CASES eval_0(right) OF
+              Underflow:
+                Underflow,
+              Vnum(right_value):
+                IF right_value <= left_value
+                THEN Vnum(left_value - right_value)
+                ELSE Underflow
+                ENDIF
+            ENDCASES
+        ENDCASES
+    ENDCASES
+  MEASURE expression BY <<
+
+  size_c(current_context: context): RECURSIVE int =
+    CASES current_context OF
+      Empty:
+        0,
+      Left(previous, expression):
+        2 + size_c(previous) + size_e(expression),
+      Right(value, previous):
+        1 + size_c(previous)
+    ENDCASES
+  MEASURE current_context BY <<
+
+  recompose(
+      current_context: context,
+      expression: expr): RECURSIVE expr =
+    CASES current_context OF
+      Empty:
+        expression,
+      Left(previous, right):
+        recompose(previous, Sub(expression, right)),
+      Right(left_value, previous):
+        recompose(previous, Sub(Cte(left_value), expression))
+    ENDCASES
+  MEASURE current_context BY <<
+
+  interpret_vc: bool =
+    FORALL (program: expr):
+      eval_0(recompose(Empty, program)) = eval_0(program)
+
+END defunctionalization_RWithError_interpretqtvc

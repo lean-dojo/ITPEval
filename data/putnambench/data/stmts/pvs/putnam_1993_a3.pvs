@@ -1,0 +1,86 @@
+% Statement-only formalization of PutnamBench artifact putnam_1993_a3:
+% the number of intersection-minimum-preserving functions from the subsets
+% of an n-element set to an m-element chain is the sum of the nth powers
+% from 1 through m. This file contains no proof.
+
+putnam_1993_a3: THEORY
+BEGIN
+  subset_intersection(
+      left, right, bit_count: nat): RECURSIVE nat =
+    IF bit_count = 0 THEN
+      0
+    ELSE
+      (IF mod(left, 2) = 1 AND mod(right, 2) = 1 THEN
+         1
+       ELSE
+         0
+       ENDIF)
+        + 2 * subset_intersection(
+            ndiv(left, 2),
+            ndiv(right, 2),
+            bit_count - 1)
+    ENDIF
+  MEASURE bit_count
+
+  function_code_count(n, m: posnat): nat =
+    m ^ (2 ^ n)
+
+  function_value(
+      function_code, subset_code: nat,
+      m: posnat): nat =
+    mod(
+      ndiv(function_code, m ^ subset_code),
+      m)
+
+  nat_min(left, right: nat): nat =
+    IF left <= right THEN left ELSE right ENDIF
+
+  preserves_intersection_minimum(
+      function_code: nat,
+      n, m: posnat): bool =
+    FORALL (left_subset, right_subset: nat):
+      (left_subset < 2 ^ n AND right_subset < 2 ^ n)
+        IMPLIES
+          function_value(
+            function_code,
+            subset_intersection(
+              left_subset, right_subset, n),
+            m)
+            = nat_min(
+                function_value(
+                  function_code, left_subset, m),
+                function_value(
+                  function_code, right_subset, m))
+
+  count_below(
+      limit: nat,
+      property: [nat -> bool]): RECURSIVE nat =
+    IF limit = 0 THEN
+      0
+    ELSE
+      count_below(limit - 1, property)
+        + IF property(limit - 1) THEN 1 ELSE 0 ENDIF
+    ENDIF
+  MEASURE limit
+
+  intersection_minimum_function_count(
+      n, m: posnat): nat =
+    count_below(
+      function_code_count(n, m),
+      LAMBDA (function_code: nat):
+        preserves_intersection_minimum(
+          function_code, n, m))
+
+  power_sum(n, upper: nat): RECURSIVE nat =
+    IF upper = 0 THEN
+      0
+    ELSE
+      power_sum(n, upper - 1) + upper ^ n
+    ENDIF
+  MEASURE upper
+
+  putnam_1993_a3: bool =
+    FORALL (n, m: posnat):
+      intersection_minimum_function_count(n, m)
+        = power_sum(n, m)
+END putnam_1993_a3

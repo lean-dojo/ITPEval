@@ -1,0 +1,113 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% frama_c/standard_algorithms/replace_copy/replace_copy_Why3_ide_VCreplace_copy_post_replace_goal0:
+% a replace-copy postcondition stating that the replacement relation is
+% preserved when the havoced destination prefix is restricted from one equal
+% bound to the other, under the source memory and range assumptions.
+% This file contains no proof.
+
+replace_copy_Why3_ide_VCreplace_copy_post_replace_goal0: THEORY
+BEGIN
+  addr: TYPE = [# base: int, offset: int #]
+  integer_memory: TYPE = [addr -> int]
+  allocation_table: TYPE = [int -> int]
+
+  shift(p: addr, k: int): addr =
+    (# base := base(p), offset := offset(p) + k #)
+
+  separated(p: addr, p_size: int, q: addr, q_size: int): bool =
+    p_size <= 0
+      OR q_size <= 0
+      OR base(p) /= base(q)
+      OR offset(q) + q_size <= offset(p)
+      OR offset(p) + p_size <= offset(q)
+
+  havoc(
+      original, outside: integer_memory,
+      start: addr,
+      size: int): integer_memory =
+    LAMBDA (q: addr):
+      IF separated(q, 1, start, size) THEN
+        outside(q)
+      ELSE
+        original(q)
+      ENDIF
+
+  valid_rw(m: allocation_table, p: addr, n: int): bool =
+    0 < n IMPLIES
+      0 < base(p)
+        AND 0 <= offset(p)
+        AND offset(p) + n <= m(base(p))
+
+  valid_rd(m: allocation_table, p: addr, n: int): bool =
+    0 < n IMPLIES
+      base(p) /= 0
+        AND 0 <= offset(p)
+        AND offset(p) + n <= m(base(p))
+
+  is_uint32(x: int): bool =
+    0 <= x AND x < 4294967296
+
+  is_sint32(x: int): bool =
+    -2147483648 <= x AND x < 2147483648
+
+  p_unchanged(
+      mint_0, mint_1: integer_memory,
+      a: addr,
+      first, last: int): bool =
+    FORALL (j: int):
+      first <= j IMPLIES
+      j < last IMPLIES
+      mint_1(shift(a, j)) = mint_0(shift(a, j))
+
+  p_replace(
+      mint_0, mint_1: integer_memory,
+      a: addr,
+      n: int,
+      b: addr,
+      old_value, new_value: int): bool =
+    FORALL (j: int):
+      LET x: int = mint_1(shift(a, j)),
+          x_1: int = mint_0(shift(b, j))
+      IN
+        0 <= j IMPLIES
+        j < n IMPLIES
+        (x = old_value IMPLIES x_1 = new_value)
+          AND (x /= old_value IMPLIES x_1 = x)
+
+  goal0: bool =
+    FORALL
+      (region: [int -> int]),
+      (linked: [allocation_table -> bool]),
+      (a_1, a: addr),
+      (t_1, t_2: integer_memory),
+      (i_2, i_3: int),
+      (t: allocation_table),
+      (i, i_1: int):
+      LET a_2: addr = shift(a_1, 0),
+          a_3: addr = shift(a, 0),
+          a_4: integer_memory = havoc(t_1, t_2, a_3, i_2)
+      IN
+        i_3 <= i_2 IMPLIES
+        0 <= i_3 IMPLIES
+        i_2 <= i_3 IMPLIES
+        region(base(a)) <= 0 IMPLIES
+        region(base(a_1)) <= 0 IMPLIES
+        linked(t) IMPLIES
+        is_uint32(i_2) IMPLIES
+        is_uint32(i_3) IMPLIES
+        is_sint32(i) IMPLIES
+        is_sint32(i_1) IMPLIES
+        valid_rd(t, a_2, i_2) IMPLIES
+        valid_rw(t, a_3, i_2) IMPLIES
+        separated(a_2, i_2, a, 1) IMPLIES
+        p_unchanged(a_4, t_2, a_1, i_3, i_2) IMPLIES
+        p_replace(a_4, t_2, a_1, i_3, a, i_1, i) IMPLIES
+        p_replace(
+          havoc(t_1, t_2, a_3, i_3),
+          t_2,
+          a_1,
+          i_3,
+          a,
+          i_1,
+          i)
+END replace_copy_Why3_ide_VCreplace_copy_post_replace_goal0

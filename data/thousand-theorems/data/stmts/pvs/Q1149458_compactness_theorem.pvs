@@ -1,0 +1,323 @@
+% Statement-only formalization of the Thousand Theorems artifact Q1149458,
+% "Compactness theorem": a first-order theory has a nonempty model if and only
+% if each of its finite subtheories has a nonempty model. This file contains no proof.
+
+first_order_syntax_Q1149458[Symbol: TYPE]: DATATYPE
+BEGIN
+  variable_node(variable_index: nat): variable_node?
+  application_node(
+      application_symbol: Symbol,
+      application_arguments: first_order_syntax_Q1149458): application_node?
+  argument_nil: argument_nil?
+  argument_cons(
+      argument_head: first_order_syntax_Q1149458,
+      argument_tail: first_order_syntax_Q1149458): argument_cons?
+  equality_node(
+      equality_left: first_order_syntax_Q1149458,
+      equality_right: first_order_syntax_Q1149458): equality_node?
+  relation_node(
+      relation_symbol: Symbol,
+      relation_arguments: first_order_syntax_Q1149458): relation_node?
+  false_node: false_node?
+  implication_node(
+      implication_left: first_order_syntax_Q1149458,
+      implication_right: first_order_syntax_Q1149458): implication_node?
+  universal_node(
+      universal_body: first_order_syntax_Q1149458): universal_node?
+END first_order_syntax_Q1149458
+
+model_universe_Q1149458[Symbol: TYPE]: DATATYPE
+BEGIN
+  natural_element(natural_index: nat): natural_element?
+  symbol_element(symbol_index: Symbol): symbol_element?
+END model_universe_Q1149458
+
+compactness_theorem_Q1149458[
+  Symbol: TYPE,
+  symbol_is_function: [Symbol -> bool],
+  symbol_arity: [Symbol -> nat]
+]: THEORY
+BEGIN
+  IMPORTING first_order_syntax_Q1149458[Symbol],
+    model_universe_Q1149458[Symbol]
+
+  syntax: TYPE = first_order_syntax_Q1149458[Symbol]
+  universe: TYPE = model_universe_Q1149458[Symbol]
+
+  argument_length(node: syntax): RECURSIVE nat =
+    CASES node OF
+      variable_node(index): 0,
+      application_node(symbol, arguments): 0,
+      argument_nil: 0,
+      argument_cons(head, tail): 1 + argument_length(tail),
+      equality_node(left, right): 0,
+      relation_node(symbol, arguments): 0,
+      false_node: 0,
+      implication_node(left, right): 0,
+      universal_node(body): 0
+    ENDCASES
+  MEASURE node BY <<
+
+  % Kinds 0, 1, and 2 respectively denote terms, argument lists, and formulas.
+  % The depth parameter gives the number of enclosing de Bruijn binders.
+  well_formed(node: syntax, kind: nat, depth: nat): RECURSIVE bool =
+    CASES node OF
+      variable_node(index):
+        kind = 0 AND index < depth,
+      application_node(symbol, arguments):
+        kind = 0
+          AND symbol_is_function(symbol)
+          AND argument_length(arguments) = symbol_arity(symbol)
+          AND well_formed(arguments, 1, depth),
+      argument_nil:
+        kind = 1,
+      argument_cons(head, tail):
+        kind = 1
+          AND well_formed(head, 0, depth)
+          AND well_formed(tail, 1, depth),
+      equality_node(left, right):
+        kind = 2
+          AND well_formed(left, 0, depth)
+          AND well_formed(right, 0, depth),
+      relation_node(symbol, arguments):
+        kind = 2
+          AND NOT symbol_is_function(symbol)
+          AND argument_length(arguments) = symbol_arity(symbol)
+          AND well_formed(arguments, 1, depth),
+      false_node:
+        kind = 2,
+      implication_node(left, right):
+        kind = 2
+          AND well_formed(left, 2, depth)
+          AND well_formed(right, 2, depth),
+      universal_node(body):
+        kind = 2
+          AND well_formed(body, 2, depth + 1)
+    ENDCASES
+  MEASURE node BY <<
+
+  sentence: TYPE = {phi: syntax | well_formed(phi, 2, 0)}
+  theory_set: TYPE = [sentence -> bool]
+  carrier_predicate: TYPE = [universe -> bool]
+  function_interpretation: TYPE =
+    [Symbol, [nat -> universe] -> universe]
+  relation_interpretation: TYPE =
+    [Symbol, [nat -> universe] -> bool]
+
+  syntax_size(node: syntax): RECURSIVE nat =
+    CASES node OF
+      variable_node(index): 1,
+      application_node(symbol, arguments):
+        1 + syntax_size(arguments),
+      argument_nil: 1,
+      argument_cons(head, tail):
+        1 + syntax_size(head) + syntax_size(tail),
+      equality_node(left, right):
+        1 + syntax_size(left) + syntax_size(right),
+      relation_node(symbol, arguments):
+        1 + syntax_size(arguments),
+      false_node: 1,
+      implication_node(left, right):
+        1 + syntax_size(left) + syntax_size(right),
+      universal_node(body):
+        1 + syntax_size(body)
+    ENDCASES
+  MEASURE node BY <<
+
+  default_element: universe = natural_element(0)
+
+  canonical_tuple(
+      values: [nat -> universe],
+      arity: nat): [nat -> universe] =
+    LAMBDA (index: nat):
+      IF index < arity THEN values(index) ELSE default_element ENDIF
+
+  evaluate_fuel(
+      node: syntax,
+      assignment: [nat -> universe],
+      functions: function_interpretation,
+      fuel: nat,
+      position: nat): RECURSIVE universe =
+    IF fuel = 0 THEN
+      default_element
+    ELSE
+      CASES node OF
+        variable_node(index):
+          assignment(index),
+        application_node(symbol, arguments):
+          functions(
+            symbol,
+            canonical_tuple(
+              LAMBDA (index: nat):
+                evaluate_fuel(
+                  arguments,
+                  assignment,
+                  functions,
+                  fuel - 1,
+                  index),
+              symbol_arity(symbol))),
+        argument_cons(head, tail):
+          IF position = 0 THEN
+            evaluate_fuel(head, assignment, functions, fuel - 1, 0)
+          ELSE
+            evaluate_fuel(
+              tail, assignment, functions, fuel - 1, position - 1)
+          ENDIF,
+        argument_nil:
+          default_element,
+        equality_node(left, right):
+          default_element,
+        relation_node(symbol, arguments):
+          default_element,
+        false_node:
+          default_element,
+        implication_node(left, right):
+          default_element,
+        universal_node(body):
+          default_element
+      ENDCASES
+    ENDIF
+  MEASURE fuel
+
+  evaluate(
+      node: syntax,
+      assignment: [nat -> universe],
+      functions: function_interpretation): universe =
+    evaluate_fuel(
+      node, assignment, functions, syntax_size(node) + 1, 0)
+
+  holds_fuel(
+      phi: syntax,
+      assignment: [nat -> universe],
+      carrier: carrier_predicate,
+      functions: function_interpretation,
+      relations: relation_interpretation,
+      fuel: nat): RECURSIVE bool =
+    IF fuel = 0 THEN
+      FALSE
+    ELSE
+      CASES phi OF
+        equality_node(left, right):
+          evaluate(left, assignment, functions)
+            = evaluate(right, assignment, functions),
+        relation_node(symbol, arguments):
+          relations(
+            symbol,
+            canonical_tuple(
+              LAMBDA (index: nat):
+                evaluate_fuel(
+                  arguments,
+                  assignment,
+                  functions,
+                  syntax_size(arguments) + 1,
+                  index),
+              symbol_arity(symbol))),
+        false_node:
+          FALSE,
+        implication_node(left, right):
+          holds_fuel(
+            left, assignment, carrier, functions, relations, fuel - 1)
+            IMPLIES
+          holds_fuel(
+            right, assignment, carrier, functions, relations, fuel - 1),
+        universal_node(body):
+          FORALL (value: universe):
+            carrier(value)
+              IMPLIES
+                holds_fuel(
+                  body,
+                  LAMBDA (index: nat):
+                    IF index = 0 THEN
+                      value
+                    ELSE
+                      assignment(index - 1)
+                    ENDIF,
+                  carrier,
+                  functions,
+                  relations,
+                  fuel - 1),
+        variable_node(index):
+          FALSE,
+        application_node(symbol, arguments):
+          FALSE,
+        argument_nil:
+          FALSE,
+        argument_cons(head, tail):
+          FALSE
+      ENDCASES
+    ENDIF
+  MEASURE fuel
+
+  holds(
+      phi: syntax,
+      carrier: carrier_predicate,
+      functions: function_interpretation,
+      relations: relation_interpretation): bool =
+    holds_fuel(
+      phi,
+      LAMBDA (index: nat): default_element,
+      carrier,
+      functions,
+      relations,
+      syntax_size(phi) + 1)
+
+  tuple_in_carrier(
+      carrier: carrier_predicate,
+      values: [nat -> universe],
+      arity: nat): bool =
+    FORALL (index: nat):
+      index < arity IMPLIES carrier(values(index))
+
+  is_structure(
+      carrier: carrier_predicate,
+      functions: function_interpretation): bool =
+    (EXISTS (value: universe): carrier(value))
+      AND
+    (FORALL (symbol: Symbol), (values: [nat -> universe]):
+      (symbol_is_function(symbol)
+        AND tuple_in_carrier(carrier, values, symbol_arity(symbol)))
+      IMPLIES
+        carrier(
+          functions(
+            symbol,
+            canonical_tuple(values, symbol_arity(symbol)))))
+
+  models(
+      carrier: carrier_predicate,
+      functions: function_interpretation,
+      relations: relation_interpretation,
+      T: theory_set): bool =
+    is_structure(carrier, functions)
+      AND
+    (FORALL (phi: sentence):
+      T(phi)
+        IMPLIES holds(phi, carrier, functions, relations))
+
+  satisfiable(T: theory_set): bool =
+    EXISTS
+        (carrier: carrier_predicate),
+        (functions: function_interpretation),
+        (relations: relation_interpretation):
+      models(carrier, functions, relations, T)
+
+  subset(T0, T: theory_set): bool =
+    FORALL (phi: sentence):
+      T0(phi) IMPLIES T(phi)
+
+  finite_theory(T0: theory_set): bool =
+    EXISTS (bound: nat), (enumeration: [nat -> sentence]):
+      FORALL (phi: sentence):
+        T0(phi)
+          IFF
+            EXISTS (index: nat):
+              index < bound AND enumeration(index) = phi
+
+  finitely_satisfiable(T: theory_set): bool =
+    FORALL (T0: theory_set):
+      (finite_theory(T0) AND subset(T0, T))
+        IMPLIES satisfiable(T0)
+
+  compactness_theorem: bool =
+    FORALL (T: theory_set):
+      satisfiable(T) IFF finitely_satisfiable(T)
+END compactness_theorem_Q1149458

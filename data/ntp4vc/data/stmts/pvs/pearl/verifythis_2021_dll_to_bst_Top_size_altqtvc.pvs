@@ -1,0 +1,172 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/verifythis_2021_dll_to_bst_Top_size_altqtvc: the loop verification
+% condition for counting the nodes of a well-formed doubly linked list using
+% a preserved suffix invariant and a decreasing integer variant.
+% This file contains no proof.
+
+verifythis_2021_dll_to_bst_Top_size_altqtvc[
+  loc: TYPE+,
+  loc_default: loc,
+  null_loc: loc,
+  map_container: TYPE+
+]: THEORY
+BEGIN
+
+  IMPORTING finite_sets[loc]
+
+  loc_map: TYPE =
+    [# map_domain: finite_set[loc],
+       map_contents: [loc -> loc] #]
+
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  nth_loc_nat(
+      values: list[loc],
+      index: nat): RECURSIVE loc =
+    CASES values OF
+      null:
+        loc_default,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          nth_loc_nat(tail, index - 1)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  nth_loc(values: list[loc], index: int): loc =
+    nth_loc_nat(values, int_to_nat(index))
+
+  valid(
+      prev_map, next_map: loc_map,
+      values: list[loc]): bool =
+    FORALL (i: int):
+      (0 <= i AND i < length(values))
+        IMPLIES
+          nth_loc(values, i) /= null_loc
+            AND map_domain(prev_map)(nth_loc(values, i))
+            AND map_domain(next_map)(nth_loc(values, i))
+            AND
+              (FORALL (j: int):
+                (i < j AND j < length(values))
+                  IMPLIES
+                    nth_loc(values, i) /= nth_loc(values, j))
+
+  dll(
+      prev_map, next_map: loc_map,
+      values: list[loc],
+      head: loc,
+      lo, hi: int): bool =
+    valid(prev_map, next_map, values)
+      AND (0 <= lo AND lo <= hi AND hi <= length(values))
+      AND
+        head =
+          (IF lo = length(values) THEN
+             null_loc
+           ELSE
+             nth_loc(values, lo)
+           ENDIF)
+      AND
+        (FORALL (i: int):
+          (lo <= i AND i < hi - 1)
+            IMPLIES
+              map_contents(next_map)(nth_loc(values, i))
+                = nth_loc(values, i + 1))
+      AND
+        (FORALL (i: int):
+          (lo < i AND i < hi)
+            IMPLIES
+              map_contents(prev_map)(nth_loc(values, i))
+                = nth_loc(values, i - 1))
+      AND
+        (lo < hi
+          IMPLIES
+            map_contents(next_map)(nth_loc(values, hi - 1))
+              =
+                (IF hi = length(values) THEN
+                   null_loc
+                 ELSE
+                   nth_loc(values, hi)
+                 ENDIF))
+      AND
+        (lo < hi
+          IMPLIES
+            map_contents(prev_map)(nth_loc(values, lo))
+              =
+                (IF lo = 0 THEN
+                   null_loc
+                 ELSE
+                   nth_loc(values, lo - 1)
+                 ENDIF))
+
+  loop_obligation(
+      prev_map, next_map: loc_map,
+      values: list[loc],
+      len: int,
+      p: loc): bool =
+    IF p /= null_loc THEN
+      map_domain(next_map)(p)
+        AND
+          (LET o1: loc = map_contents(next_map)(p)
+           IN
+             o1 = map_contents(next_map)(p)
+               IMPLIES
+                 ((0 <= length(values) - len
+                    AND
+                      length(values) - (len + 1)
+                        < length(values) - len)
+                   AND
+                     dll(
+                       prev_map,
+                       next_map,
+                       values,
+                       o1,
+                       len + 1,
+                       length(values))))
+    ELSE
+      len = length(values)
+    ENDIF
+
+  size_alt_vc: bool =
+    FORALL
+      (to_fmap: [map_container -> loc_map]),
+      (prev_table, next_table: map_container),
+      (values: list[loc]),
+      (head: loc):
+      dll(
+        to_fmap(prev_table),
+        to_fmap(next_table),
+        values,
+        head,
+        0,
+        length(values))
+        IMPLIES
+          dll(
+            to_fmap(prev_table),
+            to_fmap(next_table),
+            values,
+            head,
+            0,
+            length(values))
+          AND
+            (FORALL
+              (len: int),
+              (p: loc):
+              dll(
+                to_fmap(prev_table),
+                to_fmap(next_table),
+                values,
+                p,
+                len,
+                length(values))
+                IMPLIES
+                  loop_obligation(
+                    to_fmap(prev_table),
+                    to_fmap(next_table),
+                    values,
+                    len,
+                    p))
+
+END verifythis_2021_dll_to_bst_Top_size_altqtvc

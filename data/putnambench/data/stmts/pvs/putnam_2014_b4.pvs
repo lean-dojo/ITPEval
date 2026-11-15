@@ -1,0 +1,81 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2014_b4:
+% every root of the positive-degree complex polynomial with coefficient
+% 2^(k*(n-k)) at degree k is real. This file contains no proof.
+
+putnam_2014_b4: THEORY
+BEGIN
+  complex: TYPE = [# real_part: real, imag_part: real #]
+  polynomial: TYPE = [nat -> complex]
+
+  complex_zero: complex =
+    (# real_part := 0, imag_part := 0 #)
+
+  complex_one: complex =
+    (# real_part := 1, imag_part := 0 #)
+
+  complex_of_real(value: real): complex =
+    (# real_part := value, imag_part := 0 #)
+
+  complex_add(left, right: complex): complex =
+    (# real_part := real_part(left) + real_part(right),
+       imag_part := imag_part(left) + imag_part(right) #)
+
+  complex_mul(left, right: complex): complex =
+    (# real_part :=
+         real_part(left) * real_part(right)
+           - imag_part(left) * imag_part(right),
+       imag_part :=
+         real_part(left) * imag_part(right)
+           + imag_part(left) * real_part(right) #)
+
+  complex_power(value: complex, exponent: nat): RECURSIVE complex =
+    IF exponent = 0 THEN
+      complex_one
+    ELSE
+      complex_mul(
+        complex_power(value, exponent - 1),
+        value)
+    ENDIF
+  MEASURE exponent
+
+  polynomial_value(
+      coefficients: polynomial,
+      value: complex,
+      count: nat): RECURSIVE complex =
+    IF count = 0 THEN
+      complex_zero
+    ELSE
+      LET k: nat = count - 1 IN
+        complex_add(
+          polynomial_value(coefficients, value, count - 1),
+          complex_mul(
+            coefficients(k),
+            complex_power(value, k)))
+    ENDIF
+  MEASURE count
+
+  has_degree(coefficients: polynomial, degree: nat): bool =
+    coefficients(degree) /= complex_zero
+      AND FORALL (k: nat):
+        k > degree IMPLIES coefficients(k) = complex_zero
+
+  has_putnam_coefficients(
+      coefficients: polynomial,
+      n: nat): bool =
+    FORALL (k: nat):
+      k <= n IMPLIES
+        coefficients(k)
+          = complex_of_real(
+              (2 :: real) ^ (k * (n - k)))
+
+  putnam_2014_b4: bool =
+    FORALL (n: nat), (coefficients: polynomial):
+      (n > 0
+        AND has_degree(coefficients, n)
+        AND has_putnam_coefficients(coefficients, n))
+      IMPLIES
+        FORALL (root: complex):
+          polynomial_value(coefficients, root, n + 1)
+              = complex_zero
+            IMPLIES imag_part(root) = 0
+END putnam_2014_b4

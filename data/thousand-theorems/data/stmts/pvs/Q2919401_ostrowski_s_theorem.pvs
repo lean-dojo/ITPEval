@@ -1,0 +1,78 @@
+% Statement-only formalization of the Thousand Theorems corpus artifact Q2919401,
+% "Ostrowski's theorem": every nontrivial real-valued absolute value on the
+% rationals is equivalent either to the standard absolute value or uniquely to
+% a normalized p-adic absolute value for a prime p. This file contains no proof.
+
+Q2919401_ostrowski_s_theorem: THEORY
+BEGIN
+  rational_absolute_value: TYPE = [rat -> real]
+
+  nat_divides(divisor, value: nat): bool =
+    EXISTS (quotient: nat):
+      value = divisor * quotient
+
+  prime_nat(value: nat): bool =
+    value >= 2
+      AND FORALL (divisor: nat):
+        nat_divides(divisor, value)
+          IMPLIES divisor = 1 OR divisor = value
+
+  absolute_real(x: real): real =
+    IF x >= 0 THEN x ELSE -x ENDIF
+
+  standard_absolute_value(q: rat): real =
+    absolute_real(q)
+
+  is_absolute_value(v: rational_absolute_value): bool =
+    (FORALL (x: rat): v(x) >= 0)
+      AND (FORALL (x: rat): v(x) = 0 IFF x = 0)
+      AND (FORALL (x, y: rat):
+        v(x * y) = v(x) * v(y))
+      AND (FORALL (x, y: rat):
+        v(x + y) <= v(x) + v(y))
+
+  is_nontrivial(v: rational_absolute_value): bool =
+    EXISTS (x: rat):
+      v(x) /= 0 AND v(x) /= 1
+
+  equivalent_absolute_values(
+      left, right: rational_absolute_value): bool =
+    FORALL (x, y: rat):
+      (left(x) <= left(y)) IFF (right(x) <= right(y))
+
+  reciprocal_nat(value: nat): real =
+    IF value = 0 THEN
+      0
+    ELSE
+      1 / (value :: real)
+    ENDIF
+
+  normalized_padic_absolute_value(
+      p: nat, v: rational_absolute_value): bool =
+    prime_nat(p)
+      AND is_absolute_value(v)
+      AND v(p :: rat) = reciprocal_nat(p)
+      AND (FORALL (q: nat):
+        (prime_nat(q) AND q /= p)
+          IMPLIES v(q :: rat) = 1)
+
+  equivalent_to_padic_at(
+      v: rational_absolute_value, p: nat): bool =
+    EXISTS (padic_value: rational_absolute_value):
+      normalized_padic_absolute_value(p, padic_value)
+        AND equivalent_absolute_values(v, padic_value)
+
+  uniquely_equivalent_to_a_padic_value(
+      v: rational_absolute_value): bool =
+    EXISTS (p: nat):
+      equivalent_to_padic_at(v, p)
+        AND (FORALL (q: nat):
+          equivalent_to_padic_at(v, q) IMPLIES q = p)
+
+  ostrowski_s_theorem: bool =
+    FORALL (v: rational_absolute_value):
+      (is_absolute_value(v) AND is_nontrivial(v))
+        IMPLIES
+          equivalent_absolute_values(v, standard_absolute_value)
+            OR uniquely_equivalent_to_a_padic_value(v)
+END Q2919401_ostrowski_s_theorem

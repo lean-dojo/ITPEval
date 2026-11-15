@@ -1,0 +1,121 @@
+% Statement-only formalization of the thousand-theorems corpus artifact Q2525646,
+% "Jordan–Hölder theorem": composition series with the same head and last term
+% are equivalent in any Jordan–Hölder lattice. This file contains no proof.
+
+Q2525646_jordan_h_lder_theorem[
+  X: TYPE,
+  le_rel: [X, X -> bool],
+  inf_op: [X, X -> X],
+  sup_op: [X, X -> X],
+  is_maximal: [X, X -> bool],
+  factor_iso: [X, X, X, X -> bool]
+]: THEORY
+BEGIN
+  strict_less(x, y: X): bool =
+    le_rel(x, y) AND x /= y
+
+  lattice_laws: bool =
+    (FORALL (x: X): le_rel(x, x))
+      AND (FORALL (x, y, z: X):
+        le_rel(x, y) AND le_rel(y, z) IMPLIES le_rel(x, z))
+      AND (FORALL (x, y: X):
+        le_rel(x, y) AND le_rel(y, x) IMPLIES x = y)
+      AND (FORALL (x, y: X):
+        le_rel(inf_op(x, y), x)
+          AND le_rel(inf_op(x, y), y))
+      AND (FORALL (x, y, z: X):
+        le_rel(z, x) AND le_rel(z, y)
+          IMPLIES le_rel(z, inf_op(x, y)))
+      AND (FORALL (x, y: X):
+        le_rel(x, sup_op(x, y))
+          AND le_rel(y, sup_op(x, y)))
+      AND (FORALL (x, y, z: X):
+        le_rel(x, z) AND le_rel(y, z)
+          IMPLIES le_rel(sup_op(x, y), z))
+
+  jordan_holder_laws: bool =
+    (FORALL (x, y: X):
+      is_maximal(x, y) IMPLIES strict_less(x, y))
+      AND (FORALL (x, y, z: X):
+        is_maximal(x, z)
+          AND is_maximal(y, z)
+          AND x /= y
+        IMPLIES sup_op(x, y) = z)
+      AND (FORALL (x, y: X):
+        is_maximal(x, sup_op(x, y))
+          AND is_maximal(y, sup_op(x, y))
+        IMPLIES is_maximal(inf_op(x, y), x))
+      AND (FORALL (a, b, c, d: X):
+        factor_iso(a, b, c, d)
+          IMPLIES factor_iso(c, d, a, b))
+      AND (FORALL (a, b, c, d, e, f: X):
+        factor_iso(a, b, c, d)
+          AND factor_iso(c, d, e, f)
+        IMPLIES factor_iso(a, b, e, f))
+      AND (FORALL (x, y: X):
+        is_maximal(x, sup_op(x, y))
+          IMPLIES
+            factor_iso(
+              x,
+              sup_op(x, y),
+              inf_op(x, y),
+              y))
+
+  composition_series(
+      series_length: nat,
+      series: [nat -> X]): bool =
+    FORALL (i: nat):
+      i < series_length
+        IMPLIES is_maximal(series(i), series(i + 1))
+
+  bounded_bijection(
+      map: [nat -> nat],
+      left_length, right_length: nat): bool =
+    (FORALL (i: nat):
+      i < left_length IMPLIES map(i) < right_length)
+      AND (FORALL (i, j: nat):
+        i < left_length
+          AND j < left_length
+          AND map(i) = map(j)
+        IMPLIES i = j)
+      AND (FORALL (j: nat):
+        j < right_length
+          IMPLIES
+            EXISTS (i: nat):
+              i < left_length AND map(i) = j)
+
+  equivalent(
+      left_length, right_length: nat,
+      left_series, right_series: [nat -> X]): bool =
+    EXISTS (factor_map: [nat -> nat]):
+      bounded_bijection(
+        factor_map,
+        left_length,
+        right_length)
+        AND (FORALL (i: nat):
+          i < left_length
+            IMPLIES
+              factor_iso(
+                left_series(i),
+                left_series(i + 1),
+                right_series(factor_map(i)),
+                right_series(factor_map(i) + 1)))
+
+  jordan_holder_theorem: bool =
+    lattice_laws
+      AND jordan_holder_laws
+    IMPLIES
+      (FORALL (left_length, right_length: nat),
+              (left_series, right_series: [nat -> X]):
+        composition_series(left_length, left_series)
+          AND composition_series(right_length, right_series)
+          AND left_series(0) = right_series(0)
+          AND left_series(left_length) =
+            right_series(right_length)
+        IMPLIES
+          equivalent(
+            left_length,
+            right_length,
+            left_series,
+            right_series))
+END Q2525646_jordan_h_lder_theorem

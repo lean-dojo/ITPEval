@@ -1,0 +1,69 @@
+% Statement-only formalization of PutnamBench artifact putnam_1973_a6:
+% seven distinct real lines cannot have at least six points incident with a
+% unique triple of the lines and at least four points incident with a unique
+% pair of the lines. This file contains no proof.
+
+putnam_1973_a6: THEORY
+BEGIN
+  line_index: TYPE = below(7)
+  point: TYPE = [# x_coord: real, y_coord: real #]
+  line: TYPE = [# slope: real, intercept: real #]
+  line_family: TYPE = [line_index -> line]
+  point_set: TYPE = [point -> bool]
+
+  IMPORTING finite_sets[line_index], finite_sets[point]
+
+  lies_on(P: point, L: line): bool =
+    y_coord(P) = slope(L) * x_coord(P) + intercept(L)
+
+  common_point(
+      P: point,
+      lines: line_family,
+      indices: finite_set[line_index]): bool =
+    FORALL (i: line_index):
+      indices(i) IMPLIES lies_on(P, lines(i))
+
+  qualifying_subset(
+      n: nat,
+      P: point,
+      lines: line_family,
+      indices: finite_set[line_index]): bool =
+    card(indices) = n
+      AND common_point(P, lines, indices)
+
+  has_unique_qualifying_subset(
+      n: nat,
+      P: point,
+      lines: line_family): bool =
+    EXISTS (indices: finite_set[line_index]):
+      qualifying_subset(n, P, lines, indices)
+        AND
+          (FORALL (other: finite_set[line_index]):
+            qualifying_subset(n, P, lines, other)
+              IMPLIES other = indices)
+
+  intersection_points(
+      n: nat,
+      lines: line_family): point_set =
+    LAMBDA (P: point):
+      has_unique_qualifying_subset(n, P, lines)
+
+  has_at_least(
+      S: point_set,
+      lower_bound: nat): bool =
+    EXISTS (witnesses: finite_set[point]):
+      card(witnesses) >= lower_bound
+        AND
+          (FORALL (P: point):
+            witnesses(P) IMPLIES S(P))
+
+  distinct_lines(lines: line_family): bool =
+    FORALL (i, j: line_index):
+      i /= j IMPLIES lines(i) /= lines(j)
+
+  putnam_1973_a6: bool =
+    NOT EXISTS (lines: line_family):
+      distinct_lines(lines)
+        AND has_at_least(intersection_points(3, lines), 6)
+        AND has_at_least(intersection_points(2, lines), 4)
+END putnam_1973_a6

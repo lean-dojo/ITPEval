@@ -1,0 +1,138 @@
+% Statement-only formalization of the VERINA corpus artifact
+% verina_basic_105, catalog title "arrayProduct": computing the elementwise
+% product of two equal-length integer arrays. This file contains no proof.
+
+verina_basic_105: THEORY
+BEGIN
+
+  % Finite PVS lists preserve the exact contents and order of Lean arrays.
+  int_list_length(values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        int_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  % Lean's Array.get! on integer arrays returns zero outside the array.
+  int_list_get_bang(
+      index: nat,
+      values: list[int]): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          int_list_get_bang(index - 1, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  % This is Array.set!: replace an in-bounds entry and leave the array
+  % unchanged when the index is out of bounds.
+  int_list_set_bang(
+      index: nat,
+      new_value: int,
+      values: list[int]): RECURSIVE list[int] =
+    CASES values OF
+      null:
+        null,
+      cons(head, tail):
+        IF index = 0 THEN
+          cons(new_value, tail)
+        ELSE
+          cons(
+            head,
+            int_list_set_bang(
+              index - 1,
+              new_value,
+              tail))
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  int_array_mk(
+      size: nat,
+      initial_value: int): RECURSIVE list[int] =
+    IF size = 0 THEN
+      null
+    ELSE
+      cons(
+        initial_value,
+        int_array_mk(size - 1, initial_value))
+    ENDIF
+  MEASURE size
+
+  nat_sub(first, second: nat): nat =
+    IF first >= second THEN first - second ELSE 0 ENDIF
+
+  arrayProduct_precond(
+      a, b: list[int]): bool =
+    int_list_length(a) = int_list_length(b)
+
+  % The remaining-step argument is the exact fuel len - i of the source loop.
+  arrayProduct_loop_steps(
+      a, b: list[int],
+      i, remaining: nat,
+      c: list[int]): RECURSIVE list[int] =
+    IF remaining = 0 THEN
+      c
+    ELSE
+      LET a_val: int = int_list_get_bang(i, a),
+          b_val: int = int_list_get_bang(i, b),
+          new_c: list[int] =
+            int_list_set_bang(i, a_val * b_val, c)
+      IN
+        arrayProduct_loop_steps(
+          a,
+          b,
+          i + 1,
+          remaining - 1,
+          new_c)
+    ENDIF
+  MEASURE remaining
+
+  % Exact rendering of the source helper loop for arbitrary len, i, and c.
+  arrayProduct_loop(
+      a, b: list[int],
+      len, i: nat,
+      c: list[int]): list[int] =
+    arrayProduct_loop_steps(
+      a,
+      b,
+      i,
+      nat_sub(len, i),
+      c)
+
+  % The source precondition proof argument is computationally irrelevant.
+  arrayProduct(
+      a, b: list[int]): list[int] =
+    LET len: nat = int_list_length(a),
+        c: list[int] = int_array_mk(len, 0)
+    IN
+      arrayProduct_loop(a, b, len, 0, c)
+
+  arrayProduct_postcond(
+      a, b, result: list[int]): bool =
+    int_list_length(result) = int_list_length(a)
+      AND
+        (FORALL (i: nat):
+          i < int_list_length(a)
+            IMPLIES
+              int_list_get_bang(i, a)
+                * int_list_get_bang(i, b)
+                = int_list_get_bang(i, result))
+
+  arrayProduct_spec_satisfied: bool =
+    FORALL (a, b: list[int]):
+      arrayProduct_precond(a, b)
+        IMPLIES
+          arrayProduct_postcond(
+            a,
+            b,
+            arrayProduct(a, b))
+
+END verina_basic_105

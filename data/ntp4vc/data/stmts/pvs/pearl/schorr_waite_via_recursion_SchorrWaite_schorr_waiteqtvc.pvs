@@ -1,0 +1,772 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/schorr_waite_via_recursion_SchorrWaite_schorr_waiteqtvc:
+% the verification condition for the recursive justification of the
+% general-record Schorr-Waite graph-marking algorithm, including memory
+% updates, DFS invariants, termination, and the reachability result.
+% This file contains no proof.
+
+schorr_waite_via_recursion_SchorrWaite_schorr_waiteqtvc[
+  loc: TYPE+,
+  null_loc: loc
+]: THEORY
+BEGIN
+
+  IMPORTING finite_sets[loc]
+
+  % This is the constructor-for-constructor flattening of
+  % White | Black(option int).
+  color: DATATYPE
+  BEGIN
+    White: White?
+    BlackNone: BlackNone?
+    BlackSome(mark_index: int): BlackSome?
+  END color
+
+  memory: TYPE =
+    [# block_size: [loc -> int],
+       accessor: [loc -> [int -> loc]],
+       colors: [loc -> color] #]
+
+  sw_state: TYPE =
+    [# pointer: loc,
+       target: loc,
+       heap: memory #]
+
+  make_state(p, t: loc, m: memory): sw_state =
+    (# pointer := p, target := t, heap := m #)
+
+  black(c: color): bool =
+    NOT White?(c)
+
+  update_color_map(
+      mapping: [loc -> color],
+      point: loc,
+      value: color): [loc -> color] =
+    mapping WITH [(point) := value]
+
+  update_acc_row(
+      row: [int -> loc],
+      index: int,
+      value: loc): [int -> loc] =
+    row WITH [(index) := value]
+
+  update_acc_map(
+      mapping: [loc -> [int -> loc]],
+      point: loc,
+      index: int,
+      value: loc): [loc -> [int -> loc]] =
+    mapping WITH
+      [(point) := update_acc_row(mapping(point), index, value)]
+
+  set_color_memory(
+      m: memory,
+      point: loc,
+      value: color): memory =
+    (# block_size := block_size(m),
+       accessor := accessor(m),
+       colors := update_color_map(colors(m), point, value) #)
+
+  set_acc_memory(
+      m: memory,
+      point: loc,
+      index: int,
+      value: loc): memory =
+    (# block_size := block_size(m),
+       accessor := update_acc_map(accessor(m), point, index, value),
+       colors := colors(m) #)
+
+  same_block_size(left, right: memory): bool =
+    block_size(left) = block_size(right)
+
+  edge(m: memory, source, destination: loc): bool =
+    source /= null_loc
+      AND
+        (EXISTS (index: int):
+          0 <= index
+            AND index < block_size(m)(source)
+            AND accessor(m)(source)(index) = destination)
+
+  path_chain(
+      m: memory,
+      source, destination: loc,
+      trace: list[loc]): RECURSIVE bool =
+    CASES trace OF
+      null:
+        source = destination,
+      cons(next_node, tail):
+        edge(m, source, next_node)
+          AND path_chain(m, next_node, destination, tail)
+    ENDCASES
+  MEASURE trace BY <<
+
+  path(m: memory, source, destination: loc): bool =
+    EXISTS (trace: list[loc]):
+      path_chain(m, source, destination, trace)
+
+  well_colored_on(
+      graph, gray: finite_set[loc],
+      initial: memory,
+      current_colors: [loc -> color]): bool =
+    subset?(gray, graph)
+      AND
+        (FORALL (source, destination: loc):
+          (graph(source)
+            AND edge(initial, source, destination)
+            AND destination /= null_loc
+            AND black(current_colors(source)))
+              IMPLIES
+                (gray(source)
+                  OR black(current_colors(destination))))
+      AND
+        (FORALL (node: loc):
+          gray(node) IMPLIES black(current_colors(node)))
+
+  unchanged(old_heap, new_heap: memory): bool =
+    FORALL (node: loc), (index: int):
+      (node /= null_loc
+        AND 0 <= index
+        AND index < block_size(old_heap)(node))
+          IMPLIES
+            accessor(new_heap)(node)(index)
+              = accessor(old_heap)(node)(index)
+
+  marked_or_null(state: sw_state): bool =
+    target(state) = null_loc
+      OR black(colors(heap(state))(target(state)))
+
+  stop_condition(state: sw_state): bool =
+    pointer(state) = null_loc
+      AND marked_or_null(state)
+
+  valid_black_index(state: sw_state): bool =
+    LET c: color = colors(heap(state))(pointer(state)) IN
+      IF BlackSome?(c) THEN
+        0 <= mark_index(c)
+          AND mark_index(c) < block_size(heap(state))(pointer(state))
+      ELSE
+        FALSE
+      ENDIF
+
+  body_pre(state: sw_state): bool =
+    (pointer(state) /= null_loc AND marked_or_null(state))
+      IMPLIES valid_black_index(state)
+
+  body_normal_post(old_state, new_state: sw_state): bool =
+    same_block_size(heap(new_state), heap(old_state))
+    AND
+      (pointer(old_state) /= null_loc
+        OR
+          (target(old_state) /= null_loc
+            AND
+              NOT black(
+                colors(heap(old_state))(target(old_state)))))
+    AND
+      ((target(old_state) /= null_loc
+        AND
+          NOT black(colors(heap(old_state))(target(old_state)))
+        AND block_size(heap(old_state))(target(old_state)) = 0)
+        IMPLIES
+          (colors(heap(new_state))
+              = update_color_map(
+                  colors(heap(old_state)),
+                  target(old_state),
+                  BlackNone)
+            AND target(new_state) = target(old_state)
+            AND pointer(new_state) = pointer(old_state)
+            AND accessor(heap(new_state))
+                  = accessor(heap(old_state))))
+    AND
+      ((target(old_state) /= null_loc
+        AND
+          NOT black(colors(heap(old_state))(target(old_state)))
+        AND 0 < block_size(heap(old_state))(target(old_state)))
+        IMPLIES
+          (colors(heap(new_state))
+              = update_color_map(
+                  colors(heap(old_state)),
+                  target(old_state),
+                  BlackSome(0))
+            AND
+              target(new_state)
+                = accessor(heap(old_state))(target(old_state))(0)
+            AND pointer(new_state) = target(old_state)
+            AND
+              accessor(heap(new_state))
+                = update_acc_map(
+                    accessor(heap(old_state)),
+                    target(old_state),
+                    0,
+                    pointer(old_state))))
+    AND
+      (marked_or_null(old_state)
+        IMPLIES
+          (LET c: color =
+                 colors(heap(old_state))(pointer(old_state))
+           IN
+             IF BlackSome?(c) THEN
+               LET index: int = mark_index(c),
+                   next_index: int = index + 1
+               IN
+                 IF next_index
+                      = block_size(heap(old_state))(pointer(old_state))
+                 THEN
+                   target(new_state) = pointer(old_state)
+                     AND
+                       pointer(new_state)
+                         = accessor(heap(old_state))
+                             (pointer(old_state))(index)
+                     AND colors(heap(new_state))
+                           = colors(heap(old_state))
+                     AND
+                       accessor(heap(new_state))
+                         = update_acc_map(
+                             accessor(heap(old_state)),
+                             pointer(old_state),
+                             index,
+                             target(old_state))
+                 ELSE
+                   pointer(new_state) = pointer(old_state)
+                     AND
+                       target(new_state)
+                         = accessor(heap(old_state))
+                             (pointer(old_state))(next_index)
+                     AND
+                       colors(heap(new_state))
+                         = update_color_map(
+                             colors(heap(old_state)),
+                             pointer(old_state),
+                             BlackSome(next_index))
+                     AND
+                       accessor(heap(new_state))
+                         = update_acc_map(
+                             update_acc_map(
+                               accessor(heap(old_state)),
+                               pointer(old_state),
+                               next_index,
+                               accessor(heap(old_state))
+                                 (pointer(old_state))(index)),
+                             pointer(old_state),
+                             index,
+                             target(old_state))
+                 ENDIF
+             ELSE
+               FALSE
+             ENDIF))
+
+  body_stop_post(old_state: sw_state, new_heap: memory): bool =
+    same_block_size(new_heap, heap(old_state))
+      AND stop_condition(old_state)
+      AND colors(new_heap) = colors(heap(old_state))
+      AND accessor(new_heap) = accessor(heap(old_state))
+
+  pop_state(state: sw_state, index: int): sw_state =
+    make_state(
+      accessor(heap(state))(pointer(state))(index),
+      pointer(state),
+      set_acc_memory(
+        heap(state),
+        pointer(state),
+        index,
+        target(state)))
+
+  swing_state(
+      state: sw_state,
+      index, next_index: int): sw_state =
+    LET moved: memory =
+          set_acc_memory(
+            heap(state),
+            pointer(state),
+            next_index,
+            accessor(heap(state))(pointer(state))(index)),
+        restored: memory =
+          set_acc_memory(
+            moved,
+            pointer(state),
+            index,
+            target(state)),
+        recolored: memory =
+          set_color_memory(
+            restored,
+            pointer(state),
+            BlackSome(next_index))
+    IN
+      make_state(
+        pointer(state),
+        accessor(heap(state))(pointer(state))(next_index),
+        recolored)
+
+  mark_zero_state(state: sw_state): sw_state =
+    make_state(
+      pointer(state),
+      target(state),
+      set_color_memory(
+        heap(state),
+        target(state),
+        BlackNone))
+
+  push_state(state: sw_state): sw_state =
+    LET rewired: memory =
+          set_acc_memory(
+            heap(state),
+            target(state),
+            0,
+            pointer(state)),
+        recolored: memory =
+          set_color_memory(
+            rewired,
+            target(state),
+            BlackSome(0))
+    IN
+      make_state(
+        target(state),
+        accessor(heap(state))(target(state))(0),
+        recolored)
+
+  % The nested memory witnesses in the generated VC are represented here by
+  % their extensionally unique record updates.
+  body_code_vc(state: sw_state): bool =
+    body_pre(state)
+      IMPLIES
+        IF stop_condition(state) THEN
+          body_stop_post(state, heap(state))
+        ELSIF marked_or_null(state) THEN
+          pointer(state) /= null_loc
+            AND valid_black_index(state)
+            AND
+              (LET c: color =
+                     colors(heap(state))(pointer(state))
+               IN
+                 IF BlackSome?(c) THEN
+                   LET index: int = mark_index(c),
+                       size: int =
+                         block_size(heap(state))(pointer(state)),
+                       next_index: int = index + 1
+                   IN
+                     0 <= size
+                       IMPLIES
+                         IF next_index = size THEN
+                           0 <= index
+                             AND index < size
+                             AND
+                               body_normal_post(
+                                 state,
+                                 pop_state(state, index))
+                         ELSE
+                           0 <= index
+                             AND index < size
+                             AND 0 <= next_index
+                             AND next_index < size
+                             AND
+                               body_normal_post(
+                                 state,
+                                 swing_state(
+                                   state,
+                                   index,
+                                   next_index))
+                         ENDIF
+                 ELSE
+                   FALSE
+                 ENDIF)
+        ELSE
+          target(state) /= null_loc
+            AND
+              (LET size: int =
+                     block_size(heap(state))(target(state))
+               IN
+                 0 <= size
+                   IMPLIES
+                     IF size = 0 THEN
+                       body_normal_post(
+                         state,
+                         mark_zero_state(state))
+                     ELSE
+                       0 < size
+                         AND
+                           body_normal_post(
+                             state,
+                             push_state(state))
+                     ENDIF)
+        ENDIF
+
+  graph_closed(graph: finite_set[loc], initial: memory): bool =
+    FORALL (node: loc), (index: int):
+      (graph(node)
+        AND node /= null_loc
+        AND 0 <= index
+        AND index < block_size(initial)(node))
+          IMPLIES graph(accessor(initial)(node)(index))
+
+  initially_white(graph: finite_set[loc], initial: memory): bool =
+    FORALL (node: loc):
+      graph(node) IMPLIES NOT black(colors(initial)(node))
+
+  aux_pre(
+      graph, gray: finite_set[loc],
+      initial: memory,
+      state: sw_state): bool =
+    well_colored_on(
+      graph,
+      gray,
+      initial,
+      colors(heap(state)))
+    AND graph(target(state))
+    AND
+      (FORALL (node: loc), (index: int):
+        (node /= null_loc
+          AND NOT black(colors(heap(state))(node))
+          AND 0 <= index
+          AND index < block_size(heap(state))(node))
+            IMPLIES
+              accessor(heap(state))(node)(index)
+                = accessor(initial)(node)(index))
+
+  aux_post(
+      graph, gray: finite_set[loc],
+      initial: memory,
+      old_state, new_state: sw_state): bool =
+    same_block_size(heap(new_state), heap(old_state))
+    AND target(new_state) = target(old_state)
+    AND pointer(new_state) = pointer(old_state)
+    AND unchanged(heap(old_state), heap(new_state))
+    AND
+      well_colored_on(
+        graph,
+        gray,
+        initial,
+        colors(heap(new_state)))
+    AND
+      (black(colors(heap(new_state))(target(new_state)))
+        OR target(new_state) = null_loc)
+    AND
+      (FORALL (node: loc):
+        node /= null_loc
+          IMPLIES
+            ((NOT path(initial, target(old_state), node)
+              OR black(colors(heap(old_state))(node)))
+              IMPLIES
+                colors(heap(new_state))(node)
+                  = colors(heap(old_state))(node)))
+
+  variant_decreases(
+      graph, gray, larger_gray: finite_set[loc]): bool =
+    0 <= (card(graph) :: int) - (card(gray) :: int)
+      AND
+        (card(graph) :: int) - (card(larger_gray) :: int)
+          < (card(graph) :: int) - (card(gray) :: int)
+
+  loop_invariant(
+      graph, enlarged_gray: finite_set[loc],
+      initial: memory,
+      entry_state, current_state: sw_state,
+      size, index: int): bool =
+    well_colored_on(
+      graph,
+      enlarged_gray,
+      initial,
+      colors(heap(current_state)))
+    AND pointer(current_state) = target(entry_state)
+    AND
+      target(current_state)
+        = accessor(initial)(pointer(current_state))(index)
+    AND
+      colors(heap(current_state))(pointer(current_state))
+        = BlackSome(index)
+    AND
+      (FORALL (other_index: int):
+        (0 <= other_index
+          AND other_index < size
+          AND other_index /= index)
+            IMPLIES
+              accessor(heap(current_state))
+                (pointer(current_state))(other_index)
+                = accessor(heap(entry_state))
+                    (pointer(current_state))(other_index))
+    AND
+      accessor(heap(current_state))(pointer(current_state))(index)
+        = pointer(entry_state)
+    AND
+      (FORALL (node: loc), (other_index: int):
+        (node /= null_loc
+          AND node /= pointer(current_state)
+          AND 0 <= other_index
+          AND
+            other_index
+              < block_size(heap(current_state))(node))
+            IMPLIES
+              accessor(heap(current_state))(node)(other_index)
+                = accessor(heap(entry_state))(node)(other_index))
+    AND
+      (FORALL (earlier: int):
+        (0 <= earlier AND earlier < index)
+          IMPLIES
+            (LET node: loc =
+                   accessor(heap(current_state))
+                     (pointer(current_state))(earlier)
+             IN
+               node = null_loc
+                 OR black(colors(heap(current_state))(node))))
+    AND
+      (FORALL (node: loc):
+        node /= null_loc
+          IMPLIES
+            ((NOT path(initial, pointer(current_state), node)
+              OR black(colors(heap(entry_state))(node)))
+              IMPLIES
+                colors(heap(current_state))(node)
+                  = colors(heap(entry_state))(node)))
+
+  recursive_step_obligation(
+      graph, gray, enlarged_gray: finite_set[loc],
+      initial: memory,
+      entry_state, current_state: sw_state,
+      size, index: int): bool =
+    variant_decreases(graph, gray, enlarged_gray)
+    AND aux_pre(graph, enlarged_gray, initial, current_state)
+    AND
+      (FORALL (after_aux: sw_state):
+        aux_post(
+          graph,
+          enlarged_gray,
+          initial,
+          current_state,
+          after_aux)
+          IMPLIES
+            (body_pre(after_aux)
+              AND
+                (FORALL (after_body: sw_state):
+                  body_normal_post(after_aux, after_body)
+                    IMPLIES
+                      (loop_invariant(
+                         graph,
+                         enlarged_gray,
+                         initial,
+                         entry_state,
+                         after_body,
+                         size,
+                         index + 1)
+                       AND
+                         NOT body_stop_post(
+                           after_aux,
+                           heap(after_body))))))
+
+  recursive_finish_obligation(
+      graph, gray, enlarged_gray: finite_set[loc],
+      initial: memory,
+      entry_state, current_state: sw_state): bool =
+    variant_decreases(graph, gray, enlarged_gray)
+    AND aux_pre(graph, enlarged_gray, initial, current_state)
+    AND
+      (FORALL (after_aux: sw_state):
+        aux_post(
+          graph,
+          enlarged_gray,
+          initial,
+          current_state,
+          after_aux)
+          IMPLIES
+            (body_pre(after_aux)
+              AND
+                (FORALL (after_body: sw_state):
+                  body_normal_post(after_aux, after_body)
+                    IMPLIES
+                      (aux_post(
+                         graph,
+                         gray,
+                         initial,
+                         entry_state,
+                         after_body)
+                       AND
+                         NOT body_stop_post(
+                           after_aux,
+                           heap(after_body))))))
+
+  aux_vc_for_gray(
+      graph, gray: finite_set[loc],
+      initial: memory,
+      entry_state: sw_state): bool =
+    aux_pre(graph, gray, initial, entry_state)
+      IMPLIES
+        IF marked_or_null(entry_state) THEN
+          aux_post(
+            graph,
+            gray,
+            initial,
+            entry_state,
+            entry_state)
+        ELSE
+          target(entry_state) /= null_loc
+            AND
+              (LET size: int =
+                     block_size(heap(entry_state))(target(entry_state)),
+                   enlarged_gray: finite_set[loc] =
+                     add(target(entry_state), gray)
+               IN
+                 0 <= size
+                 IMPLIES
+                 (body_pre(entry_state)
+                 AND
+                   (FORALL (after_first_body: sw_state):
+                     body_normal_post(
+                       entry_state,
+                       after_first_body)
+                       IMPLIES
+                         ((IF size /= 0 THEN
+                             LET upper: int = size - 2 IN
+                               ((0 <= upper + 1)
+                                 IMPLIES
+                                   (loop_invariant(
+                                      graph,
+                                      enlarged_gray,
+                                      initial,
+                                      entry_state,
+                                      after_first_body,
+                                      size,
+                                      0)
+                                    AND
+                                      (FORALL
+                                          (index: int),
+                                          (current_state: sw_state):
+                                        (0 <= index
+                                          AND index <= upper
+                                          AND
+                                            same_block_size(
+                                              heap(current_state),
+                                              heap(after_first_body))
+                                          AND
+                                            loop_invariant(
+                                              graph,
+                                              enlarged_gray,
+                                              initial,
+                                              entry_state,
+                                              current_state,
+                                              size,
+                                              index))
+                                          IMPLIES
+                                            recursive_step_obligation(
+                                              graph,
+                                              gray,
+                                              enlarged_gray,
+                                              initial,
+                                              entry_state,
+                                              current_state,
+                                              size,
+                                              index))
+                                    AND
+                                      (FORALL
+                                          (current_state: sw_state):
+                                        (same_block_size(
+                                           heap(current_state),
+                                           heap(after_first_body))
+                                          AND
+                                           loop_invariant(
+                                             graph,
+                                             enlarged_gray,
+                                             initial,
+                                             entry_state,
+                                             current_state,
+                                             size,
+                                             upper + 1))
+                                          IMPLIES
+                                            recursive_finish_obligation(
+                                              graph,
+                                              gray,
+                                              enlarged_gray,
+                                              initial,
+                                              entry_state,
+                                              current_state))))
+                               AND
+                                 ((upper + 1 < 0)
+                                   IMPLIES
+                                     recursive_finish_obligation(
+                                       graph,
+                                       gray,
+                                       enlarged_gray,
+                                       initial,
+                                       entry_state,
+                                       after_first_body))
+                           ELSE
+                             aux_post(
+                               graph,
+                               gray,
+                               initial,
+                               entry_state,
+                               after_first_body)
+                           ENDIF)
+                          AND
+                            NOT body_stop_post(
+                              entry_state,
+                              heap(after_first_body))))))
+        ENDIF
+
+  aux_vc(
+      graph: finite_set[loc],
+      initial: memory,
+      state: sw_state): bool =
+    FORALL (gray: finite_set[loc]):
+      aux_vc_for_gray(graph, gray, initial, state)
+
+  final_post(
+      root: loc,
+      initial, final_heap: memory): bool =
+    unchanged(initial, final_heap)
+    AND
+      (FORALL (node: loc):
+        (path(initial, root, node) AND node /= null_loc)
+          IMPLIES black(colors(final_heap)(node)))
+    AND
+      (FORALL (node: loc):
+        (NOT path(initial, root, node) AND node /= null_loc)
+          IMPLIES
+            colors(final_heap)(node) = colors(initial)(node))
+
+  main_vc(
+      root: loc,
+      graph: finite_set[loc],
+      initial: memory): bool =
+    LET empty_gray: finite_set[loc] = emptyset[loc],
+        initial_state: sw_state =
+          make_state(null_loc, root, initial)
+    IN
+      aux_pre(graph, empty_gray, initial, initial_state)
+      AND
+        (FORALL (after_aux: sw_state):
+          aux_post(
+            graph,
+            empty_gray,
+            initial,
+            initial_state,
+            after_aux)
+            IMPLIES
+              (body_pre(after_aux)
+                AND
+                  (FORALL (after_body: sw_state):
+                    NOT body_normal_post(after_aux, after_body)
+                    AND
+                      (body_stop_post(
+                         after_aux,
+                         heap(after_body))
+                        IMPLIES
+                          final_post(
+                            root,
+                            initial,
+                            heap(after_body))))))
+
+  schorr_waite_vc: bool =
+    FORALL
+        (root: loc),
+        (graph: finite_set[loc]),
+        (initial: memory):
+      (graph(root)
+        AND graph_closed(graph, initial)
+        AND initially_white(graph, initial))
+        IMPLIES
+          ((FORALL (state: sw_state):
+             same_block_size(heap(state), initial)
+               IMPLIES body_code_vc(state))
+           AND
+             (FORALL (state: sw_state):
+               same_block_size(heap(state), initial)
+                 IMPLIES aux_vc(graph, initial, state))
+           AND main_vc(root, graph, initial))
+
+END schorr_waite_via_recursion_SchorrWaite_schorr_waiteqtvc

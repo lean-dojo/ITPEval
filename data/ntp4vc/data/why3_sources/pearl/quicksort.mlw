@@ -1,0 +1,276 @@
+
+(** {1 Sorting an array of integers using quicksort} *)
+
+(** {2 with a partitioning a la Bentley} *)
+
+module Quicksort
+
+  use int.Int
+  use ref.Ref
+  use array.Array
+  use array.IntArraySorted
+  use array.ArraySwap
+  use array.ArrayPermut
+  use array.ArrayEq
+
+  predicate qs_partition (a1 a2: array int) (l m r: int) (v: int) =
+    permut_sub a1 a2 l r /\
+    (forall j: int. l <= j < m -> a2[j] < v) /\
+    (forall j: int. m < j < r -> v <= a2[j]) /\
+    a2[m] = v
+
+  (* partitioning à la Bentley, that is
+
+     l            i          m          r
+    +-+----------+----------+----------+
+    |v|   < v    |    ?     |   >= v   |
+    +-+----------+----------+----------+     *)
+
+  let rec quick_rec (a: array int) (l: int) (r: int) : unit
+    requires { 0 <= l <= r <= length a }
+    ensures  { sorted_sub a l r }
+    ensures  { permut_sub (old a) a l r }
+    variant  { r - l }
+  = if l + 1 < r then begin
+      let v = a[l] in
+      let m = ref l in
+      label L in
+      for i = l + 1 to r - 1 do
+        invariant { a[l] = v /\ l <= !m < i }
+        invariant { forall j:int. l < j <= !m -> a[j] < v }
+        invariant { forall j:int. !m < j <  i -> a[j] >= v }
+        invariant { permut_sub (a at L) a l r }
+        label K in
+        if a[i] < v then begin
+          m := !m + 1;
+          swap a i !m;
+        end
+      done;
+      label M in
+      swap a l !m;
+      label N in
+      quick_rec a l !m;
+      label O in
+      quick_rec a (!m + 1) r;
+    end
+
+  let quicksort (a: array int) =
+    ensures { sorted a }
+    ensures { permut_all (old a) a }
+    quick_rec a 0 (length a)
+
+end
+
+(** {2 Knuth's shuffle}
+
+    A realistic quicksort first shuffles the array. *)
+
+module Shuffle
+
+  use int.Int
+  use array.Array
+  use array.ArraySwap
+  use array.ArrayPermut
+  use random.Random
+
+  let shuffle (a: array int) : unit
+    writes  { a, Random.s }
+    ensures { permut_all (old a) a }
+  = for i = 1 to length a - 1 do
+      invariant { permut_all (old a) a }
+      swap a i (Random.random_int (i+1))
+    done
+
+end
+
+
+module QuicksortWithShuffle
+
+  use array.Array
+  use array.IntArraySorted
+  use array.ArrayPermut
+  use Shuffle
+  use Quicksort
+
+  let qs (a: array int) : unit =
+    ensures { sorted a }
+    ensures { permut_all (old a) a }
+    shuffle a;
+    quicksort a
+
+end
+
+(** {2 with 3-way partitioning}
+
+    A realistic quicksort also has to use 3-way partitioning, to cope
+    with arrays were many values are identical. *)
+
+module Quicksort3way
+
+  use int.Int
+  use ref.Refint
+  use array.Array
+  use array.IntArraySorted
+  use array.ArraySwap
+  use array.ArrayPermut
+  use array.ArrayEq
+
+  predicate qs_partition (a1 a2: array int) (l ml mr r: int) (v: int) =
+    permut_sub a1 a2 l r /\
+    (forall j: int. l  <= j < ml -> a2[j] < v) /\
+    (forall j: int. ml <= j < mr -> a2[j] = v) /\
+    (forall j: int. mr <= j < r  -> a2[j] > v)
+
+  (* 3-way partitioning
+
+     l          ml         i          mr          r
+    +----------+----------+----------+-----------+
+    |   < v    |    = v   |     ?    |    > v    |
+    +----------+----------+----------+-----------+       *)
+
+  let rec quick_rec (a: array int) (l r: int) : unit
+    requires { 0 <= l <= r <= length a }
+    ensures  { sorted_sub a l r }
+    ensures  { permut_sub (old a) a l r }
+    variant  { r - l }
+  = if l + 1 < r then begin
+      let v  = a[l] in
+      let ml = ref l in
+      let mr = ref r in
+      let i  = ref (l + 1) in
+      label L in
+      while !i < !mr do
+        invariant { l <= !ml < !i <= !mr <= r }
+        invariant { forall j: int. l   <= j < !ml -> a[j] < v }
+        invariant { forall j: int. !ml <= j < !i  -> a[j] = v }
+        invariant { forall j: int. !mr <= j < r   -> a[j] > v }
+        invariant { permut_sub (a at L) a l r }
+        variant   { !mr - !i }
+        label K in
+        if a[!i] < v then begin
+          swap a !ml !i;
+          incr ml;
+          incr i;
+        end else if a[!i] > v then begin
+          decr mr;
+          swap a !i !mr;
+        end else
+          incr i
+      done;
+      label N in
+      quick_rec a l !ml;
+      label O in
+      quick_rec a !mr r;
+    end
+
+  let quicksort (a: array int) =
+    ensures { sorted a }
+    ensures { permut_all (old a) a }
+    quick_rec a 0 (length a)
+
+  use Shuffle
+
+  let qs (a: array int) : unit =
+    ensures { sorted a }
+    ensures { permut_all (old a) a }
+    shuffle a;
+    quicksort a
+
+end
+
+module Test
+
+  use int.Int
+  use array.Array
+  use Quicksort
+
+  let test1 () =
+    let a = make 3 0 in
+    a[0] <- 7; a[1] <- 3; a[2] <- 1;
+    quicksort a;
+    a
+
+  let test2 () ensures { result.length = 8 } =
+    let a = make 8 0 in
+    a[0] <- 53; a[1] <- 91; a[2] <- 17; a[3] <- -5;
+    a[4] <- 413; a[5] <- 42; a[6] <- 69; a[7] <- 6;
+    quicksort a;
+    a
+
+  exception BenchFailure
+
+  let bench () raises { BenchFailure -> true } =
+    let a = test2 () in
+    if a[0] <> -5 then raise BenchFailure;
+    if a[1] <> 6 then raise BenchFailure;
+    if a[2] <> 17 then raise BenchFailure;
+    if a[3] <> 42 then raise BenchFailure;
+    if a[4] <> 53 then raise BenchFailure;
+    if a[5] <> 69 then raise BenchFailure;
+    if a[6] <> 91 then raise BenchFailure;
+    if a[7] <> 413 then raise BenchFailure;
+    a
+
+end
+
+module Traditional
+
+  use int.Int
+  use ref.Refint
+  use array.Array
+  use array.IntArraySorted
+  use array.ArraySwap
+  use array.ArrayPermut
+  use array.ArrayEq
+
+  let rec quick_rec (a: array int) (l: int) (r: int) : unit
+    requires { 0 <= l <= r <= length a }
+    ensures  { sorted_sub a l r }
+    ensures  { permut_sub (old a) a l r }
+    variant  { r - l }
+  = if l + 1 >= r then return;
+    let v = a[l] in
+    let ref i = l in
+    let ref j = r in
+    while true do
+      invariant { l <= i < r-1 }
+      invariant { forall k. l <= k <= i -> a[k] <= v }
+      invariant { l < j <= r }
+      invariant { forall k. j <= k < r -> a[k] >= v }
+      invariant { permut_sub (old a) a l r }
+      invariant { a[l] = v }
+      variant   { j - i }
+      label L in
+      (* while (a[++i] < v) { if (i == r-1) break; } *)
+      incr i;
+      while a[i] < v do
+        invariant { i at L < i < r }
+        invariant { forall k. l <= k < i -> a[k] <= v }
+        variant   { r - i }
+        if i = r - 1 then break;
+        incr i
+      done;
+      (* while (v < a[--j]) { if (j == l) break; } *)
+      decr j;
+      while a[j] > v do
+        invariant { l <= j < j at L }
+        invariant { forall k. j < k < r -> a[k] >= v }
+        variant { j }
+        if j = l then break;
+        decr j;
+      done;
+      if i >= j then break;
+      swap a i j
+    done;
+    swap a l j;
+    quick_rec a l     j;
+    quick_rec a (j+1) r
+
+  let quicksort (a: array int) : unit
+    ensures { sorted a }
+    ensures { permut_all (old a) a }
+  = (* insert a call to shuffle here if you wish *)
+    quick_rec a 0 (length a)
+
+end
+

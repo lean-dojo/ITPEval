@@ -1,0 +1,357 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/mergesort_array_BottomUpMergesort_bottom_up_mergesortqtvc: the
+% bottom-up mergesort verification condition for sorted runs, list
+% permutations, merge bounds, and nested-loop progress. This file contains no
+% proof.
+
+mergesort_array_BottomUpMergesort_bottom_up_mergesortqtvc[
+  elt: TYPE+,
+  elt_default: elt,
+  le: [elt, elt -> bool]
+]: THEORY
+BEGIN
+
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  int_min(left, right: int): int =
+    IF left <= right THEN left ELSE right ENDIF
+
+  nth_default(values: list[elt], index: nat): RECURSIVE elt =
+    CASES values OF
+      null:
+        elt_default,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          nth_default(tail, index - 1)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  list_take(count: nat, values: list[elt]): RECURSIVE list[elt] =
+    IF count = 0 THEN
+      null
+    ELSE
+      CASES values OF
+        null:
+          null,
+        cons(head, tail):
+          cons(head, list_take(count - 1, tail))
+      ENDCASES
+    ENDIF
+  MEASURE count
+
+  list_drop(count: nat, values: list[elt]): RECURSIVE list[elt] =
+    IF count = 0 THEN
+      values
+    ELSE
+      CASES values OF
+        null:
+          null,
+        cons(head, tail):
+          list_drop(count - 1, tail)
+      ENDCASES
+    ENDIF
+  MEASURE count
+
+  nat_minus(left, right: nat): RECURSIVE nat =
+    IF left = 0 OR right = 0 THEN
+      left
+    ELSE
+      nat_minus(left - 1, right - 1)
+    ENDIF
+  MEASURE left + right
+
+  list_slice(
+      values: list[elt],
+      lower, upper: nat): list[elt] =
+    list_take(
+      nat_minus(upper, lower),
+      list_drop(lower, values))
+
+  occurrence_count(
+      value: elt,
+      values: list[elt]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        (IF value = head THEN 1 ELSE 0 ENDIF)
+          + occurrence_count(value, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  list_permutation(
+      left, right: list[elt]): bool =
+    FORALL (value: elt):
+      occurrence_count(value, left)
+        = occurrence_count(value, right)
+
+  permut_sub(
+      left, right: list[elt],
+      lower, upper: nat): bool =
+    length(left) = length(right)
+      AND lower <= length(left)
+      AND upper <= length(left)
+      AND list_permutation(
+        list_slice(left, lower, upper),
+        list_slice(right, lower, upper))
+
+  order_laws: bool =
+    (FORALL (x: elt): le(x, x))
+      AND
+    (FORALL (x, y, z: elt):
+      (le(x, y) AND le(y, z)) IMPLIES le(x, z))
+      AND
+    (FORALL (x, y: elt): le(x, y) OR le(y, x))
+
+  sorted_sub(
+      values: list[elt],
+      lower, upper: int): bool =
+    FORALL (i1, i2: int):
+      (lower <= i1 AND i1 < i2 AND i2 < upper)
+        IMPLIES
+          le(
+            nth_default(values, int_to_nat(i1)),
+            nth_default(values, int_to_nat(i2)))
+
+  sorted(values: list[elt]): bool =
+    FORALL (i1, i2: int):
+      (0 <= i1 AND i1 < i2 AND i2 < length(values))
+        IMPLIES
+          le(
+            nth_default(values, int_to_nat(i1)),
+            nth_default(values, int_to_nat(i2)))
+
+  bottom_up_mergesort_vc: bool =
+    order_laws
+      IMPLIES
+        FORALL (a: list[elt]):
+          LET n: int = length(a)
+          IN
+            FORALL (tmp: list[elt]):
+              (length(tmp) = length(a)
+                AND
+              (FORALL (index: int):
+                (0 <= index AND index < length(tmp))
+                  IMPLIES
+                    nth_default(tmp, int_to_nat(index))
+                      = nth_default(a, int_to_nat(index))))
+                IMPLIES
+                  ((1 <= 1)
+                    AND list_permutation(a, a)
+                    AND
+                  (FORALL (k: int):
+                    LET lower: int = k * 1
+                    IN
+                      (0 <= lower AND lower < n)
+                        IMPLIES
+                          sorted_sub(
+                            a,
+                            lower,
+                            int_min(n, lower + 1))))
+                    AND
+                  (FORALL
+                      (len: int),
+                      (tmp1, a1: list[elt]):
+                    length(tmp1) = length(tmp)
+                      IMPLIES
+                    length(a1) = length(a)
+                      IMPLIES
+                    (1 <= len
+                      AND list_permutation(a, a1)
+                      AND
+                    (FORALL (k: int):
+                      LET lower: int = k * len
+                      IN
+                        (0 <= lower AND lower < n)
+                          IMPLIES
+                            sorted_sub(
+                              a1,
+                              lower,
+                              int_min(n, lower + len))))
+                      IMPLIES
+                        IF len < n THEN
+                          (((0 <= 0 AND 0 = 2 * 0 * len)
+                            AND list_permutation(a1, a1)
+                            AND
+                          (FORALL (k: int):
+                            LET lower: int = k * len
+                            IN
+                              (0 <= lower AND lower < n)
+                                IMPLIES
+                                  sorted_sub(
+                                    a1,
+                                    lower,
+                                    int_min(n, lower + len)))
+                            AND
+                          (FORALL (k: int):
+                            LET lower: int = k * (2 * len)
+                            IN
+                              (0 <= lower AND lower < 0)
+                                IMPLIES
+                                  sorted_sub(
+                                    a1,
+                                    lower,
+                                    int_min(
+                                      n,
+                                      lower + 2 * len))))
+                            AND
+                          (FORALL
+                              (i: int),
+                              (tmp2, a2: list[elt]):
+                            length(tmp2) = length(tmp1)
+                              IMPLIES
+                            length(a2) = length(a1)
+                              IMPLIES
+                            (0 <= 2 * i * len
+                              AND list_permutation(a1, a2)
+                              AND
+                            (FORALL (k: int):
+                              LET lower: int = k * len
+                              IN
+                                (2 * i * len <= lower
+                                  AND lower < n)
+                                  IMPLIES
+                                    sorted_sub(
+                                      a2,
+                                      lower,
+                                      int_min(
+                                        n,
+                                        lower + len)))
+                              AND
+                            (FORALL (k: int):
+                              LET lower: int = k * (2 * len)
+                              IN
+                                (0 <= lower
+                                  AND lower < 2 * i * len)
+                                  IMPLIES
+                                    sorted_sub(
+                                      a2,
+                                      lower,
+                                      int_min(
+                                        n,
+                                        lower + 2 * len))))
+                              IMPLIES
+                                IF 2 * i * len < n - len THEN
+                                  LET mid: int = 2 * i * len + len,
+                                      hi: int =
+                                        int_min(n, mid + len)
+                                  IN
+                                    (((0 <= 2 * i * len
+                                        AND 2 * i * len <= mid
+                                        AND mid <= hi
+                                        AND hi <= length(tmp2)
+                                        AND
+                                          length(tmp2)
+                                            = length(a2))
+                                      AND
+                                        sorted_sub(
+                                          a2,
+                                          2 * i * len,
+                                          mid)
+                                      AND sorted_sub(a2, mid, hi))
+                                      AND
+                                    (FORALL (a3: list[elt]):
+                                      length(a3) = length(a2)
+                                        IMPLIES
+                                      (sorted_sub(
+                                          a3,
+                                          2 * i * len,
+                                          hi)
+                                        AND
+                                      permut_sub(
+                                        a2,
+                                        a3,
+                                        int_to_nat(2 * i * len),
+                                        int_to_nat(hi))
+                                        AND
+                                      (FORALL (i1: int):
+                                        ((0 <= i1
+                                            AND i1 < 2 * i * len)
+                                          OR
+                                          (hi <= i1
+                                            AND
+                                              i1 < length(a3)))
+                                          IMPLIES
+                                            nth_default(
+                                              a3,
+                                              int_to_nat(i1))
+                                              =
+                                            nth_default(
+                                              a2,
+                                              int_to_nat(i1))))
+                                        IMPLIES
+                                          ((0
+                                              <= n + len
+                                                - 2 * i * len
+                                            AND
+                                              n + len - (mid + len)
+                                                <
+                                              n + len
+                                                - 2 * i * len)
+                                            AND
+                                          (0 <= mid + len
+                                            AND
+                                              mid + len
+                                                =
+                                              2 * (i + 1) * len)
+                                            AND
+                                          list_permutation(a1, a3)
+                                            AND
+                                          (FORALL (k: int):
+                                            LET lower: int = k * len
+                                            IN
+                                              (mid + len <= lower
+                                                AND lower < n)
+                                                IMPLIES
+                                                  sorted_sub(
+                                                    a3,
+                                                    lower,
+                                                    int_min(
+                                                      n,
+                                                      lower + len)))
+                                            AND
+                                          (FORALL (k: int):
+                                            LET lower: int =
+                                              k * (2 * len)
+                                            IN
+                                              (0 <= lower
+                                                AND
+                                                  lower < mid + len)
+                                                IMPLIES
+                                                  sorted_sub(
+                                                    a3,
+                                                    lower,
+                                                    int_min(
+                                                      n,
+                                                      lower
+                                                        + 2 * len))))))
+                                ELSE
+                                  ((0 <= 2 * n - len
+                                      AND
+                                        2 * n - 2 * len
+                                          < 2 * n - len)
+                                    AND 1 <= 2 * len
+                                    AND list_permutation(a, a2)
+                                    AND
+                                  (FORALL (k: int):
+                                    LET lower: int = k * (2 * len)
+                                    IN
+                                      (0 <= lower AND lower < n)
+                                        IMPLIES
+                                          sorted_sub(
+                                            a2,
+                                            lower,
+                                            int_min(
+                                              n,
+                                              lower + 2 * len))))
+                                ENDIF))
+                        ELSE
+                          sorted(a1)
+                            AND list_permutation(a, a1)
+                        ENDIF)
+
+END mergesort_array_BottomUpMergesort_bottom_up_mergesortqtvc

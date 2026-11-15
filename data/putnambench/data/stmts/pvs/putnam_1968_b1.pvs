@@ -1,0 +1,129 @@
+% Statement-only formalization of PutnamBench artifact putnam_1968_b1:
+% for finite-range integer-valued random variables, the probability that
+% their minimum equals k is p(X = k) + p(Y = k) - p(max(X,Y) = k).
+% This file contains no proof.
+
+putnam_1968_b1[Omega: TYPE+]: THEORY
+BEGIN
+  IMPORTING finite_sets[int]
+
+  event: TYPE = [Omega -> bool]
+  event_sequence: TYPE = [nat -> event]
+  sigma_algebra: TYPE = [event -> bool]
+  probability_measure: TYPE = [event -> real]
+  integer_random_variable: TYPE = [Omega -> int]
+  real_sequence: TYPE = [nat -> real]
+
+  full_event: event =
+    LAMBDA (omega: Omega): TRUE
+
+  empty_event: event =
+    LAMBDA (omega: Omega): FALSE
+
+  event_complement(A: event): event =
+    LAMBDA (omega: Omega): NOT A(omega)
+
+  countable_union(events: event_sequence): event =
+    LAMBDA (omega: Omega):
+      EXISTS (index: nat): events(index)(omega)
+
+  pairwise_disjoint(events: event_sequence): bool =
+    FORALL (i, j: nat):
+      i /= j IMPLIES
+        FORALL (omega: Omega):
+          NOT (events(i)(omega) AND events(j)(omega))
+
+  finite_sum(values: real_sequence, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      finite_sum(values, count - 1) + values(count - 1)
+    ENDIF
+  MEASURE count
+
+  converges_to(values: real_sequence, limit: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (count: nat):
+          cutoff <= count IMPLIES
+            abs(values(count) - limit) < epsilon_value
+
+  is_sigma_algebra(Sigma: sigma_algebra): bool =
+    Sigma(full_event)
+      AND (FORALL (A: event):
+        Sigma(A) IMPLIES Sigma(event_complement(A)))
+      AND (FORALL (events: event_sequence):
+        (FORALL (index: nat): Sigma(events(index)))
+          IMPLIES Sigma(countable_union(events)))
+
+  is_probability_measure(
+      M: probability_measure,
+      Sigma: sigma_algebra): bool =
+    is_sigma_algebra(Sigma)
+      AND M(empty_event) = 0
+      AND M(full_event) = 1
+      AND (FORALL (A: event):
+        Sigma(A) IMPLIES 0 <= M(A))
+      AND (FORALL (events: event_sequence):
+        ((FORALL (index: nat): Sigma(events(index)))
+          AND pairwise_disjoint(events))
+        IMPLIES
+          converges_to(
+            LAMBDA (count: nat):
+              finite_sum(
+                LAMBDA (index: nat): M(events(index)),
+                count),
+            M(countable_union(events))))
+
+  measurable_integer_variable(
+      Sigma: sigma_algebra,
+      X: integer_random_variable): bool =
+    FORALL (integer_values: [int -> bool]):
+      Sigma(
+        LAMBDA (omega: Omega):
+          integer_values(X(omega)))
+
+  finite_integer_range(X: integer_random_variable): bool =
+    EXISTS (values: finite_set[int]):
+      FORALL (omega: Omega):
+        member(X(omega), values)
+
+  integer_minimum(a, b: int): int =
+    IF a <= b THEN a ELSE b ENDIF
+
+  integer_maximum(a, b: int): int =
+    IF a <= b THEN b ELSE a ENDIF
+
+  value_event(X: integer_random_variable, k: int): event =
+    LAMBDA (omega: Omega):
+      X(omega) = k
+
+  minimum_value_event(
+      X, Y: integer_random_variable,
+      k: int): event =
+    LAMBDA (omega: Omega):
+      integer_minimum(X(omega), Y(omega)) = k
+
+  maximum_value_event(
+      X, Y: integer_random_variable,
+      k: int): event =
+    LAMBDA (omega: Omega):
+      integer_maximum(X(omega), Y(omega)) = k
+
+  putnam_1968_b1: bool =
+    FORALL
+        (M: probability_measure),
+        (Sigma: sigma_algebra),
+        (X, Y: integer_random_variable),
+        (k: int):
+      (is_probability_measure(M, Sigma)
+        AND measurable_integer_variable(Sigma, X)
+        AND measurable_integer_variable(Sigma, Y)
+        AND finite_integer_range(X)
+        AND finite_integer_range(Y))
+      IMPLIES
+        M(minimum_value_event(X, Y, k))
+          = M(value_event(X, k))
+              + M(value_event(Y, k))
+              - M(maximum_value_event(X, Y, k))
+END putnam_1968_b1

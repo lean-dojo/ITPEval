@@ -1,0 +1,320 @@
+% Statement-only formalization of the VERINA corpus artifact
+% verina_advanced_4, catalog title "LongestIncreasingSubsequence": computing
+% the length of a longest strictly increasing integer subsequence with the
+% specified dynamic-programming array loops and exhaustive-subsequence
+% correctness contract. This file contains no proof.
+
+verina_advanced_4: THEORY
+BEGIN
+
+  % Finite PVS lists give the exact extensional contents and order of the Lean
+  % arrays observed by this program.
+  int_list_length(values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        int_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  int_list_get_bang(
+      index: nat,
+      values: list[int]): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          int_list_get_bang(index - 1, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  int_list_set_bang(
+      index: nat,
+      new_value: int,
+      values: list[int]): RECURSIVE list[int] =
+    CASES values OF
+      null:
+        null,
+      cons(head, tail):
+        IF index = 0 THEN
+          cons(new_value, tail)
+        ELSE
+          cons(
+            head,
+            int_list_set_bang(
+              index - 1,
+              new_value,
+              tail))
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  int_array_mk(
+      size: nat,
+      initial_value: int): RECURSIVE list[int] =
+    IF size = 0 THEN
+      null
+    ELSE
+      cons(
+        initial_value,
+        int_array_mk(size - 1, initial_value))
+    ENDIF
+  MEASURE size
+
+  intMax(x, y: int): int =
+    IF x < y THEN y ELSE x ENDIF
+
+  int_max_fold(
+      values: list[int],
+      accumulator: int): RECURSIVE int =
+    CASES values OF
+      null:
+        accumulator,
+      cons(head, tail):
+        int_max_fold(tail, intMax(accumulator, head))
+    ENDCASES
+  MEASURE values BY <<
+
+  LongestIncreasingSubsequence_precond(
+      a: list[int]): bool =
+    TRUE
+
+  lis_inner_loop(
+      a: list[int],
+      i, j, remaining: nat,
+      dp: list[int]): RECURSIVE list[int] =
+    IF remaining = 0 THEN
+      dp
+    ELSE
+      LET updated_dp: list[int] =
+        IF int_list_get_bang(j, a)
+             < int_list_get_bang(i, a)
+        THEN
+          int_list_set_bang(
+            i,
+            intMax(
+              int_list_get_bang(i, dp),
+              int_list_get_bang(j, dp) + 1),
+            dp)
+        ELSE
+          dp
+        ENDIF
+      IN
+        lis_inner_loop(
+          a,
+          i,
+          j + 1,
+          remaining - 1,
+          updated_dp)
+    ENDIF
+  MEASURE remaining
+
+  lis_outer_loop(
+      a: list[int],
+      i, remaining: nat,
+      dp: list[int]): RECURSIVE list[int] =
+    IF remaining = 0 THEN
+      dp
+    ELSE
+      LET updated_dp: list[int] =
+        lis_inner_loop(
+          a,
+          i,
+          0,
+          i,
+          dp)
+      IN
+        lis_outer_loop(
+          a,
+          i + 1,
+          remaining - 1,
+          updated_dp)
+    ENDIF
+  MEASURE remaining
+
+  dp_result(dp: list[int]): int =
+    CASES dp OF
+      null:
+        0,
+      cons(head, tail):
+        int_max_fold(dp, 0)
+    ENDCASES
+
+  LongestIncreasingSubsequence(
+      a: list[int]): int =
+    LET n: nat = int_list_length(a),
+        initial_dp: list[int] =
+          int_array_mk(n, 1),
+        final_dp: list[int] =
+          lis_outer_loop(
+            a,
+            1,
+            IF n = 0 THEN 0 ELSE n - 1 ENDIF,
+            initial_dp)
+    IN
+      dp_result(final_dp)
+
+  append_int_list_lists(
+      first, second: list[list[int]]):
+        RECURSIVE list[list[int]] =
+    CASES first OF
+      null:
+        second,
+      cons(head, tail):
+        cons(
+          head,
+          append_int_list_lists(tail, second))
+    ENDCASES
+  MEASURE first BY <<
+
+  prepend_to_each(
+      x: int,
+      subsequences: list[list[int]]):
+        RECURSIVE list[list[int]] =
+    CASES subsequences OF
+      null:
+        null,
+      cons(head, tail):
+        cons(
+          cons(x, head),
+          prepend_to_each(x, tail))
+    ENDCASES
+  MEASURE subsequences BY <<
+
+  all_subsequences_fold(
+      remaining: list[int],
+      accumulator: list[list[int]]):
+        RECURSIVE list[list[int]] =
+    CASES remaining OF
+      null:
+        accumulator,
+      cons(x, rest):
+        all_subsequences_fold(
+          rest,
+          append_int_list_lists(
+            accumulator,
+            prepend_to_each(x, accumulator)))
+    ENDCASES
+  MEASURE remaining BY <<
+
+  reverse_int_list_acc(
+      values, accumulator: list[int]): RECURSIVE list[int] =
+    CASES values OF
+      null:
+        accumulator,
+      cons(head, tail):
+        reverse_int_list_acc(
+          tail,
+          cons(head, accumulator))
+    ENDCASES
+  MEASURE values BY <<
+
+  reverse_int_list(values: list[int]): list[int] =
+    reverse_int_list_acc(values, null)
+
+  reverse_each(
+      subsequences: list[list[int]]):
+        RECURSIVE list[list[int]] =
+    CASES subsequences OF
+      null:
+        null,
+      cons(head, tail):
+        cons(
+          reverse_int_list(head),
+          reverse_each(tail))
+    ENDCASES
+  MEASURE subsequences BY <<
+
+  all_strictly_greater_than(
+      lower: int,
+      values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        lower < head
+          AND all_strictly_greater_than(lower, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  pairwise_strictly_increasing(
+      values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        all_strictly_greater_than(head, tail)
+          AND pairwise_strictly_increasing(tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  increasing_subsequence_lengths(
+      subsequences: list[list[int]]):
+        RECURSIVE list[int] =
+    CASES subsequences OF
+      null:
+        null,
+      cons(head, tail):
+        IF pairwise_strictly_increasing(head) THEN
+          cons(
+            int_list_length(head),
+            increasing_subsequence_lengths(tail))
+        ELSE
+          increasing_subsequence_lengths(tail)
+        ENDIF
+    ENDCASES
+  MEASURE subsequences BY <<
+
+  int_list_contains(
+      values: list[int],
+      requested: int): RECURSIVE bool =
+    CASES values OF
+      null:
+        FALSE,
+      cons(head, tail):
+        head = requested
+          OR int_list_contains(tail, requested)
+    ENDCASES
+  MEASURE values BY <<
+
+  int_list_all_at_most(
+      values: list[int],
+      upper_bound: int): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        head <= upper_bound
+          AND int_list_all_at_most(tail, upper_bound)
+    ENDCASES
+  MEASURE values BY <<
+
+  LongestIncreasingSubsequence_postcond(
+      a: list[int],
+      result: int): bool =
+    LET allSubseq: list[list[int]] =
+          reverse_each(
+            all_subsequences_fold(
+              a,
+              cons(null[int], null[list[int]]))),
+        increasingSubseqLens: list[int] =
+          increasing_subsequence_lengths(allSubseq)
+    IN
+      int_list_contains(increasingSubseqLens, result)
+        AND int_list_all_at_most(
+          increasingSubseqLens,
+          result)
+
+  LongestIncreasingSubsequence_spec_satisfied: bool =
+    FORALL (a: list[int]):
+      LongestIncreasingSubsequence_precond(a) IMPLIES
+        LongestIncreasingSubsequence_postcond(
+          a,
+          LongestIncreasingSubsequence(a))
+
+END verina_advanced_4

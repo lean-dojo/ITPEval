@@ -1,0 +1,192 @@
+% Statement-only formalization of the thousand-theorems corpus artifact Q420714,
+% "Akra–Bazzi theorem": an Akra–Bazzi divide-and-conquer recurrence is Big-O of
+% n^p times one plus its real-power weighted cost prefix sum, where p is the
+% exponent satisfying the Akra–Bazzi coefficient equation. This file contains no proof.
+
+Q420714_akra_bazzi_theorem[
+  I: TYPE+,
+  T: [nat -> real],
+  g: [real -> real],
+  a, b: [I -> real],
+  r: [I, nat -> nat],
+  n0: nat
+]: THEORY
+BEGIN
+  IMPORTING finite_sets[I]
+
+  real_sequence: TYPE = [nat -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  nat_factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * nat_factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  exponential_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        exponential_partial(x, count - 1)
+          + safe_div(
+              x ^ index,
+              nat_factorial(index) :: real)
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  real_exponential(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat):
+            exponential_partial(x, count),
+          value))
+
+  natural_log(x: real): real =
+    IF x > 0 THEN
+      epsilon(
+        LAMBDA (value: real):
+          real_exponential(value) = x)
+    ELSE
+      0
+    ENDIF
+
+  real_power(base, exponent: real): real =
+    IF base > 0 THEN
+      real_exponential(exponent * natural_log(base))
+    ELSIF base = 0 AND exponent = 0 THEN
+      1
+    ELSE
+      0
+    ENDIF
+
+  full_index_set(carrier: finite_set[I]): bool =
+    FORALL (i: I): member(i, carrier)
+
+  index_sum_value(values: [I -> real], total: real): bool =
+    EXISTS
+      (carrier: finite_set[I]),
+      (enumeration: [below(card(carrier)) -> (carrier)]),
+      (partial_sums: [upto(card(carrier)) -> real]):
+        full_index_set(carrier)
+          AND bijective?(enumeration)
+          AND partial_sums(0) = 0
+          AND
+            (FORALL (k: below(card(carrier))):
+              partial_sums(k + 1) =
+                partial_sums(k) + values(enumeration(k)))
+          AND total = partial_sums(card(carrier))
+
+  index_sum(values: [I -> real]): real =
+    epsilon(
+      LAMBDA (total: real):
+        index_sum_value(values, total))
+
+  prefix_sum(
+      cost: [real -> real],
+      exponent: real,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        prefix_sum(cost, exponent, count - 1)
+          + safe_div(
+              cost(index :: real),
+              real_power(index :: real, exponent + 1))
+    ENDIF
+  MEASURE count
+
+  asymptotic_bound(
+      cost: [real -> real],
+      exponent: real,
+      n: nat): real =
+    real_power(n :: real, exponent)
+      * (1 + prefix_sum(cost, exponent, n))
+
+  grows_polynomially(cost: [real -> real]): bool =
+    FORALL (scale: real):
+      0 < scale AND scale < 1 IMPLIES
+        EXISTS (lower_constant, upper_constant: real):
+          lower_constant > 0
+            AND upper_constant > 0
+            AND EXISTS (threshold: real):
+              FORALL (x, u: real):
+                threshold <= x
+                  AND scale * x <= u
+                  AND u <= x
+                IMPLIES
+                  lower_constant * cost(x) <= cost(u)
+                    AND cost(u) <= upper_constant * cost(x)
+
+  branch_approximation: bool =
+    FORALL (i: I), (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (n: nat):
+          cutoff <= n IMPLIES
+            abs((r(i, n) :: real) - b(i) * (n :: real))
+              <= epsilon_value
+                * abs(
+                    safe_div(
+                      n :: real,
+                      natural_log(n :: real) ^ 2))
+
+  recurrence_assumptions: bool =
+    is_finite_type[I]
+      AND n0 > 0
+      AND (FORALL (i: I): a(i) > 0)
+      AND (FORALL (i: I): b(i) > 0 AND b(i) < 1)
+      AND (FORALL (x: real): x >= 0 IMPLIES g(x) >= 0)
+      AND grows_polynomially(g)
+      AND
+        (FORALL (n: nat):
+          n0 <= n IMPLIES
+            T(n) =
+              index_sum(
+                LAMBDA (i: I):
+                  a(i) * T(r(i, n)))
+                + g(n :: real))
+      AND
+        (FORALL (n: nat):
+          n < n0 IMPLIES T(n) > 0)
+      AND
+        (FORALL (i: I), (n: nat):
+          n0 <= n IMPLIES r(i, n) < n)
+      AND branch_approximation
+
+  akra_bazzi_exponent: real =
+    epsilon(
+      LAMBDA (exponent: real):
+        index_sum(
+          LAMBDA (i: I):
+            a(i) * real_power(b(i), exponent))
+          = 1)
+
+  is_big_o_of_asymptotic_bound(exponent: real): bool =
+    EXISTS (constant: real), (cutoff: nat):
+      FORALL (n: nat):
+        cutoff <= n IMPLIES
+          abs(T(n))
+            <= constant
+              * abs(asymptotic_bound(g, exponent, n))
+
+  isBigO_asympBound: bool =
+    recurrence_assumptions IMPLIES
+      is_big_o_of_asymptotic_bound(akra_bazzi_exponent)
+END Q420714_akra_bazzi_theorem

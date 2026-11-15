@@ -1,0 +1,122 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/gcd_vc_sp_BinaryGcd_binary_gcdqtvc: the binary-GCD verification
+% condition for nonnegative integers, including recursive-call decrease
+% obligations and preservation of the greatest common divisor. This file
+% contains no proof.
+
+gcd_vc_sp_BinaryGcd_binary_gcdqtvc: THEORY
+BEGIN
+  trunc_div(numerator, denominator: int): int =
+    IF denominator = 0 THEN
+      0
+    ELSIF numerator * denominator >= 0 THEN
+      floor((numerator :: real) / (denominator :: real))
+    ELSE
+      -floor(-((numerator :: real) / (denominator :: real)))
+    ENDIF
+
+  trunc_mod(numerator, denominator: int): int =
+    numerator - denominator * trunc_div(numerator, denominator)
+
+  divides(divisor, value: int): bool =
+    EXISTS (factor: int): value = divisor * factor
+
+  is_nonnegative_gcd(gcd_value, left, right: int): bool =
+    0 <= gcd_value
+      AND divides(gcd_value, left)
+      AND divides(gcd_value, right)
+      AND
+        (FORALL (common_divisor: int):
+          (0 <= common_divisor
+            AND divides(common_divisor, left)
+            AND divides(common_divisor, right))
+          IMPLIES divides(common_divisor, gcd_value))
+
+  recursive_obligations(u, v: int): bool =
+    IF u < v THEN
+      (((0 <= v AND u < v)
+          OR (v = u AND 0 <= u AND v < u))
+        AND 0 <= v
+        AND 0 <= u)
+    ELSE
+      v /= 0 IMPLIES
+        2 /= 0
+          AND
+            IF trunc_mod(u, 2) = 0 THEN
+              2 /= 0
+                AND
+                  IF trunc_mod(v, 2) = 0 THEN
+                    2 /= 0
+                      AND
+                        LET o1: int = trunc_div(v, 2) IN
+                          2 /= 0
+                            AND
+                              LET o2: int = trunc_div(u, 2) IN
+                                (((0 <= v AND o1 < v)
+                                    OR
+                                      (v = o1
+                                        AND 0 <= u
+                                        AND o2 < u))
+                                  AND 0 <= o2
+                                  AND 0 <= o1)
+                  ELSE
+                    2 /= 0
+                      AND
+                        LET o1: int = trunc_div(u, 2) IN
+                          (0 <= u AND o1 < u)
+                            AND 0 <= o1
+                            AND 0 <= v
+                  ENDIF
+            ELSE
+              2 /= 0
+                AND
+                  IF trunc_mod(v, 2) = 0 THEN
+                    2 /= 0
+                      AND
+                        LET o1: int = trunc_div(v, 2) IN
+                          (0 <= v AND o1 < v)
+                            AND 0 <= u
+                            AND 0 <= o1
+                  ELSE
+                    2 /= 0
+                      AND
+                        LET o1: int = trunc_div(u - v, 2) IN
+                          (0 <= u AND o1 < u)
+                            AND 0 <= o1
+                            AND 0 <= v
+                  ENDIF
+            ENDIF
+    ENDIF
+
+  result_is_branch_value(result, u, v: int): bool =
+    IF u < v THEN
+      is_nonnegative_gcd(result, v, u)
+    ELSIF v = 0 THEN
+      result = u
+    ELSIF trunc_mod(u, 2) = 0 THEN
+      IF trunc_mod(v, 2) = 0 THEN
+        EXISTS (recursive_gcd: int):
+          is_nonnegative_gcd(
+            recursive_gcd,
+            trunc_div(u, 2),
+            trunc_div(v, 2))
+            AND result = 2 * recursive_gcd
+      ELSE
+        is_nonnegative_gcd(result, trunc_div(u, 2), v)
+      ENDIF
+    ELSIF trunc_mod(v, 2) = 0 THEN
+      is_nonnegative_gcd(result, u, trunc_div(v, 2))
+    ELSE
+      is_nonnegative_gcd(result, trunc_div(u - v, 2), v)
+    ENDIF
+
+  binary_gcd_vc: bool =
+    FORALL (u, v: int):
+      0 <= u IMPLIES
+        0 <= v IMPLIES
+          recursive_obligations(u, v)
+            AND
+              (FORALL (result: int):
+                result_is_branch_value(result, u, v)
+                  IMPLIES is_nonnegative_gcd(result, u, v))
+END gcd_vc_sp_BinaryGcd_binary_gcdqtvc

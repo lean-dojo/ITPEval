@@ -1,0 +1,267 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/binary_sort_BinarySort_binary_sortqtvc: a binary insertion-sort
+% verification condition combining prefix sortedness, binary-search insertion
+% invariants, list shifting and update, and whole-list permutation. This file
+% contains no proof.
+
+binary_sort_BinarySort_binary_sortqtvc: THEORY
+BEGIN
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  nth_default(values: list[int], index: nat): RECURSIVE int =
+    CASES values OF
+      null: 0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          nth_default(tail, index - 1)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  list_set(
+      values: list[int],
+      index: nat,
+      value: int): RECURSIVE list[int] =
+    CASES values OF
+      null: null,
+      cons(head, tail):
+        IF index = 0 THEN
+          cons(value, tail)
+        ELSE
+          cons(head, list_set(tail, index - 1, value))
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  list_take(count: nat, values: list[int]): RECURSIVE list[int] =
+    IF count = 0 THEN
+      null
+    ELSE
+      CASES values OF
+        null: null,
+        cons(head, tail):
+          cons(head, list_take(count - 1, tail))
+      ENDCASES
+    ENDIF
+  MEASURE count
+
+  list_drop(count: nat, values: list[int]): RECURSIVE list[int] =
+    IF count = 0 THEN
+      values
+    ELSE
+      CASES values OF
+        null: null,
+        cons(head, tail):
+          list_drop(count - 1, tail)
+      ENDCASES
+    ENDIF
+  MEASURE count
+
+  nat_minus(left, right: nat): RECURSIVE nat =
+    IF left = 0 OR right = 0 THEN
+      left
+    ELSE
+      nat_minus(left - 1, right - 1)
+    ENDIF
+  MEASURE left + right
+
+  list_slice(values: list[int], lower, upper: nat): list[int] =
+    list_take(nat_minus(upper, lower), list_drop(lower, values))
+
+  occurrence_count(value: int, values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null: 0,
+      cons(head, tail):
+        (IF value = head THEN 1 ELSE 0 ENDIF)
+          + occurrence_count(value, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  list_permutation(left, right: list[int]): bool =
+    FORALL (value: int):
+      occurrence_count(value, left) = occurrence_count(value, right)
+
+  permut_sub_prime(
+      left, right: list[int],
+      lower, upper: nat): bool =
+    length(left) = length(right)
+      AND list_slice(left, 0, lower) = list_slice(right, 0, lower)
+      AND list_slice(left, upper, length(left))
+        = list_slice(right, upper, length(right))
+      AND list_permutation(
+        list_slice(left, lower, upper),
+        list_slice(right, lower, upper))
+
+  trunc_div(numerator, denominator: int): int =
+    IF denominator = 0 THEN
+      0
+    ELSIF numerator * denominator >= 0 THEN
+      floor((numerator :: real) / (denominator :: real))
+    ELSE
+      -floor(-((numerator :: real) / (denominator :: real)))
+    ENDIF
+
+  sorted_prefix(values: list[int], upper: int): bool =
+    FORALL (i, j: int):
+      (0 <= i AND i <= j AND j < upper)
+        IMPLIES
+          nth_default(values, int_to_nat(i))
+            <= nth_default(values, int_to_nat(j))
+
+  binary_invariant(
+      values: list[int],
+      pivot, left, right, upper: int): bool =
+    (0 <= left AND left <= right AND right <= upper)
+      AND
+    (FORALL (i: int):
+      (0 <= i AND i < left)
+        IMPLIES nth_default(values, int_to_nat(i)) <= pivot)
+      AND
+    (FORALL (i: int):
+      (right <= i AND i < upper)
+        IMPLIES pivot < nth_default(values, int_to_nat(i)))
+
+  update_function_equation(
+      values: list[int],
+      index, value: int): bool =
+    FORALL (i: int):
+      (0 <= i AND i < length(values))
+        IMPLIES
+      (nth_default(
+         list_set(values, int_to_nat(index), value),
+         int_to_nat(i))
+       =
+       IF i = index THEN
+         value
+       ELSE
+         nth_default(values, int_to_nat(i))
+       ENDIF)
+
+  shifted_copy(
+      before, after: list[int],
+      left, offset, source_length: int): bool =
+    (FORALL (i: int):
+      ((0 <= i AND i < offset)
+        OR (offset + source_length <= i AND i < length(after)))
+      IMPLIES
+        nth_default(after, int_to_nat(i))
+          = nth_default(before, int_to_nat(i)))
+      AND
+    (FORALL (i: int):
+      (offset <= i AND i < offset + source_length)
+        IMPLIES
+          nth_default(after, int_to_nat(i))
+            = nth_default(
+                before, int_to_nat(left + i - offset)))
+
+  insertion_completion(
+      original, current: list[int],
+      pivot, left, upper: int): bool =
+    LET source_length: int = upper - left,
+        offset: int = left + 1 IN
+      (((0 <= left
+          AND 0 <= source_length
+          AND left + source_length <= length(current))
+        AND 0 <= offset
+        AND offset + source_length <= length(current))
+      AND
+      (FORALL (shifted: list[int]):
+        length(shifted) = length(current)
+          IMPLIES
+        shifted_copy(current, shifted, left, offset, source_length)
+          IMPLIES
+        (0 <= left AND left < length(shifted))
+          AND
+        (length(
+           list_set(shifted, int_to_nat(left), pivot))
+             = length(shifted)
+          IMPLIES
+        update_function_equation(shifted, left, pivot)
+          IMPLIES
+            sorted_prefix(
+              list_set(shifted, int_to_nat(left), pivot),
+              upper + 1)
+              AND
+            permut_sub_prime(
+              original,
+              list_set(shifted, int_to_nat(left), pivot),
+              0,
+              length(
+                list_set(
+                  shifted, int_to_nat(left), pivot))))))
+
+  binary_search_step(
+      original, current: list[int],
+      pivot, upper, right, left: int): bool =
+    binary_invariant(current, pivot, left, right, upper)
+      IMPLIES
+    IF left < right THEN
+      2 /= 0
+        AND
+      LET middle: int =
+            left + trunc_div(right - left, 2)
+      IN
+        (0 <= middle AND middle < length(current))
+          AND
+        IF pivot < nth_default(current, int_to_nat(middle)) THEN
+          (0 <= right - left
+            AND middle - left < right - left)
+            AND
+          binary_invariant(
+            current, pivot, left, middle, upper)
+        ELSE
+          (0 <= right - left
+            AND right - (middle + 1) < right - left)
+            AND
+          binary_invariant(
+            current, pivot, middle + 1, right, upper)
+        ENDIF
+    ELSE
+      insertion_completion(
+        original, current, pivot, left, upper)
+    ENDIF
+
+  binary_sort_vc: bool =
+    FORALL (a: list[int]):
+      LET o1: int = length(a) - 1 IN
+        ((1 <= o1 + 1)
+          IMPLIES
+            ((sorted_prefix(a, 1)
+                AND permut_sub_prime(a, a, 0, length(a)))
+              AND
+            (FORALL (a1: list[int]):
+              length(a1) = length(a)
+                IMPLIES
+              ((FORALL (k: int):
+                ((1 <= k AND k <= o1)
+                  AND sorted_prefix(a1, k)
+                  AND permut_sub_prime(a, a1, 0, length(a1)))
+                IMPLIES
+                  (0 <= k AND k < length(a1))
+                    AND
+                  (LET pivot: int =
+                         nth_default(a1, int_to_nat(k))
+                   IN
+                     binary_invariant(a1, pivot, 0, k, k)
+                       AND
+                     (FORALL (right, left: int):
+                       binary_search_step(
+                         a, a1, pivot, k, right, left))))
+                AND
+              ((sorted_prefix(a1, o1 + 1)
+                  AND permut_sub_prime(
+                    a, a1, 0, length(a1)))
+                IMPLIES
+                  sorted_prefix(a1, length(a1))
+                    AND
+                  permut_sub_prime(
+                    a, a1, 0, length(a1))))))
+          AND
+        ((o1 + 1 < 1)
+          IMPLIES
+            sorted_prefix(a, length(a))
+              AND permut_sub_prime(a, a, 0, length(a))))
+END binary_sort_BinarySort_binary_sortqtvc

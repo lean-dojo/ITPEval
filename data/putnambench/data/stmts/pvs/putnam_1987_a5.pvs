@@ -1,0 +1,118 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1987_a5:
+% nonexistence of a C1 real vector field on punctured three-space with zero
+% curl and the specified singular planar trace. This file contains no proof.
+
+putnam_1987_a5: THEORY
+BEGIN
+  coordinate: TYPE = below(3)
+  vector: TYPE = [coordinate -> real]
+  scalar_field: TYPE = [vector -> real]
+  vector_field: TYPE = [vector -> vector]
+  partial_field: TYPE = [coordinate, coordinate -> scalar_field]
+
+  zero_vector: vector =
+    LAMBDA (i: coordinate): 0
+
+  vector3(x, y, z: real): vector =
+    LAMBDA (i: coordinate):
+      IF i = 0 THEN
+        x
+      ELSIF i = 1 THEN
+        y
+      ELSE
+        z
+      ENDIF
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  prescribed_trace(x, y: real): vector =
+    LAMBDA (i: coordinate):
+      IF i = 0 THEN
+        safe_div(-y, x ^ 2 + 4 * y ^ 2)
+      ELSIF i = 1 THEN
+        safe_div(x, x ^ 2 + 4 * y ^ 2)
+      ELSE
+        0
+      ENDIF
+
+  replace_coordinate(
+      x: vector,
+      i: coordinate,
+      value: real): vector =
+    LAMBDA (j: coordinate):
+      IF j = i THEN value ELSE x(j) ENDIF
+
+  vectors_close(x, y: vector, radius: real): bool =
+    FORALL (i: coordinate):
+      abs(x(i) - y(i)) < radius
+
+  punctured(x: vector): bool =
+    x /= zero_vector
+
+  has_partial_derivative_at(
+      f: scalar_field,
+      i: coordinate,
+      derivative: real,
+      x: vector): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (delta: posreal):
+        FORALL (h: real):
+          (h /= 0 AND abs(h) < delta)
+            IMPLIES
+              abs(
+                f(replace_coordinate(x, i, x(i) + h))
+                  - f(x)
+                  - derivative * h)
+                < epsilon_value * abs(h)
+
+  continuous_on_punctured(f: scalar_field): bool =
+    FORALL (x: vector):
+      punctured(x) IMPLIES
+        FORALL (epsilon_value: posreal):
+          EXISTS (delta: posreal):
+            FORALL (y: vector):
+              (punctured(y) AND vectors_close(y, x, delta))
+                IMPLIES
+                  abs(f(y) - f(x)) < epsilon_value
+
+  continuously_partially_differentiable(
+      F: vector_field,
+      D: partial_field): bool =
+    (FORALL
+        (component, input: coordinate),
+        (x: vector):
+      punctured(x) IMPLIES
+        has_partial_derivative_at(
+          LAMBDA (v: vector): F(v)(component),
+          input,
+          D(component, input)(x),
+          x))
+      AND
+    (FORALL (component, input: coordinate):
+      continuous_on_punctured(D(component, input)))
+
+  curl_zero_on_punctured(D: partial_field): bool =
+    FORALL (x: vector):
+      punctured(x) IMPLIES
+        D(2, 1)(x) - D(1, 2)(x) = 0
+          AND D(0, 2)(x) - D(2, 0)(x) = 0
+          AND D(1, 0)(x) - D(0, 1)(x) = 0
+
+  has_prescribed_trace(F: vector_field): bool =
+    FORALL (x, y: real):
+      F(vector3(x, y, 0)) = prescribed_trace(x, y)
+
+  putnam_1987_a5_solution: bool = FALSE
+
+  putnam_1987_a5: bool =
+    (EXISTS (F: vector_field), (D: partial_field):
+      continuously_partially_differentiable(F, D)
+        AND curl_zero_on_punctured(D)
+        AND has_prescribed_trace(F))
+      IFF putnam_1987_a5_solution
+END putnam_1987_a5

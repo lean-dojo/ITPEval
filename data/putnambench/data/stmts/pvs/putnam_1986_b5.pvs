@@ -1,0 +1,159 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1986_b5:
+% the assertion classifying all real trivariate polynomial symmetries of
+% x^2 + y^2 + z^2 + xyz as signed coordinate permutations is false. This file
+% contains no proof.
+
+putnam_1986_b5: THEORY
+BEGIN
+  coefficient_table: TYPE = [nat, nat, nat -> real]
+
+  polynomial: TYPE =
+    [# coefficients: coefficient_table,
+       support_bound: nat #]
+
+  coefficient(
+      p: polynomial,
+      i, j, k: nat): real =
+    IF i <= support_bound(p)
+        AND j <= support_bound(p)
+        AND k <= support_bound(p) THEN
+      coefficients(p)(i, j, k)
+    ELSE
+      0
+    ENDIF
+
+  sum_z(
+      p: polynomial,
+      x, y, z: real,
+      i, j, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      sum_z(p, x, y, z, i, j, count - 1)
+        + coefficient(p, i, j, count - 1)
+            * x ^ i * y ^ j * z ^ (count - 1)
+    ENDIF
+  MEASURE count
+
+  sum_y(
+      p: polynomial,
+      x, y, z: real,
+      i, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      sum_y(p, x, y, z, i, count - 1)
+        + sum_z(
+            p,
+            x,
+            y,
+            z,
+            i,
+            count - 1,
+            support_bound(p) + 1)
+    ENDIF
+  MEASURE count
+
+  sum_x(
+      p: polynomial,
+      x, y, z: real,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      sum_x(p, x, y, z, count - 1)
+        + sum_y(
+            p,
+            x,
+            y,
+            z,
+            count - 1,
+            support_bound(p) + 1)
+    ENDIF
+  MEASURE count
+
+  polynomial_value(
+      p: polynomial,
+      x, y, z: real): real =
+    sum_x(p, x, y, z, support_bound(p) + 1)
+
+  f_value(x, y, z: real): real =
+    x ^ 2 + y ^ 2 + z ^ 2 + x * y * z
+
+  unit_sign(sign: int): bool =
+    sign = 1 OR sign = -1
+
+  signed_x(p: polynomial, sign: int): bool =
+    unit_sign(sign)
+      AND FORALL (i, j, k: nat):
+        coefficient(p, i, j, k)
+          = IF i = 1 AND j = 0 AND k = 0 THEN
+              (sign :: real)
+            ELSE
+              0
+            ENDIF
+
+  signed_y(p: polynomial, sign: int): bool =
+    unit_sign(sign)
+      AND FORALL (i, j, k: nat):
+        coefficient(p, i, j, k)
+          = IF i = 0 AND j = 1 AND k = 0 THEN
+              (sign :: real)
+            ELSE
+              0
+            ENDIF
+
+  signed_z(p: polynomial, sign: int): bool =
+    unit_sign(sign)
+      AND FORALL (i, j, k: nat):
+        coefficient(p, i, j, k)
+          = IF i = 0 AND j = 0 AND k = 1 THEN
+              (sign :: real)
+            ELSE
+              0
+            ENDIF
+
+  signed_coordinate_permutation(
+      p, q, r: polynomial): bool =
+    EXISTS (sx, sy, sz: int):
+      unit_sign(sx)
+        AND unit_sign(sy)
+        AND unit_sign(sz)
+        AND sx * sy * sz = 1
+        AND ((signed_x(p, sx)
+              AND signed_y(q, sy)
+              AND signed_z(r, sz))
+          OR (signed_x(p, sx)
+              AND signed_z(q, sz)
+              AND signed_y(r, sy))
+          OR (signed_y(p, sy)
+              AND signed_x(q, sx)
+              AND signed_z(r, sz))
+          OR (signed_y(p, sy)
+              AND signed_z(q, sz)
+              AND signed_x(r, sx))
+          OR (signed_z(p, sz)
+              AND signed_x(q, sx)
+              AND signed_y(r, sy))
+          OR (signed_z(p, sz)
+              AND signed_y(q, sy)
+              AND signed_x(r, sx)))
+
+  preserves_f(p, q, r: polynomial): bool =
+    FORALL (x, y, z: real):
+      f_value(
+        polynomial_value(p, x, y, z),
+        polynomial_value(q, x, y, z),
+        polynomial_value(r, x, y, z))
+        = f_value(x, y, z)
+
+  classification_assertion: bool =
+    FORALL (p, q, r: polynomial):
+      preserves_f(p, q, r)
+        IMPLIES signed_coordinate_permutation(p, q, r)
+
+  putnam_1986_b5_solution: bool = FALSE
+
+  putnam_1986_b5: bool =
+    classification_assertion IFF putnam_1986_b5_solution
+END putnam_1986_b5

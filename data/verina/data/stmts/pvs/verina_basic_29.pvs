@@ -1,0 +1,96 @@
+% Statement-only formalization of the VERINA corpus artifact verina_basic_29,
+% catalog title "removeElement": removing the element at a valid index from a
+% finite integer array while preserving the specified size, prefix, and
+% shifted-suffix contract. This file contains no proof.
+
+verina_basic_29: THEORY
+BEGIN
+
+  % Finite PVS lists preserve the exact contents and order of Lean arrays.
+  int_list_length(values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        int_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  % Lean's Array.get! on integer arrays returns zero outside the array.
+  int_list_get_bang(
+      index: nat,
+      values: list[int]): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          int_list_get_bang(index - 1, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  % Lean natural-number subtraction is truncated at zero.
+  nat_subtract(first, second: nat): nat =
+    IF first >= second THEN first - second ELSE 0 ENDIF
+
+  removeElement_precond(
+      s: list[int],
+      k: nat): bool =
+    k < int_list_length(s)
+
+  % Under the precondition this is exactly Array.eraseIdx!: it removes the
+  % element at index k and retains every other element in its original order.
+  int_list_erase_at(
+      k: nat,
+      values: list[int]): RECURSIVE list[int] =
+    CASES values OF
+      null:
+        null[int],
+      cons(head, tail):
+        IF k = 0 THEN
+          tail
+        ELSE
+          cons(
+            head,
+            int_list_erase_at(k - 1, tail))
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  % The source precondition proof argument is computationally irrelevant.
+  removeElement(
+      s: list[int],
+      k: nat): list[int] =
+    int_list_erase_at(k, s)
+
+  removeElement_postcond(
+      s: list[int],
+      k: nat,
+      result: list[int]): bool =
+    int_list_length(result)
+        = nat_subtract(int_list_length(s), 1)
+      AND
+        (FORALL (i: nat):
+          i < k IMPLIES
+            int_list_get_bang(i, result)
+              = int_list_get_bang(i, s))
+      AND
+        (FORALL (i: nat):
+          (i < int_list_length(result) AND i >= k)
+            IMPLIES
+              int_list_get_bang(i, result)
+                = int_list_get_bang(i + 1, s))
+
+  removeElement_spec_satisfied: bool =
+    FORALL (s: list[int], k: nat):
+      removeElement_precond(s, k)
+        IMPLIES
+          removeElement_postcond(
+            s,
+            k,
+            removeElement(s, k))
+
+END verina_basic_29

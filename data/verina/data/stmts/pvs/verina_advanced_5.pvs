@@ -1,0 +1,139 @@
+% Statement-only formalization of the VERINA corpus artifact
+% verina_advanced_5, catalog title "addTwoNumbers": adding two nonempty
+% canonical reverse-digit natural-number lists by recursive carry propagation
+% and specifying the represented sum and canonical digits. This file contains
+% no proof.
+
+verina_advanced_5: THEORY
+BEGIN
+
+  nat_list_length(values: list[nat]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        nat_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  listToNat(values: list[nat]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(digit, rest):
+        digit + 10 * listToNat(rest)
+    ENDCASES
+  MEASURE values BY <<
+
+  all_decimal_digits(values: list[nat]): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(digit, rest):
+        digit < 10 AND all_decimal_digits(rest)
+    ENDCASES
+  MEASURE values BY <<
+
+  nat_list_last_bang(values: list[nat]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        CASES tail OF
+          null:
+            head,
+          cons(next, rest):
+            nat_list_last_bang(tail)
+        ENDCASES
+    ENDCASES
+  MEASURE values BY <<
+
+  zero_digit_list(values: list[nat]): bool =
+    values = cons(0, null[nat])
+
+  addTwoNumbers_precond(
+      l1, l2: list[nat]): bool =
+    nat_list_length(l1) > 0
+      AND nat_list_length(l2) > 0
+      AND all_decimal_digits(l1)
+      AND all_decimal_digits(l2)
+      AND
+        (nat_list_last_bang(l1) /= 0
+          OR zero_digit_list(l1))
+      AND
+        (nat_list_last_bang(l2) /= 0
+          OR zero_digit_list(l2))
+
+  addTwoNumbers_aux(
+      l1, l2: list[nat],
+      carry: nat): RECURSIVE list[nat] =
+    CASES l1 OF
+      null:
+        CASES l2 OF
+          null:
+            IF carry = 0 THEN
+              null
+            ELSE
+              cons(carry, null[nat])
+            ENDIF,
+          cons(h2, t2):
+            LET sum: nat = h2 + carry
+            IN
+              cons(
+                mod(sum, 10),
+                addTwoNumbers_aux(
+                  null[nat],
+                  t2,
+                  ndiv(sum, 10)))
+        ENDCASES,
+      cons(h1, t1):
+        CASES l2 OF
+          null:
+            LET sum: nat = h1 + carry
+            IN
+              cons(
+                mod(sum, 10),
+                addTwoNumbers_aux(
+                  t1,
+                  null[nat],
+                  ndiv(sum, 10))),
+          cons(h2, t2):
+            LET sum: nat = h1 + h2 + carry
+            IN
+              cons(
+                mod(sum, 10),
+                addTwoNumbers_aux(
+                  t1,
+                  t2,
+                  ndiv(sum, 10)))
+        ENDCASES
+    ENDCASES
+  MEASURE nat_list_length(l1) + nat_list_length(l2)
+
+  % The Lean precondition proof argument is not inspected by the program, so
+  % this is its exact proof-erased executable computation.
+  addTwoNumbers(
+      l1, l2: list[nat]): list[nat] =
+    addTwoNumbers_aux(l1, l2, 0)
+
+  addTwoNumbers_postcond(
+      l1, l2, result: list[nat]): bool =
+    listToNat(result) = listToNat(l1) + listToNat(l2)
+      AND all_decimal_digits(result)
+      AND
+        (nat_list_last_bang(result) /= 0
+          OR
+            (zero_digit_list(l1)
+              AND zero_digit_list(l2)
+              AND zero_digit_list(result)))
+
+  addTwoNumbers_spec_satisfied: bool =
+    FORALL (l1, l2: list[nat]):
+      addTwoNumbers_precond(l1, l2)
+        IMPLIES
+          addTwoNumbers_postcond(
+            l1,
+            l2,
+            addTwoNumbers(l1, l2))
+
+END verina_advanced_5

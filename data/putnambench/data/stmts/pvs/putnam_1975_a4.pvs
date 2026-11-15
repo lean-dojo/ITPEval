@@ -1,0 +1,205 @@
+% Statement-only formalization of PutnamBench artifact putnam_1975_a4:
+% the reciprocal of 1 minus a primitive 2m-th root of unity, for odd m > 1,
+% as the value of an explicit integer-coefficient polynomial. This file
+% contains no proof.
+
+putnam_1975_a4: THEORY
+BEGIN
+  complex: TYPE = [# real_part: real, imag_part: real #]
+
+  complex_zero: complex =
+    (# real_part := 0, imag_part := 0 #)
+
+  complex_one: complex =
+    (# real_part := 1, imag_part := 0 #)
+
+  complex_i: complex =
+    (# real_part := 0, imag_part := 1 #)
+
+  complex_of_real(x: real): complex =
+    (# real_part := x, imag_part := 0 #)
+
+  complex_add(x, y: complex): complex =
+    (# real_part := real_part(x) + real_part(y),
+       imag_part := imag_part(x) + imag_part(y) #)
+
+  complex_neg(x: complex): complex =
+    (# real_part := -real_part(x),
+       imag_part := -imag_part(x) #)
+
+  complex_sub(x, y: complex): complex =
+    complex_add(x, complex_neg(y))
+
+  complex_mul(x, y: complex): complex =
+    (# real_part := real_part(x) * real_part(y)
+                       - imag_part(x) * imag_part(y),
+       imag_part := real_part(x) * imag_part(y)
+                       + imag_part(x) * real_part(y) #)
+
+  complex_scale(scalar: real, x: complex): complex =
+    (# real_part := scalar * real_part(x),
+       imag_part := scalar * imag_part(x) #)
+
+  complex_power(x: complex, exponent: nat): RECURSIVE complex =
+    IF exponent = 0 THEN
+      complex_one
+    ELSE
+      complex_mul(complex_power(x, exponent - 1), x)
+    ENDIF
+  MEASURE exponent
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  complex_inverse(x: complex): complex =
+    LET denominator: real =
+          real_part(x) ^ 2 + imag_part(x) ^ 2
+    IN
+      (# real_part := safe_div(real_part(x), denominator),
+         imag_part := safe_div(-imag_part(x), denominator) #)
+
+  nat_factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * nat_factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  alternating_sign(index: nat): RECURSIVE real =
+    IF index = 0 THEN
+      1
+    ELSE
+      -alternating_sign(index - 1)
+    ENDIF
+  MEASURE index
+
+  cosine_partial_sum(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        cosine_partial_sum(x, count - 1)
+          + safe_div(
+              alternating_sign(index) * x ^ (2 * index),
+              nat_factorial(2 * index) :: real)
+    ENDIF
+  MEASURE count
+
+  real_converges_to(
+      sequence: [nat -> real],
+      value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  power_series_cosine(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        real_converges_to(
+          LAMBDA (count: nat): cosine_partial_sum(x, count),
+          value))
+
+  pi: real =
+    epsilon(
+      LAMBDA (value: real):
+        2 < value AND value < 4
+          AND power_series_cosine(value / 2) = 0)
+
+  complex_exponential_partial(
+      x: complex,
+      count: nat): RECURSIVE complex =
+    IF count = 0 THEN
+      complex_zero
+    ELSE
+      LET index: nat = count - 1 IN
+        complex_add(
+          complex_exponential_partial(x, count - 1),
+          complex_scale(
+            safe_div(1, nat_factorial(index) :: real),
+            complex_power(x, index)))
+    ENDIF
+  MEASURE count
+
+  complex_converges_to(
+      sequence: [nat -> complex],
+      value: complex): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(real_part(sequence(index)) - real_part(value))
+              < epsilon_value
+            AND abs(imag_part(sequence(index)) - imag_part(value))
+              < epsilon_value
+
+  complex_exponential(x: complex): complex =
+    epsilon(
+      LAMBDA (value: complex):
+        complex_converges_to(
+          LAMBDA (count: nat):
+            complex_exponential_partial(x, count),
+          value))
+
+  theta(m: nat): complex =
+    complex_exponential(
+      complex_scale(
+        safe_div(2 * pi, (2 * m) :: real),
+        complex_i))
+
+  nat_subtract(n, k: nat): nat =
+    IF k <= n THEN n - k ELSE 0 ENDIF
+
+  solution_term_count(m: nat): nat =
+    ndiv(nat_subtract(m, 1), 2)
+
+  putnam_1975_a4_solution_coefficient(
+      m, degree: nat): int =
+    IF EXISTS (index: nat):
+         index < solution_term_count(m)
+           AND degree = 2 * index + 1
+    THEN
+      1
+    ELSE
+      0
+    ENDIF
+
+  integer_polynomial_value(
+      coefficients: [nat -> int],
+      x: complex,
+      count: nat): RECURSIVE complex =
+    IF count = 0 THEN
+      complex_zero
+    ELSE
+      LET degree: nat = count - 1 IN
+        complex_add(
+          integer_polynomial_value(
+            coefficients, x, count - 1),
+          complex_mul(
+            complex_of_real(coefficients(degree) :: real),
+            complex_power(x, degree)))
+    ENDIF
+  MEASURE count
+
+  putnam_1975_a4_solution_value(
+      m: nat,
+      x: complex): complex =
+    integer_polynomial_value(
+      LAMBDA (degree: nat):
+        putnam_1975_a4_solution_coefficient(m, degree),
+      x,
+      m)
+
+  putnam_1975_a4: bool =
+    FORALL (m: nat):
+      (mod(m, 2) = 1 AND m > 1)
+      IMPLIES
+        complex_inverse(complex_sub(complex_one, theta(m)))
+          = putnam_1975_a4_solution_value(m, theta(m))
+END putnam_1975_a4

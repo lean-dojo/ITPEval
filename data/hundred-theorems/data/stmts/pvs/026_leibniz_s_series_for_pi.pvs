@@ -1,0 +1,75 @@
+% Statement-only formalization of "Leibniz's Series for Pi" from Hundred Theorems
+% item 026. The alternating odd-reciprocal partial sums converge to one quarter
+% of the independently power-series-defined circle constant. This file contains
+% no proof.
+
+leibniz_s_series_for_pi_026: THEORY
+BEGIN
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN 0 ELSE numerator / denominator ENDIF
+
+  factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  alternating_sign(index: nat): RECURSIVE real =
+    IF index = 0 THEN
+      1
+    ELSE
+      -alternating_sign(index - 1)
+    ENDIF
+  MEASURE index
+
+  leibniz_partial_sum(count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        leibniz_partial_sum(count - 1)
+          + safe_div(
+              alternating_sign(index),
+              (2 * index + 1) :: real)
+    ENDIF
+  MEASURE count
+
+  cosine_partial_sum(count: nat, x: real): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        cosine_partial_sum(count - 1, x)
+          + safe_div(
+              alternating_sign(index) * x ^ (2 * index),
+              factorial(2 * index) :: real)
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: [nat -> real], value: real): bool =
+    FORALL (eps: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (count: nat):
+          cutoff <= count IMPLIES
+            abs(sequence(count) - value) < eps
+
+  power_series_cosine(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          (LAMBDA (count: nat): cosine_partial_sum(count, x)),
+          value))
+
+  pi: real =
+    epsilon(
+      LAMBDA (value: real):
+        2 < value AND value < 4
+          AND power_series_cosine(value / 2) = 0)
+
+  leibniz_s_series_for_pi: bool =
+    converges_to(
+      (LAMBDA (count: nat): leibniz_partial_sum(count)),
+      pi / 4)
+END leibniz_s_series_for_pi_026

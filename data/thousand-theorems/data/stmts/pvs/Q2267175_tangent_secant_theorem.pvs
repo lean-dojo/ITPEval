@@ -1,0 +1,94 @@
+% Statement-only formalization of the Thousand Theorems corpus artifact Q2267175
+% (thousand-theorems__pvs__Q2267175), "Tangent-secant theorem": in an arbitrary
+% real Euclidean affine space, the squared tangent distance equals the product
+% of the two secant distances through the same point. This file contains no proof.
+
+Q2267175_tangent_secant_theorem[
+  V: TYPE+,
+  P: TYPE+,
+  zero: V,
+  vadd: [V, V -> V],
+  vneg: [V -> V],
+  scale: [real, V -> V],
+  inner: [V, V -> real],
+  point_vadd: [V, P -> P],
+  vsub: [P, P -> V]
+]: THEORY
+BEGIN
+  vector_space_laws: bool =
+    (FORALL (u, v: V): vadd(u, v) = vadd(v, u))
+      AND (FORALL (u, v, w: V):
+        vadd(vadd(u, v), w) = vadd(u, vadd(v, w)))
+      AND (FORALL (u: V): vadd(u, zero) = u)
+      AND (FORALL (u: V): vadd(u, vneg(u)) = zero)
+      AND (FORALL (a: real), (u, v: V):
+        scale(a, vadd(u, v)) = vadd(scale(a, u), scale(a, v)))
+      AND (FORALL (a, b: real), (u: V):
+        scale(a + b, u) = vadd(scale(a, u), scale(b, u)))
+      AND (FORALL (a, b: real), (u: V):
+        scale(a * b, u) = scale(a, scale(b, u)))
+      AND (FORALL (u: V): scale(1, u) = u)
+      AND (FORALL (u: V): scale(0, u) = zero)
+      AND (FORALL (u: V): vneg(u) = scale(-1, u))
+
+  inner_product_laws: bool =
+    (FORALL (u, v, w: V):
+      inner(vadd(u, v), w) = inner(u, w) + inner(v, w))
+      AND (FORALL (a: real), (u, v: V):
+        inner(scale(a, u), v) = a * inner(u, v))
+      AND (FORALL (u, v: V): inner(u, v) = inner(v, u))
+      AND (FORALL (u: V): 0 <= inner(u, u))
+      AND (FORALL (u: V): inner(u, u) = 0 IFF u = zero)
+
+  affine_torsor_laws: bool =
+    (FORALL (p: P): point_vadd(zero, p) = p)
+      AND (FORALL (u, v: V), (p: P):
+        point_vadd(vadd(u, v), p) =
+          point_vadd(u, point_vadd(v, p)))
+      AND (FORALL (p, q: P):
+        point_vadd(vsub(p, q), q) = p)
+      AND (FORALL (u: V), (p: P):
+        vsub(point_vadd(u, p), p) = u)
+
+  euclidean_affine_space: bool =
+    vector_space_laws AND inner_product_laws AND affine_torsor_laws
+
+  sphere: TYPE = [# center: P, radius: real #]
+
+  squared_distance(p, q: P): real =
+    inner(vsub(p, q), vsub(p, q))
+
+  distance_value(length: real, p, q: P): bool =
+    0 <= length
+      AND length * length = squared_distance(p, q)
+
+  on_sphere(p: P, s: sphere): bool =
+    distance_value(radius(s), p, center(s))
+
+  on_line(x, a, b: P): bool =
+    EXISTS (r: real):
+      x = point_vadd(scale(r, vsub(b, a)), a)
+
+  tangent_at_on_line(s: sphere, t, p: P): bool =
+    on_sphere(t, s)
+      AND on_line(t, p, t)
+      AND (FORALL (x: P):
+        on_line(x, p, t) IMPLIES
+          inner(vsub(x, t), vsub(t, center(s))) = 0)
+
+  tangent_secant_distance_identity(a, b, t, p: P): bool =
+    EXISTS (pt, pa, pb: real):
+      distance_value(pt, p, t)
+        AND distance_value(pa, p, a)
+        AND distance_value(pb, p, b)
+        AND pt * pt = pa * pb
+
+  tangent_secant_theorem: bool =
+    euclidean_affine_space IMPLIES
+      FORALL (a, b, t, p: P), (s: sphere):
+        (on_sphere(a, s)
+          AND on_sphere(b, s)
+          AND on_line(p, a, b)
+          AND tangent_at_on_line(s, t, p))
+        IMPLIES tangent_secant_distance_identity(a, b, t, p)
+END Q2267175_tangent_secant_theorem

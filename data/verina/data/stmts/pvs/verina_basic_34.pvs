@@ -1,0 +1,177 @@
+% Statement-only formalization of the VERINA corpus artifact verina_basic_34,
+% catalog title "findEvenNumbers": a deterministic integer-array fold extracts
+% exactly the even entries in input order and satisfies its membership,
+% multiplicity, and first-occurrence-order contract. This file contains no proof.
+
+verina_basic_34: THEORY
+BEGIN
+
+  isEven(n: int): bool =
+    mod(n, 2) = 0
+
+  findEvenNumbers_precond(
+      arr: list[int]): bool =
+    TRUE
+
+  % This is Array.push on the finite-list representation of a Lean array.
+  int_list_snoc(
+      values: list[int],
+      value: int): RECURSIVE list[int] =
+    CASES values OF
+      null:
+        cons(value, null[int]),
+      cons(head, tail):
+        cons(head, int_list_snoc(tail, value))
+    ENDCASES
+  MEASURE values BY <<
+
+  % This is the source Array.foldl with its accumulator made explicit.
+  findEvenNumbers_fold(
+      accumulator, remaining: list[int]):
+        RECURSIVE list[int] =
+    CASES remaining OF
+      null:
+        accumulator,
+      cons(head, tail):
+        IF isEven(head) THEN
+          findEvenNumbers_fold(
+            int_list_snoc(accumulator, head),
+            tail)
+        ELSE
+          findEvenNumbers_fold(accumulator, tail)
+        ENDIF
+    ENDCASES
+  MEASURE remaining BY <<
+
+  % The source precondition proof argument is computationally irrelevant.
+  findEvenNumbers(
+      arr: list[int]): list[int] =
+    findEvenNumbers_fold(null[int], arr)
+
+  int_list_member(
+      value: int,
+      values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        FALSE,
+      cons(head, tail):
+        head = value
+          OR int_list_member(value, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  int_list_count(
+      value: int,
+      values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        (IF head = value THEN 1 ELSE 0 ENDIF)
+          + int_list_count(value, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  % Lean List.idxOf returns the first matching index, or the list length when
+  % the requested value does not occur.
+  int_list_index_of(
+      value: int,
+      values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF head = value THEN
+          0
+        ELSE
+          1 + int_list_index_of(value, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  result_entries_valid(
+      arr, whole_result, remaining: list[int]):
+        RECURSIVE bool =
+    CASES remaining OF
+      null:
+        TRUE,
+      cons(head, tail):
+        isEven(head)
+          AND int_list_member(head, arr)
+          AND int_list_count(head, whole_result)
+                = int_list_count(head, arr)
+          AND result_entries_valid(
+                arr,
+                whole_result,
+                tail)
+    ENDCASES
+  MEASURE remaining BY <<
+
+  even_inputs_present(
+      remaining, result: list[int]):
+        RECURSIVE bool =
+    CASES remaining OF
+      null:
+        TRUE,
+      cons(head, tail):
+        (isEven(head)
+          IMPLIES int_list_member(head, result))
+          AND even_inputs_present(tail, result)
+    ENDCASES
+  MEASURE remaining BY <<
+
+  order_for_fixed_input(
+      x: int,
+      arr, result, remaining_y: list[int]):
+        RECURSIVE bool =
+    CASES remaining_y OF
+      null:
+        TRUE,
+      cons(y, tail):
+        (isEven(x)
+          IMPLIES
+            (isEven(y)
+              IMPLIES
+                (int_list_index_of(x, arr)
+                    <= int_list_index_of(y, arr)
+                  IMPLIES
+                    int_list_index_of(x, result)
+                      <= int_list_index_of(y, result))))
+          AND order_for_fixed_input(
+                x,
+                arr,
+                result,
+                tail)
+    ENDCASES
+  MEASURE remaining_y BY <<
+
+  input_order_preserved(
+      arr, result, remaining_x: list[int]):
+        RECURSIVE bool =
+    CASES remaining_x OF
+      null:
+        TRUE,
+      cons(x, tail):
+        order_for_fixed_input(x, arr, result, arr)
+          AND input_order_preserved(
+                arr,
+                result,
+                tail)
+    ENDCASES
+  MEASURE remaining_x BY <<
+
+  findEvenNumbers_postcond(
+      arr, result: list[int]): bool =
+    result_entries_valid(arr, result, result)
+      AND even_inputs_present(arr, result)
+      AND input_order_preserved(arr, result, arr)
+
+  findEvenNumbers_spec_satisfied: bool =
+    FORALL (arr: list[int]):
+      findEvenNumbers_precond(arr)
+        IMPLIES
+          findEvenNumbers_postcond(
+            arr,
+            findEvenNumbers(arr))
+
+END verina_basic_34

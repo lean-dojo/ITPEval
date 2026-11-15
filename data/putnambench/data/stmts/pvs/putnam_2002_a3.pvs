@@ -1,0 +1,65 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2002_a3:
+% the number of nonempty subsets of the integers from 1 through n whose
+% average is an integer differs from n by an even integer. This file contains
+% no proof.
+
+putnam_2002_a3: THEORY
+BEGIN
+  IMPORTING
+    finite_sets[int],
+    finite_sets_of_sets[int]
+
+  integer_set: TYPE = finite_set[int]
+  integer_set_family: TYPE = finite_set[integer_set]
+
+  distinct_entries(values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null: TRUE,
+      cons(value, tail):
+        NOT member(value, tail) AND distinct_entries(tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  integer_list_sum(values: list[int]): RECURSIVE int =
+    CASES values OF
+      null: 0,
+      cons(value, tail):
+        value + integer_list_sum(tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  enumerates_set(values: list[int], S: integer_set): bool =
+    distinct_entries(values)
+      AND FORALL (value: int):
+        S(value) IFF member(value, values)
+
+  is_one_through_n(universe: integer_set, n: int): bool =
+    FORALL (value: int):
+      universe(value) IFF (1 <= value AND value <= n)
+
+  has_integer_average(S: integer_set): bool =
+    card(S) > 0
+      AND EXISTS (values: list[int]), (average: int):
+        enumerates_set(values, S)
+          AND integer_list_sum(values)
+            = average * (card(S) :: int)
+
+  qualifying_subsets(
+      universe: integer_set): integer_set_family =
+    intersection(
+      powerset(universe),
+      {S: integer_set | has_integer_average(S)})
+
+  integer_even(value: int): bool =
+    EXISTS (factor: int):
+      value = 2 * factor
+
+  putnam_2002_a3: bool =
+    FORALL (n, Tn: int):
+      (n >= 2
+        AND EXISTS (universe: integer_set):
+          is_one_through_n(universe, n)
+            AND Tn
+              = (card(qualifying_subsets(universe)) :: int))
+      IMPLIES integer_even(Tn - n)
+END putnam_2002_a3

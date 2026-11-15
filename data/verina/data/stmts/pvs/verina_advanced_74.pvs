@@ -1,0 +1,270 @@
+% Statement-only formalization of the VERINA corpus artifact
+% verina_advanced_74, catalog title "solution": summing, over every nonempty
+% contiguous subarray of a natural-number list, the square of its number of
+% distinct elements, with the executable program's contract. This file contains no proof.
+
+verina_advanced_74: THEORY
+BEGIN
+
+  nat_list_length(values: list[nat]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        nat_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  all_between_one_and_hundred(
+      values: list[nat]): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        1 <= head
+          AND head <= 100
+          AND all_between_one_and_hundred(tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  solution_precond(nums: list[nat]): bool =
+    LET n: nat = nat_list_length(nums)
+    IN
+      1 <= n
+        AND n <= 100
+        AND all_between_one_and_hundred(nums)
+
+  nat_subtract(first, second: nat): nat =
+    IF first >= second THEN first - second ELSE 0 ENDIF
+
+  nat_list_drop(
+      count: nat,
+      values: list[nat]): RECURSIVE list[nat] =
+    IF count = 0 THEN
+      values
+    ELSE
+      CASES values OF
+        null:
+          null[nat],
+        cons(head, tail):
+          nat_list_drop(count - 1, tail)
+      ENDCASES
+    ENDIF
+  MEASURE count
+
+  nat_list_take(
+      count: nat,
+      values: list[nat]): RECURSIVE list[nat] =
+    IF count = 0 THEN
+      null[nat]
+    ELSE
+      CASES values OF
+        null:
+          null[nat],
+        cons(head, tail):
+          cons(
+            head,
+            nat_list_take(count - 1, tail))
+      ENDCASES
+    ENDIF
+  MEASURE count
+
+  nat_member(
+      value: nat,
+      values: list[nat]): RECURSIVE bool =
+    CASES values OF
+      null:
+        FALSE,
+      cons(head, tail):
+        head = value OR nat_member(value, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  % The implementation observes its HashSet only through insertion and size.
+  % A duplicate-free list is therefore an exact extensional representation.
+  hashset_insert(
+      value: nat,
+      state: list[nat]): list[nat] =
+    IF nat_member(value, state) THEN
+      state
+    ELSE
+      cons(value, state)
+    ENDIF
+
+  hashset_fold(
+      remaining, state: list[nat]): RECURSIVE list[nat] =
+    CASES remaining OF
+      null:
+        state,
+      cons(head, tail):
+        hashset_fold(
+          tail,
+          hashset_insert(head, state))
+    ENDCASES
+  MEASURE remaining BY <<
+
+  distinctCount(values: list[nat]): nat =
+    nat_list_length(
+      hashset_fold(values, null[nat]))
+
+  solution_subarray(
+      nums: list[nat],
+      i, j: nat): list[nat] =
+    nat_list_take(
+      nat_subtract(j, i) + 1,
+      nat_list_drop(i, nums))
+
+  solution_inner_fold(
+      nums: list[nat],
+      i, d, remaining, accumulator: nat): RECURSIVE nat =
+    IF remaining = 0 THEN
+      accumulator
+    ELSE
+      LET j: nat = i + d,
+          subarr: list[nat] =
+            solution_subarray(nums, i, j),
+          count: nat = distinctCount(subarr)
+      IN
+        solution_inner_fold(
+          nums,
+          i,
+          d + 1,
+          remaining - 1,
+          accumulator + count * count)
+    ENDIF
+  MEASURE remaining
+
+  solution_outer_fold(
+      nums: list[nat],
+      n, i, remaining, accumulator: nat): RECURSIVE nat =
+    IF remaining = 0 THEN
+      accumulator
+    ELSE
+      LET inner_sum: nat =
+            solution_inner_fold(
+              nums,
+              i,
+              0,
+              nat_subtract(n, i),
+              0)
+      IN
+        solution_outer_fold(
+          nums,
+          n,
+          i + 1,
+          remaining - 1,
+          accumulator + inner_sum)
+    ENDIF
+  MEASURE remaining
+
+  solution(nums: list[nat]): nat =
+    LET n: nat = nat_list_length(nums)
+    IN
+      solution_outer_fold(
+        nums,
+        n,
+        0,
+        n,
+        0)
+
+  % These helpers separately preserve the postcondition's List-based fold.
+  post_seen_insert(
+      value: nat,
+      seen: list[nat]): list[nat] =
+    IF nat_member(value, seen) THEN
+      seen
+    ELSE
+      cons(value, seen)
+    ENDIF
+
+  post_distinct_fold(
+      remaining, seen: list[nat]): RECURSIVE list[nat] =
+    CASES remaining OF
+      null:
+        seen,
+      cons(head, tail):
+        post_distinct_fold(
+          tail,
+          post_seen_insert(head, seen))
+    ENDCASES
+  MEASURE remaining BY <<
+
+  post_distinct_count(values: list[nat]): nat =
+    nat_list_length(
+      post_distinct_fold(values, null[nat]))
+
+  post_subarray(
+      nums: list[nat],
+      i, j: nat): list[nat] =
+    nat_list_take(
+      nat_subtract(j, i) + 1,
+      nat_list_drop(i, nums))
+
+  expected_inner_fold(
+      nums: list[nat],
+      i, d, remaining, accumulator: nat): RECURSIVE nat =
+    IF remaining = 0 THEN
+      accumulator
+    ELSE
+      LET j: nat = i + d,
+          subarr: list[nat] =
+            post_subarray(nums, i, j),
+          count: nat = post_distinct_count(subarr)
+      IN
+        expected_inner_fold(
+          nums,
+          i,
+          d + 1,
+          remaining - 1,
+          accumulator + count * count)
+    ENDIF
+  MEASURE remaining
+
+  expected_outer_fold(
+      nums: list[nat],
+      n, i, remaining, accumulator: nat): RECURSIVE nat =
+    IF remaining = 0 THEN
+      accumulator
+    ELSE
+      LET inner_sum: nat =
+            expected_inner_fold(
+              nums,
+              i,
+              0,
+              nat_subtract(n, i),
+              0)
+      IN
+        expected_outer_fold(
+          nums,
+          n,
+          i + 1,
+          remaining - 1,
+          accumulator + inner_sum)
+    ENDIF
+  MEASURE remaining
+
+  expected_sum(nums: list[nat]): nat =
+    LET n: nat = nat_list_length(nums)
+    IN
+      expected_outer_fold(
+        nums,
+        n,
+        0,
+        n,
+        0)
+
+  solution_postcond(
+      nums: list[nat],
+      result: nat): bool =
+    solution_precond(nums)
+      IMPLIES
+        result >= 0
+          AND result = expected_sum(nums)
+
+  solution_spec_satisfied: bool =
+    FORALL (nums: list[nat]):
+      solution_postcond(
+        nums,
+        solution(nums))
+
+END verina_advanced_74

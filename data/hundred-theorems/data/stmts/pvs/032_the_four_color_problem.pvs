@@ -1,0 +1,248 @@
+% Statement-only formalization of Hundred Theorems item 032, "The Four Color Problem":
+% finite and arbitrary simple maps of the plane over any model of the real line are
+% colorable with at most four colors. This file contains no proof.
+
+four_color_problem_032[
+  real_value: TYPE+,
+  real_le: [real_value, real_value -> bool],
+  real_sup: [[real_value -> bool] -> real_value],
+  real_add: [real_value, real_value -> real_value],
+  real_zero: real_value,
+  real_opp: [real_value -> real_value],
+  real_mul: [real_value, real_value -> real_value],
+  real_one: real_value,
+  real_inv: [real_value -> real_value]
+]: THEORY
+BEGIN
+  real_set: TYPE = [real_value -> bool]
+
+  real_equal(x, y: real_value): bool =
+    real_le(x, y) AND real_le(y, x)
+
+  upper_bounds(E: real_set): real_set =
+    LAMBDA (z: real_value):
+      FORALL (y: real_value):
+        E(y) IMPLIES real_le(y, z)
+
+  real_nonempty(E: real_set): bool =
+    EXISTS (x: real_value): E(x)
+
+  has_upper_bound(E: real_set): bool =
+    real_nonempty(upper_bounds(E))
+
+  has_supremum(E: real_set): bool =
+    real_nonempty(E) AND has_upper_bound(E)
+
+  downward_closure(E: real_set): real_set =
+    LAMBDA (x: real_value):
+      EXISTS (y: real_value):
+        E(y) AND real_le(x, y)
+
+  real_model_axioms: bool =
+    (FORALL (x: real_value):
+      real_le(x, x))
+    AND
+    (FORALL (x, y, z: real_value):
+      real_le(x, y) AND real_le(y, z)
+        IMPLIES real_le(x, z))
+    AND
+    (FORALL (E: real_set):
+      has_supremum(E)
+        IMPLIES upper_bounds(E)(real_sup(E)))
+    AND
+    (FORALL (E: real_set), (x: real_value):
+      has_supremum(E)
+        IMPLIES
+          (downward_closure(E)(x)
+            OR real_le(real_sup(E), x)))
+    AND
+    (FORALL (x, y, z: real_value):
+      real_le(y, z)
+        IMPLIES
+          real_le(real_add(x, y), real_add(x, z)))
+    AND
+    (FORALL (x, y: real_value):
+      real_equal(real_add(x, y), real_add(y, x)))
+    AND
+    (FORALL (x, y, z: real_value):
+      real_equal(
+        real_add(x, real_add(y, z)),
+        real_add(real_add(x, y), z)))
+    AND
+    (FORALL (x: real_value):
+      real_equal(real_add(real_zero, x), x))
+    AND
+    (FORALL (x: real_value):
+      real_equal(real_add(x, real_opp(x)), real_zero))
+    AND
+    (FORALL (x, y, z: real_value):
+      real_le(real_zero, x) AND real_le(y, z)
+        IMPLIES
+          real_le(real_mul(x, y), real_mul(x, z)))
+    AND
+    (FORALL (x, y: real_value):
+      real_equal(real_mul(x, y), real_mul(y, x)))
+    AND
+    (FORALL (x, y, z: real_value):
+      real_equal(
+        real_mul(x, real_mul(y, z)),
+        real_mul(real_mul(x, y), z)))
+    AND
+    (FORALL (x, y, z: real_value):
+      real_equal(
+        real_mul(x, real_add(y, z)),
+        real_add(real_mul(x, y), real_mul(x, z))))
+    AND
+    (FORALL (x: real_value):
+      real_equal(real_mul(real_one, x), x))
+    AND
+    (FORALL (x: real_value):
+      NOT real_equal(x, real_zero)
+        IMPLIES
+          real_equal(real_mul(x, real_inv(x)), real_one))
+    AND NOT real_equal(real_one, real_zero)
+
+  point: TYPE =
+    [# x_coordinate: real_value,
+       y_coordinate: real_value #]
+
+  region: TYPE = [point -> bool]
+  plane_map: TYPE = [point -> region]
+
+  interval: TYPE =
+    [# lower_endpoint: real_value,
+       upper_endpoint: real_value #]
+
+  rectangle: TYPE =
+    [# horizontal_span: interval,
+       vertical_span: interval #]
+
+  real_lt(x, y: real_value): bool =
+    NOT real_le(y, x)
+
+  in_interval(s: interval, t: real_value): bool =
+    real_lt(lower_endpoint(s), t)
+      AND real_lt(t, upper_endpoint(s))
+
+  in_rectangle(box: rectangle, z: point): bool =
+    in_interval(horizontal_span(box), x_coordinate(z))
+      AND in_interval(vertical_span(box), y_coordinate(z))
+
+  region_union(r1, r2: region): region =
+    LAMBDA (z: point):
+      r1(z) OR r2(z)
+
+  region_intersection(r1, r2: region): region =
+    LAMBDA (z: point):
+      r1(z) AND r2(z)
+
+  nonempty_region(r: region): bool =
+    EXISTS (z: point): r(z)
+
+  subregion(r1, r2: region): bool =
+    FORALL (z: point):
+      r1(z) IMPLIES r2(z)
+
+  regions_meet(r1, r2: region): bool =
+    nonempty_region(region_intersection(r1, r2))
+
+  plain_map(m: plane_map): bool =
+    (FORALL (z1, z2: point):
+      m(z1)(z2) IMPLIES m(z2)(z1))
+      AND
+    (FORALL (z1, z2: point):
+      m(z1)(z2)
+        IMPLIES subregion(m(z2), m(z1)))
+
+  map_cover(m: plane_map): region =
+    LAMBDA (z: point):
+      m(z)(z)
+
+  submap(m1, m2: plane_map): bool =
+    FORALL (z: point):
+      subregion(m1(z), m2(z))
+
+  at_most_regions(n: nat, m: plane_map): bool =
+    EXISTS (representative: [nat -> point]):
+      FORALL (z: point):
+        map_cover(m)(z)
+          IMPLIES
+            EXISTS (i: nat):
+              i < n AND m(representative(i))(z)
+
+  open_region(r: region): bool =
+    FORALL (z: point):
+      r(z)
+        IMPLIES
+          EXISTS (box: rectangle):
+            in_rectangle(box, z)
+              AND subregion(
+                    LAMBDA (w: point): in_rectangle(box, w),
+                    r)
+
+  region_closure(r: region): region =
+    LAMBDA (z: point):
+      FORALL (u: region):
+        open_region(u) AND u(z)
+          IMPLIES regions_meet(r, u)
+
+  connected_region(r: region): bool =
+    FORALL (u, v: region):
+      (open_region(u)
+        AND open_region(v)
+        AND subregion(r, region_union(u, v))
+        AND regions_meet(u, r)
+        AND regions_meet(v, r))
+      IMPLIES regions_meet(u, v)
+
+  simple_map(m: plane_map): bool =
+    plain_map(m)
+      AND (FORALL (z: point): open_region(m(z)))
+      AND (FORALL (z: point): connected_region(m(z)))
+
+  finite_simple_map(m: plane_map): bool =
+    simple_map(m)
+      AND EXISTS (n: nat):
+        at_most_regions(n, m)
+
+  map_border(m: plane_map, z1, z2: point): region =
+    region_intersection(region_closure(m(z1)), region_closure(m(z2)))
+
+  corner_map(m: plane_map, z: point): plane_map =
+    LAMBDA (z1: point):
+      LAMBDA (z2: point):
+        m(z1)(z2) AND region_closure(m(z1))(z)
+
+  not_corner(m: plane_map): region =
+    LAMBDA (z: point):
+      at_most_regions(2, corner_map(m, z))
+
+  adjacent(m: plane_map, z1, z2: point): bool =
+    NOT m(z1)(z2)
+      AND regions_meet(not_corner(m), map_border(m, z1, z2))
+
+  coloring(m, k: plane_map): bool =
+    plain_map(k)
+      AND subregion(map_cover(k), map_cover(m))
+      AND submap(m, k)
+      AND
+        (FORALL (z1, z2: point):
+          adjacent(m, z1, z2)
+            IMPLIES NOT k(z1)(z2))
+
+  colorable_with(n: nat, m: plane_map): bool =
+    EXISTS (k: plane_map):
+      coloring(m, k) AND at_most_regions(n, k)
+
+  four_color_finite: bool =
+    real_model_axioms
+      IMPLIES
+        FORALL (m: plane_map):
+          finite_simple_map(m) IMPLIES colorable_with(4, m)
+
+  four_color: bool =
+    real_model_axioms
+      IMPLIES
+        FORALL (m: plane_map):
+          simple_map(m) IMPLIES colorable_with(4, m)
+END four_color_problem_032

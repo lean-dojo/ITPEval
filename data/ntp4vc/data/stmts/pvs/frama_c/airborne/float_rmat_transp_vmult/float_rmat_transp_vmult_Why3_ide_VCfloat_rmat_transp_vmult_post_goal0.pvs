@@ -1,0 +1,204 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% frama_c/airborne/float_rmat_transp_vmult/float_rmat_transp_vmult_Why3_ide_VCfloat_rmat_transp_vmult_post_goal0:
+% the memory-level postcondition for three sequential stores computing the
+% product of a transposed real three-by-three matrix and a vector. This file
+% contains no proof.
+
+float_rmat_transp_vmult_Why3_ide_VCfloat_rmat_transp_vmult_post_goal0[
+  region: [int -> int],
+  linked: [[int -> int] -> bool]
+]: THEORY
+BEGIN
+  addr: TYPE = [# base: int, offset: int #]
+  real_memory: TYPE = [addr -> real]
+  allocation_table: TYPE = [int -> int]
+
+  realvect3: TYPE = [# x: real, y: real, z: real #]
+
+  real_rmat: TYPE =
+    [# a00: real, a01: real, a02: real,
+       a10: real, a11: real, a12: real,
+       a20: real, a21: real, a22: real #]
+
+  shift(p: addr, k: int): addr =
+    (# base := base(p), offset := offset(p) + k #)
+
+  store(memory: real_memory, p: addr, value: real): real_memory =
+    memory WITH [(p) := value]
+
+  valid_rw(malloc: allocation_table, p: addr, n: int): bool =
+    0 < n IMPLIES
+      0 < base(p)
+        AND 0 <= offset(p)
+        AND offset(p) + n <= malloc(base(p))
+
+  valid_rd(malloc: allocation_table, p: addr, n: int): bool =
+    0 < n IMPLIES
+      base(p) /= 0
+        AND 0 <= offset(p)
+        AND offset(p) + n <= malloc(base(p))
+
+  separated(p: addr, p_size: int, q: addr, q_size: int): bool =
+    p_size <= 0
+      OR q_size <= 0
+      OR base(p) /= base(q)
+      OR offset(q) + q_size <= offset(p)
+      OR offset(p) + p_size <= offset(q)
+
+  % These predicates are universally true in the official Why3 real model.
+  is_float32(value: real): bool = TRUE
+  is_finite32(value: real): bool = TRUE
+
+  p_finite_floatvect3(memory: real_memory, v: addr): bool =
+    is_finite32(memory(shift(v, 0)))
+      AND is_finite32(memory(shift(v, 1)))
+      AND is_finite32(memory(shift(v, 2)))
+
+  p_rvalid_floatvect3(
+      malloc: allocation_table,
+      memory: real_memory,
+      v: addr): bool =
+    p_finite_floatvect3(memory, v)
+      AND valid_rd(malloc, v, 3)
+
+  p_finite_floatrmat(memory: real_memory, rm: addr): bool =
+    LET start: addr = shift(rm, 0)
+    IN
+      is_finite32(memory(shift(start, 0)))
+        AND is_finite32(memory(shift(start, 1)))
+        AND is_finite32(memory(shift(start, 2)))
+        AND is_finite32(memory(shift(start, 3)))
+        AND is_finite32(memory(shift(start, 4)))
+        AND is_finite32(memory(shift(start, 5)))
+        AND is_finite32(memory(shift(start, 6)))
+        AND is_finite32(memory(shift(start, 7)))
+        AND is_finite32(memory(shift(start, 8)))
+
+  p_rvalid_floatrmat(
+      malloc: allocation_table,
+      memory: real_memory,
+      rm: addr): bool =
+    p_finite_floatrmat(memory, rm)
+      AND valid_rd(malloc, rm, 9)
+
+  vect_of_floatvect3(memory: real_memory, v: addr): realvect3 =
+    (# x := memory(shift(v, 0)),
+       y := memory(shift(v, 1)),
+       z := memory(shift(v, 2)) #)
+
+  rmat_of_floatrmat(memory: real_memory, rm: addr): real_rmat =
+    LET start: addr = shift(rm, 0)
+    IN
+      (# a00 := memory(shift(start, 0)),
+         a01 := memory(shift(start, 1)),
+         a02 := memory(shift(start, 2)),
+         a10 := memory(shift(start, 3)),
+         a11 := memory(shift(start, 4)),
+         a12 := memory(shift(start, 5)),
+         a20 := memory(shift(start, 6)),
+         a21 := memory(shift(start, 7)),
+         a22 := memory(shift(start, 8)) #)
+
+  transpose(matrix: real_rmat): real_rmat =
+    (# a00 := a00(matrix),
+       a01 := a10(matrix),
+       a02 := a20(matrix),
+       a10 := a01(matrix),
+       a11 := a11(matrix),
+       a12 := a21(matrix),
+       a20 := a02(matrix),
+       a21 := a12(matrix),
+       a22 := a22(matrix) #)
+
+  multiply_rmat_vect3(matrix: real_rmat, vector: realvect3): realvect3 =
+    LET vx: real = x(vector),
+        vy: real = y(vector),
+        vz: real = z(vector)
+    IN
+      (# x := a00(matrix) * vx + a01(matrix) * vy + a02(matrix) * vz,
+         y := a10(matrix) * vx + a11(matrix) * vy + a12(matrix) * vz,
+         z := a20(matrix) * vx + a21(matrix) * vy + a22(matrix) * vz #)
+
+  eq_realvect3(left, right: realvect3): bool =
+    x(right) = x(left)
+      AND y(right) = y(left)
+      AND z(right) = z(left)
+
+  goal0: bool =
+    FORALL (a_1: addr),
+           (t_1: real_memory),
+           (a_2, a: addr),
+           (t: allocation_table):
+      LET a_3: addr = shift(a_1, 0),
+          r: real = t_1(a_3),
+          a_4: addr = shift(a_1, 1),
+          r_1: real = t_1(a_4),
+          a_5: addr = shift(a_1, 2),
+          r_2: real = t_1(a_5),
+          a_6: addr = shift(a_2, 0),
+          r_3: real = t_1(shift(a_6, 0)),
+          r_4: real = t_1(shift(a_6, 3)),
+          r_5: real = t_1(shift(a_6, 6)),
+          m: real_memory =
+            store(
+              t_1,
+              shift(a, 0),
+              r_3 * r + r_4 * r_1 + r_5 * r_2),
+          r_6: real = m(a_3),
+          r_7: real = m(a_4),
+          r_8: real = m(a_5),
+          r_9: real = m(shift(a_6, 1)),
+          r_10: real = m(shift(a_6, 4)),
+          r_11: real = m(shift(a_6, 7)),
+          m_1: real_memory =
+            store(
+              m,
+              shift(a, 1),
+              r_9 * r_6 + r_10 * r_7 + r_11 * r_8),
+          r_12: real = m_1(a_3),
+          r_13: real = m_1(a_4),
+          r_14: real = m_1(a_5),
+          r_15: real = m_1(shift(a_6, 2)),
+          r_16: real = m_1(shift(a_6, 5)),
+          r_17: real = m_1(shift(a_6, 8)),
+          m_2: real_memory =
+            store(
+              m_1,
+              shift(a, 2),
+              r_15 * r_12 + r_16 * r_13 + r_17 * r_14)
+      IN
+        (region(base(a)) <= 0
+          AND region(base(a_1)) <= 0
+          AND region(base(a_2)) <= 0
+          AND linked(t)
+          AND valid_rw(t, a, 3)
+          AND p_rvalid_floatvect3(t, t_1, a_1)
+          AND p_rvalid_floatrmat(t, t_1, a_2)
+          AND separated(a, 3, a_1, 3)
+          AND separated(a, 3, a_2, 9)
+          AND separated(a_1, 3, a_2, 9)
+          AND is_float32(r)
+          AND is_float32(r_1)
+          AND is_float32(r_2)
+          AND is_float32(r_3)
+          AND is_float32(r_4)
+          AND is_float32(r_5)
+          AND is_float32(r_6)
+          AND is_float32(r_7)
+          AND is_float32(r_8)
+          AND is_float32(r_9)
+          AND is_float32(r_10)
+          AND is_float32(r_11)
+          AND is_float32(r_12)
+          AND is_float32(r_13)
+          AND is_float32(r_14)
+          AND is_float32(r_15)
+          AND is_float32(r_16)
+          AND is_float32(r_17))
+        IMPLIES
+          eq_realvect3(
+            vect_of_floatvect3(m_2, a),
+            multiply_rmat_vect3(
+              transpose(rmat_of_floatrmat(m_2, a_2)),
+              vect_of_floatvect3(m_2, a_1)))
+END float_rmat_transp_vmult_Why3_ide_VCfloat_rmat_transp_vmult_post_goal0

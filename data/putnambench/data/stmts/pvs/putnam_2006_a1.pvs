@@ -1,0 +1,132 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2006_a1:
+% the Lebesgue volume of the real three-dimensional region satisfying
+% (x^2 + y^2 + z^2 + 8)^2 <= 36 * (x^2 + y^2) is 6 * pi^2.
+% This file contains no proof.
+
+putnam_2006_a1: THEORY
+BEGIN
+  point: TYPE =
+    [# x_coord: real, y_coord: real, z_coord: real #]
+  spatial_region: TYPE = [point -> bool]
+  real_sequence: TYPE = [nat -> real]
+
+  box: TYPE =
+    [# lower_x: real, upper_x: real,
+       lower_y: real, upper_y: real,
+       lower_z: real, upper_z: real #]
+  box_sequence: TYPE = [nat -> box]
+
+  region: spatial_region =
+    LAMBDA (p: point):
+      (x_coord(p) ^ 2
+          + y_coord(p) ^ 2
+          + z_coord(p) ^ 2
+          + 8) ^ 2
+        <= 36 * (x_coord(p) ^ 2 + y_coord(p) ^ 2)
+
+  in_open_box(p: point, b: box): bool =
+    lower_x(b) < x_coord(p)
+      AND x_coord(p) < upper_x(b)
+      AND lower_y(b) < y_coord(p)
+      AND y_coord(p) < upper_y(b)
+      AND lower_z(b) < z_coord(p)
+      AND z_coord(p) < upper_z(b)
+
+  box_volume(b: box): real =
+    IF lower_x(b) < upper_x(b)
+        AND lower_y(b) < upper_y(b)
+        AND lower_z(b) < upper_z(b)
+    THEN
+      (upper_x(b) - lower_x(b))
+        * (upper_y(b) - lower_y(b))
+        * (upper_z(b) - lower_z(b))
+    ELSE
+      0
+    ENDIF
+
+  partial_box_volume(
+      boxes: box_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      partial_box_volume(boxes, count - 1)
+        + box_volume(boxes(count - 1))
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  covers(
+      covered_region: spatial_region,
+      boxes: box_sequence): bool =
+    FORALL (p: point):
+      covered_region(p) IMPLIES
+        EXISTS (index: nat):
+          in_open_box(p, boxes(index))
+
+  cover_has_total_volume(
+      covered_region: spatial_region,
+      boxes: box_sequence,
+      total: real): bool =
+    covers(covered_region, boxes)
+      AND converges_to(
+        LAMBDA (count: nat):
+          partial_box_volume(boxes, count),
+        total)
+
+  has_lebesgue_outer_volume(
+      measured_region: spatial_region,
+      volume: real): bool =
+    0 <= volume
+      AND (FORALL (boxes: box_sequence), (total: real):
+        cover_has_total_volume(measured_region, boxes, total)
+          IMPLIES volume <= total)
+      AND (FORALL (epsilon_value: posreal):
+        EXISTS (boxes: box_sequence), (total: real):
+          cover_has_total_volume(measured_region, boxes, total)
+            AND total < volume + epsilon_value)
+
+  alternating_sign(index: nat): RECURSIVE real =
+    IF index = 0 THEN
+      1
+    ELSE
+      -alternating_sign(index - 1)
+    ENDIF
+  MEASURE index
+
+  leibniz_partial_sum(count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        leibniz_partial_sum(count - 1)
+          + alternating_sign(index)
+              / ((2 * index + 1) :: real)
+    ENDIF
+  MEASURE count
+
+  is_pi(value: real): bool =
+    converges_to(
+      LAMBDA (count: nat):
+        4 * leibniz_partial_sum(count),
+      value)
+
+  pi: real =
+    epsilon(
+      LAMBDA (value: real):
+        is_pi(value))
+
+  putnam_2006_a1_solution: real =
+    6 * pi ^ 2
+
+  putnam_2006_a1: bool =
+    has_lebesgue_outer_volume(
+      region,
+      putnam_2006_a1_solution)
+END putnam_2006_a1

@@ -1,0 +1,88 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2023_a2:
+% a monic real polynomial of degree 2n with the prescribed reciprocal-integer
+% values has exactly +/-1/n! as its other real reciprocal solutions. This file
+% contains no proof.
+
+putnam_2023_a2: THEORY
+BEGIN
+  coefficient_sequence: TYPE = [nat -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  nat_factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * nat_factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  polynomial_value(
+      coefficients: coefficient_sequence,
+      count: nat,
+      x: real): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      polynomial_value(coefficients, count - 1, x)
+        + coefficients(count - 1) * x ^ (count - 1)
+    ENDIF
+  MEASURE count
+
+  monic_of_degree(
+      coefficients: coefficient_sequence,
+      degree: nat): bool =
+    coefficients(degree) = 1
+      AND FORALL (index: nat):
+        degree < index IMPLIES coefficients(index) = 0
+
+  prescribed_integer(
+      n: nat,
+      x: real): bool =
+    EXISTS (k: int):
+      x = (k :: real)
+        AND 1 <= abs(k)
+        AND abs(k) <= n
+
+  has_prescribed_values(
+      coefficients: coefficient_sequence,
+      n: nat): bool =
+    FORALL (k: int):
+      (1 <= abs(k) AND abs(k) <= n)
+        IMPLIES
+          polynomial_value(
+            coefficients,
+            2 * n + 1,
+            safe_div(1, k :: real))
+          = (k :: real) ^ 2
+
+  putnam_2023_a2_solution(
+      n: nat,
+      x: real): bool =
+    x = safe_div(1, nat_factorial(n) :: real)
+      OR x = -safe_div(1, nat_factorial(n) :: real)
+
+  putnam_2023_a2: bool =
+    FORALL
+        (n: nat),
+        (coefficients: coefficient_sequence):
+      (n > 0
+        AND mod(n, 2) = 0
+        AND monic_of_degree(coefficients, 2 * n)
+        AND has_prescribed_values(coefficients, n))
+      IMPLIES
+        FORALL (x: real):
+          (x /= 0
+            AND polynomial_value(
+              coefficients,
+              2 * n + 1,
+              safe_div(1, x))
+              = x ^ 2
+            AND NOT prescribed_integer(n, x))
+          IFF putnam_2023_a2_solution(n, x)
+END putnam_2023_a2

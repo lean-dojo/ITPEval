@@ -1,0 +1,263 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/isqrt_von_neumann_VonNeumann32_isqrt32qtvc: the unsigned 32-bit
+% von Neumann integer-square-root verification condition, including
+% initialization, loop-invariant preservation, and terminal square bounds.
+% This file contains no proof.
+
+isqrt_von_neumann_VonNeumann32_isqrt32qtvc: THEORY
+BEGIN
+
+  IMPORTING
+    bv[32], bv_nat[32],
+    bv_arith_nat_defs[32], bv_arithmetic_defs[32]
+
+  word32: TYPE = bvec[32]
+
+  unsigned(value: word32): nat =
+    bv2nat[32](value)
+
+  word32_of(value: below(exp2(32))): word32 =
+    nat2bv[32](value)
+
+  integer_bit(value: int, index: below(32)): bool =
+    mod(
+      floor(
+        (mod(value, 4294967296) :: real)
+          / (exp2(index) :: real)),
+      2)
+      = 1
+
+  word32_from_int(value: int): word32 =
+    LAMBDA (index: below(32)):
+      integer_bit(value, index)
+
+  zero32: word32 = fill[32](FALSE)
+  one32: word32 = word32_of(1)
+  two32: word32 = word32_of(2)
+  sixteen32: word32 = word32_of(16)
+  thirty_two_thousand_seven_hundred_sixty_eight32: word32 =
+    word32_of(32768)
+  sixty_five_thousand_five_hundred_thirty_six32: word32 =
+    word32_of(65536)
+  one_billion_seventy_three_million_seven_hundred_forty_one_thousand_eight_hundred_twenty_four32:
+      word32 =
+    word32_of(1073741824)
+
+  add32(left, right: word32): word32 =
+    left + right
+
+  sub32(left, right: word32): word32 =
+    left - right
+
+  mul32(left, right: word32): word32 =
+    word32_from_int(unsigned(left) * unsigned(right))
+
+  and32(left, right: word32): word32 =
+    LAMBDA (index: below(32)):
+      left(index) AND right(index)
+
+  or32(left, right: word32): word32 =
+    LAMBDA (index: below(32)):
+      left(index) OR right(index)
+
+  shift_left32(value, amount: word32): word32 =
+    IF unsigned(amount) < 32 THEN
+      word32_from_int(
+        unsigned(value) * exp2(unsigned(amount)))
+    ELSE
+      zero32
+    ENDIF
+
+  shift_right32(value, amount: word32): word32 =
+    IF unsigned(amount) < 32 THEN
+      word32_from_int(
+        ndiv(unsigned(value), exp2(unsigned(amount))))
+    ELSE
+      zero32
+    ENDIF
+
+  ule32(left, right: word32): bool =
+    unsigned(left) <= unsigned(right)
+
+  ult32(left, right: word32): bool =
+    unsigned(left) < unsigned(right)
+
+  sqr(value: word32): word32 =
+    mul32(value, value)
+
+  power_of_two(amount: word32): word32 =
+    shift_left32(one32, amount)
+
+  previous_power(amount: word32): word32 =
+    IF amount = zero32 THEN
+      zero32
+    ELSE
+      power_of_two(sub32(amount, one32))
+    ENDIF
+
+  is_pow2(value, amount: word32): bool =
+    and32(
+      value,
+      sub32(power_of_two(amount), one32))
+      = zero32
+
+  loop_invariant(
+      x, res_g, m, num: word32): bool =
+    ule32(m, sixteen32)
+      AND is_pow2(res_g, m)
+      AND ult32(
+        res_g,
+        sixty_five_thousand_five_hundred_thirty_six32)
+      AND ule32(num, x)
+      AND sub32(x, num) = sqr(res_g)
+      AND ule32(
+        add32(res_g, power_of_two(m)),
+        sixty_five_thousand_five_hundred_thirty_six32)
+      AND ule32(
+        x,
+        sub32(
+          sqr(add32(res_g, power_of_two(m))),
+          one32))
+
+  common_step_facts(m: word32): bool =
+    LET
+      m_minus_one: word32 = sub32(m, one32),
+      half_power: word32 = previous_power(m),
+      half_square: word32 = sqr(half_power)
+    IN
+      unsigned(shift_right32(half_square, two32))
+        < unsigned(half_square)
+      AND ule32(m_minus_one, sixteen32)
+      AND shift_right32(half_power, one32)
+        = previous_power(m_minus_one)
+      AND shift_right32(half_square, two32)
+        = sqr(shift_right32(half_power, one32))
+
+  subtraction_accepted(
+      x, res_g, m, num, b: word32): bool =
+    LET
+      m_minus_one: word32 = sub32(m, one32),
+      half_power: word32 = previous_power(m),
+      next_res: word32 = add32(res_g, half_power),
+      next_num: word32 = sub32(num, b),
+      next_step: word32 = power_of_two(m_minus_one),
+      next_bound: word32 = add32(next_res, next_step)
+    IN
+      common_step_facts(m)
+      AND is_pow2(next_res, m_minus_one)
+      AND ult32(
+        next_res,
+        sixty_five_thousand_five_hundred_thirty_six32)
+      AND or32(
+        shift_right32(
+          mul32(res_g, power_of_two(m)),
+          one32),
+        sqr(half_power))
+        = mul32(next_res, next_step)
+      AND ule32(next_num, x)
+      AND sub32(x, next_num) = sqr(next_res)
+      AND ule32(
+        next_bound,
+        sixty_five_thousand_five_hundred_thirty_six32)
+      AND ule32(
+        x,
+        sub32(sqr(next_bound), one32))
+
+  subtraction_rejected(
+      x, res_g, m, num: word32): bool =
+    LET
+      m_minus_one: word32 = sub32(m, one32),
+      next_step: word32 = power_of_two(m_minus_one),
+      next_bound: word32 = add32(res_g, next_step)
+    IN
+      common_step_facts(m)
+      AND is_pow2(res_g, m_minus_one)
+      AND ult32(
+        res_g,
+        sixty_five_thousand_five_hundred_thirty_six32)
+      AND shift_right32(
+        mul32(res_g, power_of_two(m)),
+        one32)
+        = mul32(res_g, next_step)
+      AND ule32(num, x)
+      AND sub32(x, num) = sqr(res_g)
+      AND ule32(
+        next_bound,
+        sixty_five_thousand_five_hundred_thirty_six32)
+      AND ule32(
+        x,
+        sub32(sqr(next_bound), one32))
+
+  finished_branch(
+      x, res_g, m: word32): bool =
+    LET
+      scaled_res: word32 =
+        mul32(res_g, power_of_two(m))
+    IN
+      ule32(sqr(scaled_res), x)
+      AND ule32(
+        x,
+        sub32(
+          sqr(add32(scaled_res, one32)),
+          one32))
+
+  loop_conclusion(
+      x, res_g, m, num: word32): bool =
+    LET
+      half_power: word32 = previous_power(m),
+      half_square: word32 = sqr(half_power)
+    IN
+      IF NOT half_square = zero32 THEN
+        LET
+          b: word32 =
+            or32(
+              mul32(res_g, power_of_two(m)),
+              half_square)
+        IN
+          IF ule32(b, num) THEN
+            subtraction_accepted(x, res_g, m, num, b)
+          ELSE
+            subtraction_rejected(x, res_g, m, num)
+          ENDIF
+      ELSE
+        finished_branch(x, res_g, m)
+      ENDIF
+
+  initial_facts(x: word32): bool =
+    ule32(sixteen32, sixteen32)
+      AND
+    thirty_two_thousand_seven_hundred_sixty_eight32
+      = previous_power(sixteen32)
+      AND
+    one_billion_seventy_three_million_seven_hundred_forty_one_thousand_eight_hundred_twenty_four32
+      = sqr(
+        thirty_two_thousand_seven_hundred_sixty_eight32)
+      AND is_pow2(zero32, sixteen32)
+      AND ult32(
+        zero32,
+        sixty_five_thousand_five_hundred_thirty_six32)
+      AND zero32
+        = mul32(zero32, power_of_two(sixteen32))
+      AND ule32(x, x)
+      AND sub32(x, x) = sqr(zero32)
+      AND ule32(
+        add32(zero32, power_of_two(sixteen32)),
+        sixty_five_thousand_five_hundred_thirty_six32)
+      AND ule32(
+        x,
+        sub32(
+          sqr(add32(
+            zero32,
+            power_of_two(sixteen32))),
+          one32))
+
+  isqrt32_vc: bool =
+    FORALL (x: word32):
+      initial_facts(x)
+        AND
+      (FORALL (res_g, m, num: word32):
+        loop_invariant(x, res_g, m, num)
+          IMPLIES
+        loop_conclusion(x, res_g, m, num))
+
+END isqrt_von_neumann_VonNeumann32_isqrt32qtvc

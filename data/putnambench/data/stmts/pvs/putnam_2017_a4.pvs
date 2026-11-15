@@ -1,0 +1,81 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2017_a4:
+% a quiz class of 2*N students attaining every score from 0 through 10 with
+% average 74/10 can be split into two N-student groups with that average.
+% This file contains no proof.
+
+putnam_2017_a4: THEORY
+BEGIN
+  score_sequence: TYPE = [nat -> nat]
+  student_subset: TYPE = [nat -> bool]
+
+  score_sum(
+      score: score_sequence,
+      count: nat): RECURSIVE nat =
+    IF count = 0 THEN
+      0
+    ELSE
+      score_sum(score, count - 1) + score(count - 1)
+    ENDIF
+  MEASURE count
+
+  selected_count(
+      selected: student_subset,
+      count: nat): RECURSIVE nat =
+    IF count = 0 THEN
+      0
+    ELSE
+      selected_count(selected, count - 1)
+        + IF selected(count - 1) THEN 1 ELSE 0 ENDIF
+    ENDIF
+  MEASURE count
+
+  selected_score_sum(
+      score: score_sequence,
+      selected: student_subset,
+      count: nat): RECURSIVE nat =
+    IF count = 0 THEN
+      0
+    ELSE
+      selected_score_sum(score, selected, count - 1)
+        + IF selected(count - 1) THEN score(count - 1) ELSE 0 ENDIF
+    ENDIF
+  MEASURE count
+
+  unselected_score_sum(
+      score: score_sequence,
+      selected: student_subset,
+      count: nat): RECURSIVE nat =
+    IF count = 0 THEN
+      0
+    ELSE
+      unselected_score_sum(score, selected, count - 1)
+        + IF selected(count - 1) THEN 0 ELSE score(count - 1) ENDIF
+    ENDIF
+  MEASURE count
+
+  valid_quiz_scores(N: nat, score: score_sequence): bool =
+    (FORALL (i: nat):
+      i < 2 * N IMPLIES score(i) <= 10)
+      AND
+        (FORALL (k: nat):
+          k <= 10 IMPLIES
+            EXISTS (i: nat):
+              i < 2 * N AND score(i) = k)
+
+  is_class_subset(N: nat, selected: student_subset): bool =
+    FORALL (i: nat):
+      selected(i) IMPLIES i < 2 * N
+
+  putnam_2017_a4: bool =
+    FORALL (N: nat), (score: score_sequence):
+      (valid_quiz_scores(N, score)
+        AND 10 * score_sum(score, 2 * N) = 74 * (2 * N))
+      IMPLIES
+        EXISTS (selected: student_subset):
+          is_class_subset(N, selected)
+            AND selected_count(selected, 2 * N) = N
+            AND 10 * selected_score_sum(score, selected, 2 * N)
+              = 74 * N
+            AND 10 * unselected_score_sum(score, selected, 2 * N)
+              = 74 * N
+END putnam_2017_a4

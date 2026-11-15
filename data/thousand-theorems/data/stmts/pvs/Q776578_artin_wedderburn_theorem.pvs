@@ -1,0 +1,460 @@
+% Statement-only formalization of the Thousand Theorems corpus artifact Q776578
+% (thousand-theorems__pvs__Q776578), "Artin–Wedderburn theorem": every
+% semisimple algebra over a commutative semiring is algebra-isomorphic to a
+% finite product of positive-size matrix algebras over division algebras.
+% This file contains no proof.
+
+Q776578_artin_wedderburn_theorem[
+  K, A: TYPE+,
+  zero_K, one_K: K,
+  add_K, mul_K: [K, K -> K],
+  zero_A, one_A: A,
+  neg_A: [A -> A],
+  add_A, mul_A: [A, A -> A],
+  scalar_A: [K -> A]
+]: THEORY
+BEGIN
+  matrix_product: TYPE = [nat, nat, nat -> A]
+  subset_A: TYPE = [A -> bool]
+
+  commutative_semiring_laws_K: bool =
+    (FORALL (x, y: K):
+      add_K(x, y) = add_K(y, x))
+      AND
+    (FORALL (x, y, z: K):
+      add_K(add_K(x, y), z) =
+        add_K(x, add_K(y, z)))
+      AND
+    (FORALL (x: K):
+      add_K(x, zero_K) = x)
+      AND
+    (FORALL (x, y: K):
+      mul_K(x, y) = mul_K(y, x))
+      AND
+    (FORALL (x, y, z: K):
+      mul_K(mul_K(x, y), z) =
+        mul_K(x, mul_K(y, z)))
+      AND
+    (FORALL (x: K):
+      mul_K(x, one_K) = x)
+      AND
+    (FORALL (x: K):
+      mul_K(x, zero_K) = zero_K)
+      AND
+    (FORALL (x, y, z: K):
+      mul_K(x, add_K(y, z)) =
+        add_K(mul_K(x, y), mul_K(x, z)))
+
+  ring_laws_A: bool =
+    (FORALL (x, y: A):
+      add_A(x, y) = add_A(y, x))
+      AND
+    (FORALL (x, y, z: A):
+      add_A(add_A(x, y), z) =
+        add_A(x, add_A(y, z)))
+      AND
+    (FORALL (x: A):
+      add_A(x, zero_A) = x)
+      AND
+    (FORALL (x: A):
+      add_A(x, neg_A(x)) = zero_A)
+      AND
+    (FORALL (x, y, z: A):
+      mul_A(mul_A(x, y), z) =
+        mul_A(x, mul_A(y, z)))
+      AND
+    (FORALL (x: A):
+      mul_A(x, one_A) = x
+        AND mul_A(one_A, x) = x)
+      AND
+    (FORALL (x: A):
+      mul_A(x, zero_A) = zero_A
+        AND mul_A(zero_A, x) = zero_A)
+      AND
+    (FORALL (x, y, z: A):
+      mul_A(x, add_A(y, z)) =
+        add_A(mul_A(x, y), mul_A(x, z))
+        AND
+      mul_A(add_A(x, y), z) =
+        add_A(mul_A(x, z), mul_A(y, z)))
+
+  algebra_laws_A: bool =
+    scalar_A(zero_K) = zero_A
+      AND scalar_A(one_K) = one_A
+      AND
+    (FORALL (x, y: K):
+      scalar_A(add_K(x, y)) =
+        add_A(scalar_A(x), scalar_A(y)))
+      AND
+    (FORALL (x, y: K):
+      scalar_A(mul_K(x, y)) =
+        mul_A(scalar_A(x), scalar_A(y)))
+      AND
+    (FORALL (k: K), (x: A):
+      mul_A(scalar_A(k), x) =
+        mul_A(x, scalar_A(k)))
+
+  left_ideal(L: subset_A): bool =
+    L(zero_A)
+      AND
+    (FORALL (x, y: A):
+      L(x) AND L(y) IMPLIES L(add_A(x, y)))
+      AND
+    (FORALL (x: A):
+      L(x) IMPLIES L(neg_A(x)))
+      AND
+    (FORALL (a, x: A):
+      L(x) IMPLIES L(mul_A(a, x)))
+
+  direct_sum_complements(L, C: subset_A): bool =
+    left_ideal(L)
+      AND left_ideal(C)
+      AND
+    (FORALL (x: A):
+      L(x) AND C(x) IMPLIES x = zero_A)
+      AND
+    (FORALL (x: A):
+      EXISTS (l, c: A):
+        L(l) AND C(c) AND x = add_A(l, c))
+
+  semisimple_ring_A: bool =
+    FORALL (L: subset_A):
+      left_ideal(L) IMPLIES
+        EXISTS (C: subset_A):
+          direct_sum_complements(L, C)
+
+  component_sum(
+      i: nat,
+      values: [nat -> A],
+      count: nat,
+      component_zero: [nat -> A],
+      component_add: [nat, A, A -> A]): RECURSIVE A =
+    IF count = 0 THEN
+      component_zero(i)
+    ELSE
+      component_add(
+        i,
+        component_sum(
+          i,
+          values,
+          count - 1,
+          component_zero,
+          component_add),
+        values(count - 1))
+    ENDIF
+  MEASURE count
+
+  valid_matrix_product(
+      M: matrix_product,
+      n: nat,
+      dimension: [nat -> nat],
+      carrier: [nat, A -> bool]): bool =
+    FORALL (i, row, column: nat):
+      IF i < n
+          AND row < dimension(i)
+          AND column < dimension(i) THEN
+        carrier(i, M(i, row, column))
+      ELSE
+        M(i, row, column) = zero_A
+      ENDIF
+
+  division_ring_family(
+      n: nat,
+      carrier: [nat, A -> bool],
+      component_zero, component_one: [nat -> A],
+      component_neg, component_inv: [nat, A -> A],
+      component_add, component_mul: [nat, A, A -> A]): bool =
+    FORALL (i: nat):
+      i < n IMPLIES
+        carrier(i, component_zero(i))
+          AND carrier(i, component_one(i))
+          AND component_zero(i) /= component_one(i)
+          AND
+        (FORALL (x: A):
+          carrier(i, x) IMPLIES
+            carrier(i, component_neg(i, x))
+              AND carrier(i, component_inv(i, x)))
+          AND
+        component_inv(i, component_zero(i)) =
+          component_zero(i)
+          AND
+        (FORALL (x, y: A):
+          carrier(i, x) AND carrier(i, y) IMPLIES
+            carrier(i, component_add(i, x, y))
+              AND carrier(i, component_mul(i, x, y)))
+          AND
+        (FORALL (x, y: A):
+          carrier(i, x) AND carrier(i, y) IMPLIES
+            component_add(i, x, y) =
+              component_add(i, y, x))
+          AND
+        (FORALL (x, y, z: A):
+          carrier(i, x)
+            AND carrier(i, y)
+            AND carrier(i, z)
+          IMPLIES
+            component_add(
+              i,
+              component_add(i, x, y),
+              z) =
+            component_add(
+              i,
+              x,
+              component_add(i, y, z)))
+          AND
+        (FORALL (x: A):
+          carrier(i, x) IMPLIES
+            component_add(i, x, component_zero(i)) = x
+              AND
+            component_add(
+              i,
+              x,
+              component_neg(i, x)) =
+                component_zero(i))
+          AND
+        (FORALL (x, y, z: A):
+          carrier(i, x)
+            AND carrier(i, y)
+            AND carrier(i, z)
+          IMPLIES
+            component_mul(
+              i,
+              component_mul(i, x, y),
+              z) =
+            component_mul(
+              i,
+              x,
+              component_mul(i, y, z)))
+          AND
+        (FORALL (x: A):
+          carrier(i, x) IMPLIES
+            component_mul(i, x, component_one(i)) = x
+              AND
+            component_mul(i, component_one(i), x) = x)
+          AND
+        (FORALL (x: A):
+          carrier(i, x) IMPLIES
+            component_mul(i, x, component_zero(i)) =
+              component_zero(i)
+              AND
+            component_mul(i, component_zero(i), x) =
+              component_zero(i))
+          AND
+        (FORALL (x, y, z: A):
+          carrier(i, x)
+            AND carrier(i, y)
+            AND carrier(i, z)
+          IMPLIES
+            component_mul(
+              i,
+              x,
+              component_add(i, y, z)) =
+              component_add(
+                i,
+                component_mul(i, x, y),
+                component_mul(i, x, z))
+              AND
+            component_mul(
+              i,
+              component_add(i, x, y),
+              z) =
+              component_add(
+                i,
+                component_mul(i, x, z),
+                component_mul(i, y, z)))
+          AND
+        (FORALL (x: A):
+          carrier(i, x)
+            AND x /= component_zero(i)
+          IMPLIES
+            component_mul(
+              i,
+              component_inv(i, x),
+              x) = component_one(i)
+              AND
+            component_mul(
+              i,
+              x,
+              component_inv(i, x)) =
+                component_one(i))
+
+  division_algebra_family(
+      n: nat,
+      carrier: [nat, A -> bool],
+      component_zero, component_one: [nat -> A],
+      component_add, component_mul: [nat, A, A -> A],
+      component_scalar: [nat, K -> A]): bool =
+    FORALL (i: nat):
+      i < n IMPLIES
+        (FORALL (k: K):
+          carrier(i, component_scalar(i, k)))
+          AND
+        component_scalar(i, zero_K) = component_zero(i)
+          AND
+        component_scalar(i, one_K) = component_one(i)
+          AND
+        (FORALL (x, y: K):
+          component_scalar(i, add_K(x, y)) =
+            component_add(
+              i,
+              component_scalar(i, x),
+              component_scalar(i, y)))
+          AND
+        (FORALL (x, y: K):
+          component_scalar(i, mul_K(x, y)) =
+            component_mul(
+              i,
+              component_scalar(i, x),
+              component_scalar(i, y)))
+          AND
+        (FORALL (k: K), (x: A):
+          carrier(i, x) IMPLIES
+            component_mul(
+              i,
+              component_scalar(i, k),
+              x) =
+            component_mul(
+              i,
+              x,
+              component_scalar(i, k)))
+
+  matrix_product_algebra_equivalence(
+      n: nat,
+      dimension: [nat -> nat],
+      carrier: [nat, A -> bool],
+      component_zero, component_one: [nat -> A],
+      component_add, component_mul: [nat, A, A -> A],
+      component_scalar: [nat, K -> A],
+      equivalence: [A -> matrix_product]): bool =
+    (FORALL (x: A):
+      valid_matrix_product(
+        equivalence(x),
+        n,
+        dimension,
+        carrier))
+      AND
+    (FORALL (x, y: A):
+      equivalence(x) = equivalence(y) IMPLIES x = y)
+      AND
+    (FORALL (M: matrix_product):
+      valid_matrix_product(M, n, dimension, carrier)
+      IMPLIES EXISTS (x: A): equivalence(x) = M)
+      AND
+    (FORALL (i, row, column: nat):
+      equivalence(zero_A)(i, row, column) =
+        IF i < n
+            AND row < dimension(i)
+            AND column < dimension(i) THEN
+          component_zero(i)
+        ELSE
+          zero_A
+        ENDIF)
+      AND
+    (FORALL (i, row, column: nat):
+      equivalence(one_A)(i, row, column) =
+        IF i < n
+            AND row < dimension(i)
+            AND column < dimension(i) THEN
+          IF row = column THEN
+            component_one(i)
+          ELSE
+            component_zero(i)
+          ENDIF
+        ELSE
+          zero_A
+        ENDIF)
+      AND
+    (FORALL (x, y: A), (i, row, column: nat):
+      equivalence(add_A(x, y))(i, row, column) =
+        IF i < n
+            AND row < dimension(i)
+            AND column < dimension(i) THEN
+          component_add(
+            i,
+            equivalence(x)(i, row, column),
+            equivalence(y)(i, row, column))
+        ELSE
+          zero_A
+        ENDIF)
+      AND
+    (FORALL (x, y: A), (i, row, column: nat):
+      equivalence(mul_A(x, y))(i, row, column) =
+        IF i < n
+            AND row < dimension(i)
+            AND column < dimension(i) THEN
+          component_sum(
+            i,
+            (LAMBDA (middle: nat):
+              component_mul(
+                i,
+                equivalence(x)(i, row, middle),
+                equivalence(y)(i, middle, column))),
+            dimension(i),
+            component_zero,
+            component_add)
+        ELSE
+          zero_A
+        ENDIF)
+      AND
+    (FORALL (k: K), (i, row, column: nat):
+      equivalence(scalar_A(k))(i, row, column) =
+        IF i < n
+            AND row < dimension(i)
+            AND column < dimension(i) THEN
+          IF row = column THEN
+            component_scalar(i, k)
+          ELSE
+            component_zero(i)
+          ENDIF
+        ELSE
+          zero_A
+        ENDIF)
+
+  exists_algEquiv_pi_matrix_divisionRing: bool =
+    (commutative_semiring_laws_K
+      AND ring_laws_A
+      AND algebra_laws_A
+      AND semisimple_ring_A)
+    IMPLIES
+      EXISTS
+        (n: nat),
+        (dimension: [nat -> nat]),
+        (carrier: [nat, A -> bool]),
+        (component_zero, component_one: [nat -> A]),
+        (component_neg, component_inv: [nat, A -> A]),
+        (component_add, component_mul: [nat, A, A -> A]),
+        (component_scalar: [nat, K -> A]),
+        (equivalence: [A -> matrix_product]):
+          (FORALL (i: nat):
+            i < n IMPLIES dimension(i) > 0)
+            AND
+          division_ring_family(
+            n,
+            carrier,
+            component_zero,
+            component_one,
+            component_neg,
+            component_inv,
+            component_add,
+            component_mul)
+            AND
+          division_algebra_family(
+            n,
+            carrier,
+            component_zero,
+            component_one,
+            component_add,
+            component_mul,
+            component_scalar)
+            AND
+          matrix_product_algebra_equivalence(
+            n,
+            dimension,
+            carrier,
+            component_zero,
+            component_one,
+            component_add,
+            component_mul,
+            component_scalar,
+            equivalence)
+END Q776578_artin_wedderburn_theorem

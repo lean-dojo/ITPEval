@@ -1,0 +1,161 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2021_b5:
+% every positive power of an integer square matrix whose nonempty principal
+% minors all have odd determinant has the same property. This file contains
+% no proof.
+
+putnam_2021_b5[n: posnat]: THEORY
+BEGIN
+  matrix: TYPE = [nat, nat -> int]
+  index_set: TYPE = [nat -> bool]
+
+  identity_matrix: matrix =
+    LAMBDA (row, column: nat):
+      IF row = column THEN 1 ELSE 0 ENDIF
+
+  matrix_product_entry(
+      A, B: matrix,
+      row, column, count: nat): RECURSIVE int =
+    IF count = 0 THEN
+      0
+    ELSE
+      matrix_product_entry(A, B, row, column, count - 1)
+        + A(row, count - 1) * B(count - 1, column)
+    ENDIF
+  MEASURE count
+
+  matrix_multiply(A, B: matrix): matrix =
+    LAMBDA (row, column: nat):
+      matrix_product_entry(A, B, row, column, n)
+
+  matrix_power(A: matrix, exponent: nat): RECURSIVE matrix =
+    IF exponent = 0 THEN
+      identity_matrix
+    ELSE
+      matrix_multiply(
+        matrix_power(A, exponent - 1),
+        A)
+    ENDIF
+  MEASURE exponent
+
+  function_code_count: nat = n ^ n
+
+  permutation_entry(code, row: nat): nat =
+    mod(ndiv(code, n ^ row), n)
+
+  permutation_on_set(code: nat, S: index_set): bool =
+    code < function_code_count
+      AND
+    (FORALL (row: nat):
+      row < n IMPLIES
+        ((S(row) IMPLIES S(permutation_entry(code, row)))
+          AND
+         (NOT S(row) IMPLIES
+            permutation_entry(code, row) = row)))
+      AND
+    (FORALL (first, second: nat):
+      (first < n
+        AND second < n
+        AND S(first)
+        AND S(second)
+        AND permutation_entry(code, first)
+          = permutation_entry(code, second))
+      IMPLIES first = second)
+
+  pair_row(pair: nat): nat =
+    ndiv(pair, n)
+
+  pair_column(pair: nat): nat =
+    mod(pair, n)
+
+  inversion_at(
+      code, pair: nat,
+      S: index_set): bool =
+    pair < n * n
+      AND pair_row(pair) < pair_column(pair)
+      AND S(pair_row(pair))
+      AND S(pair_column(pair))
+      AND permutation_entry(code, pair_row(pair))
+        > permutation_entry(code, pair_column(pair))
+
+  count_true(
+      property: [nat -> bool],
+      count: nat): RECURSIVE nat =
+    IF count = 0 THEN
+      0
+    ELSE
+      count_true(property, count - 1)
+        + IF property(count - 1) THEN 1 ELSE 0 ENDIF
+    ENDIF
+  MEASURE count
+
+  inversion_count(code: nat, S: index_set): nat =
+    count_true(
+      LAMBDA (pair: nat): inversion_at(code, pair, S),
+      n * n)
+
+  permutation_sign(code: nat, S: index_set): int =
+    IF mod(inversion_count(code, S), 2) = 0 THEN
+      1
+    ELSE
+      -1
+    ENDIF
+
+  principal_product(
+      A: matrix,
+      S: index_set,
+      code, count: nat): RECURSIVE int =
+    IF count = 0 THEN
+      1
+    ELSE
+      principal_product(A, S, code, count - 1)
+        * IF S(count - 1) THEN
+            A(
+              count - 1,
+              permutation_entry(code, count - 1))
+          ELSE
+            1
+          ENDIF
+    ENDIF
+  MEASURE count
+
+  principal_determinant_sum(
+      A: matrix,
+      S: index_set,
+      limit: nat): RECURSIVE int =
+    IF limit = 0 THEN
+      0
+    ELSE
+      LET code: nat = limit - 1 IN
+        principal_determinant_sum(A, S, limit - 1)
+          + IF permutation_on_set(code, S) THEN
+              permutation_sign(code, S)
+                * principal_product(A, S, code, n)
+            ELSE
+              0
+            ENDIF
+    ENDIF
+  MEASURE limit
+
+  principal_determinant(A: matrix, S: index_set): int =
+    principal_determinant_sum(A, S, function_code_count)
+
+  nonempty_index_set(S: index_set): bool =
+    EXISTS (index: nat):
+      index < n AND S(index)
+
+  odd_integer(value: int): bool =
+    EXISTS (half: int):
+      value = 2 * half + 1
+
+  very_odd(A: matrix): bool =
+    FORALL (S: index_set):
+      nonempty_index_set(S) IMPLIES
+        odd_integer(principal_determinant(A, S))
+
+  putnam_2021_b5: bool =
+    FORALL (A: matrix):
+      very_odd(A) IMPLIES
+        (FORALL (exponent: nat):
+          exponent >= 1 IMPLIES
+            very_odd(matrix_power(A, exponent)))
+END putnam_2021_b5

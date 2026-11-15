@@ -1,0 +1,608 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/linear_probing_LinearProbing_deleteqtvc: the verification condition
+% for deletion and key relocation in a linear-probing hash table, including
+% cyclic probing, list updates, dummy counts, and table validity. This file contains no proof.
+
+linear_probing_LinearProbing_deleteqtvc[
+  key, keym, t: TYPE+,
+  key_default: key,
+  keym1: [key -> keym],
+  key_eq: [key, key -> bool],
+  hash: [key -> int],
+  dummy: key,
+  bucket: [key, int -> int],
+  size: [t -> int],
+  data: [t -> list[key]],
+  view: [t -> [keym -> bool]],
+  loc: [t -> [keym -> int]]
+]: THEORY
+BEGIN
+
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  nth_default(
+      values: list[key],
+      index: nat): RECURSIVE key =
+    CASES values OF
+      null:
+        key_default,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          nth_default(tail, index - 1)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  list_set(
+      values: list[key],
+      index: nat,
+      value: key): RECURSIVE list[key] =
+    CASES values OF
+      null:
+        null,
+      cons(head, tail):
+        IF index = 0 THEN
+          cons(value, tail)
+        ELSE
+          cons(head, list_set(tail, index - 1, value))
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  list_contents(values: list[key]): [int -> key] =
+    LAMBDA (index: int):
+      IF 0 <= index AND index < length(values) THEN
+        nth_default(values, int_to_nat(index))
+      ELSE
+        key_default
+      ENDIF
+
+  update_key(
+      values: [int -> key],
+      index: int,
+      value: key): [int -> key] =
+    values WITH [(index) := value]
+
+  update_loc(
+      values: [keym -> int],
+      index: keym,
+      value: int): [keym -> int] =
+    values WITH [(index) := value]
+
+  neq(left, right: key): bool =
+    NOT key_eq(left, right)
+
+  between(left, position, right: int): bool =
+    (left <= position AND position < right)
+      OR (right < left AND left <= position)
+      OR (position < right AND right < left)
+
+  in_range(values: list[key], index: int): bool =
+    0 <= index AND index < length(values)
+
+  count_dummy_span(
+      values: list[key],
+      lower: int,
+      span: nat): RECURSIVE int =
+    IF span = 0 THEN
+      0
+    ELSE
+      (IF key_eq(
+            nth_default(values, int_to_nat(lower)),
+            dummy)
+       THEN 1 ELSE 0 ENDIF)
+        + count_dummy_span(values, lower + 1, span - 1)
+    ENDIF
+  MEASURE span
+
+  numof(values: list[key], lower, upper: int): int =
+    count_dummy_span(
+      values,
+      lower,
+      int_to_nat(upper - lower))
+
+  valid(
+      values: list[key],
+      visible: [keym -> bool],
+      locations: [keym -> int]): bool =
+    NOT (visible(keym1(dummy)) = TRUE)
+      AND
+    (FORALL (index: int):
+      in_range(values, index)
+        IMPLIES
+          LET x: key =
+            nth_default(values, int_to_nat(index))
+          IN
+            neq(x, dummy)
+              IMPLIES
+                visible(keym1(x)) = TRUE
+                  AND locations(keym1(x)) = index)
+      AND
+    (LET n: int = length(values)
+     IN
+       FORALL (x: key):
+         visible(keym1(x)) = TRUE
+           IMPLIES
+             LET index: int = locations(keym1(x))
+             IN
+               in_range(values, index)
+                 AND key_eq(
+                   nth_default(values, int_to_nat(index)),
+                   x)
+                 AND
+               (FORALL (position: int):
+                 in_range(values, position)
+                   IMPLIES
+                 between(bucket(x, n), position, index)
+                   IMPLIES
+                     neq(
+                       nth_default(
+                         values,
+                         int_to_nat(position)),
+                       x)
+                       AND
+                     neq(
+                       nth_default(
+                         values,
+                         int_to_nat(position)),
+                       dummy)))
+
+  state_invariant(
+      state_size: int,
+      values: list[key],
+      visible: [keym -> bool],
+      locations: [keym -> int]): bool =
+    0 <= state_size
+      AND state_size < length(values)
+      AND state_size + numof(values, 0, length(values))
+        = length(values)
+      AND valid(values, visible, locations)
+
+  state_equal(left, right: t): bool =
+    size(left) = size(right)
+      AND data(left) = data(right)
+      AND view(left) = view(right)
+      AND loc(left) = loc(right)
+
+  key_context: bool =
+    (FORALL (left, right: key):
+      key_eq(left, right)
+        IFF keym1(left) = keym1(right))
+      AND
+    (FORALL (left, right: key):
+      neq(left, right)
+        IFF NOT (keym1(left) = keym1(right)))
+      AND
+    (FORALL (x: key):
+      0 <= hash(x))
+      AND
+    (FORALL (left, right: key):
+      key_eq(left, right)
+        IMPLIES hash(left) = hash(right))
+
+  bucket_context: bool =
+    FORALL (n: int), (x: key):
+      0 < n
+        IMPLIES
+          bucket(x, n) = mod(hash(x), n)
+            AND 0 <= bucket(x, n)
+            AND bucket(x, n) < n
+
+  state_context: bool =
+    (FORALL (self: t):
+      state_invariant(
+        size(self),
+        data(self),
+        view(self),
+        loc(self)))
+      AND
+    (FORALL (left, right: t):
+      state_equal(left, right)
+        IMPLIES left = right)
+
+  source_context: bool =
+    key_context
+      AND bucket_context
+      AND state_context
+
+  next_index(n, index: int): int =
+    LET successor: int = index + 1
+    IN
+      IF successor = n THEN 0 ELSE successor ENDIF
+
+  loop_distance(
+      values: list[key],
+      finish, index: int): int =
+    IF finish <= index THEN
+      length(values) - index + finish
+    ELSE
+      finish - index
+    ENDIF
+
+  same_array(
+      left, right: list[key]): bool =
+    length(left) = length(right)
+      AND
+    (FORALL (index: int):
+      in_range(left, index)
+        IMPLIES
+          nth_default(left, int_to_nat(index))
+            = nth_default(right, int_to_nat(index)))
+
+  mapped_entries(
+      values: list[key],
+      visible: [keym -> bool],
+      locations: [keym -> int]): bool =
+    FORALL (index: int):
+      in_range(values, index)
+        IMPLIES
+          LET x: key =
+            nth_default(values, int_to_nat(index))
+          IN
+            neq(x, dummy)
+              IMPLIES
+                visible(keym1(x)) = TRUE
+                  AND locations(keym1(x)) = index
+
+  located_allowing_hole(
+      values: list[key],
+      visible: [keym -> bool],
+      locations: [keym -> int],
+      hole, scan: int): bool =
+    LET n: int = length(values)
+    IN
+      FORALL (x: key):
+        visible(keym1(x)) = TRUE
+          IMPLIES
+            LET index: int = locations(keym1(x))
+            IN
+              in_range(values, index)
+                AND key_eq(
+                  nth_default(values, int_to_nat(index)),
+                  x)
+                AND
+              (FORALL (position: int):
+                in_range(values, position)
+                  IMPLIES
+                between(bucket(x, n), position, index)
+                  IMPLIES
+                    neq(
+                      nth_default(
+                        values,
+                        int_to_nat(position)),
+                      x)
+                      AND
+                    (neq(
+                       nth_default(
+                         values,
+                         int_to_nat(position)),
+                       dummy)
+                      OR
+                     (position = hole
+                       AND between(hole, scan, index))))
+
+  open_segment(
+      values: list[key],
+      scan, finish: int): bool =
+    FORALL (index: int):
+      in_range(values, index)
+        IMPLIES
+      between(scan, index, finish)
+        IMPLIES
+      index /= scan
+        IMPLIES
+          neq(
+            nth_default(values, int_to_nat(index)),
+            dummy)
+
+  next_loop_state(
+      old_index: int,
+      values: list[key],
+      finish, hole, new_index: int,
+      visible: [keym -> bool],
+      locations: [keym -> int]): bool =
+    0 <= loop_distance(values, finish, old_index)
+      AND
+    loop_distance(values, finish, new_index)
+      < loop_distance(values, finish, old_index)
+      AND in_range(values, finish)
+      AND in_range(values, hole)
+      AND in_range(values, new_index)
+      AND hole /= finish
+      AND key_eq(
+        nth_default(values, int_to_nat(hole)),
+        dummy)
+      AND key_eq(
+        nth_default(values, int_to_nat(finish)),
+        dummy)
+      AND between(hole, new_index, finish)
+      AND open_segment(values, new_index, finish)
+      AND NOT (visible(keym1(dummy)) = TRUE)
+      AND mapped_entries(values, visible, locations)
+      AND located_allowing_hole(
+        values,
+        visible,
+        locations,
+        hole,
+        new_index)
+
+  moved_loop_state(
+      old_values, values: list[key],
+      finish, old_index, new_index: int,
+      visible: [keym -> bool],
+      locations: [keym -> int]): bool =
+    0 <= loop_distance(old_values, finish, old_index)
+      AND
+    loop_distance(values, finish, new_index)
+      < loop_distance(old_values, finish, old_index)
+      AND in_range(values, finish)
+      AND in_range(values, new_index)
+      AND in_range(values, new_index)
+      AND new_index /= finish
+      AND key_eq(
+        nth_default(values, int_to_nat(new_index)),
+        dummy)
+      AND key_eq(
+        nth_default(values, int_to_nat(finish)),
+        dummy)
+      AND between(new_index, new_index, finish)
+      AND open_segment(values, new_index, finish)
+      AND NOT (visible(keym1(dummy)) = TRUE)
+      AND mapped_entries(values, visible, locations)
+      AND located_allowing_hole(
+        values,
+        visible,
+        locations,
+        new_index,
+        new_index)
+
+  count_and_validity_preserved(
+      old_values, values: list[key],
+      visible: [keym -> bool]): bool =
+    FORALL (locations: [keym -> int]), (values2: list[key]):
+      length(values2) = length(values)
+        IMPLIES
+          (numof(values2, 0, length(values2))
+             = numof(values, 0, length(values2))
+            AND valid(values2, visible, locations))
+            IMPLIES
+              numof(values2, 0, length(values2))
+                = numof(old_values, 0, length(values2))
+                AND valid(values2, visible, locations)
+
+  relocation_branch(
+      values: list[key],
+      finish, hole, old_index: int,
+      moved_key: key,
+      visible: [keym -> bool],
+      locations: [keym -> int]): bool =
+    FORALL (values1: list[key]):
+      same_array(values1, values)
+        IMPLIES
+          in_range(values, hole)
+            AND
+          (LET replaced: list[key] =
+             list_set(
+               values,
+               int_to_nat(hole),
+               moved_key)
+           IN
+             length(replaced) = length(values)
+               IMPLIES
+             list_contents(replaced)
+               = update_key(
+                   list_contents(values),
+                   hole,
+                   moved_key)
+               IMPLIES
+             (FORALL (values2: list[key]):
+               same_array(values2, replaced)
+                 IMPLIES
+                   LET new_index: int =
+                         next_index(length(values), old_index),
+                       cleared: list[key] =
+                         list_set(
+                           replaced,
+                           int_to_nat(new_index),
+                           dummy),
+                       moved_locations: [keym -> int] =
+                         update_loc(
+                           locations,
+                           keym1(moved_key),
+                           hole)
+                   IN
+                     in_range(replaced, new_index)
+                       AND
+                     (length(cleared) = length(replaced)
+                       IMPLIES
+                      list_contents(cleared)
+                        = update_key(
+                            list_contents(replaced),
+                            new_index,
+                            dummy)
+                       IMPLIES
+                         (moved_loop_state(
+                            values,
+                            cleared,
+                            finish,
+                            old_index,
+                            new_index,
+                            visible,
+                            moved_locations)
+                          AND
+                          count_and_validity_preserved(
+                            values,
+                            cleared,
+                            visible)))))
+
+  o2_condition(
+      hole, bucket_index, new_index: int,
+      value: bool): bool =
+    IF hole < bucket_index THEN
+      value =
+        (IF bucket_index <= new_index
+         THEN TRUE ELSE FALSE ENDIF)
+    ELSE
+      value = FALSE
+    ENDIF
+
+  o3_condition(
+      hole, bucket_index, new_index: int,
+      value2, value3: bool): bool =
+    IF value2 = TRUE THEN
+      value3 = TRUE
+    ELSE
+      EXISTS (value4: bool):
+        (IF new_index < hole THEN
+           value4 =
+             (IF hole < bucket_index
+              THEN TRUE ELSE FALSE ENDIF)
+         ELSE
+           value4 = FALSE
+         ENDIF)
+          AND
+        (IF value4 = TRUE THEN
+           value3 = TRUE
+         ELSIF bucket_index <= new_index THEN
+           value3 =
+             (IF new_index < hole
+              THEN TRUE ELSE FALSE ENDIF)
+         ELSE
+           value3 = FALSE
+         ENDIF)
+    ENDIF
+
+  occupied_branch(
+      values: list[key],
+      finish, hole, old_index, new_index: int,
+      moved_key: key,
+      visible: [keym -> bool],
+      locations: [keym -> int]): bool =
+    LET n: int = length(values),
+        bucket_index: int = bucket(moved_key, n)
+    IN
+      0 < n
+        AND
+      ((0 <= bucket_index AND bucket_index < n)
+        IMPLIES
+          FORALL (value2: bool):
+            o2_condition(
+              hole,
+              bucket_index,
+              new_index,
+              value2)
+              IMPLIES
+            (FORALL (value3: bool):
+              o3_condition(
+                hole,
+                bucket_index,
+                new_index,
+                value2,
+                value3)
+                IMPLIES
+                  IF value3 = TRUE THEN
+                    next_loop_state(
+                      old_index,
+                      values,
+                      finish,
+                      hole,
+                      new_index,
+                      visible,
+                      locations)
+                  ELSE
+                    relocation_branch(
+                      values,
+                      finish,
+                      hole,
+                      old_index,
+                      moved_key,
+                      visible,
+                      locations)
+                  ENDIF))
+
+  delete_conclusion(
+      values: list[key],
+      finish, hole, old_index: int,
+      visible: [keym -> bool],
+      locations: [keym -> int]): bool =
+    LET n: int = length(values),
+        new_index: int = next_index(n, old_index),
+        moved_key: key =
+          nth_default(values, int_to_nat(new_index)),
+        old_dummy: key = dummy
+    IN
+      in_range(values, new_index)
+        AND
+      ((neq(moved_key, old_dummy)
+          IFF NOT (keym1(moved_key) = keym1(old_dummy)))
+        IMPLIES
+          IF neq(moved_key, old_dummy) THEN
+            occupied_branch(
+              values,
+              finish,
+              hole,
+              old_index,
+              new_index,
+              moved_key,
+              visible,
+              locations)
+          ELSE
+            valid(values, visible, locations)
+          ENDIF)
+
+  delete_hypotheses(
+      finish: int,
+      values: list[key],
+      hole, old_index: int,
+      visible: [keym -> bool],
+      locations: [keym -> int]): bool =
+    in_range(values, finish)
+      AND in_range(values, hole)
+      AND in_range(values, old_index)
+      AND hole /= finish
+      AND key_eq(
+        nth_default(values, int_to_nat(hole)),
+        dummy)
+      AND key_eq(
+        nth_default(values, int_to_nat(finish)),
+        dummy)
+      AND between(hole, old_index, finish)
+      AND open_segment(values, old_index, finish)
+      AND NOT (visible(keym1(dummy)) = TRUE)
+      AND mapped_entries(values, visible, locations)
+      AND located_allowing_hole(
+        values,
+        visible,
+        locations,
+        hole,
+        old_index)
+
+  delete_vc: bool =
+    source_context
+      IMPLIES
+        FORALL
+            (finish: int),
+            (values: list[key]),
+            (hole, old_index: int),
+            (visible: [keym -> bool]),
+            (locations: [keym -> int]):
+          delete_hypotheses(
+            finish,
+            values,
+            hole,
+            old_index,
+            visible,
+            locations)
+            IMPLIES
+              delete_conclusion(
+                values,
+                finish,
+                hole,
+                old_index,
+                visible,
+                locations)
+
+END linear_probing_LinearProbing_deleteqtvc

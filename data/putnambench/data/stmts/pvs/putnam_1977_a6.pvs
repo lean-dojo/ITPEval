@@ -1,0 +1,124 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1977_a6:
+% a continuous real function on the unit square whose integral vanishes on
+% every centered maximal boundary-touching square must vanish on the square.
+% This file contains no proof.
+
+putnam_1977_a6: THEORY
+BEGIN
+  point: TYPE = [# x_coord: real, y_coord: real #]
+  plane_function: TYPE = [point -> real]
+  real_function: TYPE = [real -> real]
+  real_sequence: TYPE = [nat -> real]
+
+  real_min(left, right: real): real =
+    IF left <= right THEN left ELSE right ENDIF
+
+  unit_square(P: point): bool =
+    0 <= x_coord(P) AND x_coord(P) <= 1
+      AND 0 <= y_coord(P) AND y_coord(P) <= 1
+
+  room(P: point): real =
+    real_min(
+      real_min(x_coord(P), 1 - x_coord(P)),
+      real_min(y_coord(P), 1 - y_coord(P)))
+
+  continuous(f: plane_function): bool =
+    FORALL (P: point), (epsilon_value: posreal):
+      EXISTS (delta: posreal):
+        FORALL (Q: point):
+          (abs(x_coord(Q) - x_coord(P)) < delta
+            AND abs(y_coord(Q) - y_coord(P)) < delta)
+          IMPLIES
+            abs(f(Q) - f(P)) < epsilon_value
+
+  valid_tagged_partition(
+      left, right: real,
+      points, tags: real_sequence,
+      count: nat): bool =
+    count > 0
+      AND points(0) = left
+      AND points(count) = right
+      AND FORALL (index: nat):
+        index < count IMPLIES
+          (points(index) < points(index + 1)
+            AND points(index) <= tags(index)
+            AND tags(index) <= points(index + 1))
+
+  mesh_less_than(
+      points: real_sequence,
+      count: nat,
+      bound: real): bool =
+    FORALL (index: nat):
+      index < count IMPLIES
+        points(index + 1) - points(index) < bound
+
+  riemann_sum(
+      f: real_function,
+      points, tags: real_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      riemann_sum(f, points, tags, count - 1)
+        + f(tags(count - 1))
+            * (points(count) - points(count - 1))
+    ENDIF
+  MEASURE count
+
+  has_interval_integral(
+      f: real_function,
+      left, right, integral_value: real): bool =
+    IF left = right THEN
+      integral_value = 0
+    ELSE
+      left < right
+        AND FORALL (epsilon_value: posreal):
+          EXISTS (mesh_bound: posreal):
+            FORALL
+                (points, tags: real_sequence),
+                (count: nat):
+              (valid_tagged_partition(
+                  left, right, points, tags, count)
+                AND mesh_less_than(
+                  points, count, mesh_bound))
+              IMPLIES
+                abs(
+                  riemann_sum(f, points, tags, count)
+                    - integral_value)
+                  < epsilon_value
+    ENDIF
+
+  centered_square_integral_is(
+      f: plane_function,
+      P: point,
+      integral_value: real): bool =
+    EXISTS (vertical_integrals: real_function):
+      (FORALL (x: real):
+        x_coord(P) - room(P) <= x
+          AND x <= x_coord(P) + room(P)
+        IMPLIES
+          has_interval_integral(
+            LAMBDA (y: real):
+              f((# x_coord := x, y_coord := y #)),
+            y_coord(P) - room(P),
+            y_coord(P) + room(P),
+            vertical_integrals(x)))
+        AND has_interval_integral(
+          vertical_integrals,
+          x_coord(P) - room(P),
+          x_coord(P) + room(P),
+          integral_value)
+
+  putnam_1977_a6_solution: bool = TRUE
+
+  putnam_1977_a6_statement: bool =
+    ((FORALL (f: plane_function):
+      continuous(f) IMPLIES
+        ((FORALL (P: point):
+          unit_square(P) IMPLIES
+            centered_square_integral_is(f, P, 0))
+        IMPLIES
+          (FORALL (P: point):
+            unit_square(P) IMPLIES f(P) = 0)))
+      IFF putnam_1977_a6_solution)
+END putnam_1977_a6

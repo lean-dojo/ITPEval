@@ -1,0 +1,317 @@
+% Statement-only formalization of the VERINA corpus artifact
+% verina_advanced_71, catalog title "shortestBeautifulSubstring": computing
+% the shortest contiguous binary substring with exactly k ones, breaking ties
+% lexicographically, with its full correctness contract. This file contains no proof.
+
+verina_advanced_71: THEORY
+BEGIN
+
+  % Lean String values are represented extensionally by their finite lists of
+  % Unicode scalar characters, preserving the complete source string domain.
+  lean_char: TYPE =
+    {codepoint: nat |
+      codepoint < 1114112
+        AND (codepoint < 55296 OR codepoint >= 57344)}
+
+  lean_string: TYPE = list[lean_char]
+  lean_string_list: TYPE = list[lean_string]
+
+  lean_string_option: DATATYPE
+  BEGIN
+    NoLeanString: NoLeanString?
+    SomeLeanString(string_value: lean_string): SomeLeanString?
+  END lean_string_option
+
+  countOnes(chars: lean_string): RECURSIVE nat =
+    CASES chars OF
+      null:
+        0,
+      cons(head, tail):
+        (IF head = 49 THEN 1 ELSE 0 ENDIF)
+          + countOnes(tail)
+    ENDCASES
+  MEASURE chars BY <<
+
+  all_binary(chars: lean_string): RECURSIVE bool =
+    CASES chars OF
+      null:
+        TRUE,
+      cons(head, tail):
+        (head = 48 OR head = 49)
+          AND all_binary(tail)
+    ENDCASES
+  MEASURE chars BY <<
+
+  shortestBeautifulSubstring_precond(
+      s: lean_string,
+      k: nat): bool =
+    all_binary(s)
+
+  listToString(chars: lean_string): lean_string =
+    chars
+
+  lean_string_length(chars: lean_string): RECURSIVE nat =
+    CASES chars OF
+      null:
+        0,
+      cons(head, tail):
+        lean_string_length(tail) + 1
+    ENDCASES
+  MEASURE chars BY <<
+
+  % Lean's String order is the lexicographic order on its character list.
+  lean_string_less(
+      first, second: lean_string): RECURSIVE bool =
+    CASES first OF
+      null:
+        CASES second OF
+          null: FALSE,
+          cons(second_head, second_tail): TRUE
+        ENDCASES,
+      cons(first_head, first_tail):
+        CASES second OF
+          null:
+            FALSE,
+          cons(second_head, second_tail):
+            first_head < second_head
+              OR
+            (first_head = second_head
+              AND lean_string_less(first_tail, second_tail))
+        ENDCASES
+    ENDCASES
+  MEASURE first BY <<
+
+  isLexSmaller(a, b: lean_string): bool =
+    lean_string_less(listToString(a), listToString(b))
+
+  append_string_lists(
+      first, second: lean_string_list):
+        RECURSIVE lean_string_list =
+    CASES first OF
+      null:
+        second,
+      cons(head, tail):
+        cons(
+          head,
+          append_string_lists(tail, second))
+    ENDCASES
+  MEASURE first BY <<
+
+  prepend_char_to_each(
+      requested: lean_char,
+      values: lean_string_list):
+        RECURSIVE lean_string_list =
+    CASES values OF
+      null:
+        null[lean_string],
+      cons(head, tail):
+        cons(
+          cons(requested, head),
+          prepend_char_to_each(requested, tail))
+    ENDCASES
+  MEASURE values BY <<
+
+  % For a nonempty character list this produces its prefixes of lengths
+  % 1, 2, ..., length, in precisely the source List.range/map order.
+  nonempty_prefixes(
+      chars: lean_string): RECURSIVE lean_string_list =
+    CASES chars OF
+      null:
+        null[lean_string],
+      cons(head, tail):
+        cons(
+          cons(head, null[lean_char]),
+          prepend_char_to_each(
+            head,
+            nonempty_prefixes(tail)))
+    ENDCASES
+  MEASURE chars BY <<
+
+  % This is extensionally the source range/flatMap construction: all nonempty
+  % substrings, ordered first by start index and then by increasing length.
+  allSubstrings(
+      chars: lean_string): RECURSIVE lean_string_list =
+    CASES chars OF
+      null:
+        null[lean_string],
+      cons(head, tail):
+        append_string_lists(
+          nonempty_prefixes(chars),
+          allSubstrings(tail))
+    ENDCASES
+  MEASURE chars BY <<
+
+  filter_beautiful(
+      values: lean_string_list,
+      k: nat): RECURSIVE lean_string_list =
+    CASES values OF
+      null:
+        null[lean_string],
+      cons(head, tail):
+        IF countOnes(head) = k THEN
+          cons(head, filter_beautiful(tail, k))
+        ELSE
+          filter_beautiful(tail, k)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  compare_substrings(a, b: lean_string): bool =
+    lean_string_length(a) < lean_string_length(b)
+      OR
+    (lean_string_length(a) = lean_string_length(b)
+      AND isLexSmaller(a, b))
+
+  % This recursion is exactly candidates.foldl with the source option-valued
+  % accumulator and its strict comparison, including first-seen tie behavior.
+  fold_best(
+      candidates: lean_string_list,
+      accumulator: lean_string_option):
+        RECURSIVE lean_string_option =
+    CASES candidates OF
+      null:
+        accumulator,
+      cons(current, remaining):
+        CASES accumulator OF
+          NoLeanString:
+            fold_best(
+              remaining,
+              SomeLeanString(current)),
+          SomeLeanString(best):
+            IF compare_substrings(current, best) THEN
+              fold_best(
+                remaining,
+                SomeLeanString(current))
+            ELSE
+              fold_best(
+                remaining,
+                SomeLeanString(best))
+            ENDIF
+        ENDCASES
+    ENDCASES
+  MEASURE candidates BY <<
+
+  % The source precondition proof argument is computationally irrelevant.
+  % This is the exact proof-erased executable substring/filter/fold program.
+  shortestBeautifulSubstring(
+      s: lean_string,
+      k: nat): lean_string =
+    LET chars: lean_string = s,
+        candidates: lean_string_list =
+          filter_beautiful(allSubstrings(chars), k),
+        best: lean_string_option =
+          fold_best(candidates, NoLeanString)
+    IN
+      CASES best OF
+        NoLeanString:
+          null[lean_char],
+        SomeLeanString(value):
+          listToString(value)
+      ENDCASES
+
+  % The postcondition's inner range includes the empty prefix as well as every
+  % nonempty prefix of each suffix.
+  prefixes_including_empty(
+      chars: lean_string): lean_string_list =
+    cons(
+      null[lean_char],
+      nonempty_prefixes(chars))
+
+  postcondition_substrings(
+      chars: lean_string): RECURSIVE lean_string_list =
+    CASES chars OF
+      null:
+        null[lean_string],
+      cons(head, tail):
+        append_string_lists(
+          prefixes_including_empty(chars),
+          postcondition_substrings(tail))
+    ENDCASES
+  MEASURE chars BY <<
+
+  map_listToString(
+      values: lean_string_list):
+        RECURSIVE lean_string_list =
+    CASES values OF
+      null:
+        null[lean_string],
+      cons(head, tail):
+        cons(
+          listToString(head),
+          map_listToString(tail))
+    ENDCASES
+  MEASURE values BY <<
+
+  filter_nonempty(
+      values: lean_string_list):
+        RECURSIVE lean_string_list =
+    CASES values OF
+      null:
+        null[lean_string],
+      cons(head, tail):
+        IF head /= null[lean_char] THEN
+          cons(head, filter_nonempty(tail))
+        ELSE
+          filter_nonempty(tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  lean_string_member(
+      requested: lean_string,
+      values: lean_string_list): RECURSIVE bool =
+    CASES values OF
+      null:
+        FALSE,
+      cons(head, tail):
+        requested = head
+          OR lean_string_member(requested, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  lean_string_le(first, second: lean_string): bool =
+    NOT lean_string_less(second, first)
+
+  result_is_minimal(
+      result: lean_string,
+      targets: lean_string_list): RECURSIVE bool =
+    CASES targets OF
+      null:
+        TRUE,
+      cons(head, tail):
+        (lean_string_length(head) > lean_string_length(result)
+          OR
+        (lean_string_length(head) = lean_string_length(result)
+          AND lean_string_le(result, head)))
+          AND result_is_minimal(result, tail)
+    ENDCASES
+  MEASURE targets BY <<
+
+  shortestBeautifulSubstring_postcond(
+      s: lean_string,
+      k: nat,
+      result: lean_string): bool =
+    LET chars: lean_string = s,
+        substrings: lean_string_list =
+          postcondition_substrings(chars),
+        beautiful: lean_string_list =
+          filter_beautiful(substrings, k),
+        targets: lean_string_list =
+          filter_nonempty(map_listToString(beautiful))
+    IN
+      (result = null[lean_char]
+        AND targets = null[lean_string])
+        OR
+      (lean_string_member(result, targets)
+        AND result_is_minimal(result, targets))
+
+  shortestBeautifulSubstring_spec_satisfied: bool =
+    FORALL (s: lean_string, k: nat):
+      shortestBeautifulSubstring_precond(s, k)
+        IMPLIES
+          shortestBeautifulSubstring_postcond(
+            s,
+            k,
+            shortestBeautifulSubstring(s, k))
+
+END verina_advanced_71

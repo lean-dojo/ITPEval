@@ -1,0 +1,216 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/flag2_Flag_swapqtvc: a two-position list-swap verification condition
+% preserving the exchanged entries, all other entries, and interval occurrence
+% counts for a three-color list. This file contains no proof.
+
+flag2_Flag_swapqtvc: THEORY
+BEGIN
+
+  color: DATATYPE
+  BEGIN
+    Blue: Blue?
+    White: White?
+    Red: Red?
+  END color
+
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  nth_default(
+      values: list[color],
+      index: nat,
+      default_color: color): RECURSIVE color =
+    CASES values OF
+      null:
+        default_color,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          nth_default(tail, index - 1, default_color)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  list_set(
+      values: list[color],
+      index: nat,
+      value: color): RECURSIVE list[color] =
+    CASES values OF
+      null:
+        null,
+      cons(head, tail):
+        IF index = 0 THEN
+          cons(value, tail)
+        ELSE
+          cons(head, list_set(tail, index - 1, value))
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  list_contents(
+      values: list[color],
+      default_color: color): [int -> color] =
+    LAMBDA (index: int):
+      nth_default(values, int_to_nat(index), default_color)
+
+  monochrome(
+      values: [int -> color],
+      lower, upper: int,
+      selected_color: color): bool =
+    FORALL (index: int):
+      (lower <= index AND index < upper)
+        IMPLIES values(index) = selected_color
+
+  nb_occ_specification(
+      nb_occ: [[int -> color], int, int, color -> int]): bool =
+    FORALL
+        (upper, lower: int),
+        (values: [int -> color]),
+        (selected_color: color):
+      IF upper <= lower THEN
+        nb_occ(values, lower, upper, selected_color) = 0
+      ELSIF values(upper - 1) = selected_color THEN
+        nb_occ(values, lower, upper, selected_color)
+          = 1 + nb_occ(values, lower, upper - 1, selected_color)
+      ELSE
+        nb_occ(values, lower, upper, selected_color)
+          = nb_occ(values, lower, upper - 1, selected_color)
+      ENDIF
+
+  update_function_equation(
+      before, after: list[color],
+      index: int,
+      value, default_color: color): bool =
+    FORALL (position: int):
+      nth_default(after, int_to_nat(position), default_color)
+        =
+      IF position = index THEN
+        value
+      ELSE
+        nth_default(before, int_to_nat(position), default_color)
+      ENDIF
+
+  swap_result(
+      nb_occ: [[int -> color], int, int, color -> int],
+      original, swapped: list[color],
+      first_index, second_index: int,
+      default_color: color): bool =
+    nth_default(
+      swapped, int_to_nat(first_index), default_color)
+      =
+    nth_default(
+      original, int_to_nat(second_index), default_color)
+      AND
+    nth_default(
+      swapped, int_to_nat(second_index), default_color)
+      =
+    nth_default(
+      original, int_to_nat(first_index), default_color)
+      AND
+    (FORALL (index: int):
+      (index /= first_index AND index /= second_index)
+        IMPLIES
+          nth_default(
+            swapped, int_to_nat(index), default_color)
+          =
+          nth_default(
+            original, int_to_nat(index), default_color))
+      AND
+    (FORALL
+        (lower, upper: int),
+        (selected_color: color):
+      ((lower <= first_index AND first_index < upper)
+        AND lower <= second_index AND second_index < upper)
+        IMPLIES
+          nb_occ(
+            list_contents(swapped, default_color),
+            lower,
+            upper,
+            selected_color)
+          =
+          nb_occ(
+            list_contents(original, default_color),
+            lower,
+            upper,
+            selected_color))
+
+  swap_obligations(
+      nb_occ: [[int -> color], int, int, color -> int],
+      original: list[color],
+      first_index, second_index: int,
+      default_color: color): bool =
+    (0 <= first_index AND first_index < length(original))
+      AND
+    (LET first_value: color =
+       nth_default(
+         original, int_to_nat(first_index), default_color)
+     IN
+       (0 <= second_index AND second_index < length(original))
+         AND
+       (LET second_value: color =
+          nth_default(
+            original, int_to_nat(second_index), default_color)
+        IN
+          (0 <= first_index AND first_index < length(original))
+            AND
+          (LET first_update: list[color] =
+             list_set(
+               original, int_to_nat(first_index), second_value)
+           IN
+             length(first_update) = length(original)
+               IMPLIES
+             update_function_equation(
+               original,
+               first_update,
+               first_index,
+               second_value,
+               default_color)
+               IMPLIES
+             (0 <= second_index
+               AND second_index < length(first_update))
+               AND
+             (LET swapped: list[color] =
+                list_set(
+                  first_update,
+                  int_to_nat(second_index),
+                  first_value)
+              IN
+                length(swapped) = length(first_update)
+                  IMPLIES
+                update_function_equation(
+                  first_update,
+                  swapped,
+                  second_index,
+                  first_value,
+                  default_color)
+                  IMPLIES
+                swap_result(
+                  nb_occ,
+                  original,
+                  swapped,
+                  first_index,
+                  second_index,
+                  default_color)))))
+
+  swap_vc: bool =
+    FORALL
+        (default_color: color),
+        (nb_occ: [[int -> color], int, int, color -> int]),
+        (first_index, second_index: int),
+        (original: list[color]):
+      nb_occ_specification(nb_occ)
+        IMPLIES
+      (0 <= first_index
+        AND first_index < length(original)
+        AND 0 <= second_index
+        AND second_index < length(original))
+        IMPLIES
+      swap_obligations(
+        nb_occ,
+        original,
+        first_index,
+        second_index,
+        default_color)
+
+END flag2_Flag_swapqtvc

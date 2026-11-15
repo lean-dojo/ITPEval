@@ -1,0 +1,259 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/avl/avl_AVL_back_nodeqtvc: an AVL-tree view verification condition
+% relating cached heights and sequences to the final element of a node.
+% This file contains no proof.
+
+avl_AVL_back_nodeqtvc[
+  node_value: TYPE,
+  tree_value: TYPE,
+  summary_value: TYPE
+]: THEORY
+BEGIN
+  model: TYPE = [# seq: list[node_value], hgt: int #]
+
+  avl_tree: DATATYPE
+  BEGIN
+    Empty: Empty?
+    Node(
+      tree_left: avl_tree,
+      tree_datum: node_value,
+      tree_right: avl_tree,
+      tree_height: nat,
+      tree_summary: summary_value): Node?
+  END avl_tree
+
+  view: DATATYPE
+  BEGIN
+    AEmpty: AEmpty?
+    ANode(
+      left: tree_value,
+      datum: node_value,
+      right: tree_value,
+      stored_height: nat,
+      summary: summary_value): ANode?
+  END view
+
+  node_model(
+      left_sequence: list[node_value],
+      node_datum: node_value,
+      right_sequence: list[node_value]): list[node_value] =
+    append(left_sequence, cons(node_datum, right_sequence))
+
+  seq_model(represented_tree: avl_tree):
+      RECURSIVE list[node_value] =
+    CASES represented_tree OF
+      Empty:
+        null,
+      Node(left_tree, node_datum, right_tree, height, node_summary):
+        node_model(
+          seq_model(left_tree),
+          node_datum,
+          seq_model(right_tree))
+    ENDCASES
+  MEASURE represented_tree BY <<
+
+  real_height(represented_tree: avl_tree): RECURSIVE int =
+    CASES represented_tree OF
+      Empty:
+        0,
+      Node(left_tree, node_datum, right_tree, height, node_summary):
+        1
+          + (IF real_height(left_tree) < real_height(right_tree)
+             THEN real_height(right_tree)
+             ELSE real_height(left_tree)
+             ENDIF)
+    ENDCASES
+  MEASURE represented_tree BY <<
+
+  balanced(
+      represented_tree: avl_tree,
+      balancing: nat,
+      agg: [[node_value -> summary_value],
+            list[node_value] -> summary_value],
+      measure_closure: [node_value -> summary_value]):
+      RECURSIVE bool =
+    CASES represented_tree OF
+      Empty:
+        TRUE,
+      Node(left_tree, node_datum, right_tree, height, node_summary):
+        (height :: int) = real_height(represented_tree)
+          AND node_summary =
+                agg(measure_closure, seq_model(represented_tree))
+          AND
+            -(balancing :: int)
+              <= real_height(right_tree) - real_height(left_tree)
+          AND
+            real_height(right_tree) - real_height(left_tree)
+              <= (balancing :: int)
+          AND balanced(
+                left_tree, balancing, agg, measure_closure)
+          AND balanced(
+                right_tree, balancing, agg, measure_closure)
+    ENDCASES
+  MEASURE represented_tree BY <<
+
+  associative(
+      op: [summary_value, summary_value -> summary_value]): bool =
+    FORALL (a, b, c: summary_value):
+      op(a, op(b, c)) = op(op(a, b), c)
+
+  neutral_laws(
+      zero: summary_value,
+      op: [summary_value, summary_value -> summary_value]): bool =
+    FORALL (x: summary_value):
+      op(x, zero) = x AND x = op(zero, x)
+
+  aggregate_laws(
+      zero: summary_value,
+      op: [summary_value, summary_value -> summary_value],
+      agg: [[node_value -> summary_value],
+            list[node_value] -> summary_value]): bool =
+    (FORALL (f: [node_value -> summary_value]):
+      agg(f, null) = zero)
+      AND
+    (FORALL (f: [node_value -> summary_value]),
+            (datum: node_value):
+      agg(f, cons(datum, null)) = f(datum))
+      AND
+    (FORALL (f: [node_value -> summary_value]),
+            (left_sequence, right_sequence: list[node_value]):
+      agg(f, append(left_sequence, right_sequence))
+        = op(agg(f, left_sequence), agg(f, right_sequence)))
+
+  representation_invariant(
+      repr: [tree_value -> avl_tree],
+      m1: [tree_value -> model],
+      balancing: nat,
+      agg: [[node_value -> summary_value],
+            list[node_value] -> summary_value],
+      measure_closure: [node_value -> summary_value]): bool =
+    FORALL (self: tree_value):
+      balanced(
+        repr(self), balancing, agg, measure_closure)
+        AND seq(m1(self)) = seq_model(repr(self))
+        AND hgt(m1(self)) = real_height(repr(self))
+
+  representation_injective(
+      repr: [tree_value -> avl_tree],
+      m1: [tree_value -> model]): bool =
+    FORALL (left_tree, right_tree: tree_value):
+      (repr(left_tree) = repr(right_tree)
+        AND m1(left_tree) = m1(right_tree))
+      IMPLIES left_tree = right_tree
+
+  background_assumptions(
+      zero: summary_value,
+      op: [summary_value, summary_value -> summary_value],
+      agg: [[node_value -> summary_value],
+            list[node_value] -> summary_value],
+      element_measure: [node_value -> summary_value],
+      balancing: nat,
+      measure_closure: [node_value -> summary_value],
+      repr: [tree_value -> avl_tree],
+      m1: [tree_value -> model]): bool =
+    associative(op)
+      AND neutral_laws(zero, op)
+      AND aggregate_laws(zero, op, agg)
+      AND 0 < balancing
+      AND
+        (FORALL (datum: node_value):
+          measure_closure(datum) = element_measure(datum))
+      AND
+        representation_invariant(
+          repr, m1, balancing, agg, measure_closure)
+      AND representation_injective(repr, m1)
+
+  last_of_cons(
+      head: node_value,
+      tail: list[node_value]): RECURSIVE node_value =
+    CASES tail OF
+      null: head,
+      cons(next, rest): last_of_cons(next, rest)
+    ENDCASES
+  MEASURE tail BY <<
+
+  fact0(
+      o1: view,
+      r: tree_value,
+      balancing: nat,
+      agg: [[node_value -> summary_value],
+            list[node_value] -> summary_value],
+      measure_closure: [node_value -> summary_value],
+      m1: [tree_value -> model]): bool =
+    CASES o1 OF
+      AEmpty:
+        hgt(m1(r)) = 0
+          AND seq(m1(r)) = null,
+      ANode(left, node_datum, right, height, node_summary):
+        seq(m1(r))
+            = node_model(
+                seq(m1(left)),
+                node_datum,
+                seq(m1(right)))
+          AND node_summary = agg(measure_closure, seq(m1(r)))
+          AND
+            LET hl: int = hgt(m1(left)),
+                hr: int = hgt(m1(right))
+            IN
+              -balancing <= hl - hr
+                AND hl - hr <= balancing
+                AND hgt(m1(r)) = height
+                AND height =
+                  1 + (IF hl < hr THEN hr ELSE hl ENDIF)
+    ENDCASES
+
+  height_conclusion(
+      o1: view,
+      r: tree_value,
+      m1: [tree_value -> model]): bool =
+    CASES o1 OF
+      AEmpty: TRUE,
+      ANode(left, node_datum, right, height, node_summary):
+        0 <= hgt(m1(r))
+          AND hgt(m1(right)) < hgt(m1(r))
+    ENDCASES
+
+  view_result(
+      o1: view,
+      d: node_value,
+      result: node_value,
+      m1: [tree_value -> model]): bool =
+    CASES o1 OF
+      AEmpty:
+        result = d,
+      ANode(left, node_datum, right, height, node_summary):
+        result = last_of_cons(node_datum, seq(m1(right)))
+    ENDCASES
+
+  node_result(
+      r: tree_value,
+      d: node_value,
+      result: node_value,
+      m1: [tree_value -> model]): bool =
+    result = last_of_cons(d, seq(m1(r)))
+
+  back_node_vc: bool =
+    FORALL
+      (zero: summary_value),
+      (op: [summary_value, summary_value -> summary_value]),
+      (balancing: nat),
+      (agg: [[node_value -> summary_value],
+             list[node_value] -> summary_value]),
+      (element_measure: [node_value -> summary_value]),
+      (measure_closure: [node_value -> summary_value]),
+      (repr: [tree_value -> avl_tree]),
+      (m1: [tree_value -> model]),
+      (o1: view),
+      (r: tree_value),
+      (d: node_value):
+        (background_assumptions(
+           zero, op, agg, element_measure, balancing,
+           measure_closure, repr, m1)
+          AND fact0(o1, r, balancing, agg, measure_closure, m1))
+        IMPLIES
+          (height_conclusion(o1, r, m1)
+            AND
+              (FORALL (result: node_value):
+                view_result(o1, d, result, m1)
+                  IMPLIES node_result(r, d, result, m1)))
+END avl_AVL_back_nodeqtvc

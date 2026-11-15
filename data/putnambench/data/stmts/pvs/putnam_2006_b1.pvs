@@ -1,0 +1,81 @@
+% Statement-only formalization of PutnamBench artifact putnam_2006_b1:
+% the cubic curve x^3 + 3*x*y + y^3 = 1 contains a unique three-point
+% equilateral triangle, whose convex-hull area is 3*sqrt(3)/2. This file
+% contains no proof.
+
+putnam_2006_b1: THEORY
+BEGIN
+  point: TYPE = [# x_coord: real, y_coord: real #]
+  point_set: TYPE = [point -> bool]
+
+  squared_distance(P, Q: point): real =
+    (x_coord(P) - x_coord(Q)) ^ 2
+      + (y_coord(P) - y_coord(Q)) ^ 2
+
+  distance(P, Q: point): real =
+    epsilon(
+      LAMBDA (length: real):
+        0 <= length
+          AND length * length = squared_distance(P, Q))
+
+  curve: point_set =
+    LAMBDA (P: point):
+      x_coord(P) ^ 3
+        + 3 * x_coord(P) * y_coord(P)
+        + y_coord(P) ^ 3
+        = 1
+
+  point_subset(A, B: point_set): bool =
+    FORALL (P: point):
+      A(P) IMPLIES B(P)
+
+  exactly_three(S: point_set): bool =
+    EXISTS (A, B, C: point):
+      A /= B
+        AND A /= C
+        AND B /= C
+        AND FORALL (P: point):
+          S(P) IFF (P = A OR P = B OR P = C)
+
+  equilateral(S: point_set): bool =
+    exactly_three(S)
+      AND EXISTS (side_length: real):
+        FORALL (P, Q: point):
+          S(P) AND S(Q) AND P /= Q
+            IMPLIES distance(P, Q) = side_length
+
+  triangle_area(A, B, C: point): real =
+    abs(
+      (x_coord(B) - x_coord(A)) * (y_coord(C) - y_coord(A))
+        - (y_coord(B) - y_coord(A)) * (x_coord(C) - x_coord(A)))
+      / 2
+
+  has_convex_hull_area(S: point_set, area: real): bool =
+    EXISTS (A, B, C: point):
+      A /= B
+        AND A /= C
+        AND B /= C
+        AND (FORALL (P: point):
+          S(P) IFF (P = A OR P = B OR P = C))
+        AND area = triangle_area(A, B, C)
+
+  sqrt_three: real =
+    epsilon(
+      LAMBDA (root: real):
+        0 <= root AND root * root = 3)
+
+  putnam_2006_b1_solution: real =
+    3 * sqrt_three / 2
+
+  putnam_2006_b1: bool =
+    (EXISTS (S: point_set):
+      point_subset(S, curve)
+        AND equilateral(S)
+        AND FORALL (T: point_set):
+          point_subset(T, curve) AND equilateral(T)
+            IMPLIES T = S)
+      AND EXISTS (S: point_set):
+        point_subset(S, curve)
+          AND equilateral(S)
+          AND has_convex_hull_area(S, putnam_2006_b1_solution)
+END putnam_2006_b1

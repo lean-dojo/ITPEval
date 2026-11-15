@@ -8,8 +8,15 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 
+from eval.pipeline.config import PROVER_TIMEOUTS
 from eval.pipeline.jsonl import load_checkpoint, write_jsonl_atomic
 from eval.pipeline.records import translation_record_key, translation_record_label
+from eval.pipeline.translation.scaffold import (
+    ScaffoldError,
+    extract_statement_response,
+    validate_statement_output,
+    validate_ungrounded_proof_output,
+)
 
 try:
     from itpeval.itp import run_itp, RunResult
@@ -26,22 +33,20 @@ class VerifyResult:
     duration_ms: int
 
 
-DEFAULT_TIMEOUTS = {
-    "lean4": 60,
-    "rocq": 60,
-    "isabelle": 120,
-    "hol-light": 300,
-}
-
-
 def timeout_for(prover: str, *, hol_light_timeout_s: int | None = None) -> int:
     if prover == "hol-light" and hol_light_timeout_s is not None:
         return hol_light_timeout_s
-    return DEFAULT_TIMEOUTS.get(prover, 120)
+    return PROVER_TIMEOUTS.get(prover, 120)
 
 
-def verify(prover: str, code: str, timeout_s: int = 120) -> VerifyResult:
+def verify(
+    prover: str,
+    code: str,
+    timeout_s: int | None = None,
+) -> VerifyResult:
     """Run the generated proof through the target ITP. Returns VerifyResult."""
+    if timeout_s is None:
+        timeout_s = timeout_for(prover)
     t0 = time.monotonic()
     try:
         # Raw mode sends the generated file directly to the selected prover adapter
@@ -67,6 +72,44 @@ def verify_translation_record(
 ) -> dict:
     generated = record.get("generated", "") or ""
     tgt_prover = record.get("tgt_prover", "")
+    if generated and record.get("mode") == "stmts":
+        raw_generated = generated
+        try:
+            generated = extract_statement_response(
+                tgt_prover,
+                raw_generated,
+            )
+            validate_statement_output(tgt_prover, generated)
+        except ScaffoldError as exc:
+            return {
+                **record,
+                "verified": False,
+                "verify_error": str(exc),
+                "verify_ms": 0,
+            }
+        if generated != raw_generated:
+            record = {
+                **record,
+                "generated": generated,
+                "raw_generated": record.get(
+                    "raw_generated",
+                    raw_generated,
+                ),
+            }
+    if generated and record.get("mode") == "proofs":
+        try:
+            validate_ungrounded_proof_output(
+                generated,
+                prover=tgt_prover,
+            )
+        except ScaffoldError as exc:
+            return {
+                **record,
+                "verified": False,
+                "verify_error": str(exc),
+                "verify_ms": 0,
+                "admission_free": False,
+            }
     # Empty model outputs are recorded as verification failures without invoking a prover
     if generated and tgt_prover:
         vr = verify(
@@ -74,7 +117,15 @@ def verify_translation_record(
             generated,
             timeout_s=timeout_for(tgt_prover, hol_light_timeout_s=hol_light_timeout_s),
         )
-        return {**record, "verified": vr.ok, "verify_error": vr.error, "verify_ms": vr.duration_ms}
+        checked = {
+            **record,
+            "verified": vr.ok,
+            "verify_error": vr.error,
+            "verify_ms": vr.duration_ms,
+        }
+        if record.get("mode") == "proofs":
+            checked["admission_free"] = True
+        return checked
     return {**record, "verified": False, "verify_error": "no output", "verify_ms": 0}
 
 

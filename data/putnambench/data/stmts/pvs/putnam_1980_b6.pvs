@@ -1,0 +1,70 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1980_b6:
+% the reduced denominator of a value defined by the stated rational recurrence
+% is not divisible by the prime indexing that value. This file contains no proof.
+
+putnam_1980_b6: THEORY
+BEGIN
+  rational_array: TYPE = [int, int -> rat]
+
+  nat_subtract(n, k: nat): nat =
+    IF k <= n THEN n - k ELSE 0 ENDIF
+
+  nat_divides(divisor, value: nat): bool =
+    EXISTS (quotient: nat):
+      value = divisor * quotient
+
+  prime_nat(p: nat): bool =
+    p >= 2
+      AND FORALL (divisor: nat):
+        nat_divides(divisor, p)
+          IMPLIES divisor = 1 OR divisor = p
+
+  reduced_fraction(
+      value: rat,
+      numerator: int,
+      denominator: posnat): bool =
+    value = numerator / denominator
+      AND (FORALL (divisor: posnat):
+        ((EXISTS (integer_quotient: int):
+            numerator = divisor * integer_quotient)
+          AND (EXISTS (natural_quotient: nat):
+            denominator = divisor * natural_quotient))
+        IMPLIES divisor = 1)
+
+  has_reduced_denominator(value: rat, denominator: posnat): bool =
+    EXISTS (numerator: int):
+      reduced_fraction(value, numerator, denominator)
+
+  recurrence_sum(
+      G: rational_array,
+      d, term_count: nat): RECURSIVE rat =
+    IF term_count = 0 THEN
+      0
+    ELSE
+      recurrence_sum(G, d, term_count - 1)
+        + G(
+            (d :: int) - 1,
+            (d :: int) + (term_count :: int) - 2)
+    ENDIF
+  MEASURE term_count
+
+  putnam_1980_b6: bool =
+    FORALL (G: rational_array):
+      (FORALL (d, n: nat):
+        d <= n IMPLIES
+          ((d = 1 IMPLIES
+              G(d :: int, n :: int) = 1 / (n :: rat))
+            AND (d > 1 IMPLIES
+              G(d :: int, n :: int)
+                = ((d :: rat) / (n :: rat))
+                    * recurrence_sum(
+                        G, d, nat_subtract(n, d) + 1))))
+      IMPLIES
+        FORALL (d, p: nat):
+          (1 < d AND d <= p AND prime_nat(p))
+          IMPLIES
+            EXISTS (denominator: posnat):
+              has_reduced_denominator(
+                G(d :: int, p :: int), denominator)
+                AND NOT nat_divides(p, denominator)
+END putnam_1980_b6

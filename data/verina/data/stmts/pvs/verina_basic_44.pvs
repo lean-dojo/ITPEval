@@ -1,0 +1,91 @@
+% Statement-only formalization of the VERINA corpus artifact verina_basic_44,
+% catalog title "isOddAtIndexOdd": a deterministic indexed scan returns true
+% exactly when every odd array index contains an odd integer. This file
+% contains no proof.
+
+verina_basic_44: THEORY
+BEGIN
+
+  % Finite PVS lists preserve the exact contents and order of Lean arrays.
+  int_list_length(values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        int_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  int_list_nth_default(
+      index: nat,
+      values: list[int]): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          int_list_nth_default(index - 1, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  % Lean Int.emod returns a nonnegative remainder modulo the divisor's
+  % absolute value and returns the dividend when the divisor is zero.
+  lean_int_emod(
+      dividend, divisor: int): int =
+    IF divisor = 0 THEN
+      dividend
+    ELSE
+      mod(dividend, abs(divisor))
+    ENDIF
+
+  isOdd(n: int): bool =
+    lean_int_emod(n, 2) = 1
+
+  nat_as_int(index: nat): int =
+    index
+
+  isOddAtIndexOdd_precond(
+      a: list[int]): bool =
+    TRUE
+
+  % This fuses the source Array.mapIdx with Array.all while preserving their
+  % left-to-right index and value sequence exactly.
+  isOddAtIndexOdd_all_from(
+      remaining: list[int],
+      index: nat): RECURSIVE bool =
+    CASES remaining OF
+      null:
+        TRUE,
+      cons(current, rest):
+        (NOT isOdd(nat_as_int(index)) OR isOdd(current))
+          AND isOddAtIndexOdd_all_from(rest, index + 1)
+    ENDCASES
+  MEASURE remaining BY <<
+
+  % The source precondition proof argument is computationally irrelevant.
+  isOddAtIndexOdd(
+      a: list[int]): bool =
+    isOddAtIndexOdd_all_from(a, 0)
+
+  isOddAtIndexOdd_postcond(
+      a: list[int],
+      result: bool): bool =
+    result IFF
+      (FORALL (i: nat):
+        i < int_list_length(a)
+          IMPLIES
+            (isOdd(nat_as_int(i))
+              IMPLIES isOdd(int_list_nth_default(i, a))))
+
+  isOddAtIndexOdd_spec_satisfied: bool =
+    FORALL (a: list[int]):
+      isOddAtIndexOdd_precond(a)
+        IMPLIES
+          isOddAtIndexOdd_postcond(
+            a,
+            isOddAtIndexOdd(a))
+
+END verina_basic_44

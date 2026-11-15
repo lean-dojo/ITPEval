@@ -1,0 +1,99 @@
+% Statement-only formalization of PutnamBench artifact putnam_1974_b1:
+% five points on the real unit circle attain the supremum of the sum of their
+% ten pairwise Euclidean distances exactly when a cyclic ordering has five
+% equal positive successive distances. This file contains no proof.
+
+putnam_1974_b1: THEORY
+BEGIN
+  vertex: TYPE = below(5)
+  point: TYPE = [# x_coord: real, y_coord: real #]
+  configuration: TYPE = [vertex -> point]
+  vertex_permutation: TYPE = [vertex -> vertex]
+
+  squared_norm(P: point): real =
+    x_coord(P) ^ 2 + y_coord(P) ^ 2
+
+  squared_distance(P, Q: point): real =
+    (x_coord(P) - x_coord(Q)) ^ 2
+      + (y_coord(P) - y_coord(Q)) ^ 2
+
+  sqrt_value(root, radicand: real): bool =
+    0 <= root AND root * root = radicand
+
+  on_unit_circle(p: configuration): bool =
+    FORALL (i: vertex):
+      squared_norm(p(i)) = 1
+
+  distance_sum(p: configuration, total: real): bool =
+    EXISTS (d01, d02, d03, d04, d12,
+            d13, d14, d23, d24, d34: real):
+      sqrt_value(d01, squared_distance(p(0), p(1)))
+        AND sqrt_value(d02, squared_distance(p(0), p(2)))
+        AND sqrt_value(d03, squared_distance(p(0), p(3)))
+        AND sqrt_value(d04, squared_distance(p(0), p(4)))
+        AND sqrt_value(d12, squared_distance(p(1), p(2)))
+        AND sqrt_value(d13, squared_distance(p(1), p(3)))
+        AND sqrt_value(d14, squared_distance(p(1), p(4)))
+        AND sqrt_value(d23, squared_distance(p(2), p(3)))
+        AND sqrt_value(d24, squared_distance(p(2), p(4)))
+        AND sqrt_value(d34, squared_distance(p(3), p(4)))
+        AND total =
+          d01 + d02 + d03 + d04 + d12
+            + d13 + d14 + d23 + d24 + d34
+
+  unit_distance_upper_bound(bound: real): bool =
+    FORALL (q: configuration), (total: real):
+      (on_unit_circle(q) AND distance_sum(q, total))
+        IMPLIES total <= bound
+
+  unit_distance_supremum(value: real): bool =
+    unit_distance_upper_bound(value)
+      AND FORALL (bound: real):
+        unit_distance_upper_bound(bound) IMPLIES value <= bound
+
+  attains_unit_distance_supremum(p: configuration): bool =
+    EXISTS (total: real):
+      distance_sum(p, total)
+        AND unit_distance_supremum(total)
+
+  permutation(ordering: vertex_permutation): bool =
+    (FORALL (i, j: vertex):
+      ordering(i) = ordering(j) IMPLIES i = j)
+      AND
+        (FORALL (j: vertex):
+          EXISTS (i: vertex):
+            ordering(i) = j)
+
+  pairwise_distinct(p: configuration): bool =
+    FORALL (i, j: vertex):
+      i /= j IMPLIES p(i) /= p(j)
+
+  equal_positive_cyclic_edges(p: configuration): bool =
+    EXISTS (edge_length: real), (ordering: vertex_permutation):
+      edge_length > 0
+        AND permutation(ordering)
+        AND sqrt_value(
+          edge_length,
+          squared_distance(p(ordering(0)), p(ordering(1))))
+        AND sqrt_value(
+          edge_length,
+          squared_distance(p(ordering(1)), p(ordering(2))))
+        AND sqrt_value(
+          edge_length,
+          squared_distance(p(ordering(2)), p(ordering(3))))
+        AND sqrt_value(
+          edge_length,
+          squared_distance(p(ordering(3)), p(ordering(4))))
+        AND sqrt_value(
+          edge_length,
+          squared_distance(p(ordering(4)), p(ordering(0))))
+
+  putnam_1974_b1: bool =
+    FORALL (p: configuration):
+      on_unit_circle(p)
+        IMPLIES
+          (attains_unit_distance_supremum(p)
+            IFF
+              (pairwise_distinct(p)
+                AND equal_positive_cyclic_edges(p)))
+END putnam_1974_b1

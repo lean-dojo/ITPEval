@@ -1,0 +1,137 @@
+% Statement-only formalization of PutnamBench artifact putnam_1964_b4:
+% n positive, distinct great circles in general position divide the unit
+% sphere into n^2 - n + 2 sign-defined regions. This file contains no proof.
+
+putnam_1964_b4[n: posnat]: THEORY
+BEGIN
+  point: TYPE =
+    [# x_coord: real, y_coord: real, z_coord: real #]
+  point_set: TYPE = [point -> bool]
+  circle_index: TYPE = below(n)
+  circle_family: TYPE = [circle_index -> point_set]
+  vector_family: TYPE = [circle_index -> point]
+  sign_value: TYPE =
+    {value: int | value = -1 OR value = 0 OR value = 1}
+  sign_assignment: TYPE = [circle_index -> sign_value]
+  region_predicate: TYPE = [point_set -> bool]
+  point_set_sequence: TYPE = [nat -> point_set]
+
+  zero_vector: point =
+    (# x_coord := 0, y_coord := 0, z_coord := 0 #)
+
+  squared_norm(p: point): real =
+    x_coord(p) ^ 2 + y_coord(p) ^ 2 + z_coord(p) ^ 2
+
+  dot_product(p, q: point): real =
+    x_coord(p) * x_coord(q)
+      + y_coord(p) * y_coord(q)
+      + z_coord(p) * z_coord(q)
+
+  unit_sphere: point_set =
+    LAMBDA (p: point):
+      squared_norm(p) = 1
+
+  sign_of_real(value: real): sign_value =
+    IF value < 0 THEN
+      -1
+    ELSIF value = 0 THEN
+      0
+    ELSE
+      1
+    ENDIF
+
+  circles_are_great(
+      C: circle_family,
+      v: vector_family): bool =
+    FORALL (i: circle_index):
+      C(i) =
+        LAMBDA (p: point):
+          unit_sphere(p) AND dot_product(v(i), p) = 0
+
+  normals_are_nonzero(v: vector_family): bool =
+    FORALL (i: circle_index):
+      v(i) /= zero_vector
+
+  circles_are_injective(C: circle_family): bool =
+    FORALL (i, j: circle_index):
+      C(i) = C(j) IMPLIES i = j
+
+  at_most_two_circles_through(
+      C: circle_family,
+      p, q: point): bool =
+    FORALL (i, j, k: circle_index):
+      (C(i)(p) AND C(i)(q)
+        AND C(j)(p) AND C(j)(q)
+        AND C(k)(p) AND C(k)(q))
+      IMPLIES i = j OR i = k OR j = k
+
+  circles_in_general_position(C: circle_family): bool =
+    FORALL (p, q: point):
+      unit_sphere(p) AND unit_sphere(q)
+      IMPLIES at_most_two_circles_through(C, p, q)
+
+  nonempty(R: point_set): bool =
+    EXISTS (p: point):
+      R(p)
+
+  regions_are_sign_patterns(
+      IsRegion: region_predicate,
+      v: vector_family): bool =
+    FORALL (R: point_set):
+      IsRegion(R)
+      IFF
+        nonempty(R)
+          AND EXISTS (signs: sign_assignment):
+            (FORALL (i: circle_index):
+              signs(i) /= 0)
+            AND R =
+              LAMBDA (p: point):
+                unit_sphere(p)
+                  AND (FORALL (i: circle_index):
+                    sign_of_real(dot_product(v(i), p)) = signs(i))
+
+  injective_below(
+      enumeration: point_set_sequence,
+      cardinality: nat): bool =
+    FORALL (i, j: nat):
+      i < cardinality AND j < cardinality
+        AND enumeration(i) = enumeration(j)
+      IMPLIES i = j
+
+  enumerates_exactly(
+      enumeration: point_set_sequence,
+      IsRegion: region_predicate,
+      cardinality: nat): bool =
+    FORALL (R: point_set):
+      IsRegion(R)
+      IFF
+        EXISTS (position: nat):
+          position < cardinality AND enumeration(position) = R
+
+  has_cardinality(
+      IsRegion: region_predicate,
+      cardinality: nat): bool =
+    EXISTS (enumeration: point_set_sequence):
+      injective_below(enumeration, cardinality)
+        AND enumerates_exactly(
+          enumeration, IsRegion, cardinality)
+
+  nat_predecessor(k: nat): nat =
+    IF k = 0 THEN 0 ELSE k - 1 ENDIF
+
+  putnam_1964_b4_solution(k: nat): nat =
+    k * nat_predecessor(k) + 2
+
+  putnam_1964_b4: bool =
+    FORALL (C: circle_family),
+        (v: vector_family),
+        (IsRegion: region_predicate):
+      (circles_are_great(C, v)
+        AND normals_are_nonzero(v)
+        AND circles_are_injective(C)
+        AND circles_in_general_position(C)
+        AND regions_are_sign_patterns(IsRegion, v))
+      IMPLIES
+        has_cardinality(
+          IsRegion, putnam_1964_b4_solution(n))
+END putnam_1964_b4

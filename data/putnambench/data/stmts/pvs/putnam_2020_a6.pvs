@@ -1,0 +1,115 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2020_a6:
+% the least uniform upper bound of the specified finite sine sums over positive
+% integers N and real x is pi/4. This file contains no proof.
+
+putnam_2020_a6: THEORY
+BEGIN
+  real_sequence: TYPE = [nat -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  nat_factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * nat_factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  alternating_sign(index: nat): RECURSIVE real =
+    IF index = 0 THEN
+      1
+    ELSE
+      -alternating_sign(index - 1)
+    ENDIF
+  MEASURE index
+
+  leibniz_partial_sum(count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        leibniz_partial_sum(count - 1)
+          + safe_div(
+              alternating_sign(index),
+              (2 * index + 1) :: real)
+    ENDIF
+  MEASURE count
+
+  is_pi(value: real): bool =
+    converges_to(
+      LAMBDA (count: nat):
+        4 * leibniz_partial_sum(count),
+      value)
+
+  pi: real =
+    epsilon(
+      LAMBDA (value: real):
+        is_pi(value))
+
+  sine_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        sine_partial(x, count - 1)
+          + safe_div(
+              alternating_sign(index) * x ^ (2 * index + 1),
+              nat_factorial(2 * index + 1) :: real)
+    ENDIF
+  MEASURE count
+
+  sine(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat):
+            sine_partial(x, count),
+          value))
+
+  finite_sum(values: real_sequence, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      finite_sum(values, count - 1) + values(count - 1)
+    ENDIF
+  MEASURE count
+
+  putnam_term(N, n: nat, x: real): real =
+    safe_div(
+      (N :: real) + safe_div(1, 2) - (n :: real),
+      ((N + 1) :: real) * ((2 * n + 1) :: real))
+      * sine(((2 * n + 1) :: real) * x)
+
+  putnam_sum(N: nat, x: real): real =
+    finite_sum(
+      LAMBDA (n: nat):
+        putnam_term(N, n, x),
+      N + 1)
+
+  is_uniform_upper_bound(bound: real): bool =
+    FORALL (N: nat):
+      N > 0 IMPLIES
+        FORALL (x: real):
+          putnam_sum(N, x) <= bound
+
+  putnam_2020_a6_solution: real = pi / 4
+
+  putnam_2020_a6: bool =
+    is_uniform_upper_bound(putnam_2020_a6_solution)
+      AND (FORALL (bound: real):
+        is_uniform_upper_bound(bound)
+          IMPLIES putnam_2020_a6_solution <= bound)
+END putnam_2020_a6

@@ -1,0 +1,100 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/patience_PatienceCode_push_cardqtvc: the patience-solitaire push-card
+% verification condition that preserves nonempty stacks in every branch.
+% This file contains no proof.
+
+patience_PatienceCode_push_cardqtvc: THEORY
+BEGIN
+
+  wf_stacks(stacks: list[list[int]]): RECURSIVE bool =
+    CASES stacks OF
+      null:
+        TRUE,
+      cons(stack, remaining_stacks):
+        CASES stack OF
+          null:
+            FALSE,
+          cons(cprime, remaining_cards):
+            wf_stacks(remaining_stacks)
+        ENDCASES
+    ENDCASES
+  MEASURE stacks BY <<
+
+  rev_append_stacks(
+      values, suffix: list[list[int]]): RECURSIVE list[list[int]] =
+    CASES values OF
+      null:
+        suffix,
+      cons(stack, remaining_stacks):
+        rev_append_stacks(
+          remaining_stacks,
+          cons(stack, suffix))
+    ENDCASES
+  MEASURE values BY <<
+
+  tail_matches(
+      stacks, expected_tail: list[list[int]]): bool =
+    CASES stacks OF
+      null:
+        FALSE,
+      cons(stack, remaining_stacks):
+        remaining_stacks = expected_tail
+    ENDCASES
+
+  initial_obligation(
+      stacks1, acc: list[list[int]],
+      c: int): bool =
+    CASES stacks1 OF
+      null:
+        TRUE,
+      cons(stack, remaining_stacks):
+        CASES stack OF
+          null:
+            FALSE,
+          cons(cprime, remaining_cards):
+            NOT c <= cprime
+              IMPLIES
+                tail_matches(stacks1, remaining_stacks)
+                  AND wf_stacks(remaining_stacks)
+                  AND wf_stacks(cons(stack, acc))
+        ENDCASES
+    ENDCASES
+
+  result_antecedent(
+      stacks1, acc, result: list[list[int]],
+      c: int): bool =
+    CASES stacks1 OF
+      null:
+        result =
+          rev_append_stacks(
+            cons(cons(c, null), acc),
+            null),
+      cons(stack, remaining_stacks):
+        CASES stack OF
+          null:
+            FALSE,
+          cons(cprime, remaining_cards):
+            IF c <= cprime THEN
+              result =
+                rev_append_stacks(
+                  cons(cons(c, stack), acc),
+                  remaining_stacks)
+            ELSE
+              wf_stacks(result)
+            ENDIF
+        ENDCASES
+    ENDCASES
+
+  push_card_vc: bool =
+    FORALL
+        (stacks1, acc: list[list[int]]),
+        (c: int):
+      (wf_stacks(stacks1) AND wf_stacks(acc))
+        IMPLIES
+          (initial_obligation(stacks1, acc, c)
+            AND
+              (FORALL (result: list[list[int]]):
+                result_antecedent(stacks1, acc, result, c)
+                  IMPLIES wf_stacks(result)))
+
+END patience_PatienceCode_push_cardqtvc

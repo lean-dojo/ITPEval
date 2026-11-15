@@ -1,0 +1,96 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1986_b6:
+% an identity for four square matrices over an arbitrary field, assuming two
+% matrix products are symmetric and a mixed-product difference is the identity.
+% This file contains no proof.
+
+putnam_1986_b6[
+  n: posnat,
+  FieldElement: TYPE+,
+  zero_F, one_F: FieldElement,
+  add_F, multiply_F:
+    [FieldElement, FieldElement -> FieldElement],
+  negate_F, inverse_F: [FieldElement -> FieldElement]
+]: THEORY
+BEGIN
+  index: TYPE = below(n)
+  matrix: TYPE = [index, index -> FieldElement]
+
+  field_axioms: bool =
+    zero_F /= one_F
+      AND (FORALL (x, y: FieldElement):
+        add_F(x, y) = add_F(y, x))
+      AND (FORALL (x, y, z: FieldElement):
+        add_F(add_F(x, y), z) = add_F(x, add_F(y, z)))
+      AND (FORALL (x: FieldElement):
+        add_F(x, zero_F) = x)
+      AND (FORALL (x: FieldElement):
+        add_F(x, negate_F(x)) = zero_F)
+      AND (FORALL (x, y: FieldElement):
+        multiply_F(x, y) = multiply_F(y, x))
+      AND (FORALL (x, y, z: FieldElement):
+        multiply_F(multiply_F(x, y), z)
+          = multiply_F(x, multiply_F(y, z)))
+      AND (FORALL (x: FieldElement):
+        multiply_F(x, one_F) = x)
+      AND (FORALL (x, y, z: FieldElement):
+        multiply_F(x, add_F(y, z))
+          = add_F(multiply_F(x, y), multiply_F(x, z)))
+      AND (FORALL (x: FieldElement):
+        x /= zero_F IMPLIES
+          multiply_F(x, inverse_F(x)) = one_F)
+
+  bounded_field_sum(
+      values: [index -> FieldElement],
+      count: nat): RECURSIVE FieldElement =
+    IF count = 0 THEN
+      zero_F
+    ELSE
+      add_F(
+        bounded_field_sum(values, count - 1),
+        IF count <= n THEN
+          values(count - 1)
+        ELSE
+          zero_F
+        ENDIF)
+    ENDIF
+  MEASURE count
+
+  matrix_transpose(A: matrix): matrix =
+    LAMBDA (row, column: index):
+      A(column, row)
+
+  matrix_multiply(A, B: matrix): matrix =
+    LAMBDA (row, column: index):
+      bounded_field_sum(
+        LAMBDA (inner: index):
+          multiply_F(A(row, inner), B(inner, column)),
+        n)
+
+  matrix_subtract(A, B: matrix): matrix =
+    LAMBDA (row, column: index):
+      add_F(A(row, column), negate_F(B(row, column)))
+
+  identity_matrix: matrix =
+    LAMBDA (row, column: index):
+      IF row = column THEN one_F ELSE zero_F ENDIF
+
+  symmetric(A: matrix): bool =
+    A = matrix_transpose(A)
+
+  putnam_1986_b6: bool =
+    field_axioms IMPLIES
+      (FORALL (A, B, C, D: matrix):
+        (symmetric(
+           matrix_multiply(A, matrix_transpose(B)))
+          AND symmetric(
+            matrix_multiply(C, matrix_transpose(D)))
+          AND matrix_subtract(
+            matrix_multiply(A, matrix_transpose(D)),
+            matrix_multiply(B, matrix_transpose(C)))
+              = identity_matrix)
+        IMPLIES
+          matrix_subtract(
+            matrix_multiply(matrix_transpose(A), D),
+            matrix_multiply(matrix_transpose(C), B))
+              = identity_matrix)
+END putnam_1986_b6

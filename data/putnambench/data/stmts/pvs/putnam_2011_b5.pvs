@@ -1,0 +1,140 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2011_b5:
+% a linear bound on full-line integrals of squared finite Cauchy-kernel sums
+% implies a positive cubic lower bound for the pairwise-distance sum.
+% This file contains no proof.
+
+putnam_2011_b5: THEORY
+BEGIN
+  real_function: TYPE = [real -> real]
+  real_sequence: TYPE = [nat -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  finite_sum(
+      values: real_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      finite_sum(values, count - 1) + values(count - 1)
+    ENDIF
+  MEASURE count
+
+  valid_tagged_partition(
+      left, right: real,
+      points, tags: real_sequence,
+      count: nat): bool =
+    count > 0
+      AND points(0) = left
+      AND points(count) = right
+      AND FORALL (index: nat):
+        index < count IMPLIES
+          (points(index) < points(index + 1)
+            AND points(index) <= tags(index)
+            AND tags(index) <= points(index + 1))
+
+  mesh_less_than(
+      points: real_sequence,
+      count: nat,
+      bound: real): bool =
+    FORALL (index: nat):
+      index < count IMPLIES
+        points(index + 1) - points(index) < bound
+
+  riemann_sum(
+      function_value: real_function,
+      points, tags: real_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      riemann_sum(
+        function_value, points, tags, count - 1)
+        + function_value(tags(count - 1))
+            * (points(count) - points(count - 1))
+    ENDIF
+  MEASURE count
+
+  has_interval_integral(
+      function_value: real_function,
+      left, right, integral_value: real): bool =
+    left < right
+      AND FORALL (epsilon_value: posreal):
+        EXISTS (mesh_bound: posreal):
+          FORALL
+              (points, tags: real_sequence),
+              (count: nat):
+            (valid_tagged_partition(
+                left, right, points, tags, count)
+              AND mesh_less_than(
+                points, count, mesh_bound))
+            IMPLIES
+              abs(
+                riemann_sum(
+                  function_value, points, tags, count)
+                  - integral_value)
+                < epsilon_value
+
+  has_full_line_integral(
+      function_value: real_function,
+      integral_value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: posreal):
+        FORALL (radius: posreal):
+          cutoff <= radius IMPLIES
+            EXISTS (truncated_value: real):
+              has_interval_integral(
+                function_value,
+                -radius,
+                radius,
+                truncated_value)
+                AND abs(truncated_value - integral_value)
+                  < epsilon_value
+
+  cauchy_kernel_sum(
+      a: real_sequence,
+      n: nat,
+      x: real): real =
+    finite_sum(
+      LAMBDA (index: nat):
+        safe_div(1, 1 + (x - a(index)) ^ 2),
+      n)
+
+  squared_kernel_sum(
+      a: real_sequence,
+      n: nat): real_function =
+    LAMBDA (x: real):
+      cauchy_kernel_sum(a, n, x) ^ 2
+
+  pairwise_distance_sum(
+      a: real_sequence,
+      n: nat): real =
+    finite_sum(
+      LAMBDA (i: nat):
+        finite_sum(
+          LAMBDA (j: nat):
+            1 + (a(i) - a(j)) ^ 2,
+          n),
+      n)
+
+  putnam_2011_b5: bool =
+    FORALL (a: real_sequence):
+      (EXISTS (A: real):
+        FORALL (n: nat):
+          EXISTS (integral_value: real):
+            has_full_line_integral(
+              squared_kernel_sum(a, n),
+              integral_value)
+              AND integral_value <= A * (n :: real))
+      IMPLIES
+        EXISTS (B: real):
+          B > 0
+            AND FORALL (n: nat):
+              pairwise_distance_sum(a, n)
+                >= B * (n :: real) ^ 3
+END putnam_2011_b5

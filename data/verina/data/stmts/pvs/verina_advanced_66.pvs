@@ -1,0 +1,202 @@
+% Statement-only formalization of the VERINA corpus artifact
+% verina_advanced_66, catalog title "reverseWords": an executable Unicode-
+% scalar string program splits on ASCII spaces, removes empty words, reverses
+% their order, and rejoins them with single spaces under its correctness
+% contract. This file contains no proof.
+
+verina_advanced_66: THEORY
+BEGIN
+
+  % Lean String values are represented extensionally by their finite lists of
+  % Unicode scalar values, preserving the full source string domain.
+  lean_char: TYPE =
+    {codepoint: nat |
+      codepoint < 1114112
+        AND (codepoint < 55296 OR codepoint >= 57344)}
+
+  lean_string: TYPE = list[lean_char]
+  lean_string_list: TYPE = list[lean_string]
+
+  lean_space: lean_char = 32
+
+  reverseWords_precond(words_str: lean_string): bool =
+    TRUE
+
+  append_chars(
+      first, second: lean_string): RECURSIVE lean_string =
+    CASES first OF
+      null:
+        second,
+      cons(head, tail):
+        cons(
+          head,
+          append_chars(tail, second))
+    ENDCASES
+  MEASURE first BY <<
+
+  reverse_chars_acc(
+      remaining, accumulator: lean_string):
+        RECURSIVE lean_string =
+    CASES remaining OF
+      null:
+        accumulator,
+      cons(head, tail):
+        reverse_chars_acc(
+          tail,
+          cons(head, accumulator))
+    ENDCASES
+  MEASURE remaining BY <<
+
+  reverse_chars(values: lean_string): lean_string =
+    reverse_chars_acc(values, null[lean_char])
+
+  % This emits a field at every U+0020 and one final field at exhaustion, so
+  % it exactly represents String.splitOn " ", including empty fields.
+  splitOnSpace_go(
+      current_reversed, remaining: lean_string):
+        RECURSIVE lean_string_list =
+    CASES remaining OF
+      null:
+        cons(
+          reverse_chars(current_reversed),
+          null[lean_string]),
+      cons(head, tail):
+        IF head = lean_space THEN
+          cons(
+            reverse_chars(current_reversed),
+            splitOnSpace_go(
+              null[lean_char],
+              tail))
+        ELSE
+          splitOnSpace_go(
+            cons(head, current_reversed),
+            tail)
+        ENDIF
+    ENDCASES
+  MEASURE remaining BY <<
+
+  splitOnSpace(words_str: lean_string): lean_string_list =
+    splitOnSpace_go(null[lean_char], words_str)
+
+  % The source-local implementation helper.
+  filterNonEmpty(words: lean_string_list):
+      RECURSIVE lean_string_list =
+    CASES words OF
+      null:
+        null[lean_string],
+      cons(head, tail):
+        IF head = null[lean_char] THEN
+          filterNonEmpty(tail)
+        ELSE
+          cons(
+            head,
+            filterNonEmpty(tail))
+        ENDIF
+    ENDCASES
+  MEASURE words BY <<
+
+  reverse_words_acc(
+      remaining, accumulator: lean_string_list):
+        RECURSIVE lean_string_list =
+    CASES remaining OF
+      null:
+        accumulator,
+      cons(head, tail):
+        reverse_words_acc(
+          tail,
+          cons(head, accumulator))
+    ENDCASES
+  MEASURE remaining BY <<
+
+  reverse_words(values: lean_string_list): lean_string_list =
+    reverse_words_acc(values, null[lean_string])
+
+  joinWithSpace(words: lean_string_list):
+      RECURSIVE lean_string =
+    CASES words OF
+      null:
+        null[lean_char],
+      cons(head, tail):
+        CASES tail OF
+          null:
+            head,
+          cons(next, rest):
+            append_chars(
+              head,
+              cons(
+                lean_space,
+                joinWithSpace(cons(next, rest))))
+        ENDCASES
+    ENDCASES
+  MEASURE words BY <<
+
+  % The proof-valued True precondition argument is computationally irrelevant.
+  % These let-bound stages are the exact proof-erased source computation.
+  reverseWords(words_str: lean_string): lean_string =
+    LET rawWords: lean_string_list =
+          splitOnSpace(words_str),
+        filteredWords: lean_string_list =
+          filterNonEmpty(rawWords),
+        revWords: lean_string_list =
+          reverse_words(filteredWords),
+        result: lean_string =
+          joinWithSpace(revWords)
+    IN
+      result
+
+  % This independent recursive definition is List.filter (fun w => w /= "").
+  filter_nonempty_spec(words: lean_string_list):
+      RECURSIVE lean_string_list =
+    CASES words OF
+      null:
+        null[lean_string],
+      cons(head, tail):
+        IF head /= null[lean_char] THEN
+          cons(
+            head,
+            filter_nonempty_spec(tail))
+        ELSE
+          filter_nonempty_spec(tail)
+        ENDIF
+    ENDCASES
+  MEASURE words BY <<
+
+  % This is String.intercalate " " on the extensional string representation.
+  intercalate_space(words: lean_string_list):
+      RECURSIVE lean_string =
+    CASES words OF
+      null:
+        null[lean_char],
+      cons(head, tail):
+        CASES tail OF
+          null:
+            head,
+          cons(next, rest):
+            append_chars(
+              head,
+              cons(
+                lean_space,
+                intercalate_space(cons(next, rest))))
+        ENDCASES
+    ENDCASES
+  MEASURE words BY <<
+
+  reverseWords_postcond(
+      words_str, result: lean_string): bool =
+    EXISTS (words: lean_string_list):
+      words =
+        filter_nonempty_spec(
+          splitOnSpace(words_str))
+        AND result =
+          intercalate_space(
+            reverse_words(words))
+
+  reverseWords_spec_satisfied: bool =
+    FORALL (words_str: lean_string):
+      reverseWords_precond(words_str)
+        IMPLIES
+          reverseWords_postcond(
+            words_str,
+            reverseWords(words_str))
+
+END verina_advanced_66

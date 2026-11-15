@@ -1,0 +1,73 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1982_a4:
+% the unique global C1 real solution of y' = -z^3 and z' = y^3 with initial
+% values y(0) = 1 and z(0) = 0 has a common positive period. This file
+% contains no proof.
+
+putnam_1982_a4: THEORY
+BEGIN
+  real_function: TYPE = [real -> real]
+
+  continuous(f: real_function): bool =
+    FORALL (x: real), (epsilon_value: posreal):
+      EXISTS (delta: posreal):
+        FORALL (y: real):
+          abs(y - x) < delta IMPLIES
+            abs(f(y) - f(x)) < epsilon_value
+
+  has_derivative_at(
+      f: real_function,
+      derivative, x: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (delta: posreal):
+        FORALL (h: real):
+          (NOT (h = 0) AND abs(h) < delta)
+            IMPLIES
+              abs(
+                f(x + h) - f(x)
+                  - derivative * h)
+                < epsilon_value * abs(h)
+
+  differentiable_at(f: real_function, x: real): bool =
+    EXISTS (derivative: real):
+      has_derivative_at(f, derivative, x)
+
+  derivative_value(f: real_function, x: real): real =
+    IF differentiable_at(f, x) THEN
+      epsilon(
+        LAMBDA (derivative: real):
+          has_derivative_at(f, derivative, x))
+    ELSE
+      0
+    ENDIF
+
+  derivative_function(f: real_function): real_function =
+    LAMBDA (x: real): derivative_value(f, x)
+
+  continuously_differentiable(f: real_function): bool =
+    (FORALL (x: real): differentiable_at(f, x))
+      AND continuous(derivative_function(f))
+
+  differential_system(y, z: real_function): bool =
+    y(0) = 1
+      AND z(0) = 0
+      AND continuously_differentiable(y)
+      AND continuously_differentiable(z)
+      AND FORALL (x: real):
+        derivative_value(y, x) = -(z(x) ^ 3)
+          AND derivative_value(z, x) = y(x) ^ 3
+
+  common_positive_period(f, g: real_function): bool =
+    EXISTS (period: real):
+      period > 0
+        AND FORALL (x: real):
+          f(x + period) = f(x)
+            AND g(x + period) = g(x)
+
+  putnam_1982_a4: bool =
+    FORALL (f, g: real_function):
+      (differential_system(f, g)
+        AND NOT (EXISTS (f_prime, g_prime: real_function):
+          (f /= f_prime OR g /= g_prime)
+            AND differential_system(f_prime, g_prime)))
+      IMPLIES common_positive_period(f, g)
+END putnam_1982_a4

@@ -1,0 +1,135 @@
+% Statement-only formalization of the VERINA corpus artifact verina_basic_72
+% (verina__pvs__verina_basic_72), catalog title "append": copying every entry
+% of a finite integer array and appending one integer, with the exact
+% executable program and correctness contract. This file contains no proof.
+
+verina_basic_72: THEORY
+BEGIN
+
+  % Finite PVS lists preserve exactly the contents and order of Lean arrays.
+  int_list_length(
+      values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        int_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  % Lean Array.get! on integer arrays returns zero outside the array.
+  int_list_get_bang(
+      index: nat,
+      values: list[int]): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          int_list_get_bang(index - 1, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  % This is exactly Array.push: retain every existing entry in order and put
+  % the new value at the final index.
+  int_list_push(
+      values: list[int],
+      new_value: int): RECURSIVE list[int] =
+    CASES values OF
+      null:
+        cons(new_value, null[int]),
+      cons(head, tail):
+        cons(
+          head,
+          int_list_push(tail, new_value))
+    ENDCASES
+  MEASURE values BY <<
+
+  append_precond(
+      a: list[int],
+      b: int): bool =
+    TRUE
+
+  % At the public call, a.size + 1 supplies one step for every remaining
+  % in-bounds index and the final failed bounds check. Consequently the
+  % fuel-zero branch is unreachable and the recursion performs precisely the
+  % source copy's successive get! and push operations.
+  copy_loop(
+      a: list[int],
+      i: nat,
+      acc: list[int],
+      fuel: nat): RECURSIVE list[int] =
+    IF fuel = 0 THEN
+      acc
+    ELSIF i < int_list_length(a) THEN
+      copy_loop(
+        a,
+        i + 1,
+        int_list_push(
+          acc,
+          int_list_get_bang(i, a)),
+        fuel - 1)
+    ELSE
+      acc
+    ENDIF
+  MEASURE fuel
+
+  copy(
+      a: list[int],
+      i: nat,
+      acc: list[int]): list[int] =
+    copy_loop(
+      a,
+      i,
+      acc,
+      int_list_length(a) + 1)
+
+  % The source precondition proof argument is computationally irrelevant.
+  append(
+      a: list[int],
+      b: int): list[int] =
+    LET c_initial: list[int] =
+          copy(
+            a,
+            0,
+            null[int]),
+        c_full: list[int] =
+          int_list_push(
+            c_initial,
+            b)
+    IN
+      c_full
+
+  % The source proof argument to the postcondition is logically irrelevant.
+  % The bounded universal is exactly List.range' 0 a.size followed by all.
+  append_postcond(
+      a: list[int],
+      b: int,
+      result: list[int]): bool =
+    (FORALL (i: nat):
+      i < int_list_length(a)
+        IMPLIES
+          int_list_get_bang(i, result)
+            = int_list_get_bang(i, a))
+      AND int_list_get_bang(
+            int_list_length(a),
+            result)
+          = b
+      AND int_list_length(result)
+          = int_list_length(a) + 1
+
+  append_spec_satisfied: bool =
+    FORALL (
+        a: list[int],
+        b: int):
+      append_precond(a, b)
+        IMPLIES
+          append_postcond(
+            a,
+            b,
+            append(a, b))
+
+END verina_basic_72

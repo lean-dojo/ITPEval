@@ -1,0 +1,73 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/bignum_BigNum_add_digitqtvc: correctness conditions for adding one
+% base-b digit to a valid base-b integer digit list, including carry handling
+% and preservation of validity and numeric value. This file contains no proof.
+
+bignum_BigNum_add_digitqtvc: THEORY
+BEGIN
+  value(base: int, digits: list[int]): RECURSIVE int =
+    CASES digits OF
+      null: 0,
+      cons(digit, rest):
+        digit + base * value(base, rest)
+    ENDCASES
+  MEASURE digits BY <<
+
+  valid(base: int, digits: list[int]): RECURSIVE bool =
+    CASES digits OF
+      null: TRUE,
+      cons(digit, rest):
+        CASES rest OF
+          null:
+            0 < digit AND digit < base,
+          cons(next_digit, remaining_digits):
+            (0 <= digit AND digit < base)
+              AND valid(base, rest)
+        ENDCASES
+    ENDCASES
+  MEASURE digits BY <<
+
+  add_digit_vc: bool =
+    FORALL (base, d: int), (n: list[int]):
+      (1 < base
+        AND valid(base, n)
+        AND 0 <= d
+        AND d < base)
+      IMPLIES
+        (CASES n OF
+          null:
+            TRUE,
+          cons(d0, r):
+            NOT (d + d0 < base)
+              IMPLIES
+                (CASES n OF
+                  null: FALSE,
+                  cons(ignored, f): f = r
+                ENDCASES)
+                  AND valid(base, r)
+                  AND 0 <= 1
+                  AND 1 < base
+        ENDCASES)
+          AND
+        (FORALL (result: list[int]):
+          (CASES n OF
+            null:
+              IF d = 0 THEN
+                result = null
+              ELSE
+                result = cons(d, null)
+              ENDIF,
+            cons(d0, r):
+              IF d + d0 < base THEN
+                result = cons(d + d0, r)
+              ELSE
+                EXISTS (o1: list[int]):
+                  (valid(base, o1)
+                    AND value(base, o1) = value(base, r) + 1)
+                    AND result = cons(d + d0 - base, o1)
+              ENDIF
+          ENDCASES)
+            IMPLIES
+              valid(base, result)
+                AND value(base, result) = value(base, n) + d)
+END bignum_BigNum_add_digitqtvc

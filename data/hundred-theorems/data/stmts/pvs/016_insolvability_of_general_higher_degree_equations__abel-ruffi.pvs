@@ -1,0 +1,145 @@
+% Statement-only formalization of "Insolvability of General Higher Degree Equations
+% (Abel-Ruffini)" from Hundred Theorems item 016. This file contains no proof.
+
+hundred_theorems_016: THEORY
+BEGIN
+  complex: TYPE = [# real_part: real, imag_part: real #]
+
+  complex_zero: complex =
+    (# real_part := 0, imag_part := 0 #)
+
+  complex_one: complex =
+    (# real_part := 1, imag_part := 0 #)
+
+  complex_of_real(x: real): complex =
+    (# real_part := x, imag_part := 0 #)
+
+  complex_neg(x: complex): complex =
+    (# real_part := -real_part(x),
+       imag_part := -imag_part(x) #)
+
+  complex_add(x, y: complex): complex =
+    (# real_part := real_part(x) + real_part(y),
+       imag_part := imag_part(x) + imag_part(y) #)
+
+  complex_mul(x, y: complex): complex =
+    (# real_part := real_part(x) * real_part(y)
+                       - imag_part(x) * imag_part(y),
+       imag_part := real_part(x) * imag_part(y)
+                       + imag_part(x) * real_part(y) #)
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  complex_inv(x: complex): complex =
+    LET denominator: real =
+      real_part(x) * real_part(x)
+        + imag_part(x) * imag_part(x)
+    IN
+      (# real_part := safe_div(real_part(x), denominator),
+         imag_part := safe_div(-imag_part(x), denominator) #)
+
+  complex_power(x: complex, exponent: nat): RECURSIVE complex =
+    IF exponent = 0 THEN
+      complex_one
+    ELSE
+      complex_mul(complex_power(x, exponent - 1), x)
+    ENDIF
+  MEASURE exponent
+
+  field_closed(s: [complex -> bool]): bool =
+    s(complex_zero)
+      AND s(complex_one)
+      AND (FORALL (x: complex):
+        s(x) IMPLIES s(complex_neg(x)))
+      AND (FORALL (x, y: complex):
+        (s(x) AND s(y)) IMPLIES s(complex_add(x, y)))
+      AND (FORALL (x, y: complex):
+        (s(x) AND s(y)) IMPLIES s(complex_mul(x, y)))
+      AND (FORALL (x: complex):
+        (s(x) AND NOT (x = complex_zero))
+          IMPLIES s(complex_inv(x)))
+
+  contains_rationals(s: [complex -> bool]): bool =
+    FORALL (x: real):
+      rational?(x) IMPLIES s(complex_of_real(x))
+
+  contains_prefix(
+      s: [complex -> bool],
+      elements: [nat -> complex],
+      prefix_length: nat): bool =
+    FORALL (i: nat):
+      i < prefix_length IMPLIES s(elements(i))
+
+  generated_field(
+      elements: [nat -> complex],
+      prefix_length: nat,
+      x: complex): bool =
+    FORALL (s: [complex -> bool]):
+      (field_closed(s)
+        AND contains_rationals(s)
+        AND contains_prefix(s, elements, prefix_length))
+      IMPLIES s(x)
+
+  radical_tower(
+      elements: [nat -> complex],
+      degrees: [nat -> nat],
+      length: nat): bool =
+    FORALL (i: nat):
+      i < length IMPLIES
+        (0 < degrees(i)
+          AND generated_field(
+            elements,
+            i,
+            complex_power(elements(i), degrees(i))))
+
+  solvable_by_radicals(x: complex): bool =
+    EXISTS (length: nat):
+      EXISTS (elements: [nat -> complex]):
+        EXISTS (degrees: [nat -> nat]):
+          radical_tower(elements, degrees, length)
+            AND generated_field(elements, length, x)
+
+  polynomial_value(
+      coefficients: [nat -> real],
+      x: complex,
+      count: nat): RECURSIVE complex =
+    IF count = 0 THEN
+      complex_zero
+    ELSE
+      LET k: nat = count - 1 IN
+        complex_add(
+          polynomial_value(coefficients, x, count - 1),
+          complex_mul(
+            complex_of_real(coefficients(k)),
+            complex_power(x, k)))
+    ENDIF
+  MEASURE count
+
+  algebraic_over_rationals(x: complex): bool =
+    EXISTS (degree: nat):
+      EXISTS (coefficients: [nat -> real]):
+        0 < degree
+          AND (FORALL (i: nat):
+            i <= degree IMPLIES rational?(coefficients(i)))
+          AND NOT (coefficients(degree) = 0)
+          AND polynomial_value(coefficients, x, degree + 1)
+            = complex_zero
+
+  quintic_value(x: complex): complex =
+    complex_add(
+      complex_add(
+        complex_power(x, 5),
+        complex_neg(complex_mul(complex_of_real(4), x))),
+      complex_of_real(2))
+
+  insolvability_of_general_higher_degree_equations_abel_ruffini: bool =
+    EXISTS (x: complex):
+      quintic_value(x) = complex_zero
+        AND algebraic_over_rationals(x)
+        AND NOT solvable_by_radicals(x)
+END hundred_theorems_016

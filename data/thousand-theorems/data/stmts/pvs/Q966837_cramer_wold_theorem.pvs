@@ -1,0 +1,584 @@
+% Statement-only formalization of the Thousand Theorems corpus artifact Q966837,
+% "Cramér–Wold theorem": convergence in distribution of finite-dimensional
+% real inner-product-space-valued random variables is equivalent to convergence
+% in distribution of every scalar inner-product projection. This file contains no proof.
+
+Q966837_cramer_wold_theorem[
+  E: TYPE+,
+  Source: TYPE+,
+  LimitSource: TYPE+,
+  zeroE: E,
+  addE: [E, E -> E],
+  negE: [E -> E],
+  smulE: [real, E -> E],
+  innerE: [E, E -> real],
+  normE: [E -> real],
+  source_sigma: [[Source -> bool] -> bool],
+  limit_sigma: [[LimitSource -> bool] -> bool],
+  source_measure: [[Source -> bool] -> real],
+  limit_measure: [[LimitSource -> bool] -> real]
+]: THEORY
+BEGIN
+  source_event: TYPE = [Source -> bool]
+  source_event_sequence: TYPE = [nat -> source_event]
+  limit_event: TYPE = [LimitSource -> bool]
+  limit_event_sequence: TYPE = [nat -> limit_event]
+  e_event: TYPE = [E -> bool]
+  e_event_sequence: TYPE = [nat -> e_event]
+  real_event: TYPE = [real -> bool]
+  real_event_sequence: TYPE = [nat -> real_event]
+
+  e_probability_measure: TYPE = [e_event -> real]
+  e_probability_sequence: TYPE = [nat -> e_probability_measure]
+  real_probability_measure: TYPE = [real_event -> real]
+  real_probability_sequence: TYPE = [nat -> real_probability_measure]
+  real_sequence: TYPE = [nat -> real]
+  coefficient_sequence: TYPE = [nat -> real]
+  vector_sequence: TYPE = [nat -> E]
+  e_random_variable: TYPE = [Source -> E]
+  e_random_variable_sequence: TYPE = [nat -> e_random_variable]
+  limit_e_random_variable: TYPE = [LimitSource -> E]
+  real_random_variable: TYPE = [Source -> real]
+  limit_real_random_variable: TYPE = [LimitSource -> real]
+
+  subE(x, y: E): E =
+    addE(x, negE(y))
+
+  finite_linear_combination(
+      basis: vector_sequence,
+      coefficients: coefficient_sequence,
+      count: nat): RECURSIVE E =
+    IF count = 0 THEN
+      zeroE
+    ELSE
+      addE(
+        finite_linear_combination(
+          basis, coefficients, count - 1),
+        smulE(coefficients(count - 1), basis(count - 1)))
+    ENDIF
+  MEASURE count
+
+  real_inner_product_space: bool =
+    (FORALL (x, y: E):
+      addE(x, y) = addE(y, x))
+      AND (FORALL (x, y, z: E):
+        addE(addE(x, y), z) = addE(x, addE(y, z)))
+      AND (FORALL (x: E):
+        addE(x, zeroE) = x)
+      AND (FORALL (x: E):
+        addE(x, negE(x)) = zeroE)
+      AND (FORALL (x: E):
+        smulE(1, x) = x)
+      AND (FORALL (a, b: real), (x: E):
+        smulE(a * b, x) = smulE(a, smulE(b, x)))
+      AND (FORALL (a, b: real), (x: E):
+        smulE(a + b, x) =
+          addE(smulE(a, x), smulE(b, x)))
+      AND (FORALL (a: real), (x, y: E):
+        smulE(a, addE(x, y)) =
+          addE(smulE(a, x), smulE(a, y)))
+      AND (FORALL (x: E):
+        smulE(0, x) = zeroE)
+      AND (FORALL (a: real):
+        smulE(a, zeroE) = zeroE)
+      AND (FORALL (x: E):
+        negE(x) = smulE(-1, x))
+      AND (FORALL (x, y: E):
+        innerE(x, y) = innerE(y, x))
+      AND (FORALL (x, y, z: E):
+        innerE(addE(x, y), z) =
+          innerE(x, z) + innerE(y, z))
+      AND (FORALL (a: real), (x, y: E):
+        innerE(smulE(a, x), y) =
+          a * innerE(x, y))
+      AND (FORALL (x: E):
+        0 <= innerE(x, x))
+      AND (FORALL (x: E):
+        innerE(x, x) = 0 IFF x = zeroE)
+      AND (FORALL (x: E):
+        0 <= normE(x))
+      AND (FORALL (x: E):
+        normE(x) * normE(x) = innerE(x, x))
+
+  finite_dimensional: bool =
+    EXISTS (dimension: nat), (basis: vector_sequence):
+      FORALL (x: E):
+        EXISTS (coefficients: coefficient_sequence):
+          finite_linear_combination(
+            basis, coefficients, dimension) = x
+
+  source_full: source_event =
+    LAMBDA (omega: Source): TRUE
+
+  source_empty: source_event =
+    LAMBDA (omega: Source): FALSE
+
+  source_complement(A: source_event): source_event =
+    LAMBDA (omega: Source): NOT A(omega)
+
+  source_countable_union(
+      events: source_event_sequence): source_event =
+    LAMBDA (omega: Source):
+      EXISTS (index: nat): events(index)(omega)
+
+  source_subset(A, B: source_event): bool =
+    FORALL (omega: Source):
+      A(omega) IMPLIES B(omega)
+
+  source_pairwise_disjoint(
+      events: source_event_sequence): bool =
+    FORALL (left_index, right_index: nat):
+      left_index /= right_index IMPLIES
+        FORALL (omega: Source):
+          NOT (events(left_index)(omega)
+            AND events(right_index)(omega))
+
+  limit_full: limit_event =
+    LAMBDA (omega: LimitSource): TRUE
+
+  limit_empty: limit_event =
+    LAMBDA (omega: LimitSource): FALSE
+
+  limit_complement(A: limit_event): limit_event =
+    LAMBDA (omega: LimitSource): NOT A(omega)
+
+  limit_countable_union(
+      events: limit_event_sequence): limit_event =
+    LAMBDA (omega: LimitSource):
+      EXISTS (index: nat): events(index)(omega)
+
+  limit_subset(A, B: limit_event): bool =
+    FORALL (omega: LimitSource):
+      A(omega) IMPLIES B(omega)
+
+  limit_pairwise_disjoint(
+      events: limit_event_sequence): bool =
+    FORALL (left_index, right_index: nat):
+      left_index /= right_index IMPLIES
+        FORALL (omega: LimitSource):
+          NOT (events(left_index)(omega)
+            AND events(right_index)(omega))
+
+  e_full: e_event =
+    LAMBDA (x: E): TRUE
+
+  e_empty: e_event =
+    LAMBDA (x: E): FALSE
+
+  e_complement(A: e_event): e_event =
+    LAMBDA (x: E): NOT A(x)
+
+  e_countable_union(events: e_event_sequence): e_event =
+    LAMBDA (x: E):
+      EXISTS (index: nat): events(index)(x)
+
+  e_pairwise_disjoint(events: e_event_sequence): bool =
+    FORALL (left_index, right_index: nat):
+      left_index /= right_index IMPLIES
+        FORALL (x: E):
+          NOT (events(left_index)(x)
+            AND events(right_index)(x))
+
+  real_full: real_event =
+    LAMBDA (x: real): TRUE
+
+  real_empty: real_event =
+    LAMBDA (x: real): FALSE
+
+  real_complement(A: real_event): real_event =
+    LAMBDA (x: real): NOT A(x)
+
+  real_countable_union(
+      events: real_event_sequence): real_event =
+    LAMBDA (x: real):
+      EXISTS (index: nat): events(index)(x)
+
+  real_pairwise_disjoint(
+      events: real_event_sequence): bool =
+    FORALL (left_index, right_index: nat):
+      left_index /= right_index IMPLIES
+        FORALL (x: real):
+          NOT (events(left_index)(x)
+            AND events(right_index)(x))
+
+  e_open(A: e_event): bool =
+    FORALL (x: E):
+      A(x) IMPLIES
+        EXISTS (epsilon_value: posreal):
+          FORALL (y: E):
+            normE(subE(y, x)) < epsilon_value IMPLIES A(y)
+
+  real_open(A: real_event): bool =
+    FORALL (x: real):
+      A(x) IMPLIES
+        EXISTS (epsilon_value: posreal):
+          FORALL (y: real):
+            abs(y - x) < epsilon_value IMPLIES A(y)
+
+  is_source_sigma_algebra: bool =
+    source_sigma(source_full)
+      AND (FORALL (A: source_event):
+        source_sigma(A) IMPLIES
+          source_sigma(source_complement(A)))
+      AND (FORALL (events: source_event_sequence):
+        (FORALL (index: nat):
+          source_sigma(events(index)))
+        IMPLIES
+          source_sigma(source_countable_union(events)))
+
+  is_limit_sigma_algebra: bool =
+    limit_sigma(limit_full)
+      AND (FORALL (A: limit_event):
+        limit_sigma(A) IMPLIES
+          limit_sigma(limit_complement(A)))
+      AND (FORALL (events: limit_event_sequence):
+        (FORALL (index: nat):
+          limit_sigma(events(index)))
+        IMPLIES
+          limit_sigma(limit_countable_union(events)))
+
+  e_sigma_algebra(Sigma: [e_event -> bool]): bool =
+    Sigma(e_full)
+      AND (FORALL (A: e_event):
+        Sigma(A) IMPLIES Sigma(e_complement(A)))
+      AND (FORALL (events: e_event_sequence):
+        (FORALL (index: nat): Sigma(events(index)))
+        IMPLIES Sigma(e_countable_union(events)))
+
+  real_sigma_algebra(Sigma: [real_event -> bool]): bool =
+    Sigma(real_full)
+      AND (FORALL (A: real_event):
+        Sigma(A) IMPLIES Sigma(real_complement(A)))
+      AND (FORALL (events: real_event_sequence):
+        (FORALL (index: nat): Sigma(events(index)))
+        IMPLIES Sigma(real_countable_union(events)))
+
+  e_borel(A: e_event): bool =
+    FORALL (Sigma: [e_event -> bool]):
+      (e_sigma_algebra(Sigma)
+        AND (FORALL (U: e_event):
+          e_open(U) IMPLIES Sigma(U)))
+      IMPLIES Sigma(A)
+
+  real_borel(A: real_event): bool =
+    FORALL (Sigma: [real_event -> bool]):
+      (real_sigma_algebra(Sigma)
+        AND (FORALL (U: real_event):
+          real_open(U) IMPLIES Sigma(U)))
+      IMPLIES Sigma(A)
+
+  finite_sum(
+      values: real_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      finite_sum(values, count - 1) + values(count - 1)
+    ENDIF
+  MEASURE count
+
+  converges_to_real(values: real_sequence, limit: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(values(index) - limit) < epsilon_value
+
+  source_probability_space: bool =
+    is_source_sigma_algebra
+      AND source_measure(source_empty) = 0
+      AND source_measure(source_full) = 1
+      AND (FORALL (A: source_event):
+        source_sigma(A) IMPLIES 0 <= source_measure(A))
+      AND (FORALL (events: source_event_sequence):
+        ((FORALL (index: nat):
+            source_sigma(events(index)))
+          AND source_pairwise_disjoint(events))
+        IMPLIES
+          converges_to_real(
+            LAMBDA (count: nat):
+              finite_sum(
+                LAMBDA (index: nat):
+                  source_measure(events(index)),
+                count),
+            source_measure(source_countable_union(events))))
+
+  limit_probability_space: bool =
+    is_limit_sigma_algebra
+      AND limit_measure(limit_empty) = 0
+      AND limit_measure(limit_full) = 1
+      AND (FORALL (A: limit_event):
+        limit_sigma(A) IMPLIES 0 <= limit_measure(A))
+      AND (FORALL (events: limit_event_sequence):
+        ((FORALL (index: nat):
+            limit_sigma(events(index)))
+          AND limit_pairwise_disjoint(events))
+        IMPLIES
+          converges_to_real(
+            LAMBDA (count: nat):
+              finite_sum(
+                LAMBDA (index: nat):
+                  limit_measure(events(index)),
+                count),
+            limit_measure(limit_countable_union(events))))
+
+  is_e_probability_measure(
+      measure_value: e_probability_measure): bool =
+    measure_value(e_empty) = 0
+      AND measure_value(e_full) = 1
+      AND (FORALL (A: e_event):
+        e_borel(A) IMPLIES 0 <= measure_value(A))
+      AND (FORALL (events: e_event_sequence):
+        ((FORALL (index: nat):
+            e_borel(events(index)))
+          AND e_pairwise_disjoint(events))
+        IMPLIES
+          converges_to_real(
+            LAMBDA (count: nat):
+              finite_sum(
+                LAMBDA (index: nat):
+                  measure_value(events(index)),
+                count),
+            measure_value(e_countable_union(events))))
+
+  is_real_probability_measure(
+      measure_value: real_probability_measure): bool =
+    measure_value(real_empty) = 0
+      AND measure_value(real_full) = 1
+      AND (FORALL (A: real_event):
+        real_borel(A) IMPLIES 0 <= measure_value(A))
+      AND (FORALL (events: real_event_sequence):
+        ((FORALL (index: nat):
+            real_borel(events(index)))
+          AND real_pairwise_disjoint(events))
+        IMPLIES
+          converges_to_real(
+            LAMBDA (count: nat):
+              finite_sum(
+                LAMBDA (index: nat):
+                  measure_value(events(index)),
+                count),
+            measure_value(real_countable_union(events))))
+
+  source_null(A: source_event): bool =
+    EXISTS (N: source_event):
+      source_sigma(N)
+        AND source_measure(N) = 0
+        AND source_subset(A, N)
+
+  limit_null(A: limit_event): bool =
+    EXISTS (N: limit_event):
+      limit_sigma(N)
+        AND limit_measure(N) = 0
+        AND limit_subset(A, N)
+
+  source_measurable_e(f: e_random_variable): bool =
+    FORALL (A: e_event):
+      e_borel(A) IMPLIES
+        source_sigma(
+          LAMBDA (omega: Source): A(f(omega)))
+
+  limit_measurable_e(f: limit_e_random_variable): bool =
+    FORALL (A: e_event):
+      e_borel(A) IMPLIES
+        limit_sigma(
+          LAMBDA (omega: LimitSource): A(f(omega)))
+
+  source_measurable_real(f: real_random_variable): bool =
+    FORALL (A: real_event):
+      real_borel(A) IMPLIES
+        source_sigma(
+          LAMBDA (omega: Source): A(f(omega)))
+
+  limit_measurable_real(
+      f: limit_real_random_variable): bool =
+    FORALL (A: real_event):
+      real_borel(A) IMPLIES
+        limit_sigma(
+          LAMBDA (omega: LimitSource): A(f(omega)))
+
+  source_ae_equal_e(
+      f, g: e_random_variable): bool =
+    source_null(
+      LAMBDA (omega: Source): f(omega) /= g(omega))
+
+  limit_ae_equal_e(
+      f, g: limit_e_random_variable): bool =
+    limit_null(
+      LAMBDA (omega: LimitSource): f(omega) /= g(omega))
+
+  source_ae_equal_real(
+      f, g: real_random_variable): bool =
+    source_null(
+      LAMBDA (omega: Source): f(omega) /= g(omega))
+
+  limit_ae_equal_real(
+      f, g: limit_real_random_variable): bool =
+    limit_null(
+      LAMBDA (omega: LimitSource): f(omega) /= g(omega))
+
+  source_aemeasurable_e(f: e_random_variable): bool =
+    EXISTS (g: e_random_variable):
+      source_measurable_e(g) AND source_ae_equal_e(f, g)
+
+  limit_aemeasurable_e(f: limit_e_random_variable): bool =
+    EXISTS (g: limit_e_random_variable):
+      limit_measurable_e(g) AND limit_ae_equal_e(f, g)
+
+  source_aemeasurable_real(f: real_random_variable): bool =
+    EXISTS (g: real_random_variable):
+      source_measurable_real(g)
+        AND source_ae_equal_real(f, g)
+
+  limit_aemeasurable_real(
+      f: limit_real_random_variable): bool =
+    EXISTS (g: limit_real_random_variable):
+      limit_measurable_real(g)
+        AND limit_ae_equal_real(f, g)
+
+  source_has_e_law(
+      f: e_random_variable,
+      distribution: e_probability_measure): bool =
+    is_e_probability_measure(distribution)
+      AND EXISTS (g: e_random_variable):
+        source_measurable_e(g)
+          AND source_ae_equal_e(f, g)
+          AND (FORALL (A: e_event):
+            e_borel(A) IMPLIES
+              distribution(A) =
+                source_measure(
+                  LAMBDA (omega: Source): A(g(omega))))
+
+  limit_has_e_law(
+      f: limit_e_random_variable,
+      distribution: e_probability_measure): bool =
+    is_e_probability_measure(distribution)
+      AND EXISTS (g: limit_e_random_variable):
+        limit_measurable_e(g)
+          AND limit_ae_equal_e(f, g)
+          AND (FORALL (A: e_event):
+            e_borel(A) IMPLIES
+              distribution(A) =
+                limit_measure(
+                  LAMBDA (omega: LimitSource): A(g(omega))))
+
+  source_has_real_law(
+      f: real_random_variable,
+      distribution: real_probability_measure): bool =
+    is_real_probability_measure(distribution)
+      AND EXISTS (g: real_random_variable):
+        source_measurable_real(g)
+          AND source_ae_equal_real(f, g)
+          AND (FORALL (A: real_event):
+            real_borel(A) IMPLIES
+              distribution(A) =
+                source_measure(
+                  LAMBDA (omega: Source): A(g(omega))))
+
+  limit_has_real_law(
+      f: limit_real_random_variable,
+      distribution: real_probability_measure): bool =
+    is_real_probability_measure(distribution)
+      AND EXISTS (g: limit_real_random_variable):
+        limit_measurable_real(g)
+          AND limit_ae_equal_real(f, g)
+          AND (FORALL (A: real_event):
+            real_borel(A) IMPLIES
+              distribution(A) =
+                limit_measure(
+                  LAMBDA (omega: LimitSource): A(g(omega))))
+
+  e_weakly_converges(
+      laws: e_probability_sequence,
+      limit_law: e_probability_measure): bool =
+    (FORALL (index: nat):
+      is_e_probability_measure(laws(index)))
+      AND is_e_probability_measure(limit_law)
+      AND (FORALL (U: e_event), (lower_bound: real):
+        (e_open(U) AND lower_bound < limit_law(U))
+        IMPLIES
+          EXISTS (cutoff: nat):
+            FORALL (index: nat):
+              cutoff <= index IMPLIES
+                lower_bound < laws(index)(U))
+
+  real_weakly_converges(
+      laws: real_probability_sequence,
+      limit_law: real_probability_measure): bool =
+    (FORALL (index: nat):
+      is_real_probability_measure(laws(index)))
+      AND is_real_probability_measure(limit_law)
+      AND (FORALL (U: real_event), (lower_bound: real):
+        (real_open(U) AND lower_bound < limit_law(U))
+        IMPLIES
+          EXISTS (cutoff: nat):
+            FORALL (index: nat):
+              cutoff <= index IMPLIES
+                lower_bound < laws(index)(U))
+
+  tendsto_in_distribution_e(
+      X: e_random_variable_sequence,
+      Xprime: limit_e_random_variable): bool =
+    (FORALL (index: nat):
+      source_aemeasurable_e(X(index)))
+      AND limit_aemeasurable_e(Xprime)
+      AND EXISTS
+          (laws: e_probability_sequence),
+          (limit_law: e_probability_measure):
+        (FORALL (index: nat):
+          source_has_e_law(X(index), laws(index)))
+          AND limit_has_e_law(Xprime, limit_law)
+          AND e_weakly_converges(laws, limit_law)
+
+  project_sequence(
+      X: e_random_variable_sequence,
+      t: E): [nat -> real_random_variable] =
+    LAMBDA (index: nat):
+      LAMBDA (omega: Source):
+        innerE(X(index)(omega), t)
+
+  project_limit(
+      Xprime: limit_e_random_variable,
+      t: E): limit_real_random_variable =
+    LAMBDA (omega: LimitSource):
+      innerE(Xprime(omega), t)
+
+  tendsto_in_distribution_projection(
+      X: e_random_variable_sequence,
+      Xprime: limit_e_random_variable,
+      t: E): bool =
+    (FORALL (index: nat):
+      source_aemeasurable_real(
+        project_sequence(X, t)(index)))
+      AND limit_aemeasurable_real(project_limit(Xprime, t))
+      AND EXISTS
+          (laws: real_probability_sequence),
+          (limit_law: real_probability_measure):
+        (FORALL (index: nat):
+          source_has_real_law(
+            project_sequence(X, t)(index),
+            laws(index)))
+          AND limit_has_real_law(
+            project_limit(Xprime, t),
+            limit_law)
+          AND real_weakly_converges(laws, limit_law)
+
+  cramer_wold_theorem: bool =
+    (real_inner_product_space
+      AND finite_dimensional
+      AND source_probability_space
+      AND limit_probability_space)
+    IMPLIES
+      (FORALL
+          (X: e_random_variable_sequence),
+          (Xprime: limit_e_random_variable):
+        ((FORALL (index: nat):
+            source_aemeasurable_e(X(index)))
+          AND limit_aemeasurable_e(Xprime))
+        IMPLIES
+          (tendsto_in_distribution_e(X, Xprime)
+            IFF
+              (FORALL (t: E):
+                tendsto_in_distribution_projection(
+                  X, Xprime, t))))
+END Q966837_cramer_wold_theorem

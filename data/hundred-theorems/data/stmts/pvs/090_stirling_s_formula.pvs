@@ -1,0 +1,68 @@
+% Statement-only formalization of Hundred Theorems artifact 090, "Stirling's Formula":
+% the factorial sequence is asymptotically equivalent to sqrt(2*pi*n)*(n/e)^n.
+% This file contains no proof.
+
+stirling_s_formula_090: THEORY
+BEGIN
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN 0 ELSE numerator / denominator ENDIF
+
+  nat_factorial(n: nat): RECURSIVE nat =
+    IF n = 0 THEN 1 ELSE n * nat_factorial(n - 1) ENDIF
+    MEASURE n
+
+  alternating_sign(n: nat): RECURSIVE real =
+    IF n = 0 THEN 1 ELSE -alternating_sign(n - 1) ENDIF
+    MEASURE n
+
+  leibniz_partial_sum(n: nat): RECURSIVE real =
+    IF n = 0 THEN 1
+    ELSE leibniz_partial_sum(n - 1) +
+         safe_div(alternating_sign(n), 2 * n + 1)
+    ENDIF
+    MEASURE n
+
+  exponential_partial_sum(x: real, n: nat): RECURSIVE real =
+    IF n = 0 THEN 1
+    ELSE exponential_partial_sum(x, n - 1) +
+         safe_div(x ^ n, nat_factorial(n))
+    ENDIF
+    MEASURE n
+
+  converges_to(sequence: [nat -> real], limit: real): bool =
+    FORALL (epsilon: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (n: nat):
+          cutoff <= n IMPLIES abs(sequence(n) - limit) < epsilon
+
+  real_exponential(x: real): real =
+    epsilon! (value: real):
+      converges_to(LAMBDA (n: nat): exponential_partial_sum(x, n), value)
+
+  e: real = real_exponential(1)
+
+  pi: real =
+    epsilon! (value: real):
+      converges_to(
+        LAMBDA (n: nat): 4 * leibniz_partial_sum(n),
+        value)
+
+  nonnegative_square_root(root, radicand: real): bool =
+    radicand >= 0 AND root >= 0 AND root * root = radicand
+
+  stirling_s_formula: bool =
+    FORALL (epsilon: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (n: nat):
+          cutoff <= n IMPLIES
+            EXISTS (root: real):
+              nonnegative_square_root(root, 2 * pi * (n :: real)) AND
+              abs(
+                safe_div(
+                  nat_factorial(n),
+                  root * safe_div(n, e) ^ n) -
+                1) <
+              epsilon
+
+END stirling_s_formula_090

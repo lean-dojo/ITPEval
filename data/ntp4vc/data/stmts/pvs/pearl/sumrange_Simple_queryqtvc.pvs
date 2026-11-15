@@ -1,0 +1,76 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/sumrange_Simple_queryqtvc: the simple linear range-sum query
+% verification condition, including initialization, loop preservation,
+% array-index bounds, and the final half-open range sum. This file contains no proof.
+
+sumrange_Simple_queryqtvc: THEORY
+BEGIN
+
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  nth_default(values: list[int], index: nat): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          nth_default(tail, index - 1)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  sum_from(
+      values: list[int],
+      start, count: nat): RECURSIVE int =
+    IF count = 0 THEN
+      0
+    ELSE
+      nth_default(values, start)
+        + sum_from(values, start + 1, count - 1)
+    ENDIF
+  MEASURE count
+
+  array_sum(
+      values: list[int],
+      lower, upper: int): int =
+    sum_from(
+      values,
+      int_to_nat(lower),
+      int_to_nat(upper - lower))
+
+  query_vc: bool =
+    FORALL (i, j: int), (a: list[int]):
+      0 <= i
+        IMPLIES
+      i <= j
+        IMPLIES
+      j <= length(a)
+        IMPLIES
+      (LET o1: int = j - 1
+       IN
+         (i <= o1 + 1
+            IMPLIES
+              0 = array_sum(a, i, i)
+                AND
+              (FORALL (s: int):
+                (FORALL (k: int):
+                  ((i <= k AND k <= o1)
+                    AND s = array_sum(a, i, k))
+                    IMPLIES
+                      (0 <= k AND k < length(a))
+                        AND
+                      s + nth_default(a, int_to_nat(k))
+                        = array_sum(a, i, k + 1))
+                  AND
+                (s = array_sum(a, i, o1 + 1)
+                  IMPLIES
+                    s = array_sum(a, i, j))))
+           AND
+         (o1 + 1 < i
+            IMPLIES
+              0 = array_sum(a, i, j)))
+
+END sumrange_Simple_queryqtvc

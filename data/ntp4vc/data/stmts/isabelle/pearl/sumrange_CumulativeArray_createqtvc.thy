@@ -1,0 +1,10 @@
+theory sumrange_CumulativeArray_createqtvc
+  imports "NTP4Verif.NTP4Verif" "./sumrange_ArraySum" "./sumrange_ExtraLemmas"
+begin
+definition is_cumulative_array_for :: "int list \<Rightarrow> int list \<Rightarrow> _"
+  where "is_cumulative_array_for c a \<longleftrightarrow> int (length c) = int (length a) + (1 :: int) \<and> (\<forall>(i :: int). (0 :: int) \<le> i \<and> i < int (length c) \<longrightarrow> c ! nat i = sum a (0 :: int) i)" for c a
+theorem create'vc:
+  fixes a :: "int list"
+  shows "let l :: int = int (length a); o1 :: int = l + (1 :: int) in (0 :: int) \<le> o1 \<and> (\<forall>(s :: int list). (\<forall>(i :: int). (0 :: int) \<le> i \<and> i < o1 \<longrightarrow> s ! nat i = (0 :: int)) \<and> int (length s) = o1 \<longrightarrow> ((1 :: int) \<le> l + (1 :: int) \<longrightarrow> (\<forall>(k :: int). (0 :: int) \<le> k \<and> k < (1 :: int) \<longrightarrow> s ! nat k = sum a (0 :: int) k) \<and> (\<forall>(s1 :: int list). length s1 = length s \<longrightarrow> (\<forall>(i :: int). ((1 :: int) \<le> i \<and> i \<le> l) \<and> (\<forall>(k :: int). (0 :: int) \<le> k \<and> k < i \<longrightarrow> s1 ! nat k = sum a (0 :: int) k) \<longrightarrow> (let o2 :: int = i - (1 :: int) in ((0 :: int) \<le> o2 \<and> o2 < int (length a)) \<and> (let o3 :: int = i - (1 :: int) in ((0 :: int) \<le> o3 \<and> o3 < int (length s1)) \<and> (let o4 :: int = s1 ! nat o3 + a ! nat o2 in ((0 :: int) \<le> i \<and> i < int (length s1)) \<and> (length (s1[nat i := o4]) = length s1 \<longrightarrow> nth (s1[nat i := o4]) o nat = (nth s1 o nat)(i := o4) \<longrightarrow> (\<forall>(k :: int). (0 :: int) \<le> k \<and> k < i + (1 :: int) \<longrightarrow> s1[nat i := o4] ! nat k = sum a (0 :: int) k)))))) \<and> ((\<forall>(k :: int). (0 :: int) \<le> k \<and> k < l + (1 :: int) \<longrightarrow> s1 ! nat k = sum a (0 :: int) k) \<longrightarrow> is_cumulative_array_for s1 a))) \<and> (l + (1 :: int) < (1 :: int) \<longrightarrow> is_cumulative_array_for s a))"
+  sorry
+end

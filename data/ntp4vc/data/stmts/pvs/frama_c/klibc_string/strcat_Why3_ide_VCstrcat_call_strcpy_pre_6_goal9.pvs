@@ -1,0 +1,154 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% frama_c/klibc_string/strcat_Why3_ide_VCstrcat_call_strcpy_pre_6_goal9:
+% a strcat verification condition requiring separation of the source string
+% from the destination interval passed to strcpy. This file contains no proof.
+
+strcat_Why3_ide_VCstrcat_call_strcpy_pre_6_goal9: THEORY
+BEGIN
+  addr: TYPE = [# base: int, offset: int #]
+  integer_memory: TYPE = [addr -> int]
+  allocation_table: TYPE = [int -> int]
+  address_relation: TYPE = [addr, addr -> bool]
+  integer_conversion: TYPE = [int -> int]
+  string_length_function: TYPE = [integer_memory, addr -> int]
+
+  shift(p: addr, k: int): addr =
+    (# base := base(p), offset := offset(p) + k #)
+
+  valid_rw(malloc: allocation_table, p: addr, size: int): bool =
+    0 < size IMPLIES
+      0 < base(p)
+        AND 0 <= offset(p)
+        AND offset(p) + size <= malloc(base(p))
+
+  separated(p: addr, p_size: int, q: addr, q_size: int): bool =
+    p_size <= 0
+      OR q_size <= 0
+      OR base(p) /= base(q)
+      OR offset(q) + q_size <= offset(p)
+      OR offset(p) + p_size <= offset(q)
+
+  is_sint8(value: int): bool =
+    -128 <= value AND value < 128
+
+  p_length_of_str_is(
+      malloc: allocation_table,
+      mchar: integer_memory,
+      s: addr,
+      n: int): bool =
+    mchar(shift(s, n)) = 0
+      AND 0 <= n
+      AND valid_rw(malloc, shift(s, 0), 1 + n)
+      AND (FORALL (j: int):
+        0 <= j IMPLIES
+        j < n IMPLIES
+        mchar(shift(s, j)) /= 0)
+
+  p_exists_first_occurence_of_char(
+      malloc: allocation_table,
+      mchar: integer_memory,
+      s: addr,
+      c: int,
+      pos: int,
+      l_length: string_length_function,
+      to_sint8: integer_conversion): bool =
+    LET converted: int = to_sint8(c),
+        string_length: int = l_length(mchar, s)
+    IN
+      mchar(shift(s, pos)) = converted
+        AND 0 <= pos
+        AND pos <= string_length
+        AND -128 <= c
+        AND c <= 127
+        AND valid_rw(malloc, shift(s, 0), 1 + string_length)
+        AND (FORALL (j: int):
+          0 <= j IMPLIES
+          j < pos IMPLIES
+          mchar(shift(s, j)) /= converted)
+
+  address_order_axiom(addr_le: address_relation): bool =
+    FORALL (p, q: addr):
+      base(p) = base(q) IMPLIES
+        (addr_le(p, q) IFF offset(p) <= offset(q))
+
+  sint8_conversion_axioms(to_sint8: integer_conversion): bool =
+    (FORALL (value: int): is_sint8(to_sint8(value)))
+      AND
+    (FORALL (value: int):
+      is_sint8(value) IMPLIES to_sint8(value) = value)
+
+  string_length_axiom(l_length: string_length_function): bool =
+    FORALL
+      (malloc: allocation_table),
+      (mchar: integer_memory),
+      (s: addr),
+      (n: int):
+      p_length_of_str_is(malloc, mchar, s, n) IMPLIES
+        l_length(mchar, s) = n
+
+  goal9: bool =
+    FORALL
+      (region: [int -> int]),
+      (linked: [allocation_table -> bool]),
+      (sconst: [integer_memory -> bool]),
+      (addr_le: address_relation),
+      (to_sint8: integer_conversion),
+      (l_length: string_length_function),
+      (a_2: addr),
+      (t_1: integer_memory),
+      (a, a_1: addr),
+      (t: allocation_table),
+      (i, i_3, i_1, i_2, i_4: int):
+      address_order_axiom(addr_le) IMPLIES
+      sint8_conversion_axioms(to_sint8) IMPLIES
+      string_length_axiom(l_length) IMPLIES
+      LET x: int = base(a_2),
+          x_1: int = t_1(a),
+          a_3: addr = shift(a_2, 0),
+          x_2: int = l_length(t_1, a_1),
+          x_3: int = l_length(t_1, a_2),
+          a_4: addr = shift(a_1, 0),
+          x_4: int = 1 + x_2
+      IN
+        region(base(a_1)) <= 0 IMPLIES
+        region(x) <= 0 IMPLIES
+        linked(t) IMPLIES
+        sconst(t_1) IMPLIES
+        is_sint8(x_1) IMPLIES
+        p_length_of_str_is(t, t_1, a_1, i) IMPLIES
+        p_length_of_str_is(t, t_1, a_1, i_3) IMPLIES
+        p_length_of_str_is(t, t_1, a_2, i_1) IMPLIES
+        p_length_of_str_is(t, t_1, a_2, i_2) IMPLIES
+        p_length_of_str_is(t, t_1, a_2, i_4) IMPLIES
+        valid_rw(t, a_3, x_2 + x_3) IMPLIES
+        separated(a_3, 1 + x_3, a_4, x_4) IMPLIES
+        ((FORALL (i_5: int):
+          0 <= i_5 IMPLIES
+          i_5 < x_3 IMPLIES
+          t_1(shift(a_2, i_5)) /= 0) IMPLIES
+          (# base := 0, offset := 0 #) = a) IMPLIES
+        ((EXISTS (i_5: int):
+          t_1(shift(a_2, i_5)) = 0
+            AND 0 <= i_5
+            AND i_5 < x_3) IMPLIES
+          x_1 = 0) IMPLIES
+        ((EXISTS (i_5: int):
+          t_1(shift(a_2, i_5)) = 0
+            AND 0 <= i_5
+            AND i_5 < x_3) IMPLIES
+          x = base(a)) IMPLIES
+        ((EXISTS (i_5: int):
+          t_1(shift(a_2, i_5)) = 0
+            AND 0 <= i_5
+            AND i_5 < x_3) IMPLIES
+          p_exists_first_occurence_of_char(
+            t, t_1, a_2, 0, offset(a) - offset(a_2),
+            l_length, to_sint8)) IMPLIES
+        ((EXISTS (i_5: int):
+          t_1(shift(a_2, i_5)) = 0
+            AND 0 <= i_5
+            AND i_5 < x_3) IMPLIES
+          addr_le(a_2, a)
+            AND addr_le(a, shift(a_2, x_3))) IMPLIES
+        separated(a_4, x_4, shift(a, 0), x_4)
+END strcat_Why3_ide_VCstrcat_call_strcpy_pre_6_goal9

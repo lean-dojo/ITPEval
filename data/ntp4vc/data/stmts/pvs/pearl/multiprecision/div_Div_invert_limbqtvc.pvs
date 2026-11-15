@@ -1,0 +1,65 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/multiprecision/div_Div_invert_limbqtvc: the verification condition
+% for computing the reciprocal of a normalized unsigned 64-bit divisor via
+% a two-limb-by-one-limb division. This file contains no proof.
+
+div_Div_invert_limbqtvc: THEORY
+BEGIN
+
+  IMPORTING
+    bv[64],
+    bv_nat[64]
+
+  word64: TYPE = bvec[64]
+
+  radix: int = 18446744073709551616
+  half_radix: int = 9223372036854775808
+  max_word64: int = 18446744073709551615
+
+  max64: word64 = fill[64](TRUE)
+
+  unsigned64(value: word64): int =
+    bv2nat[64](value)
+
+  euclidean_div_positive(
+      numerator, denominator: int): int =
+    IF denominator <= 0 THEN
+      0
+    ELSE
+      floor((numerator :: real) / (denominator :: real))
+    ENDIF
+
+  uint64_in_bounds(value: int): bool =
+    0 <= value AND value <= max_word64
+
+  reciprocal(v, d: word64): bool =
+    unsigned64(v)
+      =
+    euclidean_div_positive(
+      radix * radix - 1,
+      unsigned64(d))
+      - radix
+
+  invert_limb_vc: bool =
+    FORALL (d: word64):
+      half_radix <= unsigned64(d)
+        IMPLIES
+          uint64_in_bounds(
+            unsigned64(max64) - unsigned64(d))
+          AND
+            (FORALL (o2: word64):
+              unsigned64(o2)
+                  = unsigned64(max64) - unsigned64(d)
+                IMPLIES
+                  unsigned64(o2) < unsigned64(d)
+                  AND
+                    (FORALL (v: word64):
+                      unsigned64(v)
+                          =
+                        euclidean_div_positive(
+                          unsigned64(max64)
+                            + radix * unsigned64(o2),
+                          unsigned64(d))
+                        IMPLIES reciprocal(v, d)))
+
+END div_Div_invert_limbqtvc

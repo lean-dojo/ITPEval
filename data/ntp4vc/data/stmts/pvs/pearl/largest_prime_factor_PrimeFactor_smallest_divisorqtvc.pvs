@@ -1,0 +1,95 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/largest_prime_factor_PrimeFactor_smallest_divisorqtvc: the
+% verification condition for a recursive smallest-divisor search, including
+% branch safety, termination decrease, and divisor minimality. This file
+% contains no proof.
+
+largest_prime_factor_PrimeFactor_smallest_divisorqtvc: THEORY
+BEGIN
+
+  trunc_div(numerator, denominator: int): int =
+    IF denominator = 0 THEN
+      0
+    ELSIF numerator * denominator >= 0 THEN
+      floor((numerator :: real) / (denominator :: real))
+    ELSE
+      -floor(-((numerator :: real) / (denominator :: real)))
+    ENDIF
+
+  trunc_mod(numerator, denominator: int): int =
+    numerator - denominator * trunc_div(numerator, denominator)
+
+  divides(divisor, value: int): bool =
+    EXISTS (factor: int): value = divisor * factor
+
+  no_divisor_before(value, bound: int): bool =
+    FORALL (candidate: int):
+      (2 <= candidate AND candidate < bound)
+        IMPLIES NOT divides(candidate, value)
+
+  divisor_postcondition(lower, value, result: int): bool =
+    (lower <= result AND result <= value)
+      AND divides(result, value)
+      AND no_divisor_before(value, result)
+
+  branch_condition(value, divisor: int, condition: bool): bool =
+    IF 2 <= divisor THEN
+      condition =
+        (IF trunc_mod(value, divisor) = 0 THEN TRUE ELSE FALSE ENDIF)
+    ELSE
+      condition = FALSE
+    ENDIF
+
+  recursive_call_obligations(
+      value, divisor: int,
+      condition: bool): bool =
+    branch_condition(value, divisor, condition)
+      IMPLIES condition /= TRUE
+      IMPLIES
+        LET next_divisor: int = divisor + 1
+        IN
+          (0 <= value - divisor
+            AND value - next_divisor < value - divisor)
+          AND 2 <= value
+          AND (2 <= next_divisor AND next_divisor <= value)
+          AND no_divisor_before(value, next_divisor)
+
+  nonterminal_obligations(value, divisor: int): bool =
+    (2 <= divisor IMPLIES divisor /= 0)
+      AND
+        (FORALL (condition: bool):
+          recursive_call_obligations(value, divisor, condition))
+
+  result_antecedent(
+      value, divisor, square, result: int): bool =
+    IF value < square THEN
+      result = value
+    ELSE
+      EXISTS (condition: bool):
+        branch_condition(value, divisor, condition)
+          AND
+            IF condition = TRUE THEN
+              result = divisor
+            ELSE
+              divisor_postcondition(divisor + 1, value, result)
+            ENDIF
+    ENDIF
+
+  smallest_divisor_vc: bool =
+    FORALL (value, divisor: int):
+      2 <= value
+        IMPLIES 2 <= divisor
+        IMPLIES divisor <= value
+        IMPLIES no_divisor_before(value, divisor)
+        IMPLIES
+          LET square: int = divisor * divisor
+          IN
+            (NOT value < square
+              IMPLIES nonterminal_obligations(value, divisor))
+            AND
+              (FORALL (result: int):
+                result_antecedent(value, divisor, square, result)
+                  IMPLIES
+                    divisor_postcondition(divisor, value, result))
+
+END largest_prime_factor_PrimeFactor_smallest_divisorqtvc

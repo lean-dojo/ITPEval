@@ -1,0 +1,105 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1985_b2:
+% the recursively defined polynomial sequence has f_100(1) factored as
+% ninety-nine copies of the prime 101. This file contains no proof.
+
+putnam_1985_b2: THEORY
+BEGIN
+  polynomial: TYPE = list[real]
+  polynomial_sequence: TYPE = [nat -> polynomial]
+
+  polynomial_coefficient(
+      p: polynomial,
+      degree: nat): RECURSIVE real =
+    CASES p OF
+      null: 0,
+      cons(coefficient, tail):
+        IF degree = 0 THEN
+          coefficient
+        ELSE
+          polynomial_coefficient(tail, degree - 1)
+        ENDIF
+    ENDCASES
+  MEASURE p BY <<
+
+  polynomial_equal(left, right: polynomial): bool =
+    FORALL (degree: nat):
+      polynomial_coefficient(left, degree)
+        = polynomial_coefficient(right, degree)
+
+  polynomial_value(p: polynomial, x: real): RECURSIVE real =
+    CASES p OF
+      null: 0,
+      cons(coefficient, tail):
+        coefficient + x * polynomial_value(tail, x)
+    ENDCASES
+  MEASURE p BY <<
+
+  derivative_coefficients(
+      p: polynomial,
+      degree: nat): RECURSIVE polynomial =
+    CASES p OF
+      null: null,
+      cons(coefficient, tail):
+        cons(
+          (degree :: real) * coefficient,
+          derivative_coefficients(tail, degree + 1))
+    ENDCASES
+  MEASURE p BY <<
+
+  polynomial_derivative(p: polynomial): polynomial =
+    CASES p OF
+      null: null,
+      cons(coefficient, tail):
+        derivative_coefficients(tail, 1)
+    ENDCASES
+
+  repeat_nat(value, count: nat): RECURSIVE list[nat] =
+    IF count = 0 THEN
+      null
+    ELSE
+      cons(value, repeat_nat(value, count - 1))
+    ENDIF
+  MEASURE count
+
+  list_product(values: list[nat]): RECURSIVE nat =
+    CASES values OF
+      null: 1,
+      cons(value, tail):
+        value * list_product(tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  prime_nat(value: nat): bool =
+    value >= 2
+      AND FORALL (divisor: posnat):
+        (EXISTS (quotient: nat):
+          value = divisor * quotient)
+        IMPLIES divisor = 1 OR divisor = value
+
+  all_prime(values: list[nat]): RECURSIVE bool =
+    CASES values OF
+      null: TRUE,
+      cons(value, tail):
+        prime_nat(value) AND all_prime(tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  putnam_1985_b2_solution: list[nat] =
+    repeat_nat(101, 99)
+
+  putnam_1985_b2: bool =
+    FORALL (f: polynomial_sequence):
+      (polynomial_equal(f(0), cons(1, null))
+        AND (FORALL (n: nat):
+          n >= 1 IMPLIES polynomial_value(f(n), 0) = 0)
+        AND (FORALL (n: nat), (x: real):
+          polynomial_value(
+            polynomial_derivative(f(n + 1)), x)
+            = ((n + 1) :: real)
+                * polynomial_value(f(n), x + 1)))
+      IMPLIES
+        all_prime(putnam_1985_b2_solution)
+          AND EXISTS (a: nat):
+            polynomial_value(f(100), 1) = (a :: real)
+              AND list_product(putnam_1985_b2_solution) = a
+END putnam_1985_b2

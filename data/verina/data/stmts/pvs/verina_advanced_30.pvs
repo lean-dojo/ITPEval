@@ -1,0 +1,219 @@
+% Statement-only formalization of the VERINA corpus artifact
+% verina_advanced_30, catalog title "longestIncreasingStreak": computing the
+% longest strictly increasing contiguous streak in an integer list with the
+% specified accumulator scan and maximal-streak contract. This file contains no proof.
+
+verina_advanced_30: THEORY
+BEGIN
+
+  int_option: DATATYPE
+  BEGIN
+    NoneInt: NoneInt?
+    SomeInt(option_value: int): SomeInt?
+  END int_option
+
+  longestIncreasingStreak_precond(
+      nums: list[int]): bool =
+    TRUE
+
+  nat_max(first, second: nat): nat =
+    IF first >= second THEN first ELSE second ENDIF
+
+  nat_sub(first, second: nat): nat =
+    IF first >= second THEN first - second ELSE 0 ENDIF
+
+  int_list_length(values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        int_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  int_list_get_bang(
+      index: nat,
+      values: list[int]): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          int_list_get_bang(index - 1, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  longestIncreasingStreak_aux(
+      remaining: list[int],
+      previous: int_option,
+      current_length, maximum_length: nat): RECURSIVE nat =
+    CASES remaining OF
+      null:
+        nat_max(current_length, maximum_length),
+      cons(x, rest):
+        CASES previous OF
+          NoneInt:
+            longestIncreasingStreak_aux(
+              rest,
+              SomeInt(x),
+              1,
+              nat_max(1, maximum_length)),
+          SomeInt(p):
+            IF x > p THEN
+              longestIncreasingStreak_aux(
+                rest,
+                SomeInt(x),
+                current_length + 1,
+                nat_max(
+                  current_length + 1,
+                  maximum_length))
+            ELSE
+              longestIncreasingStreak_aux(
+                rest,
+                SomeInt(x),
+                1,
+                nat_max(
+                  current_length,
+                  maximum_length))
+            ENDIF
+        ENDCASES
+    ENDCASES
+  MEASURE remaining BY <<
+
+  longestIncreasingStreak(nums: list[int]): nat =
+    longestIncreasingStreak_aux(
+      nums,
+      NoneInt,
+      0,
+      0)
+
+  all_consecutive_pairs_increasing(
+      nums: list[int],
+      start, offset, remaining_pairs: nat): RECURSIVE bool =
+    IF remaining_pairs = 0 THEN
+      TRUE
+    ELSE
+      int_list_get_bang(start + offset, nums)
+        < int_list_get_bang(start + offset + 1, nums)
+        AND all_consecutive_pairs_increasing(
+          nums,
+          start,
+          offset + 1,
+          remaining_pairs - 1)
+    ENDIF
+  MEASURE remaining_pairs
+
+  maximal_streak_at(
+      nums: list[int],
+      start, streak_length: nat): bool =
+    LET length: nat = int_list_length(nums)
+    IN
+      start + streak_length <= length
+        AND all_consecutive_pairs_increasing(
+          nums,
+          start,
+          0,
+          nat_sub(streak_length, 1))
+        AND
+          (start = 0
+            OR int_list_get_bang(nat_sub(start, 1), nums)
+                 >= int_list_get_bang(start, nums))
+        AND
+          (start + streak_length = length
+            OR int_list_get_bang(
+                 nat_sub(start + streak_length, 1),
+                 nums)
+                 >= int_list_get_bang(
+                      start + streak_length,
+                      nums))
+
+  any_maximal_streak(
+      nums: list[int],
+      streak_length, start, remaining_starts: nat):
+        RECURSIVE bool =
+    IF remaining_starts = 0 THEN
+      FALSE
+    ELSE
+      maximal_streak_at(
+        nums,
+        start,
+        streak_length)
+        OR any_maximal_streak(
+          nums,
+          streak_length,
+          start + 1,
+          remaining_starts - 1)
+    ENDIF
+  MEASURE remaining_starts
+
+  candidate_has_nondecreasing_pair(
+      nums: list[int],
+      start, offset, remaining_offsets: nat):
+        RECURSIVE bool =
+    IF remaining_offsets = 0 THEN
+      FALSE
+    ELSE
+      start + offset + 1 >= int_list_length(nums)
+        OR int_list_get_bang(start + offset, nums)
+             >= int_list_get_bang(
+                  start + offset + 1,
+                  nums)
+        OR candidate_has_nondecreasing_pair(
+          nums,
+          start,
+          offset + 1,
+          remaining_offsets - 1)
+    ENDIF
+  MEASURE remaining_offsets
+
+  all_longer_candidates_fail(
+      nums: list[int],
+      result, start, remaining_starts: nat):
+        RECURSIVE bool =
+    IF remaining_starts = 0 THEN
+      TRUE
+    ELSE
+      candidate_has_nondecreasing_pair(
+        nums,
+        start,
+        0,
+        result)
+        AND all_longer_candidates_fail(
+          nums,
+          result,
+          start + 1,
+          remaining_starts - 1)
+    ENDIF
+  MEASURE remaining_starts
+
+  longestIncreasingStreak_postcond(
+      nums: list[int],
+      result: nat): bool =
+    LET length: nat = int_list_length(nums)
+    IN
+      (nums = null IMPLIES result = 0)
+        AND
+      (result > 0 IMPLIES
+        any_maximal_streak(
+          nums,
+          result,
+          0,
+          nat_sub(length, result) + 1))
+        AND
+      all_longer_candidates_fail(
+        nums,
+        result,
+        0,
+        nat_sub(length, result))
+
+  longestIncreasingStreak_spec_satisfied: bool =
+    FORALL (nums: list[int]):
+      longestIncreasingStreak_precond(nums) IMPLIES
+        longestIncreasingStreak_postcond(
+          nums,
+          longestIncreasingStreak(nums))
+
+END verina_advanced_30

@@ -1,0 +1,163 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2008_a6:
+% one universal positive constant bounds a sequence in every finite nontrivial
+% group whose ordered subsequence products cover the group. This file contains
+% no proof.
+
+putnam_2008_a6: THEORY
+BEGIN
+  IMPORTING finite_sets[nat]
+
+  natural_sequence: TYPE = [nat -> nat]
+  binary_operation: TYPE = [nat, nat -> nat]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  nat_factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * nat_factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  exponential_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        exponential_partial(x, count - 1)
+          + safe_div(
+              x ^ index,
+              nat_factorial(index) :: real)
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: [nat -> real], value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  exponential_value(argument, value: real): bool =
+    converges_to(
+      (LAMBDA (count: nat):
+        exponential_partial(argument, count)),
+      value)
+
+  natural_log_value(argument, value: real): bool =
+    argument > 0
+      AND exponential_value(value, argument)
+
+  is_group(
+      carrier: finite_set[nat],
+      one: nat,
+      inverse: natural_sequence,
+      multiply: binary_operation): bool =
+    carrier(one)
+      AND
+        (FORALL (x, y: nat):
+          carrier(x) AND carrier(y) IMPLIES
+            carrier(multiply(x, y)))
+      AND
+        (FORALL (x: nat):
+          carrier(x) IMPLIES carrier(inverse(x)))
+      AND
+        (FORALL (x, y, z: nat):
+          carrier(x) AND carrier(y) AND carrier(z) IMPLIES
+            multiply(multiply(x, y), z)
+              = multiply(x, multiply(y, z)))
+      AND
+        (FORALL (x: nat):
+          carrier(x) IMPLIES
+            multiply(one, x) = x
+              AND multiply(x, one) = x)
+      AND
+        (FORALL (x: nat):
+          carrier(x) IMPLIES
+            multiply(inverse(x), x) = one
+              AND multiply(x, inverse(x)) = one)
+
+  sequence_in_carrier(
+      sequence: natural_sequence,
+      sequence_length: nat,
+      carrier: finite_set[nat]): bool =
+    FORALL (index: nat):
+      index < sequence_length IMPLIES carrier(sequence(index))
+
+  valid_subsequence(
+      indices: natural_sequence,
+      subsequence_length, sequence_length: nat): bool =
+    (FORALL (index: nat):
+      index < subsequence_length IMPLIES
+        indices(index) < sequence_length)
+      AND
+    (FORALL (left, right: nat):
+      left < right AND right < subsequence_length IMPLIES
+        indices(left) < indices(right))
+
+  subsequence_product(
+      sequence, indices: natural_sequence,
+      subsequence_length: nat,
+      multiply: binary_operation,
+      one: nat): RECURSIVE nat =
+    IF subsequence_length = 0 THEN
+      one
+    ELSE
+      multiply(
+        subsequence_product(
+          sequence,
+          indices,
+          subsequence_length - 1,
+          multiply,
+          one),
+        sequence(indices(subsequence_length - 1)))
+    ENDIF
+  MEASURE subsequence_length
+
+  putnam_2008_a6: bool =
+    EXISTS (c: real):
+      c > 0
+        AND
+      FORALL
+          (carrier: finite_set[nat]),
+          (one: nat),
+          (inverse: natural_sequence),
+          (multiply: binary_operation):
+        (is_group(carrier, one, inverse, multiply)
+          AND card(carrier) > 1)
+        IMPLIES
+          EXISTS
+              (sequence_length: nat),
+              (sequence: natural_sequence),
+              (log_order: real):
+            natural_log_value(
+              card(carrier) :: real,
+              log_order)
+              AND (sequence_length :: real)
+                <= c * log_order
+              AND sequence_in_carrier(
+                sequence, sequence_length, carrier)
+              AND
+                (FORALL (g: nat):
+                  carrier(g) IMPLIES
+                    EXISTS
+                        (subsequence_length: nat),
+                        (indices: natural_sequence):
+                      valid_subsequence(
+                        indices,
+                        subsequence_length,
+                        sequence_length)
+                        AND subsequence_product(
+                          sequence,
+                          indices,
+                          subsequence_length,
+                          multiply,
+                          one)
+                          = g)
+END putnam_2008_a6

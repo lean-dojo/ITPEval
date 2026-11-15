@@ -1,0 +1,88 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2017_b4:
+% the logarithmic series with four terms in each index block converges to the
+% square of the natural logarithm of 2. This file contains no proof.
+
+putnam_2017_b4: THEORY
+BEGIN
+  real_sequence: TYPE = [nat -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  nat_factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * nat_factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  exponential_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        exponential_partial(x, count - 1)
+          + safe_div(
+              x ^ index,
+              nat_factorial(index) :: real)
+    ENDIF
+  MEASURE count
+
+  real_exponential(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat):
+            exponential_partial(x, count),
+          value))
+
+  natural_log(x: real): real =
+    IF x > 0 THEN
+      epsilon(
+        LAMBDA (value: real):
+          real_exponential(value) = x)
+    ELSE
+      0
+    ENDIF
+
+  series_term(index: nat): real =
+    LET k: real = index :: real IN
+      3 * safe_div(
+            natural_log(4 * k + 2),
+            4 * k + 2)
+        - safe_div(
+            natural_log(4 * k + 3),
+            4 * k + 3)
+        - safe_div(
+            natural_log(4 * k + 4),
+            4 * k + 4)
+        - safe_div(
+            natural_log(4 * k + 5),
+            4 * k + 5)
+
+  partial_sum(count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      partial_sum(count - 1) + series_term(count - 1)
+    ENDIF
+  MEASURE count
+
+  putnam_2017_b4_solution: real =
+    natural_log(2) ^ 2
+
+  putnam_2017_b4: bool =
+    converges_to(partial_sum, putnam_2017_b4_solution)
+END putnam_2017_b4

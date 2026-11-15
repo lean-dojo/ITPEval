@@ -1,0 +1,87 @@
+% Statement-only formalization of PutnamBench artifact putnam_1967_a1:
+% a real sine polynomial bounded in absolute value by sine has weighted
+% coefficient sum of absolute value at most one. This file contains no proof.
+
+putnam_1967_a1: THEORY
+BEGIN
+  real_sequence: TYPE = [nat -> real]
+  real_function: TYPE = [real -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  sine_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        sine_partial(x, count - 1)
+          + safe_div(
+              ((-1 :: real) ^ index) * x ^ (2 * index + 1),
+              factorial(2 * index + 1) :: real)
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  sine(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat): sine_partial(x, count),
+          value))
+
+  sine_polynomial_sum(
+      a: real_sequence,
+      x: real,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      sine_polynomial_sum(a, x, count - 1)
+        + a(count) * sine((count :: real) * x)
+    ENDIF
+  MEASURE count
+
+  weighted_coefficient_sum(
+      a: real_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      weighted_coefficient_sum(a, count - 1)
+        + (count :: real) * a(count)
+    ENDIF
+  MEASURE count
+
+  putnam_1967_a1: bool =
+    FORALL
+        (n: nat),
+        (a: real_sequence),
+        (f: real_function):
+      (n > 0
+        AND f =
+          (LAMBDA (x: real):
+            sine_polynomial_sum(a, x, n))
+        AND (FORALL (x: real):
+          abs(f(x)) <= abs(sine(x))))
+      IMPLIES
+        abs(weighted_coefficient_sum(a, n)) <= 1
+END putnam_1967_a1

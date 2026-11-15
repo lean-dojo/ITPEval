@@ -1,0 +1,756 @@
+% Statement-only formalization of the Thousand Theorems artifact Q1306095,
+% "Whitney embedding theorem": every compact Hausdorff smooth
+% finite-dimensional real manifold admits a smooth closed embedding into
+% some finite-dimensional Euclidean space with injective canonical manifold
+% derivative everywhere. This file contains no proof.
+
+whitney_embedding_theorem_Q1306095[
+  Point: TYPE+,
+  Chart: TYPE+,
+  carrier: [Point -> bool],
+  open_sets: [[Point -> bool] -> bool],
+  model_dimension: nat,
+  model_range: [[nat -> real] -> bool],
+  atlas: [Chart -> bool],
+  chart_source: [Chart -> [Point -> bool]],
+  chart_target: [Chart -> [[nat -> real] -> bool]],
+  chart_forward: [Chart, Point -> [nat -> real]],
+  chart_inverse: [Chart, [nat -> real] -> Point],
+  preferred_chart: [Point -> Chart]
+]: THEORY
+BEGIN
+  vector: TYPE = [nat -> real]
+  vector_sequence: TYPE = [nat -> vector]
+  vector_set: TYPE = [vector -> bool]
+  point_set: TYPE = [Point -> bool]
+  point_family: TYPE = [point_set -> bool]
+  point_sequence: TYPE = [nat -> point_set]
+  vector_function: TYPE = [vector -> vector]
+  multilinear_candidate: TYPE = [vector_sequence -> vector]
+  jet_field: TYPE = [nat, vector -> multilinear_candidate]
+  embedding_function: TYPE = [Point -> vector]
+
+  zero_vector: vector =
+    LAMBDA (i: nat): 0
+
+  vector_add(u, v: vector): vector =
+    LAMBDA (i: nat): u(i) + v(i)
+
+  vector_subtract(u, v: vector): vector =
+    LAMBDA (i: nat): u(i) - v(i)
+
+  vector_scale(a: real, v: vector): vector =
+    LAMBDA (i: nat): a * v(i)
+
+  supported(v: vector, dimension: nat): bool =
+    FORALL (i: nat):
+      dimension <= i IMPLIES v(i) = 0
+
+  squared_norm(v: vector, dimension: nat): RECURSIVE real =
+    IF dimension = 0 THEN
+      0
+    ELSE
+      squared_norm(v, dimension - 1) + v(dimension - 1) ^ 2
+    ENDIF
+  MEASURE dimension
+
+  squared_distance(u, v: vector, dimension: nat): real =
+    squared_norm(vector_subtract(u, v), dimension)
+
+  linear_map(
+      source_dimension, target_dimension: nat,
+      candidate: vector_function): bool =
+    (FORALL (u: vector):
+      supported(u, source_dimension)
+        IMPLIES supported(candidate(u), target_dimension))
+      AND
+        (FORALL (u, v: vector):
+          (supported(u, source_dimension)
+            AND supported(v, source_dimension))
+          IMPLIES
+            candidate(vector_add(u, v))
+              = vector_add(candidate(u), candidate(v)))
+      AND
+        (FORALL (scalar: real), (u: vector):
+          supported(u, source_dimension)
+            IMPLIES
+              candidate(vector_scale(scalar, u))
+                = vector_scale(scalar, candidate(u)))
+      AND
+        EXISTS (bound: real):
+          0 <= bound
+            AND FORALL (u: vector):
+              supported(u, source_dimension)
+                IMPLIES
+                  squared_norm(candidate(u), target_dimension)
+                    <= bound ^ 2
+                      * squared_norm(u, source_dimension)
+
+  same_linear_map_on_model(
+      left, right: vector_function,
+      source_dimension: nat): bool =
+    FORALL (u: vector):
+      supported(u, source_dimension)
+        IMPLIES left(u) = right(u)
+
+  has_frechet_derivative_within_at(
+      function_value: vector_function,
+      domain: vector_set,
+      source_dimension, target_dimension: nat,
+      center: vector,
+      derivative: vector_function): bool =
+    domain(center)
+      AND supported(center, source_dimension)
+      AND supported(function_value(center), target_dimension)
+      AND linear_map(
+            source_dimension,
+            target_dimension,
+            derivative)
+      AND
+        FORALL (epsilon: real):
+          0 < epsilon IMPLIES
+            EXISTS (delta: real):
+              0 < delta
+                AND FORALL (nearby: vector):
+                  (domain(nearby)
+                    AND squared_distance(
+                          nearby,
+                          center,
+                          source_dimension)
+                        < delta ^ 2)
+                  IMPLIES
+                    squared_norm(
+                      vector_subtract(
+                        vector_subtract(
+                          function_value(nearby),
+                          function_value(center)),
+                        derivative(
+                          vector_subtract(nearby, center))),
+                      target_dimension)
+                      <=
+                        epsilon ^ 2
+                          * squared_distance(
+                              nearby,
+                              center,
+                              source_dimension)
+
+  unique_differentiability_on(
+      domain: vector_set,
+      source_dimension: nat): bool =
+    FORALL
+        (target_dimension: nat),
+        (function_value: vector_function),
+        (center: vector),
+        (left, right: vector_function):
+      (domain(center)
+        AND has_frechet_derivative_within_at(
+              function_value,
+              domain,
+              source_dimension,
+              target_dimension,
+              center,
+              left)
+        AND has_frechet_derivative_within_at(
+              function_value,
+              domain,
+              source_dimension,
+              target_dimension,
+              center,
+              right))
+      IMPLIES
+        same_linear_map_on_model(
+          left,
+          right,
+          source_dimension)
+
+  repeat_vector(v: vector): vector_sequence =
+    LAMBDA (i: nat): v
+
+  first_derivative(
+      jets: jet_field,
+      center: vector): vector_function =
+    LAMBDA (u: vector):
+      jets(1, center)(repeat_vector(u))
+
+  replace_vector(
+      values: vector_sequence,
+      index: nat,
+      value: vector): vector_sequence =
+    LAMBDA (i: nat):
+      IF i = index THEN value ELSE values(i) ENDIF
+
+  valid_arguments(
+      values: vector_sequence,
+      count, dimension: nat): bool =
+    FORALL (i: nat):
+      i < count IMPLIES supported(values(i), dimension)
+
+  same_prefix(
+      left, right: vector_sequence,
+      count: nat): bool =
+    FORALL (i: nat):
+      i < count IMPLIES left(i) = right(i)
+
+  squared_norm_product(
+      values: vector_sequence,
+      count, dimension: nat): RECURSIVE real =
+    IF count = 0 THEN
+      1
+    ELSE
+      squared_norm_product(values, count - 1, dimension)
+        * squared_norm(values(count - 1), dimension)
+    ENDIF
+  MEASURE count
+
+  factorial(count: nat): RECURSIVE nat =
+    IF count = 0 THEN
+      1
+    ELSE
+      count * factorial(count - 1)
+    ENDIF
+  MEASURE count
+
+  safe_divide(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  multilinear_map(
+      order, source_dimension, target_dimension: nat,
+      candidate: multilinear_candidate): bool =
+    (FORALL (values: vector_sequence):
+      valid_arguments(values, order, source_dimension)
+        IMPLIES supported(candidate(values), target_dimension))
+      AND
+        (order = 0 IMPLIES
+          FORALL (left, right: vector_sequence):
+            candidate(left) = candidate(right))
+      AND
+        (FORALL (left, right: vector_sequence):
+          (valid_arguments(left, order, source_dimension)
+            AND valid_arguments(right, order, source_dimension)
+            AND same_prefix(left, right, order))
+          IMPLIES candidate(left) = candidate(right))
+      AND
+        (FORALL
+            (values: vector_sequence),
+            (slot: nat),
+            (u, v: vector):
+          (slot < order
+            AND valid_arguments(values, order, source_dimension)
+            AND supported(u, source_dimension)
+            AND supported(v, source_dimension))
+          IMPLIES
+            candidate(
+              replace_vector(
+                values,
+                slot,
+                vector_add(u, v)))
+              =
+                vector_add(
+                  candidate(replace_vector(values, slot, u)),
+                  candidate(replace_vector(values, slot, v))))
+      AND
+        (FORALL
+            (values: vector_sequence),
+            (slot: nat),
+            (scalar: real),
+            (u: vector):
+          (slot < order
+            AND valid_arguments(values, order, source_dimension)
+            AND supported(u, source_dimension))
+          IMPLIES
+            candidate(
+              replace_vector(
+                values,
+                slot,
+                vector_scale(scalar, u)))
+              =
+                vector_scale(
+                  scalar,
+                  candidate(replace_vector(values, slot, u))))
+      AND
+        EXISTS (bound: real):
+          0 <= bound
+            AND FORALL (values: vector_sequence):
+              valid_arguments(values, order, source_dimension)
+                IMPLIES
+                  squared_norm(
+                    candidate(values),
+                    target_dimension)
+                    <=
+                      bound ^ 2
+                        * squared_norm_product(
+                            values,
+                            order,
+                            source_dimension)
+
+  taylor_sum(
+      jets: jet_field,
+      center, increment: vector,
+      count: nat): RECURSIVE vector =
+    IF count = 0 THEN
+      zero_vector
+    ELSE
+      vector_add(
+        taylor_sum(jets, center, increment, count - 1),
+        vector_scale(
+          safe_divide(1, factorial(count - 1) :: real),
+          jets(count - 1, center)(repeat_vector(increment))))
+    ENDIF
+  MEASURE count
+
+  jet_continuous_on(
+      jets: jet_field,
+      domain: vector_set,
+      source_dimension, target_dimension: nat): bool =
+    FORALL
+        (order: nat),
+        (center: vector),
+        (values: vector_sequence):
+      (domain(center)
+        AND valid_arguments(values, order, source_dimension))
+      IMPLIES
+        FORALL (epsilon: real):
+          0 < epsilon IMPLIES
+            EXISTS (delta: real):
+              0 < delta
+                AND FORALL (nearby: vector):
+                  (domain(nearby)
+                    AND squared_distance(
+                          nearby,
+                          center,
+                          source_dimension)
+                        < delta ^ 2)
+                  IMPLIES
+                    squared_norm(
+                      vector_subtract(
+                        jets(order, nearby)(values),
+                        jets(order, center)(values)),
+                      target_dimension)
+                      < epsilon ^ 2
+
+  has_smooth_taylor_jets(
+      function_value: vector_function,
+      domain: vector_set,
+      source_dimension, target_dimension: nat,
+      jets: jet_field): bool =
+    (FORALL (x: vector):
+      domain(x) IMPLIES
+        (supported(x, source_dimension)
+          AND supported(function_value(x), target_dimension)))
+      AND
+        (FORALL (order: nat), (x: vector):
+          domain(x) IMPLIES
+            multilinear_map(
+              order,
+              source_dimension,
+              target_dimension,
+              jets(order, x)))
+      AND
+        (FORALL (x: vector), (values: vector_sequence):
+          domain(x) IMPLIES
+            jets(0, x)(values) = function_value(x))
+      AND
+        (FORALL (x: vector):
+          domain(x) IMPLIES
+            has_frechet_derivative_within_at(
+              function_value,
+              domain,
+              source_dimension,
+              target_dimension,
+              x,
+              first_derivative(jets, x)))
+      AND
+        jet_continuous_on(
+          jets,
+          domain,
+          source_dimension,
+          target_dimension)
+      AND
+        (FORALL (order: nat), (center: vector):
+          domain(center) IMPLIES
+            FORALL (epsilon: real):
+              0 < epsilon IMPLIES
+                EXISTS (delta: real):
+                  0 < delta
+                    AND FORALL (nearby: vector):
+                      (domain(nearby)
+                        AND squared_distance(
+                              nearby,
+                              center,
+                              source_dimension)
+                            < delta ^ 2)
+                      IMPLIES
+                        squared_norm(
+                          vector_subtract(
+                            function_value(nearby),
+                            taylor_sum(
+                              jets,
+                              center,
+                              vector_subtract(nearby, center),
+                              order + 1)),
+                          target_dimension)
+                          <=
+                            epsilon ^ 2
+                              * squared_distance(
+                                  nearby,
+                                  center,
+                                  source_dimension) ^ order)
+
+  empty_point_set: point_set =
+    LAMBDA (x: Point): FALSE
+
+  whole_carrier: point_set =
+    LAMBDA (x: Point): carrier(x)
+
+  point_subset(A, B: point_set): bool =
+    FORALL (x: Point):
+      A(x) IMPLIES B(x)
+
+  point_intersection(A, B: point_set): point_set =
+    LAMBDA (x: Point):
+      A(x) AND B(x)
+
+  point_union(family: point_family): point_set =
+    LAMBDA (x: Point):
+      carrier(x)
+        AND EXISTS (U: point_set):
+          family(U) AND U(x)
+
+  topology_laws: bool =
+    open_sets(empty_point_set)
+      AND open_sets(whole_carrier)
+      AND
+        (FORALL (U: point_set):
+          open_sets(U) IMPLIES point_subset(U, whole_carrier))
+      AND
+        (FORALL (U, V: point_set):
+          (open_sets(U) AND open_sets(V))
+            IMPLIES open_sets(point_intersection(U, V)))
+      AND
+        (FORALL (family: point_family):
+          (FORALL (U: point_set):
+            family(U) IMPLIES open_sets(U))
+          IMPLIES open_sets(point_union(family)))
+
+  disjoint_point_sets(U, V: point_set): bool =
+    FORALL (x: Point):
+      NOT (U(x) AND V(x))
+
+  hausdorff_carrier: bool =
+    FORALL (x, y: Point):
+      (carrier(x) AND carrier(y) AND x /= y)
+        IMPLIES
+          EXISTS (U, V: point_set):
+            open_sets(U)
+              AND open_sets(V)
+              AND U(x)
+              AND V(y)
+              AND disjoint_point_sets(U, V)
+
+  compact_carrier: bool =
+    FORALL (cover: point_family):
+      ((FORALL (U: point_set):
+          cover(U) IMPLIES open_sets(U))
+        AND
+          (FORALL (x: Point):
+            carrier(x) IMPLIES
+              EXISTS (U: point_set):
+                cover(U) AND U(x)))
+      IMPLIES
+        EXISTS (count: nat), (chosen: point_sequence):
+          (FORALL (i: nat):
+            i < count IMPLIES cover(chosen(i)))
+            AND
+              (FORALL (x: Point):
+                carrier(x) IMPLIES
+                  EXISTS (i: nat):
+                    i < count AND chosen(i)(x))
+
+  vector_subset(A, B: vector_set): bool =
+    FORALL (x: vector):
+      A(x) IMPLIES B(x)
+
+  full_vector_space(dimension: nat): vector_set =
+    LAMBDA (x: vector):
+      supported(x, dimension)
+
+  relatively_open(
+      U, ambient: vector_set,
+      dimension: nat): bool =
+    vector_subset(U, ambient)
+      AND FORALL (x: vector):
+        U(x) IMPLIES
+          EXISTS (radius: real):
+            0 < radius
+              AND FORALL (y: vector):
+                (ambient(y)
+                  AND squared_distance(y, x, dimension)
+                    < radius ^ 2)
+                IMPLIES U(y)
+
+  convex_vector_set(
+      domain: vector_set,
+      dimension: nat): bool =
+    FORALL (x, y: vector), (t: real):
+      (domain(x)
+        AND domain(y)
+        AND 0 <= t
+        AND t <= 1)
+      IMPLIES
+        domain(
+          vector_add(
+            vector_scale(t, x),
+            vector_scale(1 - t, y)))
+
+  nonempty_vector_interior(
+      domain: vector_set,
+      dimension: nat): bool =
+    EXISTS (x: vector), (radius: real):
+      domain(x)
+        AND 0 < radius
+        AND FORALL (y: vector):
+          (supported(y, dimension)
+            AND squared_distance(y, x, dimension) < radius ^ 2)
+          IMPLIES domain(y)
+
+  % A ModelWithCorners range is convex with nonempty interior in its
+  % finite-dimensional model space.
+  model_with_corners_laws: bool =
+    vector_subset(
+      model_range,
+      full_vector_space(model_dimension))
+      AND convex_vector_set(
+            model_range,
+            model_dimension)
+      AND nonempty_vector_interior(
+            model_range,
+            model_dimension)
+      AND unique_differentiability_on(
+            model_range,
+            model_dimension)
+
+  chart_image(chart: Chart, U: point_set): vector_set =
+    LAMBDA (v: vector):
+      chart_target(chart)(v)
+        AND U(chart_inverse(chart, v))
+
+  chart_laws(chart: Chart): bool =
+    point_subset(chart_source(chart), whole_carrier)
+      AND vector_subset(chart_target(chart), model_range)
+      AND open_sets(chart_source(chart))
+      AND relatively_open(
+            chart_target(chart),
+            model_range,
+            model_dimension)
+      AND
+        (FORALL (x: Point):
+          chart_source(chart)(x) IMPLIES
+            (chart_target(chart)(chart_forward(chart, x))
+              AND chart_inverse(
+                    chart,
+                    chart_forward(chart, x))
+                  = x))
+      AND
+        (FORALL (v: vector):
+          chart_target(chart)(v) IMPLIES
+            (chart_source(chart)(chart_inverse(chart, v))
+              AND chart_forward(
+                    chart,
+                    chart_inverse(chart, v))
+                  = v))
+      AND
+        (FORALL (U: point_set):
+          point_subset(U, chart_source(chart))
+            IMPLIES
+              (open_sets(U)
+                IFF relatively_open(
+                      chart_image(chart, U),
+                      chart_target(chart),
+                      model_dimension)))
+
+  charted_space_laws: bool =
+    (FORALL (chart: Chart):
+      atlas(chart) IMPLIES chart_laws(chart))
+      AND
+        (FORALL (x: Point):
+          carrier(x) IMPLIES
+            (atlas(preferred_chart(x))
+              AND chart_source(preferred_chart(x))(x)))
+
+  transition_domain(left, right: Chart): vector_set =
+    LAMBDA (v: vector):
+      chart_target(left)(v)
+        AND chart_source(right)(chart_inverse(left, v))
+
+  transition_function(left, right: Chart): vector_function =
+    LAMBDA (v: vector):
+      chart_forward(
+        right,
+        chart_inverse(left, v))
+
+  smooth_atlas_laws: bool =
+    FORALL (left, right: Chart):
+      (atlas(left) AND atlas(right))
+        IMPLIES
+          EXISTS (jets: jet_field):
+            has_smooth_taylor_jets(
+              transition_function(left, right),
+              transition_domain(left, right),
+              model_dimension,
+              model_dimension,
+              jets)
+
+  pullback_open(
+      e: embedding_function,
+      V: vector_set): point_set =
+    LAMBDA (x: Point):
+      carrier(x) AND V(e(x))
+
+  euclidean_open(V: vector_set, dimension: nat): bool =
+    relatively_open(
+      V,
+      full_vector_space(dimension),
+      dimension)
+
+  embedding_image(
+      e: embedding_function,
+      dimension: nat): vector_set =
+    LAMBDA (v: vector):
+      supported(v, dimension)
+        AND EXISTS (x: Point):
+          carrier(x) AND e(x) = v
+
+  vector_complement_in_dimension(
+      A: vector_set,
+      dimension: nat): vector_set =
+    LAMBDA (v: vector):
+      supported(v, dimension) AND NOT A(v)
+
+  closed_euclidean_set(
+      A: vector_set,
+      dimension: nat): bool =
+    vector_subset(A, full_vector_space(dimension))
+      AND euclidean_open(
+            vector_complement_in_dimension(A, dimension),
+            dimension)
+
+  induces_source_topology(
+      e: embedding_function,
+      dimension: nat): bool =
+    (FORALL (V: vector_set):
+      euclidean_open(V, dimension)
+        IMPLIES open_sets(pullback_open(e, V)))
+      AND
+        (FORALL (U: point_set):
+          open_sets(U) IMPLIES
+            EXISTS (V: vector_set):
+              euclidean_open(V, dimension)
+                AND FORALL (x: Point):
+                  U(x) IFF pullback_open(e, V)(x))
+
+  closed_embedding(
+      e: embedding_function,
+      dimension: nat): bool =
+    (FORALL (x: Point):
+      carrier(x) IMPLIES supported(e(x), dimension))
+      AND
+        (FORALL (x, y: Point):
+          (carrier(x) AND carrier(y) AND e(x) = e(y))
+            IMPLIES x = y)
+      AND induces_source_topology(e, dimension)
+      AND closed_euclidean_set(
+            embedding_image(e, dimension),
+            dimension)
+
+  coordinate_representation(
+      chart: Chart,
+      e: embedding_function): vector_function =
+    LAMBDA (v: vector):
+      e(chart_inverse(chart, v))
+
+  cmdiff_infinity(
+      e: embedding_function,
+      target_dimension: nat): bool =
+    FORALL (chart: Chart):
+      atlas(chart) IMPLIES
+        EXISTS (jets: jet_field):
+          has_smooth_taylor_jets(
+            coordinate_representation(chart, e),
+            chart_target(chart),
+            model_dimension,
+            target_dimension,
+            jets)
+
+  injective_on_model(
+      derivative: vector_function,
+      source_dimension: nat): bool =
+    FORALL (u, v: vector):
+      (supported(u, source_dimension)
+        AND supported(v, source_dimension)
+        AND derivative(u) = derivative(v))
+      IMPLIES u = v
+
+  canonical_manifold_derivative_injective(
+      e: embedding_function,
+      target_dimension: nat,
+      x: Point): bool =
+    LET chart: Chart = preferred_chart(x),
+        coordinate: vector = chart_forward(chart, x) IN
+      (EXISTS (derivative: vector_function):
+        has_frechet_derivative_within_at(
+          coordinate_representation(chart, e),
+          chart_target(chart),
+          model_dimension,
+          target_dimension,
+          coordinate,
+          derivative))
+        AND
+          (FORALL (derivative: vector_function):
+            has_frechet_derivative_within_at(
+              coordinate_representation(chart, e),
+              chart_target(chart),
+              model_dimension,
+              target_dimension,
+              coordinate,
+              derivative)
+            IMPLIES
+              injective_on_model(
+                derivative,
+                model_dimension))
+
+  injective_manifold_derivative(
+      e: embedding_function,
+      target_dimension: nat): bool =
+    FORALL (x: Point):
+      carrier(x) IMPLIES
+        canonical_manifold_derivative_injective(
+          e,
+          target_dimension,
+          x)
+
+  smooth_compact_manifold_context: bool =
+    topology_laws
+      AND hausdorff_carrier
+      AND compact_carrier
+      AND model_with_corners_laws
+      AND charted_space_laws
+      AND smooth_atlas_laws
+
+  whitney_embedding_statement: bool =
+    smooth_compact_manifold_context
+      IMPLIES
+        EXISTS
+            (euclidean_dimension: nat),
+            (e: embedding_function):
+          cmdiff_infinity(
+            e,
+            euclidean_dimension)
+            AND closed_embedding(e, euclidean_dimension)
+            AND injective_manifold_derivative(
+                  e,
+                  euclidean_dimension)
+END whitney_embedding_theorem_Q1306095

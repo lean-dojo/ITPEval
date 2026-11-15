@@ -1,0 +1,104 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1988_b4:
+% a convergent series of positive real terms remains convergent after raising
+% its nth term to the real exponent n/(n+1). This file contains no proof.
+
+putnam_1988_b4: THEORY
+BEGIN
+  real_sequence: TYPE = [nat -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  nat_factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * nat_factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  exponential_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        exponential_partial(x, count - 1)
+          + safe_div(
+              x ^ index,
+              nat_factorial(index) :: real)
+    ENDIF
+  MEASURE count
+
+  real_exponential(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat):
+            exponential_partial(x, count),
+          value))
+
+  natural_log(x: real): real =
+    IF x > 0 THEN
+      epsilon(
+        LAMBDA (value: real):
+          real_exponential(value) = x)
+    ELSE
+      0
+    ENDIF
+
+  real_power(base, exponent: real): real =
+    IF base > 0 THEN
+      real_exponential(exponent * natural_log(base))
+    ELSIF base = 0 AND exponent = 0 THEN
+      1
+    ELSE
+      0
+    ENDIF
+
+  series_partial_sum(
+      values: real_sequence,
+      upper_index: nat): RECURSIVE real =
+    IF upper_index = 0 THEN
+      0
+    ELSE
+      series_partial_sum(values, upper_index - 1)
+        + values(upper_index)
+    ENDIF
+  MEASURE upper_index
+
+  series_converges(values: real_sequence): bool =
+    EXISTS (total: real):
+      converges_to(
+        LAMBDA (upper_index: nat):
+          series_partial_sum(values, upper_index),
+        total)
+
+  positive_from_one(values: real_sequence): bool =
+    FORALL (index: nat):
+      index >= 1 IMPLIES values(index) > 0
+
+  positive_convergent(values: real_sequence): bool =
+    positive_from_one(values) AND series_converges(values)
+
+  transformed(values: real_sequence): real_sequence =
+    LAMBDA (index: nat):
+      real_power(
+        values(index),
+        safe_div(index :: real, (index + 1) :: real))
+
+  putnam_1988_b4: bool =
+    FORALL (a: real_sequence):
+      positive_convergent(a)
+        IMPLIES positive_convergent(transformed(a))
+END putnam_1988_b4

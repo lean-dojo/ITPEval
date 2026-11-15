@@ -1,0 +1,126 @@
+% Statement-only formalization of the VERINA corpus artifact verina_basic_37,
+% catalog title "findFirstOccurrence": a deterministic scan of a nondecreasing
+% finite integer array returns the first target index, or -1 when the target is
+% absent. This file contains no proof.
+
+verina_basic_37: THEORY
+BEGIN
+
+  % Finite PVS lists preserve exactly the contents and order of Lean arrays.
+  int_list_length(values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        int_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  % Lean Array.get! on integer arrays returns zero outside the array. Every
+  % source-program and postcondition access is guarded by the array length.
+  int_list_get_bang(
+      index: nat,
+      values: list[int]): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          int_list_get_bang(index - 1, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  int_list_all_at_least(
+      lower: int,
+      values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        lower <= head
+          AND int_list_all_at_least(lower, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  % This is Lean List.Pairwise (fun first later => first <= later).
+  int_list_pairwise_nondecreasing(
+      values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        int_list_all_at_least(head, tail)
+          AND int_list_pairwise_nondecreasing(tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  findFirstOccurrence_precond(
+      arr: list[int],
+      target: int): bool =
+    int_list_pairwise_nondecreasing(arr)
+
+  % Recursing on the remaining suffix performs exactly the source indexed
+  % loop: equality returns the current index, a larger value returns -1, and
+  % a smaller value advances to the next array position.
+  findFirstOccurrence_loop(
+      remaining: list[int],
+      target: int,
+      index: nat): RECURSIVE int =
+    CASES remaining OF
+      null:
+        -1,
+      cons(head, tail):
+        IF head = target THEN
+          (index :: int)
+        ELSIF head > target THEN
+          -1
+        ELSE
+          findFirstOccurrence_loop(
+            tail,
+            target,
+            index + 1)
+        ENDIF
+    ENDCASES
+  MEASURE remaining BY <<
+
+  % The source precondition proof argument is computationally irrelevant.
+  findFirstOccurrence(
+      arr: list[int],
+      target: int): int =
+    findFirstOccurrence_loop(arr, target, 0)
+
+  % This is Lean Int.toNat: negative integers map to zero.
+  int_to_nat(value: int): nat =
+    IF value >= 0 THEN value ELSE 0 ENDIF
+
+  findFirstOccurrence_postcond(
+      arr: list[int],
+      target, result: int): bool =
+    (result = -1 OR result >= 0)
+      AND
+        (result >= 0 IMPLIES
+          int_to_nat(result) < int_list_length(arr)
+            AND int_list_get_bang(int_to_nat(result), arr) = target
+            AND
+              (FORALL (i: nat):
+                i < int_to_nat(result) IMPLIES
+                  int_list_get_bang(i, arr) /= target))
+      AND
+        (result = -1 IMPLIES
+          (FORALL (i: nat):
+            i < int_list_length(arr) IMPLIES
+              int_list_get_bang(i, arr) /= target))
+
+  findFirstOccurrence_spec_satisfied: bool =
+    FORALL (arr: list[int], target: int):
+      findFirstOccurrence_precond(arr, target)
+        IMPLIES
+          findFirstOccurrence_postcond(
+            arr,
+            target,
+            findFirstOccurrence(arr, target))
+
+END verina_basic_37

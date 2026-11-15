@@ -1,0 +1,314 @@
+% Statement-only formalization of the VERINA corpus artifact
+% verina_advanced_68, catalog title "runLengthEncoder": executable run-length
+% encoding of a finite Unicode-scalar string into character/count text, with
+% its parsing, format, reconstruction, and emptiness contract. This file
+% contains no proof.
+
+verina_advanced_68: THEORY
+BEGIN
+
+  % Lean String.data is represented extensionally by its finite list of
+  % Unicode scalar characters, preserving the full source string domain.
+  lean_char: TYPE =
+    {codepoint: nat |
+      codepoint < 1114112
+        AND (codepoint < 55296 OR codepoint >= 57344)}
+
+  lean_string: TYPE = list[lean_char]
+
+  lean_char_option: DATATYPE
+  BEGIN
+    NoLeanChar: NoLeanChar?
+    SomeLeanChar(char_value: lean_char): SomeLeanChar?
+  END lean_char_option
+
+  nat_option: DATATYPE
+  BEGIN
+    NoNat: NoNat?
+    SomeNat(nat_value: nat): SomeNat?
+  END nat_option
+
+  encoded_pair: TYPE =
+    [# encoded_char: lean_char,
+       encoded_count: nat #]
+
+  lean_char_is_digit(c: lean_char): bool =
+    c >= 48 AND c <= 57
+
+  all_non_digits(chars: lean_string): RECURSIVE bool =
+    CASES chars OF
+      null:
+        TRUE,
+      cons(head, tail):
+        NOT lean_char_is_digit(head)
+          AND all_non_digits(tail)
+    ENDCASES
+  MEASURE chars BY <<
+
+  runLengthEncoder_precond(input: lean_string): bool =
+    all_non_digits(input)
+
+  append_chars(
+      first, second: lean_string): RECURSIVE lean_string =
+    CASES first OF
+      null:
+        second,
+      cons(head, tail):
+        cons(
+          head,
+          append_chars(tail, second))
+    ENDCASES
+  MEASURE first BY <<
+
+  % The fuel is solely a PVS structural termination index. Starting it at n
+  % is sufficient for every repeated division by ten, so numToString is
+  % extensionally the source's local decimal-digits recursion for every n.
+  numToString_fuel(
+      n, fuel: nat): RECURSIVE lean_string =
+    IF n < 10 THEN
+      cons(n + 48, null[lean_char])
+    ELSIF fuel = 0 THEN
+      null[lean_char]
+    ELSE
+      append_chars(
+        numToString_fuel(
+          ndiv(n, 10),
+          fuel - 1),
+        cons(
+          mod(n, 10) + 48,
+          null[lean_char]))
+    ENDIF
+  MEASURE fuel
+
+  numToString(n: nat): lean_string =
+    numToString_fuel(n, n)
+
+  runLengthEncoder_encode(
+      remaining: lean_string,
+      current_char: lean_char_option,
+      count: nat): RECURSIVE lean_string =
+    CASES remaining OF
+      null:
+        CASES current_char OF
+          NoLeanChar:
+            null[lean_char],
+          SomeLeanChar(current):
+            cons(
+              current,
+              numToString(count))
+        ENDCASES,
+      cons(head, tail):
+        CASES current_char OF
+          NoLeanChar:
+            runLengthEncoder_encode(
+              tail,
+              SomeLeanChar(head),
+              1),
+          SomeLeanChar(current):
+            IF head = current THEN
+              runLengthEncoder_encode(
+                tail,
+                SomeLeanChar(current),
+                count + 1)
+            ELSE
+              append_chars(
+                cons(
+                  current,
+                  numToString(count)),
+                runLengthEncoder_encode(
+                  tail,
+                  SomeLeanChar(head),
+                  1))
+            ENDIF
+        ENDCASES
+    ENDCASES
+  MEASURE remaining BY <<
+
+  % The source precondition proof is computationally irrelevant. Splitting
+  % the nonempty input into its first character and tail is exactly its
+  % head?/tail initialization of the local encode recursion.
+  runLengthEncoder(input: lean_string): lean_string =
+    CASES input OF
+      null:
+        null[lean_char],
+      cons(first, rest):
+        runLengthEncoder_encode(
+          rest,
+          SomeLeanChar(first),
+          1)
+    ENDCASES
+
+  reverse_encoded_pairs_acc(
+      values, accumulator: list[encoded_pair]):
+        RECURSIVE list[encoded_pair] =
+    CASES values OF
+      null:
+        accumulator,
+      cons(head, tail):
+        reverse_encoded_pairs_acc(
+          tail,
+          cons(head, accumulator))
+    ENDCASES
+  MEASURE values BY <<
+
+  reverse_encoded_pairs(
+      values: list[encoded_pair]): list[encoded_pair] =
+    reverse_encoded_pairs_acc(
+      values,
+      null[encoded_pair])
+
+  parseEncodedState(
+      remaining: lean_string,
+      current_char: lean_char_option,
+      current_count: nat_option,
+      accumulator: list[encoded_pair]):
+        RECURSIVE list[encoded_pair] =
+    CASES remaining OF
+      null:
+        CASES current_char OF
+          NoLeanChar:
+            accumulator,
+          SomeLeanChar(current):
+            CASES current_count OF
+              NoNat:
+                accumulator,
+              SomeNat(count):
+                cons(
+                  (# encoded_char := current,
+                     encoded_count := count #),
+                  accumulator)
+            ENDCASES
+        ENDCASES,
+      cons(head, tail):
+        IF lean_char_is_digit(head) THEN
+          CASES current_char OF
+            NoLeanChar:
+              null[encoded_pair],
+            SomeLeanChar(current):
+              LET digit: nat = head - 48,
+                  new_count: nat_option =
+                    CASES current_count OF
+                      NoNat:
+                        SomeNat(digit),
+                      SomeNat(count):
+                        SomeNat(count * 10 + digit)
+                    ENDCASES
+              IN
+                parseEncodedState(
+                  tail,
+                  SomeLeanChar(current),
+                  new_count,
+                  accumulator)
+          ENDCASES
+        ELSE
+          LET new_accumulator: list[encoded_pair] =
+                CASES current_char OF
+                  NoLeanChar:
+                    accumulator,
+                  SomeLeanChar(current):
+                    CASES current_count OF
+                      NoNat:
+                        accumulator,
+                      SomeNat(count):
+                        cons(
+                          (# encoded_char := current,
+                             encoded_count := count #),
+                          accumulator)
+                    ENDCASES
+                ENDCASES
+          IN
+            parseEncodedState(
+              tail,
+              SomeLeanChar(head),
+              NoNat,
+              new_accumulator)
+        ENDIF
+    ENDCASES
+  MEASURE remaining BY <<
+
+  parseEncodedString(
+      result: lean_string): list[encoded_pair] =
+    reverse_encoded_pairs(
+      parseEncodedState(
+        result,
+        NoLeanChar,
+        NoNat,
+        null[encoded_pair]))
+
+  checkPairs(
+      chars: lean_string,
+      now_digit: bool): RECURSIVE bool =
+    CASES chars OF
+      null:
+        TRUE,
+      cons(head, tail):
+        IF now_digit AND lean_char_is_digit(head) THEN
+          checkPairs(tail, TRUE)
+        ELSE
+          CASES tail OF
+            null:
+              FALSE,
+            cons(next, rest):
+              IF lean_char_is_digit(next) THEN
+                checkPairs(rest, TRUE)
+              ELSE
+                FALSE
+              ENDIF
+          ENDCASES
+        ENDIF
+    ENDCASES
+  MEASURE chars BY <<
+
+  replicate_char(
+      count: nat,
+      requested: lean_char): RECURSIVE lean_string =
+    IF count = 0 THEN
+      null[lean_char]
+    ELSE
+      cons(
+        requested,
+        replicate_char(count - 1, requested))
+    ENDIF
+  MEASURE count
+
+  expandEncodedPairs(
+      pairs: list[encoded_pair]): RECURSIVE lean_string =
+    CASES pairs OF
+      null:
+        null[lean_char],
+      cons(head, tail):
+        append_chars(
+          replicate_char(
+            encoded_count(head),
+            encoded_char(head)),
+          expandEncodedPairs(tail))
+    ENDCASES
+  MEASURE pairs BY <<
+
+  runLengthEncoder_postcond(
+      input, result: lean_string): bool =
+    LET format_valid: bool =
+          checkPairs(result, FALSE),
+        pairs: list[encoded_pair] =
+          parseEncodedString(result),
+        expanded: lean_string =
+          expandEncodedPairs(pairs),
+        content_valid: bool =
+          expanded = input,
+        nonempty_valid: bool =
+          ((input = null[lean_char])
+            IFF (result = null[lean_char]))
+    IN
+      format_valid
+        AND content_valid
+        AND nonempty_valid
+
+  runLengthEncoder_spec_satisfied: bool =
+    FORALL (input: lean_string):
+      runLengthEncoder_precond(input)
+        IMPLIES
+          runLengthEncoder_postcond(
+            input,
+            runLengthEncoder(input))
+
+END verina_advanced_68

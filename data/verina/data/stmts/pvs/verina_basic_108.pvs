@@ -1,0 +1,185 @@
+% Statement-only formalization of the VERINA corpus artifact
+% verina_basic_108, catalog title "below_zero": constructing integer prefix
+% sums and returning whether any cumulative value is negative, together with
+% the source program's full correctness contract. This file contains no proof.
+
+verina_basic_108: THEORY
+BEGIN
+
+  int_option: DATATYPE
+  BEGIN
+    NoneInt: NoneInt?
+    SomeInt(option_value: int): SomeInt?
+  END int_option
+
+  below_zero_result: TYPE =
+    [# partial_sums: list[int],
+       has_negative: bool #]
+
+  int_list_length(values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        int_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  % Lean's getElem! on an integer list or array returns zero outside its
+  % bounds. Every executable-program use below is in bounds.
+  int_list_get_bang(
+      index: nat,
+      values: list[int]): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          int_list_get_bang(index - 1, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  int_list_get_option(
+      index: nat,
+      values: list[int]): RECURSIVE int_option =
+    CASES values OF
+      null:
+        NoneInt,
+      cons(head, tail):
+        IF index = 0 THEN
+          SomeInt(head)
+        ELSE
+          int_list_get_option(index - 1, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  nat_sub(first, second: nat): nat =
+    IF first >= second THEN first - second ELSE 0 ENDIF
+
+  below_zero_precond(operations: list[int]): bool =
+    TRUE
+
+  % This accumulator recursion is extensionally the source foldl from [0]:
+  % it emits the current last entry, then advances it by the next operation.
+  buildS_from(
+      operations: list[int],
+      running_sum: int): RECURSIVE list[int] =
+    CASES operations OF
+      null:
+        cons(running_sum, null),
+      cons(operation, remaining):
+        cons(
+          running_sum,
+          buildS_from(
+            remaining,
+            running_sum + operation))
+    ENDCASES
+  MEASURE operations BY <<
+
+  buildS(operations: list[int]): list[int] =
+    buildS_from(operations, 0)
+
+  check_negative(values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        FALSE,
+      cons(head, tail):
+        IF head < 0 THEN
+          TRUE
+        ELSE
+          check_negative(tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  % The source precondition proof is computationally irrelevant. This keeps
+  % the exact prefix-sum construction and subsequent full-array negative scan.
+  below_zero(operations: list[int]): below_zero_result =
+    LET sums: list[int] = buildS(operations)
+    IN
+      (# partial_sums := sums,
+         has_negative := check_negative(sums) #)
+
+  % This is List.range(remaining).all applied from the supplied index.
+  prefix_steps_ok(
+      operations, sums: list[int],
+      index, remaining: nat): RECURSIVE bool =
+    IF remaining = 0 THEN
+      TRUE
+    ELSE
+      int_list_get_option(index + 1, sums)
+        =
+      SomeInt(
+        int_list_get_bang(index, sums)
+          + int_list_get_bang(index, operations))
+      AND prefix_steps_ok(
+            operations,
+            sums,
+            index + 1,
+            remaining - 1)
+    ENDIF
+  MEASURE remaining
+
+  % This is List.range(remaining).any for negative sums at indices i + 1.
+  negative_prefix_exists(
+      sums: list[int],
+      index, remaining: nat): RECURSIVE bool =
+    IF remaining = 0 THEN
+      FALSE
+    ELSE
+      int_list_get_bang(index + 1, sums) < 0
+        OR negative_prefix_exists(
+             sums,
+             index + 1,
+             remaining - 1)
+    ENDIF
+  MEASURE remaining
+
+  all_nonnegative(values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        head >= 0
+          AND all_nonnegative(tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  below_zero_postcond(
+      operations: list[int],
+      result: below_zero_result): bool =
+    LET sums: list[int] = partial_sums(result),
+        found: bool = has_negative(result)
+    IN
+      int_list_length(sums)
+        = int_list_length(operations) + 1
+      AND int_list_get_option(0, sums) = SomeInt(0)
+      AND prefix_steps_ok(
+            operations,
+            sums,
+            0,
+            nat_sub(int_list_length(sums), 1))
+      AND
+        (found = TRUE
+          IMPLIES
+            negative_prefix_exists(
+              sums,
+              0,
+              int_list_length(operations)))
+      AND
+        (found = FALSE
+          IMPLIES all_nonnegative(sums))
+
+  below_zero_spec_satisfied: bool =
+    FORALL (operations: list[int]):
+      below_zero_precond(operations)
+        IMPLIES
+          below_zero_postcond(
+            operations,
+            below_zero(operations))
+
+END verina_basic_108

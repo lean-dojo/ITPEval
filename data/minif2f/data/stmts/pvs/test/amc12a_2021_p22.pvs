@@ -1,0 +1,60 @@
+% Statement-only formalization of miniF2F test problem amc12a_2021_p22: a monic real cubic
+% whose roots are cos(2*pi/7), cos(4*pi/7), and cos(6*pi/7) has coefficient product 1/32.
+% This file contains no proof.
+
+amc12a_2021_p22: THEORY
+BEGIN
+  safe_div(x, y: real): real =
+    IF y = 0 THEN 0 ELSE x / y ENDIF
+
+  nat_factorial(n: nat): RECURSIVE nat =
+    IF n = 0 THEN
+      1
+    ELSE
+      n * nat_factorial(n - 1)
+    ENDIF
+  MEASURE n
+
+  cosine_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET j: nat = count - 1 IN
+        cosine_partial(x, count - 1)
+          + safe_div(
+              ((-1 :: real) ^ j) * x ^ (2 * j),
+              nat_factorial(2 * j) :: real)
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: [nat -> real], value: real): bool =
+    FORALL (eps: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < eps
+
+  cosine_value(x, value: real): bool =
+    converges_to(
+      (LAMBDA (count: nat): cosine_partial(x, count)),
+      value)
+
+  pi_value(p: posreal): bool =
+    3 < p AND p < 4 AND cosine_value(p / 2, 0)
+
+  amc12a_2021_p22: bool =
+    FORALL (a, b, c: real), (f: [real -> real]), (p: posreal),
+      (cos_2pi_over_7, cos_4pi_over_7, cos_6pi_over_7: real):
+      (pi_value(p)
+        AND cosine_value(2 * p / 7, cos_2pi_over_7)
+        AND cosine_value(4 * p / 7, cos_4pi_over_7)
+        AND cosine_value(6 * p / 7, cos_6pi_over_7)
+        AND (FORALL (x: real):
+          f(x) = x^3 + a * x^2 + b * x + c)
+        AND (FORALL (x: real):
+          f(x) = 0 IFF
+            (x = cos_2pi_over_7
+              OR x = cos_4pi_over_7
+              OR x = cos_6pi_over_7)))
+      IMPLIES a * b * c = (1 :: real) / 32
+END amc12a_2021_p22

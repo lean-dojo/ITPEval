@@ -1,0 +1,272 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/vacid_0_sparse_array_SparseArray_setqtvc: the sparse-array set
+% verification condition, preserving its representation invariant through
+% value, index, back-pointer, and cardinality updates and establishing the
+% point-update specification. This file contains no proof.
+
+vacid_0_sparse_array_SparseArray_setqtvc[
+  Element: TYPE+
+]: THEORY
+BEGIN
+
+  maxlen: int = 1000
+
+  element_array: TYPE =
+    [# element_length: nat,
+       element_data: [int -> Element] #]
+
+  int_array: TYPE =
+    [# int_length: nat,
+       int_data: [int -> int] #]
+
+  element_get(values: element_array, index: int): Element =
+    values`element_data(index)
+
+  int_get(values: int_array, index: int): int =
+    values`int_data(index)
+
+  element_map_update(
+      old_values: [int -> Element],
+      index: int,
+      new_value: Element): [int -> Element] =
+    old_values WITH [(index) := new_value]
+
+  int_map_update(
+      old_values: [int -> int],
+      index: int,
+      new_value: int): [int -> int] =
+    old_values WITH [(index) := new_value]
+
+  element_set(
+      values: element_array,
+      index: int,
+      new_value: Element): element_array =
+    (# element_length := values`element_length,
+       element_data :=
+         element_map_update(values`element_data, index, new_value) #)
+
+  int_set(
+      values: int_array,
+      index: int,
+      new_value: int): int_array =
+    (# int_length := values`int_length,
+       int_data :=
+         int_map_update(values`int_data, index, new_value) #)
+
+  sparse_array: TYPE =
+    [# values: element_array,
+       index_values: int_array,
+       back_values: int_array,
+       card: int,
+       def1: Element #]
+
+  representation_invariant(
+      values: element_array,
+      index_values: int_array,
+      back_values: int_array,
+      card: int): bool =
+    0 <= card
+      AND card <= values`element_length
+      AND values`element_length <= maxlen
+      AND values`element_length = index_values`int_length
+      AND index_values`int_length = back_values`int_length
+      AND
+    (FORALL (j: int):
+      (0 <= j AND j < card)
+        IMPLIES
+          (0 <= int_get(back_values, j)
+            AND int_get(back_values, j) < values`element_length)
+          AND
+          int_get(index_values, int_get(back_values, j)) = j)
+
+  sparse_array_invariant(a: sparse_array): bool =
+    representation_invariant(
+      a`values,
+      a`index_values,
+      a`back_values,
+      a`card)
+
+  is_elt(a: sparse_array, i: int): bool =
+    (0 <= int_get(a`index_values, i)
+      AND int_get(a`index_values, i) < a`card)
+      AND
+    int_get(
+      a`back_values,
+      int_get(a`index_values, i))
+      = i
+
+  value(a: sparse_array, i: int): Element =
+    IF is_elt(a, i) THEN
+      element_get(a`values, i)
+    ELSE
+      a`def1
+    ENDIF
+
+  sparse_length(a: sparse_array): int =
+    a`values`element_length
+
+  update_postcondition(
+      original, updated: sparse_array,
+      i: int,
+      new_value: Element): bool =
+    value(updated, i) = new_value
+      AND
+    (FORALL (j: int):
+      j /= i IMPLIES value(updated, j) = value(original, j))
+
+  matches_value_write(
+      original, updated: sparse_array,
+      i: int,
+      new_value: Element): bool =
+    original`def1 = updated`def1
+      AND original`card = updated`card
+      AND original`back_values = updated`back_values
+      AND original`index_values = updated`index_values
+      AND element_set(original`values, i, new_value) = updated`values
+
+  matches_insertion(
+      before, after: sparse_array,
+      i: int): bool =
+    before`def1 = after`def1
+      AND before`card + 1 = after`card
+      AND int_set(
+        before`back_values,
+        before`card,
+        i)
+        = after`back_values
+      AND int_set(
+        before`index_values,
+        i,
+        before`card)
+        = after`index_values
+      AND before`values = after`values
+
+  set_vc: bool =
+    FORALL (i: int), (a: sparse_array), (new_value: Element):
+      (sparse_array_invariant(a)
+        AND 0 <= i
+        AND i < sparse_length(a))
+        IMPLIES
+          LET old_values: element_array = a`values IN
+            (0 <= i AND i < old_values`element_length)
+              AND
+            (FORALL (a1: sparse_array):
+              sparse_array_invariant(a1)
+                IMPLIES
+              (element_set(
+                 old_values,
+                 i,
+                 new_value)`element_length
+                 = old_values`element_length
+                IMPLIES
+              (element_set(
+                 old_values,
+                 i,
+                 new_value)`element_length
+                 = a`values`element_length
+                IMPLIES
+              (element_set(
+                 old_values,
+                 i,
+                 new_value)`element_data
+                 = element_map_update(
+                     old_values`element_data,
+                     i,
+                     new_value)
+                IMPLIES
+                  representation_invariant(
+                    element_set(old_values, i, new_value),
+                    a`index_values,
+                    a`back_values,
+                    a`card)
+                    AND
+                  (matches_value_write(
+                     a,
+                     a1,
+                     i,
+                     new_value)
+                    IMPLIES
+                      (0 <= i AND i < sparse_length(a1))
+                        AND
+                      (IF NOT is_elt(a1, i) THEN
+                         LET old_card: int = a1`card IN
+                         LET old_index: int_array = a1`index_values IN
+                           (0 <= i AND i < old_index`int_length)
+                             AND
+                           (int_set(
+                              old_index,
+                              i,
+                              old_card)`int_length
+                              = old_index`int_length
+                             IMPLIES
+                           (int_set(
+                              old_index,
+                              i,
+                              old_card)`int_length
+                              = a1`index_values`int_length
+                             IMPLIES
+                           (int_set(
+                              old_index,
+                              i,
+                              old_card)`int_data
+                              = int_map_update(
+                                  old_index`int_data,
+                                  i,
+                                  old_card)
+                             IMPLIES
+                               (0 <= a1`card
+                                 AND
+                                a1`card < a1`back_values`int_length)
+                                 AND
+                               (int_set(
+                                  a1`back_values,
+                                  a1`card,
+                                  i)`int_length
+                                  = a1`back_values`int_length
+                                 IMPLIES
+                               (int_set(
+                                  a1`back_values,
+                                  a1`card,
+                                  i)`int_length
+                                  = a1`back_values`int_length
+                                 IMPLIES
+                               (int_set(
+                                  a1`back_values,
+                                  a1`card,
+                                  i)`int_data
+                                  = int_map_update(
+                                      a1`back_values`int_data,
+                                      a1`card,
+                                      i)
+                                 IMPLIES
+                                   (FORALL (a2: sparse_array):
+                                     sparse_array_invariant(a2)
+                                       IMPLIES
+                                         representation_invariant(
+                                           a1`values,
+                                           int_set(
+                                             old_index,
+                                             i,
+                                             old_card),
+                                           int_set(
+                                             a1`back_values,
+                                             a1`card,
+                                             i),
+                                           a1`card + 1)
+                                           AND
+                                         (matches_insertion(a1, a2, i)
+                                           IMPLIES
+                                             update_postcondition(
+                                               a,
+                                               a2,
+                                               i,
+                                               new_value)))))))))
+                       ELSE
+                         update_postcondition(
+                           a,
+                           a1,
+                           i,
+                           new_value)
+                       ENDIF))))))
+
+END vacid_0_sparse_array_SparseArray_setqtvc

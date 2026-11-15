@@ -1,0 +1,129 @@
+% Statement-only formalization of the Thousand Theorems corpus artifact Q657482
+% (thousand-theorems__pvs__Q657482), "Abel-Ruffini theorem": there exists a
+% complex number algebraic over the rationals that is not contained in the
+% smallest intermediate field closed under nonzero-degree radicals. This file
+% contains no proof.
+
+Q657482_abel_ruffini_theorem: THEORY
+BEGIN
+  complex: TYPE = [# real_part: real, imag_part: real #]
+  complex_set: TYPE = [complex -> bool]
+  real_coefficients: TYPE = [nat -> real]
+
+  complex_zero: complex =
+    (# real_part := 0, imag_part := 0 #)
+
+  complex_one: complex =
+    (# real_part := 1, imag_part := 0 #)
+
+  complex_of_real(value: real): complex =
+    (# real_part := value, imag_part := 0 #)
+
+  complex_add(x, y: complex): complex =
+    (# real_part := real_part(x) + real_part(y),
+       imag_part := imag_part(x) + imag_part(y) #)
+
+  complex_neg(x: complex): complex =
+    (# real_part := -real_part(x),
+       imag_part := -imag_part(x) #)
+
+  complex_mul(x, y: complex): complex =
+    (# real_part := real_part(x) * real_part(y)
+                       - imag_part(x) * imag_part(y),
+       imag_part := real_part(x) * imag_part(y)
+                       + imag_part(x) * real_part(y) #)
+
+  complex_norm_squared(x: complex): real =
+    real_part(x) * real_part(x)
+      + imag_part(x) * imag_part(x)
+
+  complex_inverse(x: complex): complex =
+    IF complex_norm_squared(x) = 0 THEN
+      complex_zero
+    ELSE
+      (# real_part :=
+           real_part(x) / complex_norm_squared(x),
+         imag_part :=
+           -imag_part(x) / complex_norm_squared(x) #)
+    ENDIF
+
+  complex_power(x: complex, exponent: nat): RECURSIVE complex =
+    IF exponent = 0 THEN
+      complex_one
+    ELSE
+      complex_mul(complex_power(x, exponent - 1), x)
+    ENDIF
+  MEASURE exponent
+
+  rational_polynomial_value(
+      coefficients: real_coefficients,
+      z: complex,
+      count: nat): RECURSIVE complex =
+    IF count = 0 THEN
+      complex_zero
+    ELSE
+      LET index: nat = count - 1 IN
+        complex_add(
+          rational_polynomial_value(
+            coefficients, z, count - 1),
+          complex_mul(
+            complex_of_real(coefficients(index)),
+            complex_power(z, index)))
+    ENDIF
+  MEASURE count
+
+  is_algebraic_over_rationals(z: complex): bool =
+    EXISTS
+        (coefficients: real_coefficients),
+        (count: nat):
+      0 < count
+        AND
+      (FORALL (index: nat):
+        index < count IMPLIES rational?(coefficients(index)))
+        AND
+      (EXISTS (index: nat):
+        index < count AND NOT coefficients(index) = 0)
+        AND
+      rational_polynomial_value(coefficients, z, count)
+        = complex_zero
+
+  contains_rationals(subfield: complex_set): bool =
+    FORALL (value: real):
+      rational?(value) IMPLIES subfield(complex_of_real(value))
+
+  is_intermediate_field(subfield: complex_set): bool =
+    subfield(complex_zero)
+      AND subfield(complex_one)
+      AND contains_rationals(subfield)
+      AND
+    (FORALL (x, y: complex):
+      subfield(x) AND subfield(y)
+        IMPLIES subfield(complex_add(x, y)))
+      AND
+    (FORALL (x: complex):
+      subfield(x) IMPLIES subfield(complex_neg(x)))
+      AND
+    (FORALL (x, y: complex):
+      subfield(x) AND subfield(y)
+        IMPLIES subfield(complex_mul(x, y)))
+      AND
+    (FORALL (x: complex):
+      subfield(x) IMPLIES subfield(complex_inverse(x)))
+
+  closed_under_radicals(subfield: complex_set): bool =
+    FORALL (x: complex), (degree: nat):
+      (NOT degree = 0
+        AND subfield(complex_power(x, degree)))
+      IMPLIES subfield(x)
+
+  solvable_by_radicals(z: complex): bool =
+    FORALL (subfield: complex_set):
+      (is_intermediate_field(subfield)
+        AND closed_under_radicals(subfield))
+      IMPLIES subfield(z)
+
+  abel_ruffini: bool =
+    EXISTS (z: complex):
+      is_algebraic_over_rationals(z)
+        AND NOT solvable_by_radicals(z)
+END Q657482_abel_ruffini_theorem

@@ -1,0 +1,120 @@
+% Statement-only formalization of the VERINA corpus artifact verina_basic_21,
+% catalog title "isSublist": a deterministic bounded scan decides whether one
+% finite integer list occurs as a contiguous slice of another and satisfies
+% the exact Boolean correctness contract. This file contains no proof.
+
+verina_basic_21: THEORY
+BEGIN
+
+  int_list_length(values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        int_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  int_list_take(
+      count: nat,
+      values: list[int]): RECURSIVE list[int] =
+    IF count = 0 THEN
+      null[int]
+    ELSE
+      CASES values OF
+        null:
+          null[int],
+        cons(head, tail):
+          cons(
+            head,
+            int_list_take(count - 1, tail))
+      ENDCASES
+    ENDIF
+  MEASURE count
+
+  int_list_drop(
+      count: nat,
+      values: list[int]): RECURSIVE list[int] =
+    IF count = 0 THEN
+      values
+    ELSE
+      CASES values OF
+        null:
+          null[int],
+        cons(head, tail):
+          int_list_drop(count - 1, tail)
+      ENDCASES
+    ENDIF
+  MEASURE count
+
+  isSublist_precond(
+      sub, main: list[int]): bool =
+    TRUE
+
+  % The fuel is one more than the main-list length at the public call, enough
+  % for every source recursion from index zero through its final bounds check.
+  % Thus the fuel-zero fallback is unreachable in the translated computation.
+  isSublist_check(
+      sub, main: list[int],
+      subLen, mainLen, i, fuel: nat): RECURSIVE bool =
+    IF fuel = 0 THEN
+      FALSE
+    ELSIF i + subLen > mainLen THEN
+      FALSE
+    ELSIF sub =
+            int_list_take(
+              subLen,
+              int_list_drop(i, main)) THEN
+      TRUE
+    ELSIF i + 1 <= mainLen THEN
+      isSublist_check(
+        sub,
+        main,
+        subLen,
+        mainLen,
+        i + 1,
+        fuel - 1)
+    ELSE
+      FALSE
+    ENDIF
+  MEASURE fuel
+
+  % The source precondition proof argument is computationally irrelevant.
+  isSublist(
+      sub, main: list[int]): bool =
+    LET subLen: nat = int_list_length(sub),
+        mainLen: nat = int_list_length(main)
+    IN
+      IF subLen > mainLen THEN
+        FALSE
+      ELSE
+        isSublist_check(
+          sub,
+          main,
+          subLen,
+          mainLen,
+          0,
+          mainLen + 1)
+      ENDIF
+
+  isSublist_postcond(
+      sub, main: list[int],
+      result: bool): bool =
+    (EXISTS (i: nat):
+      i + int_list_length(sub) <= int_list_length(main)
+        AND sub =
+              int_list_take(
+                int_list_length(sub),
+                int_list_drop(i, main)))
+      IFF result
+
+  isSublist_spec_satisfied: bool =
+    FORALL (sub, main: list[int]):
+      isSublist_precond(sub, main)
+        IMPLIES
+          isSublist_postcond(
+            sub,
+            main,
+            isSublist(sub, main))
+
+END verina_basic_21

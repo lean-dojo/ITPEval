@@ -1,0 +1,246 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/braun_trees_BraunHeaps_mergeqtvc: the Braun-heap merge verification
+% condition for recursive applicability, heap order, Braun balance,
+% preservation of element occurrences, and total tree size.
+% This file contains no proof.
+
+braun_trees_BraunHeaps_mergeqtvc[
+  elt: TYPE+
+]: THEORY
+BEGIN
+
+  tree: DATATYPE
+  BEGIN
+    Empty: Empty?
+    Node(
+      left_subtree: tree,
+      root_element: elt,
+      right_subtree: tree): Node?
+  END tree
+
+  preorder_laws(leq: [elt, elt -> bool]): bool =
+    (FORALL (x: elt): leq(x, x))
+      AND
+    (FORALL (x, y, z: elt):
+      (leq(x, y) AND leq(y, z)) IMPLIES leq(x, z))
+      AND
+    (FORALL (x, y: elt): leq(x, y) OR leq(y, x))
+
+  tree_size(values: tree): RECURSIVE int =
+    CASES values OF
+      Empty:
+        0,
+      Node(left, root, right):
+        1 + tree_size(left) + tree_size(right)
+    ENDCASES
+  MEASURE values BY <<
+
+  occ(element: elt, values: tree): RECURSIVE int =
+    CASES values OF
+      Empty:
+        0,
+      Node(left, root, right):
+        (IF root = element THEN 1 ELSE 0 ENDIF)
+          + occ(element, left)
+          + occ(element, right)
+    ENDCASES
+  MEASURE values BY <<
+
+  le_root(
+      leq: [elt, elt -> bool],
+      element: elt,
+      values: tree): bool =
+    CASES values OF
+      Empty:
+        TRUE,
+      Node(left, root, right):
+        leq(element, root)
+    ENDCASES
+
+  heap(
+      leq: [elt, elt -> bool],
+      values: tree): RECURSIVE bool =
+    CASES values OF
+      Empty:
+        TRUE,
+      Node(left, root, right):
+        le_root(leq, root, left)
+          AND heap(leq, left)
+          AND le_root(leq, root, right)
+          AND heap(leq, right)
+    ENDCASES
+  MEASURE values BY <<
+
+  inv(values: tree): RECURSIVE bool =
+    CASES values OF
+      Empty:
+        TRUE,
+      Node(left, root, right):
+        (tree_size(left) = tree_size(right)
+          OR tree_size(left) = tree_size(right) + 1)
+          AND inv(left)
+          AND inv(right)
+    ENDCASES
+  MEASURE values BY <<
+
+  merge_initial_obligation(
+      leq: [elt, elt -> bool],
+      left_heap, right_heap: tree): bool =
+    CASES right_heap OF
+      Empty:
+        TRUE,
+      Node(right_left, right_root, right_right):
+        CASES left_heap OF
+          Empty:
+            FALSE,
+          Node(left_left, left_root, left_right):
+            IF leq(left_root, right_root) THEN
+              ((0 <= tree_size(left_heap) + tree_size(right_heap)
+                  AND
+                tree_size(left_left) + tree_size(left_right)
+                  < tree_size(left_heap) + tree_size(right_heap))
+                AND heap(leq, left_left)
+                AND heap(leq, left_right)
+                AND inv(left_left)
+                AND inv(left_right)
+                AND tree_size(left_right) <= tree_size(left_left)
+                AND tree_size(left_left) <= tree_size(left_right) + 1)
+            ELSE
+              (heap(leq, left_heap)
+                AND inv(left_heap)
+                AND 0 < tree_size(left_heap))
+              AND
+              (FORALL (removed: elt), (remainder: tree):
+                (heap(leq, remainder)
+                  AND inv(remainder)
+                  AND
+                    tree_size(remainder)
+                      = tree_size(left_heap) - 1
+                  AND
+                    occ(removed, remainder)
+                      = occ(removed, left_heap) - 1
+                  AND
+                    (FORALL (element: elt):
+                      element /= removed
+                        IMPLIES
+                          occ(element, remainder)
+                            = occ(element, left_heap)))
+                IMPLIES
+                  (heap(leq, right_heap)
+                    AND inv(right_heap)
+                    AND 0 < tree_size(right_heap)))
+            ENDIF
+        ENDCASES
+    ENDCASES
+
+  merge_result_antecedent(
+      leq: [elt, elt -> bool],
+      left_heap, right_heap, result: tree): bool =
+    CASES right_heap OF
+      Empty:
+        result = left_heap,
+      Node(right_left, right_root, right_right):
+        CASES left_heap OF
+          Empty:
+            FALSE,
+          Node(left_left, left_root, left_right):
+            IF leq(left_root, right_root) THEN
+              EXISTS (merged_subtrees: tree):
+                (heap(leq, merged_subtrees)
+                  AND inv(merged_subtrees)
+                  AND
+                    (FORALL (element: elt):
+                      occ(element, merged_subtrees)
+                        = occ(element, left_left)
+                          + occ(element, left_right))
+                  AND
+                    tree_size(merged_subtrees)
+                      = tree_size(left_left)
+                        + tree_size(left_right))
+                AND
+                  result =
+                    Node(right_heap, left_root, merged_subtrees)
+            ELSE
+              EXISTS (removed: elt), (remainder: tree):
+                (heap(leq, remainder)
+                  AND inv(remainder)
+                  AND
+                    tree_size(remainder)
+                      = tree_size(left_heap) - 1
+                  AND
+                    occ(removed, remainder)
+                      = occ(removed, left_heap) - 1
+                  AND
+                    (FORALL (element: elt):
+                      element /= removed
+                        IMPLIES
+                          occ(element, remainder)
+                            = occ(element, left_heap)))
+                AND
+                (EXISTS (merged_right: tree):
+                  (heap(leq, merged_right)
+                    AND inv(merged_right)
+                    AND
+                      (IF removed = right_root THEN
+                         occ(removed, merged_right)
+                           = occ(removed, right_heap)
+                       ELSE
+                         occ(removed, merged_right)
+                           = occ(removed, right_heap) + 1
+                           AND
+                         occ(right_root, merged_right)
+                           = occ(right_root, right_heap) - 1
+                       ENDIF)
+                    AND
+                      (FORALL (element: elt):
+                        element /= removed
+                          IMPLIES
+                            (element /= right_root
+                              IMPLIES
+                                occ(element, merged_right)
+                                  = occ(element, right_heap)))
+                    AND
+                      tree_size(merged_right)
+                        = tree_size(right_heap))
+                  AND
+                    result =
+                      Node(merged_right, right_root, remainder))
+            ENDIF
+        ENDCASES
+    ENDCASES
+
+  merge_postcondition(
+      leq: [elt, elt -> bool],
+      left_heap, right_heap, result: tree): bool =
+    heap(leq, result)
+      AND inv(result)
+      AND
+        (FORALL (element: elt):
+          occ(element, result)
+            = occ(element, left_heap) + occ(element, right_heap))
+      AND
+        tree_size(result)
+          = tree_size(left_heap) + tree_size(right_heap)
+
+  merge_vc: bool =
+    FORALL
+        (leq: [elt, elt -> bool]),
+        (left_heap, right_heap: tree):
+      (preorder_laws(leq)
+        AND heap(leq, left_heap)
+        AND heap(leq, right_heap)
+        AND inv(left_heap)
+        AND inv(right_heap)
+        AND tree_size(right_heap) <= tree_size(left_heap)
+        AND tree_size(left_heap) <= tree_size(right_heap) + 1)
+      IMPLIES
+        (merge_initial_obligation(leq, left_heap, right_heap)
+          AND
+            (FORALL (result: tree):
+              merge_result_antecedent(
+                leq, left_heap, right_heap, result)
+              IMPLIES
+                merge_postcondition(
+                  leq, left_heap, right_heap, result)))
+
+END braun_trees_BraunHeaps_mergeqtvc

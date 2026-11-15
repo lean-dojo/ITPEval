@@ -1,0 +1,100 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1982_a2:
+% convergence of the series whose nth term is B_n(log_n 2) divided by
+% (n log_2 n)^2, where B_n(x) is the sum of k^x from 1 through n.
+% This file contains no proof.
+
+putnam_1982_a2: THEORY
+BEGIN
+  real_sequence: TYPE = [nat -> real]
+
+  putnam_1982_a2_solution: bool = TRUE
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  nat_factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * nat_factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  exponential_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        exponential_partial(x, count - 1)
+          + safe_div(
+              x ^ index,
+              nat_factorial(index) :: real)
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  real_exponential(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat):
+            exponential_partial(x, count),
+          value))
+
+  natural_log(x: real): real =
+    IF x > 0 THEN
+      epsilon(
+        LAMBDA (value: real):
+          real_exponential(value) = x)
+    ELSE
+      0
+    ENDIF
+
+  real_power(base, exponent: real): real =
+    IF base > 0 THEN
+      real_exponential(exponent * natural_log(base))
+    ELSIF base = 0 AND exponent = 0 THEN
+      1
+    ELSE
+      0
+    ENDIF
+
+  logarithm(base, argument: real): real =
+    safe_div(natural_log(argument), natural_log(base))
+
+  B(n: nat, x: real): RECURSIVE real =
+    IF n = 0 THEN
+      0
+    ELSE
+      B(n - 1, x) + real_power(n :: real, x)
+    ENDIF
+  MEASURE n
+
+  f(n: nat): real =
+    safe_div(
+      B(n, logarithm(n :: real, 2)),
+      ((n :: real) * logarithm(2, n :: real)) ^ 2)
+
+  series_partial_sum(n: nat): RECURSIVE real =
+    IF n < 2 THEN
+      0
+    ELSE
+      series_partial_sum(n - 1) + f(n)
+    ENDIF
+  MEASURE n
+
+  putnam_1982_a2: bool =
+    (EXISTS (limit: real):
+      converges_to(series_partial_sum, limit))
+      IFF putnam_1982_a2_solution
+END putnam_1982_a2

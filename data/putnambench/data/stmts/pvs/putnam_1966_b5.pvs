@@ -1,0 +1,112 @@
+% Statement-only formalization of PutnamBench artifact putnam_1966_b5:
+% a finite set of at least three real-plane points with no three collinear
+% admits a cyclic enumeration whose distinct edges meet only at endpoints.
+% This file contains no proof.
+
+putnam_1966_b5: THEORY
+BEGIN
+  point: TYPE = [# x_coord: real, y_coord: real #]
+  point_set: TYPE = [point -> bool]
+  point_enumeration: TYPE = [nat -> point]
+
+  cross_from(P, Q, R: point): real =
+    (x_coord(Q) - x_coord(P)) * (y_coord(R) - y_coord(P))
+      - (y_coord(Q) - y_coord(P)) * (x_coord(R) - x_coord(P))
+
+  collinear(P, Q, R: point): bool =
+    cross_from(P, Q, R) = 0
+
+  affine_combination(t: real, P, Q: point): point =
+    (# x_coord := (1 - t) * x_coord(P) + t * x_coord(Q),
+       y_coord := (1 - t) * y_coord(P) + t * y_coord(Q) #)
+
+  closed_segment(P, Q: point): point_set =
+    LAMBDA (X: point):
+      EXISTS (t: real):
+        0 <= t AND t <= 1
+          AND X = affine_combination(t, P, Q)
+
+  injective_below(
+      enumeration: point_enumeration,
+      bound: nat): bool =
+    FORALL (i, j: nat):
+      i < bound AND j < bound
+        AND enumeration(i) = enumeration(j)
+      IMPLIES i = j
+
+  enumerates_exactly(
+      enumeration: point_enumeration,
+      S: point_set,
+      bound: nat): bool =
+    FORALL (P: point):
+      S(P)
+        IFF
+          EXISTS (i: nat):
+            i < bound AND enumeration(i) = P
+
+  has_cardinality(S: point_set, cardinality: nat): bool =
+    EXISTS (enumeration: point_enumeration):
+      injective_below(enumeration, cardinality)
+        AND enumerates_exactly(enumeration, S, cardinality)
+
+  finite_with_at_least_three_points(S: point_set): bool =
+    EXISTS (cardinality: nat):
+      cardinality >= 3
+        AND has_cardinality(S, cardinality)
+
+  no_three_collinear(S: point_set): bool =
+    FORALL (P, Q, R: point):
+      (S(P) AND S(Q) AND S(R)
+        AND P /= Q AND P /= R AND Q /= R)
+      IMPLIES NOT collinear(P, Q, R)
+
+  lists_each_point_once(
+      S: point_set,
+      cardinality: nat,
+      enumeration: point_enumeration): bool =
+    FORALL (P: point):
+      S(P) IMPLIES
+        EXISTS (i: nat):
+          i < cardinality
+            AND P = enumeration(i)
+            AND FORALL (j: nat):
+              (j < cardinality AND P = enumeration(j))
+                IMPLIES j = i
+
+  next_index(i, cardinality: nat): nat =
+    IF i + 1 = cardinality THEN 0 ELSE i + 1 ENDIF
+
+  edges_meet_only_at_endpoints(
+      cardinality: nat,
+      enumeration: point_enumeration): bool =
+    FORALL (i, j: nat):
+      (i < cardinality AND j < cardinality AND i /= j)
+      IMPLIES
+        FORALL (I: point):
+          (closed_segment(
+              enumeration(i),
+              enumeration(next_index(i, cardinality)))(I)
+            AND closed_segment(
+              enumeration(j),
+              enumeration(next_index(j, cardinality)))(I))
+          IMPLIES
+            I = enumeration(i)
+              OR I = enumeration(next_index(i, cardinality))
+              OR I = enumeration(j)
+              OR I = enumeration(next_index(j, cardinality))
+
+  putnam_1966_b5: bool =
+    FORALL (S: point_set):
+      (finite_with_at_least_three_points(S)
+        AND no_three_collinear(S))
+      IMPLIES
+        EXISTS
+            (cardinality: nat),
+            (enumeration: point_enumeration):
+          cardinality >= 3
+            AND has_cardinality(S, cardinality)
+            AND lists_each_point_once(
+              S, cardinality, enumeration)
+            AND edges_meet_only_at_endpoints(
+              cardinality, enumeration)
+END putnam_1966_b5

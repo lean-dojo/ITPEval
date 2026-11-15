@@ -1,0 +1,74 @@
+% Statement-only formalization of "Isosceles Triangle Theorem" from Hundred
+% Theorems item 065: in an arbitrary real inner-product space, equal side
+% lengths from the apex imply equal unoriented base angles. This file contains no proof.
+
+isosceles_triangle_theorem_065[
+  V: TYPE+,
+  zero: V,
+  vadd: [V, V -> V],
+  vneg: [V -> V],
+  scale: [real, V -> V],
+  inner: [V, V -> real]
+]: THEORY
+BEGIN
+  vector_space_laws: bool =
+    (FORALL (u, v: V): vadd(u, v) = vadd(v, u))
+      AND (FORALL (u, v, w: V):
+        vadd(vadd(u, v), w) = vadd(u, vadd(v, w)))
+      AND (FORALL (u: V): vadd(u, zero) = u)
+      AND (FORALL (u: V): vadd(u, vneg(u)) = zero)
+      AND (FORALL (a: real), (u, v: V):
+        scale(a, vadd(u, v)) = vadd(scale(a, u), scale(a, v)))
+      AND (FORALL (a, b: real), (u: V):
+        scale(a + b, u) = vadd(scale(a, u), scale(b, u)))
+      AND (FORALL (a, b: real), (u: V):
+        scale(a * b, u) = scale(a, scale(b, u)))
+      AND (FORALL (u: V): scale(1, u) = u)
+      AND (FORALL (u: V): scale(0, u) = zero)
+      AND (FORALL (u: V): vneg(u) = scale(-1, u))
+
+  inner_product_laws: bool =
+    (FORALL (u, v, w: V):
+      inner(vadd(u, v), w) = inner(u, w) + inner(v, w))
+      AND (FORALL (a: real), (u, v: V):
+        inner(scale(a, u), v) = a * inner(u, v))
+      AND (FORALL (u, v: V): inner(u, v) = inner(v, u))
+      AND (FORALL (u: V): 0 <= inner(u, u))
+      AND (FORALL (u: V): inner(u, u) = 0 IFF u = zero)
+
+  real_inner_product_space: bool =
+    vector_space_laws AND inner_product_laws
+
+  displacement(P, Q: V): V =
+    vadd(Q, vneg(P))
+
+  squared_distance(P, Q: V): real =
+    inner(displacement(P, Q), displacement(P, Q))
+
+  sqrt_value(root, radicand: real): bool =
+    0 <= root AND root * root = radicand
+
+  angle_cosine_value(A, B, C: V, cosine: real): bool =
+    IF squared_distance(B, A) = 0 OR squared_distance(B, C) = 0
+    THEN
+      cosine = 0
+    ELSE
+      EXISTS (BA_length, BC_length: real):
+        sqrt_value(BA_length, squared_distance(B, A))
+          AND sqrt_value(BC_length, squared_distance(B, C))
+          AND cosine * BA_length * BC_length =
+            inner(displacement(B, A), displacement(B, C))
+    ENDIF
+
+  same_unoriented_angle(A, B, C, D, E, F: V): bool =
+    EXISTS (cosine: real):
+      angle_cosine_value(A, B, C, cosine)
+        AND angle_cosine_value(D, E, F, cosine)
+
+  isosceles_triangle_theorem: bool =
+    real_inner_product_space IMPLIES
+      (FORALL (A, B, C: V):
+        squared_distance(A, C) = squared_distance(B, C)
+          IMPLIES
+        same_unoriented_angle(C, A, B, A, B, C))
+END isosceles_triangle_theorem_065

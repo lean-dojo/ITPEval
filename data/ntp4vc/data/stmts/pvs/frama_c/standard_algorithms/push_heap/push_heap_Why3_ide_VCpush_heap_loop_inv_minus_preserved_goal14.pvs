@@ -1,0 +1,239 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% frama_c/standard_algorithms/push_heap/push_heap_Why3_ide_VCpush_heap_loop_inv_minus_preserved_goal14:
+% a push-heap loop verification condition stating that replacing a child by
+% its parent value preserves removal of the displaced value from the multiset.
+% This file contains no proof.
+
+push_heap_Why3_ide_VCpush_heap_loop_inv_minus_preserved_goal14: THEORY
+BEGIN
+  addr: TYPE = [# base: int, offset: int #]
+  integer_memory: TYPE = [addr -> int]
+  allocation_table: TYPE = [int -> int]
+  occurrence_counter: TYPE =
+    [integer_memory, addr, int, int, int -> int]
+
+  shift(p: addr, k: int): addr =
+    (# base := base(p), offset := offset(p) + k #)
+
+  update(
+      memory: integer_memory,
+      location: addr,
+      value: int): integer_memory =
+    LAMBDA (q: addr):
+      IF q = location THEN value ELSE memory(q) ENDIF
+
+  separated(p: addr, p_size: int, q: addr, q_size: int): bool =
+    p_size <= 0
+      OR q_size <= 0
+      OR base(p) /= base(q)
+      OR offset(q) + q_size <= offset(p)
+      OR offset(p) + p_size <= offset(q)
+
+  havoc(
+      original, outside: integer_memory,
+      start: addr,
+      size: int): integer_memory =
+    LAMBDA (q: addr):
+      IF separated(q, 1, start, size) THEN
+        outside(q)
+      ELSE
+        original(q)
+      ENDIF
+
+  valid_rw(m: allocation_table, p: addr, n: int): bool =
+    0 < n IMPLIES
+      0 < base(p)
+        AND 0 <= offset(p)
+        AND offset(p) + n <= m(base(p))
+
+  valid_rd(m: allocation_table, p: addr, n: int): bool =
+    0 < n IMPLIES
+      base(p) /= 0
+        AND 0 <= offset(p)
+        AND offset(p) + n <= m(base(p))
+
+  is_uint32(x: int): bool =
+    0 <= x AND x < 4294967296
+
+  is_sint32(x: int): bool =
+    -2147483648 <= x AND x < 2147483648
+
+  to_uint32(x: int): int =
+    mod(x, 4294967296)
+
+  trunc_div(n, d: int): int =
+    IF d = 0 THEN
+      0
+    ELSIF n * d >= 0 THEN
+      floor((n :: real) / (d :: real))
+    ELSE
+      -floor(-((n :: real) / (d :: real)))
+    ENDIF
+
+  heap_parent(i: int): int =
+    trunc_div(i - 1, 2)
+
+  p_unchanged(
+      mint_0, mint_1: integer_memory,
+      a: addr,
+      m, n: int): bool =
+    FORALL (j: int):
+      m <= j IMPLIES
+      j < n IMPLIES
+      mint_1(shift(a, j)) = mint_0(shift(a, j))
+
+  p_isheap(
+      mint_0: integer_memory,
+      a: addr,
+      n: int): bool =
+    FORALL (j: int):
+      0 < j IMPLIES
+      j < n IMPLIES
+      mint_0(shift(a, j)) <=
+        mint_0(shift(a, heap_parent(j)))
+
+  count_axioms(l_count: occurrence_counter): bool =
+    (FORALL
+      (n, m, v: int),
+      (mint_0: integer_memory),
+      (a: addr):
+        n <= m IMPLIES
+        is_sint32(v) IMPLIES
+        l_count(mint_0, a, m, n, v) = 0)
+    AND
+    (FORALL
+      (n: int),
+      (mint_0: integer_memory),
+      (a: addr),
+      (v, m: int):
+        mint_0(shift(a, n - 1)) = v IMPLIES
+        m < n IMPLIES
+        is_sint32(v) IMPLIES
+        1 + l_count(mint_0, a, m, n - 1, v) =
+          l_count(mint_0, a, m, n, v))
+    AND
+    (FORALL
+      (n: int),
+      (mint_0: integer_memory),
+      (a: addr),
+      (v, m: int):
+        mint_0(shift(a, n - 1)) /= v IMPLIES
+        m < n IMPLIES
+        is_sint32(v) IMPLIES
+        l_count(mint_0, a, m, n - 1, v) =
+          l_count(mint_0, a, m, n, v))
+    AND
+    (FORALL
+      (v: int),
+      (mint_0, mint_1: integer_memory),
+      (a: addr),
+      (m, n: int):
+        is_sint32(v) IMPLIES
+        p_unchanged(mint_0, mint_1, a, m, n) IMPLIES
+        l_count(mint_1, a, m, n, v) =
+          l_count(mint_0, a, m, n, v))
+
+  p_multisetadd(
+      l_count: occurrence_counter,
+      mint_0, mint_1: integer_memory,
+      a: addr,
+      n, value: int): bool =
+    1 + l_count(mint_1, a, 0, n, value) =
+      l_count(mint_0, a, 0, n, value)
+
+  p_multisetminus(
+      l_count: occurrence_counter,
+      mint_0, mint_1: integer_memory,
+      a: addr,
+      n, value: int): bool =
+    1 + l_count(mint_0, a, 0, n, value) =
+      l_count(mint_1, a, 0, n, value)
+
+  p_multisetretain(
+      l_count: occurrence_counter,
+      mint_0, mint_1: integer_memory,
+      a: addr,
+      n, value: int): bool =
+    l_count(mint_1, a, 0, n, value) =
+      l_count(mint_0, a, 0, n, value)
+
+  p_multisetretainrest(
+      l_count: occurrence_counter,
+      mint_0, mint_1: integer_memory,
+      a: addr,
+      n, excluded_1, excluded_2: int): bool =
+    FORALL (value: int):
+      value /= excluded_1 IMPLIES
+      value /= excluded_2 IMPLIES
+      is_sint32(value) IMPLIES
+      p_multisetretain(
+        l_count, mint_0, mint_1, a, n, value)
+
+  goal14: bool =
+    FORALL
+      (region: [int -> int]),
+      (linked: [allocation_table -> bool]),
+      (l_count: occurrence_counter),
+      (i: int),
+      (a: addr),
+      (t_2, t_1: integer_memory),
+      (i_1: int),
+      (t: allocation_table):
+      LET x: int = i - 1,
+          x_1: int = heap_parent(x),
+          a_1: addr = shift(a, x_1),
+          x_2: int = t_2(a_1),
+          a_2: addr = shift(a, x),
+          x_3: int = t_2(a_2),
+          m: integer_memory = update(t_2, a_2, x_2),
+          a_3: addr = shift(a, 0),
+          a_4: integer_memory = havoc(t_1, m, a_3, i),
+          a_5: addr = shift(a, i_1),
+          a_6: int = a_4(a_5),
+          x_4: int = heap_parent(i_1),
+          a_7: addr = shift(a, x_4),
+          a_8: int = a_4(a_7),
+          a_9: addr = shift(a, to_uint32(x)),
+          a_10: integer_memory = update(a_4, a_5, a_8)
+      IN
+        count_axioms(l_count) IMPLIES
+        0 < i IMPLIES
+        0 < i_1 IMPLIES
+        0 <= i_1 IMPLIES
+        region(base(a)) <= 0 IMPLIES
+        0 < x_1 IMPLIES
+        x_2 < x_3 IMPLIES
+        a_6 < x_3 IMPLIES
+        a_6 < a_8 IMPLIES
+        a_8 < x_3 IMPLIES
+        2 <= i IMPLIES
+        2 + i_1 <= i IMPLIES
+        linked(t) IMPLIES
+        is_uint32(i) IMPLIES
+        is_uint32(i_1) IMPLIES
+        is_uint32(x_4) IMPLIES
+        valid_rd(t, a_5, 1) IMPLIES
+        valid_rw(t, a_3, i) IMPLIES
+        valid_rw(t, a_5, 1) IMPLIES
+        is_uint32(x_1) IMPLIES
+        p_isheap(t_2, a, x) IMPLIES
+        valid_rd(t, a_7, 1) IMPLIES
+        is_uint32(heap_parent(x_1)) IMPLIES
+        is_sint32(x_3) IMPLIES
+        is_sint32(x_2) IMPLIES
+        valid_rd(t, a_9, 1) IMPLIES
+        valid_rd(t, a_1, 1) IMPLIES
+        valid_rw(t, a_9, 1) IMPLIES
+        is_sint32(m(a_1)) IMPLIES
+        is_sint32(a_6) IMPLIES
+        is_sint32(a_8) IMPLIES
+        p_isheap(a_4, a, i) IMPLIES
+        is_sint32(a_10(a_7)) IMPLIES
+        p_multisetminus(
+          l_count, a_4, t_2, a, i, x_3) IMPLIES
+        p_multisetadd(
+          l_count, a_4, t_2, a, i, a_6) IMPLIES
+        p_multisetretainrest(
+          l_count, a_4, t_2, a, i, x_3, a_6) IMPLIES
+        p_multisetminus(l_count, a_10, t_2, a, i, x_3)
+END push_heap_Why3_ide_VCpush_heap_loop_inv_minus_preserved_goal14

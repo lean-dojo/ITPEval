@@ -1,0 +1,254 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/mergesort_array_TopDownMergesort_mergesort_recqtvc: the recursive
+% top-down mergesort verification condition for Why3 computer-division
+% midpoint progress, sorted subarrays, subarray permutations, merge bounds,
+% and preservation outside the merged segment. This file contains no proof.
+
+mergesort_array_TopDownMergesort_mergesort_recqtvc[
+  elt: TYPE+,
+  elt_default: elt,
+  le: [elt, elt -> bool]
+]: THEORY
+BEGIN
+
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  nth_default(values: list[elt], index: nat): RECURSIVE elt =
+    CASES values OF
+      null:
+        elt_default,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          nth_default(tail, index - 1)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  list_take(count: nat, values: list[elt]): RECURSIVE list[elt] =
+    IF count = 0 THEN
+      null
+    ELSE
+      CASES values OF
+        null:
+          null,
+        cons(head, tail):
+          cons(head, list_take(count - 1, tail))
+      ENDCASES
+    ENDIF
+  MEASURE count
+
+  list_drop(count: nat, values: list[elt]): RECURSIVE list[elt] =
+    IF count = 0 THEN
+      values
+    ELSE
+      CASES values OF
+        null:
+          null,
+        cons(head, tail):
+          list_drop(count - 1, tail)
+      ENDCASES
+    ENDIF
+  MEASURE count
+
+  nat_minus(left, right: nat): RECURSIVE nat =
+    IF left = 0 OR right = 0 THEN
+      left
+    ELSE
+      nat_minus(left - 1, right - 1)
+    ENDIF
+  MEASURE left + right
+
+  list_slice(
+      values: list[elt],
+      lower, upper: nat): list[elt] =
+    list_take(
+      nat_minus(upper, lower),
+      list_drop(lower, values))
+
+  occurrence_count(
+      value: elt,
+      values: list[elt]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        (IF value = head THEN 1 ELSE 0 ENDIF)
+          + occurrence_count(value, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  list_permutation(
+      left, right: list[elt]): bool =
+    FORALL (value: elt):
+      occurrence_count(value, left)
+        = occurrence_count(value, right)
+
+  permut_sub(
+      left, right: list[elt],
+      lower, upper: nat): bool =
+    length(left) = length(right)
+      AND lower <= length(left)
+      AND upper <= length(left)
+      AND list_permutation(
+        list_slice(left, lower, upper),
+        list_slice(right, lower, upper))
+
+  permut_sub_prime(
+      left, right: list[elt],
+      lower, upper: nat): bool =
+    length(left) = length(right)
+      AND list_slice(left, 0, lower)
+        = list_slice(right, 0, lower)
+      AND list_slice(left, upper, length(left))
+        = list_slice(right, upper, length(left))
+      AND list_permutation(
+        list_slice(left, lower, upper),
+        list_slice(right, lower, upper))
+
+  why3_computer_div(numerator, denominator: int): int =
+    IF denominator = 0 THEN
+      0
+    ELSIF numerator * denominator >= 0 THEN
+      floor((numerator :: real) / (denominator :: real))
+    ELSE
+      -floor(-((numerator :: real) / (denominator :: real)))
+    ENDIF
+
+  order_laws: bool =
+    (FORALL (x: elt): le(x, x))
+      AND
+    (FORALL (x, y, z: elt):
+      (le(x, y) AND le(y, z)) IMPLIES le(x, z))
+      AND
+    (FORALL (x, y: elt): le(x, y) OR le(y, x))
+
+  sorted_sub(
+      values: list[elt],
+      lower, upper: int): bool =
+    FORALL (i1, i2: int):
+      (lower <= i1 AND i1 < i2 AND i2 < upper)
+        IMPLIES
+          le(
+            nth_default(values, int_to_nat(i1)),
+            nth_default(values, int_to_nat(i2)))
+
+  sorted(values: list[elt]): bool =
+    FORALL (i1, i2: int):
+      (0 <= i1 AND i1 < i2 AND i2 < length(values))
+        IMPLIES
+          le(
+            nth_default(values, int_to_nat(i1)),
+            nth_default(values, int_to_nat(i2)))
+
+  unchanged_outside(
+      current, previous: list[elt],
+      lower, upper: int): bool =
+    FORALL (index: int):
+      ((0 <= index AND index < lower)
+        OR
+      (upper <= index AND index < length(current)))
+        IMPLIES
+          nth_default(current, int_to_nat(index))
+            = nth_default(previous, int_to_nat(index))
+
+  mergesort_rec_vc: bool =
+    order_laws
+      IMPLIES
+        FORALL
+            (l, r: int),
+            (a, tmp: list[elt]):
+          0 <= l
+            IMPLIES
+          l <= r
+            IMPLIES
+          r <= length(a)
+            IMPLIES
+          length(a) = length(tmp)
+            IMPLIES
+              IF r - 1 <= l THEN
+                sorted_sub(a, l, r)
+                  AND
+                permut_sub_prime(
+                  a,
+                  a,
+                  int_to_nat(l),
+                  int_to_nat(r))
+              ELSE
+                2 /= 0
+                  AND
+                LET m: int = l + why3_computer_div(r - l, 2)
+                IN
+                  (((0 <= r - l
+                      AND m - l < r - l)
+                    AND 0 <= l
+                    AND l <= m
+                    AND m <= length(a)
+                    AND length(a) = length(tmp))
+                    AND
+                  (FORALL (tmp1, a1: list[elt]):
+                    length(tmp1) = length(tmp)
+                      IMPLIES
+                    length(a1) = length(a)
+                      IMPLIES
+                    (sorted_sub(a1, l, m)
+                      AND
+                    permut_sub_prime(
+                      a,
+                      a1,
+                      int_to_nat(l),
+                      int_to_nat(m)))
+                      IMPLIES
+                        (((0 <= r - l
+                            AND r - m < r - l)
+                          AND 0 <= m
+                          AND m <= r
+                          AND r <= length(a1)
+                          AND length(a1) = length(tmp1))
+                          AND
+                        (FORALL (tmp2, a2: list[elt]):
+                          length(tmp2) = length(tmp1)
+                            IMPLIES
+                          length(a2) = length(a1)
+                            IMPLIES
+                          (sorted_sub(a2, m, r)
+                            AND
+                          permut_sub_prime(
+                            a1,
+                            a2,
+                            int_to_nat(m),
+                            int_to_nat(r)))
+                            IMPLIES
+                              (((0 <= l
+                                  AND l <= m
+                                  AND m <= r
+                                  AND r <= length(tmp2)
+                                  AND length(tmp2) = length(a2))
+                                AND sorted_sub(a2, l, m)
+                                AND sorted_sub(a2, m, r))
+                                AND
+                              (FORALL (a3: list[elt]):
+                                length(a3) = length(a2)
+                                  IMPLIES
+                                (sorted_sub(a3, l, r)
+                                  AND
+                                permut_sub(
+                                  a2,
+                                  a3,
+                                  int_to_nat(l),
+                                  int_to_nat(r))
+                                  AND
+                                unchanged_outside(a3, a2, l, r))
+                                  IMPLIES
+                                    sorted_sub(a3, l, r)
+                                      AND
+                                    permut_sub_prime(
+                                      a,
+                                      a3,
+                                      int_to_nat(l),
+                                      int_to_nat(r))))))))
+              ENDIF
+
+END mergesort_array_TopDownMergesort_mergesort_recqtvc

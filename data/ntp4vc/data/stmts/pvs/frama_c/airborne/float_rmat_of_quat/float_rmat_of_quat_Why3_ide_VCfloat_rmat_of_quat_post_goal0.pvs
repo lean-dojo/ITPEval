@@ -1,0 +1,184 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% frama_c/airborne/float_rmat_of_quat/float_rmat_of_quat_Why3_ide_VCfloat_rmat_of_quat_post_goal0:
+% the memory-level postcondition equating the transpose of the stored real
+% three-by-three matrix with the matrix computed from a unit quaternion.
+% This file contains no proof.
+
+float_rmat_of_quat_Why3_ide_VCfloat_rmat_of_quat_post_goal0[
+  region: [int -> int],
+  linked: [[int -> int] -> bool]
+]: THEORY
+BEGIN
+  addr: TYPE = [# base: int, offset: int #]
+  real_memory: TYPE = [addr -> real]
+  allocation_table: TYPE = [int -> int]
+
+  real_rmat: TYPE =
+    [# a00: real, a01: real, a02: real,
+       a10: real, a11: real, a12: real,
+       a20: real, a21: real, a22: real #]
+
+  shift(p: addr, k: int): addr =
+    (# base := base(p), offset := offset(p) + k #)
+
+  store(memory: real_memory, p: addr, value: real): real_memory =
+    memory WITH [(p) := value]
+
+  valid_rw(malloc: allocation_table, p: addr, n: int): bool =
+    0 < n IMPLIES
+      0 < base(p)
+        AND 0 <= offset(p)
+        AND offset(p) + n <= malloc(base(p))
+
+  valid_rd(malloc: allocation_table, p: addr, n: int): bool =
+    0 < n IMPLIES
+      base(p) /= 0
+        AND 0 <= offset(p)
+        AND offset(p) + n <= malloc(base(p))
+
+  separated(p: addr, p_size: int, q: addr, q_size: int): bool =
+    p_size <= 0
+      OR q_size <= 0
+      OR base(p) /= base(q)
+      OR offset(q) + q_size <= offset(p)
+      OR offset(p) + p_size <= offset(q)
+
+  % These predicates are universally true in the official Why3 real model.
+  is_float32(value: real): bool = TRUE
+  is_finite32(value: real): bool = TRUE
+
+  p_finite_floatquat(memory: real_memory, q: addr): bool =
+    is_finite32(memory(shift(q, 0)))
+      AND is_finite32(memory(shift(q, 1)))
+      AND is_finite32(memory(shift(q, 2)))
+      AND is_finite32(memory(shift(q, 3)))
+
+  p_rvalid_floatquat(
+      malloc: allocation_table,
+      memory: real_memory,
+      q: addr): bool =
+    p_finite_floatquat(memory, q)
+      AND valid_rd(malloc, q, 4)
+
+  p_unitary_quaternion(memory: real_memory, q: addr): bool =
+    LET q0: real = memory(shift(q, 0)),
+        q1: real = memory(shift(q, 1)),
+        q2: real = memory(shift(q, 2)),
+        q3: real = memory(shift(q, 3))
+    IN q0 * q0 + q1 * q1 + q2 * q2 + q3 * q3 = 1
+
+  rmat_of_floatrmat(memory: real_memory, rm: addr): real_rmat =
+    LET start: addr = shift(rm, 0)
+    IN
+      (# a00 := memory(shift(start, 0)),
+         a01 := memory(shift(start, 1)),
+         a02 := memory(shift(start, 2)),
+         a10 := memory(shift(start, 3)),
+         a11 := memory(shift(start, 4)),
+         a12 := memory(shift(start, 5)),
+         a20 := memory(shift(start, 6)),
+         a21 := memory(shift(start, 7)),
+         a22 := memory(shift(start, 8)) #)
+
+  rmat_of_floatquat(memory: real_memory, q: addr): real_rmat =
+    LET q0: real = memory(shift(q, 0)),
+        q1: real = memory(shift(q, 1)),
+        q2: real = memory(shift(q, 2)),
+        q3: real = memory(shift(q, 3))
+    IN
+      (# a00 := q0 * q0 + q1 * q1 - q2 * q2 - q3 * q3,
+         a01 := 2 * (q1 * q2 - q0 * q3),
+         a02 := 2 * (q0 * q2 + q1 * q3),
+         a10 := 2 * (q0 * q3 + q1 * q2),
+         a11 := q0 * q0 + q2 * q2 - q1 * q1 - q3 * q3,
+         a12 := 2 * (q2 * q3 - q0 * q1),
+         a20 := 2 * (q1 * q3 - q0 * q2),
+         a21 := 2 * (q0 * q1 + q2 * q3),
+         a22 := q0 * q0 + q3 * q3 - q1 * q1 - q2 * q2 #)
+
+  transpose(matrix: real_rmat): real_rmat =
+    (# a00 := a00(matrix),
+       a01 := a10(matrix),
+       a02 := a20(matrix),
+       a10 := a01(matrix),
+       a11 := a11(matrix),
+       a12 := a21(matrix),
+       a20 := a02(matrix),
+       a21 := a12(matrix),
+       a22 := a22(matrix) #)
+
+  eq_rmat(left, right: real_rmat): bool =
+    a00(right) = a00(left)
+      AND a01(right) = a01(left)
+      AND a02(right) = a02(left)
+      AND a10(right) = a10(left)
+      AND a11(right) = a11(left)
+      AND a12(right) = a12(left)
+      AND a20(right) = a20(left)
+      AND a21(right) = a21(left)
+      AND a22(right) = a22(left)
+
+  goal0: bool =
+    FORALL (t_1: real_memory),
+           (a_1, a: addr),
+           (t: allocation_table):
+      LET r: real = t_1(shift(a_1, 0)),
+          r_1: real = t_1(shift(a_1, 1)),
+          r_2: real = t_1(shift(a_1, 2)),
+          r_3: real = t_1(shift(a_1, 3)),
+          r_4: real = 2 * r,
+          r_5: real = 2 * r_1,
+          r_6: real = 2 * r_3,
+          r_7: real = r_4 * r_1,
+          r_8: real = r_4 * r_2,
+          r_9: real = r_4 * r_3,
+          r_10: real = r_5 * r_2,
+          r_11: real = r_5 * r_3,
+          r_12: real = r_2 * r_6,
+          r_13: real = r_4 * r - 1,
+          a_2: addr = shift(a, 0),
+          m: real_memory =
+            store(t_1, shift(a_2, 0), r_13 + r_5 * r_1),
+          m_1: real_memory =
+            store(m, shift(a_2, 1), r_10 + r_9),
+          m_2: real_memory =
+            store(m_1, shift(a_2, 2), r_11 - r_8),
+          m_3: real_memory =
+            store(m_2, shift(a_2, 3), r_10 - r_9),
+          m_4: real_memory =
+            store(m_3, shift(a_2, 4), r_13 + 2 * r_2 * r_2),
+          m_5: real_memory =
+            store(m_4, shift(a_2, 5), r_12 + r_7),
+          m_6: real_memory =
+            store(m_5, shift(a_2, 6), r_11 + r_8),
+          m_7: real_memory =
+            store(m_6, shift(a_2, 7), r_12 - r_7),
+          m_8: real_memory =
+            store(m_7, shift(a_2, 8), r_13 + r_6 * r_3)
+      IN
+        (region(base(a)) <= 0
+          AND region(base(a_1)) <= 0
+          AND linked(t)
+          AND p_unitary_quaternion(t_1, a_1)
+          AND valid_rw(t, a, 9)
+          AND p_rvalid_floatquat(t, t_1, a_1)
+          AND separated(a, 9, a_1, 4)
+          AND is_float32(r)
+          AND is_float32(r_1)
+          AND is_float32(r_2)
+          AND is_float32(r_3)
+          AND is_float32(r_4)
+          AND is_float32(r_5)
+          AND is_float32(r_6)
+          AND is_float32(r_7)
+          AND is_float32(r_8)
+          AND is_float32(r_9)
+          AND is_float32(r_10)
+          AND is_float32(r_11)
+          AND is_float32(r_12)
+          AND is_float32(r_13))
+        IMPLIES
+          eq_rmat(
+            transpose(rmat_of_floatrmat(m_8, a)),
+            rmat_of_floatquat(m_8, a_1))
+END float_rmat_of_quat_Why3_ide_VCfloat_rmat_of_quat_post_goal0

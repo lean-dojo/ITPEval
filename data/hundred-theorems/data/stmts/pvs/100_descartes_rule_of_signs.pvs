@@ -1,0 +1,125 @@
+% Statement-only formalization of hundred-theorems artifact 100, "Descartes Rule of Signs": a nonzero real polynomial's coefficient sign variations equal its positive roots counted with multiplicity plus an even natural number. This file contains no proof.
+descartes_rule_of_signs_statement: THEORY
+BEGIN
+
+  coefficient_sequence: TYPE = [nat -> real]
+  root_sequence: TYPE = [nat -> real]
+
+  polynomial_value(coefficients: coefficient_sequence,
+                   x: real,
+                   count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      polynomial_value(coefficients, x, count - 1)
+        + coefficients(count - 1) * x^(count - 1)
+    ENDIF
+    MEASURE count
+
+  polynomial_nonzero(coefficients: coefficient_sequence,
+                     count: nat): bool =
+    EXISTS (index: nat):
+      index < count AND coefficients(index) /= 0
+
+  intermediate_coefficients_zero(coefficients: coefficient_sequence,
+                                 left, right: nat): bool =
+    FORALL (index: nat):
+      (left < index AND index < right)
+        IMPLIES coefficients(index) = 0
+
+  sign_change_pair(coefficients: coefficient_sequence,
+                   left, right: nat): bool =
+    left < right
+      AND coefficients(left) * coefficients(right) < 0
+      AND intermediate_coefficients_zero(coefficients, left, right)
+
+  sign_changes_to_right(coefficients: coefficient_sequence,
+                        right: nat,
+                        count: nat): RECURSIVE nat =
+    IF count = 0 THEN
+      0
+    ELSE
+      sign_changes_to_right(coefficients, right, count - 1)
+        + (IF sign_change_pair(coefficients, count - 1, right)
+           THEN 1
+           ELSE 0
+           ENDIF)
+    ENDIF
+    MEASURE count
+
+  sign_variations(coefficients: coefficient_sequence,
+                  count: nat): RECURSIVE nat =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET right: nat = count - 1 IN
+        sign_variations(coefficients, count - 1)
+          + sign_changes_to_right(coefficients, right, right)
+    ENDIF
+    MEASURE count
+
+  has_root_multiplicity(coefficients: coefficient_sequence,
+                        count: nat,
+                        root: real,
+                        multiplicity: nat): bool =
+    EXISTS (quotient: coefficient_sequence), (quotient_count: nat):
+      polynomial_value(quotient, root, quotient_count) /= 0
+        AND FORALL (x: real):
+          polynomial_value(coefficients, x, count)
+            = (x - root)^multiplicity
+                * polynomial_value(quotient, x, quotient_count)
+
+  root_multiplicity(coefficients: coefficient_sequence,
+                    count: nat,
+                    root: real): nat =
+    epsilon(LAMBDA (multiplicity: nat):
+      has_root_multiplicity(coefficients, count, root, multiplicity))
+
+  enumerates_positive_roots(coefficients: coefficient_sequence,
+                            count: nat,
+                            roots: root_sequence,
+                            root_count: nat): bool =
+    (FORALL (index: nat):
+       index < root_count
+         IMPLIES roots(index) > 0
+           AND polynomial_value(coefficients, roots(index), count) = 0)
+      AND
+    (FORALL (left, right: nat):
+       left < root_count
+         AND right < root_count
+         AND roots(left) = roots(right)
+           IMPLIES left = right)
+      AND
+    (FORALL (root: real):
+       root > 0
+         AND polynomial_value(coefficients, root, count) = 0
+           IMPLIES EXISTS (index: nat):
+             index < root_count AND roots(index) = root)
+
+  positive_root_multiplicity_sum(coefficients: coefficient_sequence,
+                                 count: nat,
+                                 roots: root_sequence,
+                                 root_count: nat): RECURSIVE nat =
+    IF root_count = 0 THEN
+      0
+    ELSE
+      positive_root_multiplicity_sum(
+        coefficients, count, roots, root_count - 1)
+        + root_multiplicity(coefficients, count, roots(root_count - 1))
+    ENDIF
+    MEASURE root_count
+
+  descartes_rule_of_signs: bool =
+    FORALL (coefficients: coefficient_sequence), (degree: nat):
+      polynomial_nonzero(coefficients, degree + 1)
+        IMPLIES
+          EXISTS (roots: root_sequence), (root_count, remainder: nat):
+            enumerates_positive_roots(
+              coefficients, degree + 1, roots, root_count)
+              AND mod(remainder, 2) = 0
+              AND sign_variations(coefficients, degree + 1)
+                = positive_root_multiplicity_sum(
+                    coefficients, degree + 1, roots, root_count)
+                    + remainder
+
+END descartes_rule_of_signs_statement

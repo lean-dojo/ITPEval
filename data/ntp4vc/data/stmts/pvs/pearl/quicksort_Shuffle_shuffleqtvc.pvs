@@ -1,0 +1,101 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/quicksort_Shuffle_shuffleqtvc: the Knuth shuffle verification
+% condition requiring every bounded integer-list swap to preserve permutation
+% of the original list. This file contains no proof.
+
+quicksort_Shuffle_shuffleqtvc: THEORY
+BEGIN
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  nth_default(values: list[int], index: nat): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          nth_default(tail, index - 1)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  list_set(
+      values: list[int],
+      index: nat,
+      value: int): RECURSIVE list[int] =
+    CASES values OF
+      null:
+        null,
+      cons(head, tail):
+        IF index = 0 THEN
+          cons(value, tail)
+        ELSE
+          cons(head, list_set(tail, index - 1, value))
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  occurrence_count(value: int, values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        (IF value = head THEN 1 ELSE 0 ENDIF)
+          + occurrence_count(value, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  list_permutation(left, right: list[int]): bool =
+    FORALL (value: int):
+      occurrence_count(value, left) = occurrence_count(value, right)
+
+  array_exchange(
+      before, after: list[int],
+      i, j: int): bool =
+    after =
+      list_set(
+        list_set(
+          before,
+          int_to_nat(i),
+          nth_default(before, int_to_nat(j))),
+        int_to_nat(j),
+        nth_default(before, int_to_nat(i)))
+
+  shuffle_vc: bool =
+    FORALL (a: list[int]):
+      LET o1: int = length(a) - 1
+      IN
+        ((1 <= o1 + 1)
+          IMPLIES
+            (list_permutation(a, a)
+              AND
+            (FORALL (a1: list[int]):
+              length(a1) = length(a)
+                IMPLIES
+              (FORALL (i: int):
+                ((1 <= i AND i <= o1)
+                  AND list_permutation(a, a1))
+                  IMPLIES
+                (LET o2: int = i + 1
+                 IN
+                   0 < o2
+                     AND
+                   (FORALL (o3: int):
+                     (0 <= o3 AND o3 < o2)
+                       IMPLIES
+                     (((0 <= i AND i < length(a1))
+                       AND 0 <= o3 AND o3 < length(a1))
+                       AND
+                     (FORALL (a2: list[int]):
+                       length(a2) = length(a1)
+                         IMPLIES
+                       array_exchange(a1, a2, i, o3)
+                         IMPLIES
+                       list_permutation(a, a2))))))))
+          AND
+        ((o1 + 1 < 1)
+          IMPLIES list_permutation(a, a)))
+
+END quicksort_Shuffle_shuffleqtvc

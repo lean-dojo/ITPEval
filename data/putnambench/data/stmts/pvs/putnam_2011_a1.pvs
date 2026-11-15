@@ -1,0 +1,82 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2011_a1:
+% exactly 10053 integer points with coordinates between 0 and 2011 cannot be
+% endpoints of growing spirals with positive strictly increasing lengths.
+% This file contains no proof.
+
+putnam_2011_a1: THEORY
+BEGIN
+  point: TYPE = [# x_coord: int, y_coord: int #]
+  point_sequence: TYPE = [nat -> point]
+  length_sequence: TYPE = [nat -> nat]
+
+  IMPORTING finite_sets[point]
+
+  origin: point = (# x_coord := 0, y_coord := 0 #)
+
+  positive_below(lengths: length_sequence, segment_count: nat): bool =
+    FORALL (index: nat):
+      index < segment_count IMPLIES lengths(index) > 0
+
+  strictly_increasing_below(
+      lengths: length_sequence,
+      segment_count: nat): bool =
+    FORALL (left, right: nat):
+      left < right AND right < segment_count
+        IMPLIES lengths(left) < lengths(right)
+
+  directed_segment(
+      points: point_sequence,
+      lengths: length_sequence,
+      index: nat): bool =
+    (mod(index, 4) = 0 IMPLIES
+      x_coord(points(index + 1))
+        = x_coord(points(index)) + (lengths(index) :: int)
+        AND y_coord(points(index + 1)) = y_coord(points(index)))
+      AND
+    (mod(index, 4) = 1 IMPLIES
+      x_coord(points(index + 1)) = x_coord(points(index))
+        AND y_coord(points(index + 1))
+          = y_coord(points(index)) + (lengths(index) :: int))
+      AND
+    (mod(index, 4) = 2 IMPLIES
+      x_coord(points(index + 1))
+        = x_coord(points(index)) - (lengths(index) :: int)
+        AND y_coord(points(index + 1)) = y_coord(points(index)))
+      AND
+    (mod(index, 4) = 3 IMPLIES
+      x_coord(points(index + 1)) = x_coord(points(index))
+        AND y_coord(points(index + 1))
+          = y_coord(points(index)) - (lengths(index) :: int))
+
+  growing_spiral(
+      points: point_sequence,
+      segment_count: nat): bool =
+    segment_count >= 2
+      AND points(0) = origin
+      AND EXISTS (lengths: length_sequence):
+        positive_below(lengths, segment_count)
+          AND strictly_increasing_below(lengths, segment_count)
+          AND (FORALL (index: nat):
+            index < segment_count IMPLIES
+              directed_segment(points, lengths, index))
+
+  reachable_endpoint(P: point): bool =
+    EXISTS (points: point_sequence), (segment_count: nat):
+      growing_spiral(points, segment_count)
+        AND points(segment_count) = P
+
+  grid_point(P: point): bool =
+    0 <= x_coord(P)
+      AND x_coord(P) <= 2011
+      AND 0 <= y_coord(P)
+      AND y_coord(P) <= 2011
+
+  putnam_2011_a1_solution: nat = 10053
+
+  putnam_2011_a1: bool =
+    EXISTS (unreachable_points: finite_set[point]):
+      card(unreachable_points) = putnam_2011_a1_solution
+        AND (FORALL (P: point):
+          unreachable_points(P)
+            IFF grid_point(P) AND NOT reachable_endpoint(P))
+END putnam_2011_a1

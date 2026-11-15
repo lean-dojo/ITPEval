@@ -1,0 +1,511 @@
+% Statement-only formalization of Hundred Theorems artifact 059, "The Laws of Large Numbers":
+% pairwise independent identically distributed integrable real random variables have sample
+% averages converging almost surely to their common expectation; this includes the iid form.
+% This file contains no proof.
+
+the_laws_of_large_numbers_059: THEORY
+BEGIN
+  sample_space: TYPE+
+
+  event: TYPE = [sample_space -> bool]
+  event_sequence: TYPE = [nat -> event]
+  sigma_algebra: TYPE = [event -> bool]
+  real_event: TYPE = [real -> bool]
+  real_event_sequence: TYPE = [nat -> real_event]
+  real_sigma_algebra: TYPE = [real_event -> bool]
+  measure_value: TYPE =
+    [# infinite_flag: bool, finite_part: real #]
+  measure_map: TYPE = [event -> measure_value]
+  random_variable: TYPE = [sample_space -> real]
+  random_variable_family: TYPE = [nat -> random_variable]
+  real_sequence: TYPE = [nat -> real]
+  measure_value_sequence: TYPE = [nat -> measure_value]
+  index_sequence: TYPE = [nat -> nat]
+
+  absolute_value(x: real): real =
+    IF x >= 0 THEN x ELSE -x ENDIF
+
+  full_event: event =
+    LAMBDA (omega: sample_space): TRUE
+
+  empty_event: event =
+    LAMBDA (omega: sample_space): FALSE
+
+  event_complement(A: event): event =
+    LAMBDA (omega: sample_space): NOT A(omega)
+
+  event_intersection(A, B: event): event =
+    LAMBDA (omega: sample_space):
+      A(omega) AND B(omega)
+
+  countable_union(events: event_sequence): event =
+    LAMBDA (omega: sample_space):
+      EXISTS (n: nat): events(n)(omega)
+
+  real_full_event: real_event =
+    LAMBDA (value: real): TRUE
+
+  real_event_complement(A: real_event): real_event =
+    LAMBDA (value: real): NOT A(value)
+
+  real_countable_union(events: real_event_sequence): real_event =
+    LAMBDA (value: real):
+      EXISTS (n: nat): events(n)(value)
+
+  is_real_sigma_algebra(
+      BorelSigma: real_sigma_algebra): bool =
+    BorelSigma(real_full_event)
+      AND (FORALL (A: real_event):
+        BorelSigma(A) IMPLIES
+          BorelSigma(real_event_complement(A)))
+      AND (FORALL (events: real_event_sequence):
+        (FORALL (n: nat): BorelSigma(events(n)))
+          IMPLIES BorelSigma(real_countable_union(events)))
+
+  contains_real_lower_rays(
+      BorelSigma: real_sigma_algebra): bool =
+    FORALL (bound: real):
+      BorelSigma(
+        LAMBDA (value: real): value <= bound)
+
+  borel_event(A: real_event): bool =
+    FORALL (BorelSigma: real_sigma_algebra):
+      (is_real_sigma_algebra(BorelSigma)
+        AND contains_real_lower_rays(BorelSigma))
+      IMPLIES BorelSigma(A)
+
+  preimage_event(
+      X: random_variable,
+      A: real_event): event =
+    LAMBDA (omega: sample_space):
+      A(X(omega))
+
+  pairwise_disjoint(events: event_sequence): bool =
+    FORALL (i, j: nat):
+      i /= j IMPLIES
+        FORALL (omega: sample_space):
+          NOT (events(i)(omega) AND events(j)(omega))
+
+  pairwise_disjoint_below(
+      events: event_sequence,
+      count: nat): bool =
+    FORALL (i, j: nat):
+      i < count AND j < count AND i /= j IMPLIES
+        FORALL (omega: sample_space):
+          NOT (events(i)(omega) AND events(j)(omega))
+
+  distinct_below(
+      indices: index_sequence,
+      count: nat): bool =
+    FORALL (i, j: nat):
+      i < count AND j < count AND i /= j IMPLIES
+        indices(i) /= indices(j)
+
+  finite_sum(values: real_sequence, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      finite_sum(values, count - 1) + values(count - 1)
+    ENDIF
+  MEASURE count
+
+  converges_to_real(values: real_sequence, limit: real): bool =
+    FORALL (epsilon: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (n: nat):
+          cutoff <= n IMPLIES
+            absolute_value(values(n) - limit) < epsilon
+
+  unbounded_above(values: real_sequence): bool =
+    FORALL (bound: real):
+      EXISTS (n: nat):
+        bound < values(n)
+
+  zero_measure_value: measure_value =
+    (# infinite_flag := FALSE, finite_part := 0 #)
+
+  one_measure_value: measure_value =
+    (# infinite_flag := FALSE, finite_part := 1 #)
+
+  infinite_measure_value: measure_value =
+    (# infinite_flag := TRUE, finite_part := 0 #)
+
+  canonical_measure_value(value: measure_value): bool =
+    IF infinite_flag(value) THEN
+      finite_part(value) = 0
+    ELSE
+      finite_part(value) >= 0
+    ENDIF
+
+  measure_value_is_zero(value: measure_value): bool =
+    NOT infinite_flag(value)
+      AND finite_part(value) = 0
+
+  measure_value_is_one(value: measure_value): bool =
+    NOT infinite_flag(value)
+      AND finite_part(value) = 1
+
+  measure_value_product(
+      left, right: measure_value): measure_value =
+    IF measure_value_is_zero(left)
+        OR measure_value_is_zero(right) THEN
+      zero_measure_value
+    ELSIF infinite_flag(left)
+        OR infinite_flag(right) THEN
+      infinite_measure_value
+    ELSE
+      (# infinite_flag := FALSE,
+         finite_part := finite_part(left) * finite_part(right) #)
+    ENDIF
+
+  partial_measure_sum(
+      values: measure_value_sequence,
+      count: nat): real =
+    finite_sum(
+      LAMBDA (n: nat): finite_part(values(n)),
+      count)
+
+  extended_nonnegative_sum(
+      values: measure_value_sequence,
+      total: measure_value): bool =
+    canonical_measure_value(total)
+      AND (FORALL (n: nat):
+        canonical_measure_value(values(n)))
+      AND IF infinite_flag(total) THEN
+        (EXISTS (n: nat): infinite_flag(values(n)))
+          OR ((FORALL (n: nat):
+                NOT infinite_flag(values(n)))
+            AND unbounded_above(
+              LAMBDA (count: nat):
+                partial_measure_sum(values, count)))
+      ELSE
+        (FORALL (n: nat):
+          NOT infinite_flag(values(n)))
+          AND converges_to_real(
+            LAMBDA (count: nat):
+              partial_measure_sum(values, count),
+            finite_part(total))
+      ENDIF
+
+  is_sigma_algebra(Sigma: sigma_algebra): bool =
+    Sigma(full_event)
+      AND (FORALL (A: event):
+        Sigma(A) IMPLIES Sigma(event_complement(A)))
+      AND (FORALL (events: event_sequence):
+        (FORALL (n: nat): Sigma(events(n)))
+          IMPLIES Sigma(countable_union(events)))
+
+  is_measure(
+      M: measure_map,
+      Sigma: sigma_algebra): bool =
+    is_sigma_algebra(Sigma)
+      AND measure_value_is_zero(M(empty_event))
+      AND (FORALL (A: event):
+        Sigma(A) IMPLIES canonical_measure_value(M(A)))
+      AND (FORALL (events: event_sequence):
+        ((FORALL (n: nat): Sigma(events(n)))
+          AND pairwise_disjoint(events))
+        IMPLIES
+          extended_nonnegative_sum(
+            LAMBDA (n: nat): M(events(n)),
+            M(countable_union(events))))
+
+  measure_space(
+      M: measure_map,
+      Sigma: sigma_algebra): bool =
+    is_measure(M, Sigma)
+
+  probability_space(
+      M: measure_map,
+      Sigma: sigma_algebra): bool =
+    measure_space(M, Sigma)
+      AND measure_value_is_one(M(full_event))
+
+  sublevel_event(
+      X: random_variable,
+      bound: real): event =
+    preimage_event(
+      X,
+      LAMBDA (value: real): value <= bound)
+
+  random_variable_on(
+      Sigma: sigma_algebra,
+      X: random_variable): bool =
+    FORALL (A: real_event):
+      borel_event(A) IMPLIES
+        Sigma(preimage_event(X, A))
+
+  random_variable_family_on(
+      Sigma: sigma_algebra,
+      X: random_variable_family): bool =
+    FORALL (index: nat):
+      random_variable_on(Sigma, X(index))
+
+  positive_part(X: random_variable): random_variable =
+    LAMBDA (omega: sample_space):
+      IF X(omega) >= 0 THEN X(omega) ELSE 0 ENDIF
+
+  negative_part(X: random_variable): random_variable =
+    LAMBDA (omega: sample_space):
+      IF X(omega) <= 0 THEN -X(omega) ELSE 0 ENDIF
+
+  simple_value(
+      coefficients: real_sequence,
+      pieces: event_sequence,
+      count: nat,
+      omega: sample_space): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      simple_value(coefficients, pieces, count - 1, omega)
+        + IF pieces(count - 1)(omega)
+            THEN coefficients(count - 1)
+          ELSE 0
+          ENDIF
+    ENDIF
+  MEASURE count
+
+  nonnegative_simple_minorant(
+      Sigma: sigma_algebra,
+      X: random_variable,
+      coefficients: real_sequence,
+      pieces: event_sequence,
+      count: nat): bool =
+    pairwise_disjoint_below(pieces, count)
+      AND (FORALL (k: nat):
+        k < count IMPLIES
+          coefficients(k) >= 0 AND Sigma(pieces(k)))
+      AND (FORALL (omega: sample_space):
+        0 <= simple_value(
+          coefficients, pieces, count, omega)
+          AND simple_value(
+            coefficients, pieces, count, omega) <= X(omega))
+
+  has_finite_simple_integral(
+      M: measure_map,
+      coefficients: real_sequence,
+      pieces: event_sequence,
+      count: nat,
+      value: real): bool =
+    EXISTS (terms: real_sequence):
+      (FORALL (k: nat):
+        k < count IMPLIES
+          ((coefficients(k) = 0 AND terms(k) = 0)
+            OR (NOT infinite_flag(M(pieces(k)))
+              AND terms(k)
+                = coefficients(k)
+                    * finite_part(M(pieces(k))))))
+        AND value = finite_sum(terms, count)
+
+  nonnegative_integral_upper_bound(
+      M: measure_map,
+      Sigma: sigma_algebra,
+      X: random_variable,
+      upper: real): bool =
+    FORALL
+        (coefficients: real_sequence),
+        (pieces: event_sequence),
+        (count: nat):
+      nonnegative_simple_minorant(
+        Sigma, X, coefficients, pieces, count)
+      IMPLIES
+        EXISTS (value: real):
+          has_finite_simple_integral(
+            M, coefficients, pieces, count, value)
+            AND value <= upper
+
+  has_nonnegative_integral(
+      M: measure_map,
+      Sigma: sigma_algebra,
+      X: random_variable,
+      value: real): bool =
+    (FORALL (omega: sample_space): X(omega) >= 0)
+      AND value >= 0
+      AND nonnegative_integral_upper_bound(
+        M, Sigma, X, value)
+      AND (FORALL (upper: real):
+        nonnegative_integral_upper_bound(
+          M, Sigma, X, upper)
+        IMPLIES value <= upper)
+
+  has_expectation(
+      M: measure_map,
+      Sigma: sigma_algebra,
+      X: random_variable,
+      value: real): bool =
+    random_variable_on(Sigma, X)
+      AND EXISTS (positive_integral, negative_integral: real):
+        has_nonnegative_integral(
+          M, Sigma, positive_part(X), positive_integral)
+          AND has_nonnegative_integral(
+            M, Sigma, negative_part(X), negative_integral)
+          AND value = positive_integral - negative_integral
+
+  integrable(
+      M: measure_map,
+      Sigma: sigma_algebra,
+      X: random_variable): bool =
+    EXISTS (value: real):
+      has_expectation(M, Sigma, X, value)
+
+  identically_distributed(
+      M: measure_map,
+      X: random_variable_family): bool =
+    FORALL (i, j: nat), (A: real_event):
+      borel_event(A) IMPLIES
+        M(preimage_event(X(i), A))
+          = M(preimage_event(X(j), A))
+
+  pairwise_independent(
+      M: measure_map,
+      X: random_variable_family): bool =
+    FORALL (i, j: nat), (A, B: real_event):
+      i /= j AND borel_event(A) AND borel_event(B)
+      IMPLIES
+        M(event_intersection(
+          preimage_event(X(i), A),
+          preimage_event(X(j), B)))
+          = measure_value_product(
+              M(preimage_event(X(i), A)),
+              M(preimage_event(X(j), B)))
+
+  finite_preimage_intersection(
+      X: random_variable_family,
+      indices: index_sequence,
+      sets: real_event_sequence,
+      count: nat): RECURSIVE event =
+    IF count = 0 THEN
+      full_event
+    ELSE
+      event_intersection(
+        finite_preimage_intersection(
+          X, indices, sets, count - 1),
+        preimage_event(
+          X(indices(count - 1)),
+          sets(count - 1)))
+    ENDIF
+  MEASURE count
+
+  finite_measure_product(
+      M: measure_map,
+      X: random_variable_family,
+      indices: index_sequence,
+      sets: real_event_sequence,
+      count: nat): RECURSIVE measure_value =
+    IF count = 0 THEN
+      one_measure_value
+    ELSE
+      measure_value_product(
+        finite_measure_product(
+          M, X, indices, sets, count - 1),
+        M(preimage_event(
+          X(indices(count - 1)),
+          sets(count - 1))))
+    ENDIF
+  MEASURE count
+
+  mutually_independent(
+      M: measure_map,
+      X: random_variable_family): bool =
+    FORALL
+        (indices: index_sequence),
+        (sets: real_event_sequence),
+        (count: nat):
+      (distinct_below(indices, count)
+        AND (FORALL (k: nat):
+          k < count IMPLIES borel_event(sets(k))))
+      IMPLIES
+        M(finite_preimage_intersection(
+          X, indices, sets, count))
+          = finite_measure_product(
+              M, X, indices, sets, count)
+
+  iid_family(
+      M: measure_map,
+      X: random_variable_family): bool =
+    mutually_independent(M, X)
+      AND identically_distributed(M, X)
+
+  partial_sum(
+      X: random_variable_family,
+      count: nat,
+      omega: sample_space): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      partial_sum(X, count - 1, omega)
+        + X(count - 1)(omega)
+    ENDIF
+  MEASURE count
+
+  sample_average(
+      X: random_variable_family,
+      count: nat): random_variable =
+    LAMBDA (omega: sample_space):
+      IF count = 0 THEN
+        0
+      ELSE
+        partial_sum(X, count, omega) / (count :: real)
+      ENDIF
+
+  averages_converge_event(
+      X: random_variable_family,
+      mean: real): event =
+    LAMBDA (omega: sample_space):
+      converges_to_real(
+        LAMBDA (count: nat):
+          sample_average(X, count)(omega),
+        mean)
+
+  almost_surely(
+      M: measure_map,
+      Sigma: sigma_algebra,
+      A: event): bool =
+    Sigma(A)
+      AND measure_value_is_zero(
+        M(event_complement(A)))
+
+  strong_law_context(
+      M: measure_map,
+      Sigma: sigma_algebra,
+      X: random_variable_family): bool =
+    measure_space(M, Sigma)
+      AND random_variable_family_on(Sigma, X)
+      AND identically_distributed(M, X)
+      AND integrable(M, Sigma, X(0))
+
+  strong_law_of_large_numbers: bool =
+    FORALL
+        (M: measure_map),
+        (Sigma: sigma_algebra),
+        (X: random_variable_family):
+      (strong_law_context(M, Sigma, X)
+        AND pairwise_independent(M, X))
+      IMPLIES
+        EXISTS (mean: real):
+          has_expectation(M, Sigma, X(0), mean)
+            AND almost_surely(
+              M,
+              Sigma,
+              averages_converge_event(X, mean))
+
+  iid_strong_law_of_large_numbers: bool =
+    FORALL
+        (M: measure_map),
+        (Sigma: sigma_algebra),
+        (X: random_variable_family):
+      (strong_law_context(M, Sigma, X)
+        AND probability_space(M, Sigma)
+        AND iid_family(M, X))
+      IMPLIES
+        EXISTS (mean: real):
+          has_expectation(M, Sigma, X(0), mean)
+            AND almost_surely(
+              M,
+              Sigma,
+              averages_converge_event(X, mean))
+
+  the_laws_of_large_numbers: bool =
+    strong_law_of_large_numbers
+      AND iid_strong_law_of_large_numbers
+END the_laws_of_large_numbers_059

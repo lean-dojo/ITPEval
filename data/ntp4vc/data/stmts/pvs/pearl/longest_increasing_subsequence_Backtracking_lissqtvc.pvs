@@ -1,0 +1,439 @@
+% Statement-only formalization of NTP4VC corpus artifact
+% pearl/longest_increasing_subsequence_Backtracking_lissqtvc: a backtracking
+% verification condition for constructing a longest strictly increasing
+% subsequence of a list over an abstract strict total order. This file
+% contains no proof.
+
+longest_increasing_subsequence_Backtracking_lissqtvc[
+  Elt: TYPE+,
+  default_elt: Elt,
+  lt: [Elt, Elt -> bool]
+]: THEORY
+BEGIN
+
+  lis_ilen(xs: list[int]): RECURSIVE int =
+    CASES xs OF
+      null:
+        0,
+      cons(head, tail):
+        lis_ilen(tail) + 1
+    ENDCASES
+  MEASURE xs BY <<
+
+  lis_wlen(xs: list[Elt]): RECURSIVE int =
+    CASES xs OF
+      null:
+        0,
+      cons(head, tail):
+        lis_wlen(tail) + 1
+    ENDCASES
+  MEASURE xs BY <<
+
+  % Negative source indices are converted to zero before defaulted access.
+  lis_iget(xs: list[int], index: int): RECURSIVE int =
+    CASES xs OF
+      null:
+        0,
+      cons(head, tail):
+        IF index <= 0 THEN
+          head
+        ELSE
+          lis_iget(tail, index - 1)
+        ENDIF
+    ENDCASES
+  MEASURE xs BY <<
+
+  lis_get(xs: list[Elt], index: int): RECURSIVE Elt =
+    CASES xs OF
+      null:
+        default_elt,
+      cons(head, tail):
+        IF index <= 0 THEN
+          head
+        ELSE
+          lis_get(tail, index - 1)
+        ENDIF
+    ENDCASES
+  MEASURE xs BY <<
+
+  lis_strict_order: bool =
+    (FORALL (x, y, z: Elt):
+      lt(x, y) AND lt(y, z) IMPLIES lt(x, z))
+      AND
+    (FORALL (x, y: Elt):
+      lt(x, y) IMPLIES NOT lt(y, x))
+      AND
+    (FORALL (x, y: Elt):
+      lt(x, y) OR lt(y, x) OR x = y)
+
+  lis_iss(s: list[int], w: list[Elt]): bool =
+    (FORALL (i: int):
+      0 <= i AND i < lis_ilen(s)
+        IMPLIES
+          0 <= lis_iget(s, i)
+            AND lis_iget(s, i) < lis_wlen(w))
+      AND
+    (FORALL (i, j: int):
+      0 <= i AND i < j AND j < lis_ilen(s)
+        IMPLIES
+          lis_iget(s, i) < lis_iget(s, j)
+            AND
+          lt(
+            lis_get(w, lis_iget(s, i)),
+            lis_get(w, lis_iget(s, j))))
+
+  lis_liss(s: list[int], w: list[Elt]): bool =
+    lis_iss(s, w)
+      AND
+    (FORALL (other: list[int]):
+      lis_iss(other, w)
+        IMPLIES lis_ilen(other) <= lis_ilen(s))
+
+  lis_pair_opt(
+      w: list[Elt],
+      first, bound: int,
+      s: list[int]): bool =
+    0 < lis_ilen(s)
+      AND lis_iget(s, 0) = first
+      AND lis_iss(s, w)
+      AND
+    (FORALL (other: list[int]):
+      lis_iss(other, w)
+        IMPLIES 2 <= lis_ilen(other)
+        IMPLIES
+          (lis_iget(other, 0) = first
+            AND first < lis_iget(other, 1)
+            AND lis_iget(other, 1) < bound)
+        IMPLIES lis_ilen(other) <= lis_ilen(s))
+
+  lis_start_opt(
+      w: list[Elt],
+      first: int,
+      s: list[int]): bool =
+    0 < lis_ilen(s)
+      AND lis_iget(s, 0) = first
+      AND lis_iss(s, w)
+      AND
+    (FORALL (other: list[int]):
+      lis_iss(other, w)
+        IMPLIES 1 <= lis_ilen(other)
+        IMPLIES lis_iget(other, 0) = first
+        IMPLIES lis_ilen(other) <= lis_ilen(s))
+
+  lis_prefix_opt(
+      w: list[Elt],
+      bound: int,
+      s: list[int]): bool =
+    lis_iss(s, w)
+      AND
+    (FORALL (other: list[int]):
+      lis_iss(other, w)
+        IMPLIES 1 <= lis_ilen(other)
+        IMPLIES lis_iget(other, 0) < bound
+        IMPLIES lis_ilen(other) <= lis_ilen(s))
+
+  lis_cons_shape(
+      first: int,
+      tail, whole: list[int]): bool =
+    lis_ilen(whole) = 1 + lis_ilen(tail)
+      AND lis_iget(whole, 0) = first
+      AND
+    (FORALL (i: int):
+      0 < i AND i <= lis_ilen(tail)
+        IMPLIES
+          lis_iget(whole, i) =
+            lis_iget(tail, i - 1))
+
+  lis_inner_state(
+      s: list[int],
+      state_length: int,
+      w: list[Elt],
+      first, bound: int): bool =
+    state_length = lis_ilen(s)
+      AND lis_pair_opt(w, first, bound, s)
+
+  lis_extension_result(
+      s: list[int],
+      state_length: int,
+      w: list[Elt],
+      first, current: int,
+      successor: list[int]): bool =
+    IF state_length < 1 + lis_ilen(successor) THEN
+      LET combined: list[int] = cons(first, successor)
+      IN
+        lis_cons_shape(first, successor, combined)
+          IMPLIES
+            lis_ilen(combined) = 1 + lis_ilen(successor)
+              AND
+            lis_pair_opt(
+              w,
+              first,
+              current + 1,
+              combined)
+    ELSE
+      state_length = lis_ilen(s)
+        AND lis_pair_opt(w, first, current + 1, s)
+    ENDIF
+
+  lis_all_successors(
+      s: list[int],
+      state_length: int,
+      w: list[Elt],
+      first, current: int): bool =
+    FORALL (successor: list[int]):
+      lis_start_opt(w, current, successor)
+        IMPLIES
+          lis_extension_result(
+            s,
+            state_length,
+            w,
+            first,
+            current,
+            successor)
+
+  lis_inner_iteration(
+      s: list[int],
+      state_length: int,
+      w: list[Elt],
+      first, current: int): bool =
+    IF lt(lis_get(w, first), lis_get(w, current)) THEN
+      ((0 <= lis_wlen(w) - first
+          AND lis_wlen(w) - current < lis_wlen(w) - first)
+        AND 0 <= current
+        AND current < lis_wlen(w))
+        AND
+      lis_all_successors(
+        s,
+        state_length,
+        w,
+        first,
+        current)
+    ELSE
+      lis_inner_state(
+        s,
+        state_length,
+        w,
+        first,
+        current + 1)
+    ENDIF
+
+  lis_inner_iterations(
+      s: list[int],
+      state_length: int,
+      w: list[Elt],
+      first, lower, upper: int): bool =
+    FORALL (current: int):
+      ((lower <= current AND current <= upper)
+        AND
+       lis_inner_state(
+         s,
+         state_length,
+         w,
+         first,
+         current))
+        IMPLIES
+          lis_inner_iteration(
+            s,
+            state_length,
+            w,
+            first,
+            current)
+
+  lis_inner_loop_result(
+      s: list[int],
+      state_length: int,
+      w: list[Elt],
+      first, lower, upper: int): bool =
+    lis_inner_iterations(
+      s,
+      state_length,
+      w,
+      first,
+      lower,
+      upper)
+      AND
+    (lis_inner_state(
+       s,
+       state_length,
+       w,
+       first,
+       upper + 1)
+      IMPLIES
+        state_length = lis_ilen(s)
+          AND lis_start_opt(w, first, s))
+
+  lis_all_inner_states(
+      w: list[Elt],
+      first, lower, upper: int): bool =
+    FORALL (s: list[int]), (state_length: int):
+      lis_inner_loop_result(
+        s,
+        state_length,
+        w,
+        first,
+        lower,
+        upper)
+
+  lis_index_backtracking_result(
+      w: list[Elt],
+      first: int): bool =
+    LET singleton: list[int] = cons(first, null[int]),
+        upper: int = lis_wlen(w) - 1,
+        lower: int = first + 1
+    IN
+      (lower <= upper + 1
+        IMPLIES
+          (lis_ilen(singleton) = 1
+            AND lis_pair_opt(
+              w,
+              first,
+              lower,
+              singleton))
+            AND
+          lis_all_inner_states(
+            w,
+            first,
+            lower,
+            upper))
+        AND
+      (upper + 1 < lower
+        IMPLIES
+          lis_ilen(singleton) = 1
+            AND lis_start_opt(w, first, singleton))
+
+  lis_all_starting_indices(w: list[Elt]): bool =
+    FORALL (first: int):
+      0 <= first AND first < lis_wlen(w)
+        IMPLIES
+          LET singleton: list[int] =
+                cons(first, null[int])
+          IN
+            (lis_ilen(singleton) = 1
+              AND lis_iget(singleton, 0) = first)
+              IMPLIES
+                lis_index_backtracking_result(w, first)
+
+  lis_outer_state(
+      s: list[int],
+      state_length: int,
+      w: list[Elt],
+      bound: int): bool =
+    state_length = lis_ilen(s)
+      AND lis_prefix_opt(w, bound, s)
+
+  lis_outer_choice_result(
+      s: list[int],
+      state_length: int,
+      w: list[Elt],
+      current: int,
+      choice: list[int]): bool =
+    IF state_length < lis_ilen(choice) THEN
+      lis_iss(choice, w)
+        AND lis_prefix_opt(w, current + 1, choice)
+    ELSE
+      state_length = lis_ilen(s)
+        AND lis_prefix_opt(w, current + 1, s)
+    ENDIF
+
+  lis_all_outer_choices(
+      s: list[int],
+      state_length: int,
+      w: list[Elt],
+      current: int): bool =
+    FORALL (choice: list[int]):
+      lis_start_opt(w, current, choice)
+        IMPLIES
+          lis_outer_choice_result(
+            s,
+            state_length,
+            w,
+            current,
+            choice)
+
+  lis_outer_iteration(
+      s: list[int],
+      state_length: int,
+      w: list[Elt],
+      current: int): bool =
+    (0 <= current AND current < lis_wlen(w))
+      AND
+    lis_all_outer_choices(
+      s,
+      state_length,
+      w,
+      current)
+
+  lis_outer_iterations(
+      s: list[int],
+      state_length: int,
+      w: list[Elt],
+      upper: int): bool =
+    FORALL (current: int):
+      ((0 <= current AND current <= upper)
+        AND lis_outer_state(
+          s,
+          state_length,
+          w,
+          current))
+        IMPLIES
+          lis_outer_iteration(
+            s,
+            state_length,
+            w,
+            current)
+
+  lis_outer_loop_result(
+      s: list[int],
+      state_length: int,
+      w: list[Elt],
+      upper: int): bool =
+    lis_outer_iterations(
+      s,
+      state_length,
+      w,
+      upper)
+      AND
+    (lis_outer_state(
+       s,
+       state_length,
+       w,
+       upper + 1)
+      IMPLIES
+        state_length = lis_ilen(s)
+          AND lis_liss(s, w))
+
+  lis_all_outer_states(
+      w: list[Elt],
+      upper: int): bool =
+    FORALL (s: list[int]), (state_length: int):
+      lis_outer_loop_result(
+        s,
+        state_length,
+        w,
+        upper)
+
+  lis_whole_backtracking_result(w: list[Elt]): bool =
+    LET upper: int = lis_wlen(w) - 1
+    IN
+      (0 <= upper + 1
+        IMPLIES
+          (lis_ilen(null[int]) = 0
+            AND lis_prefix_opt(
+              w,
+              0,
+              null[int]))
+            AND lis_all_outer_states(w, upper))
+        AND
+      (upper + 1 < 0
+        IMPLIES
+          lis_ilen(null[int]) = 0
+            AND lis_liss(null[int], w))
+
+  liss_vc: bool =
+    lis_strict_order
+      IMPLIES
+        FORALL (w: list[Elt]):
+          lis_all_starting_indices(w)
+            AND lis_whole_backtracking_result(w)
+
+END longest_increasing_subsequence_Backtracking_lissqtvc

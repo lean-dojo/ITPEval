@@ -1,0 +1,280 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1982_b2:
+% the Gaussian-weighted whole-plane integral of the number of integer lattice
+% points in a centered disk is pi times (2g - 1)^2, where g is the Gaussian
+% series over the natural numbers. This file contains no proof.
+
+putnam_1982_b2: THEORY
+BEGIN
+  real_function: TYPE = [real -> real]
+  real_sequence: TYPE = [nat -> real]
+  lattice_point: TYPE = [# m: int, n: int #]
+  lattice_set: TYPE = [lattice_point -> bool]
+  lattice_enumeration: TYPE = [nat -> lattice_point]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  converges_at_real_top(
+      function_value: real_function,
+      limit_value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: real):
+        FORALL (x: real):
+          cutoff <= x IMPLIES
+            abs(function_value(x) - limit_value)
+              < epsilon_value
+
+  nat_factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * nat_factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  exponential_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        exponential_partial(x, count - 1)
+          + safe_div(
+              x ^ index,
+              nat_factorial(index) :: real)
+    ENDIF
+  MEASURE count
+
+  real_exponential(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat):
+            exponential_partial(x, count),
+          value))
+
+  alternating_sign(index: nat): RECURSIVE real =
+    IF index = 0 THEN
+      1
+    ELSE
+      -alternating_sign(index - 1)
+    ENDIF
+  MEASURE index
+
+  leibniz_partial_sum(count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        leibniz_partial_sum(count - 1)
+          + safe_div(
+              alternating_sign(index),
+              (2 * index + 1) :: real)
+    ENDIF
+  MEASURE count
+
+  pi: real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat):
+            4 * leibniz_partial_sum(count),
+          value))
+
+  lattice_disk(x, y: real): lattice_set =
+    LAMBDA (point: lattice_point):
+      ((m(point) :: real) ^ 2
+        + (n(point) :: real) ^ 2)
+        <= x ^ 2 + y ^ 2
+
+  injective_below(
+      enumeration: lattice_enumeration,
+      bound: nat): bool =
+    FORALL (i, j: nat):
+      i < bound
+        AND j < bound
+        AND enumeration(i) = enumeration(j)
+      IMPLIES i = j
+
+  enumerates_exactly(
+      enumeration: lattice_enumeration,
+      set_value: lattice_set,
+      bound: nat): bool =
+    FORALL (point: lattice_point):
+      set_value(point)
+        IFF
+          EXISTS (position: nat):
+            position < bound
+              AND enumeration(position) = point
+
+  has_cardinality(
+      set_value: lattice_set,
+      cardinality: nat): bool =
+    EXISTS (enumeration: lattice_enumeration):
+      injective_below(enumeration, cardinality)
+        AND enumerates_exactly(
+          enumeration, set_value, cardinality)
+
+  lattice_count(x, y: real): nat =
+    epsilon(
+      LAMBDA (cardinality: nat):
+        has_cardinality(
+          lattice_disk(x, y), cardinality))
+
+  gaussian_partial_sum(count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        gaussian_partial_sum(count - 1)
+          + real_exponential(
+              -((index :: real) ^ 2))
+    ENDIF
+  MEASURE count
+
+  gaussian_series: real =
+    IF EXISTS (value: real):
+        converges_to(gaussian_partial_sum, value)
+    THEN
+      epsilon(
+        LAMBDA (value: real):
+          converges_to(gaussian_partial_sum, value))
+    ELSE
+      0
+    ENDIF
+
+  valid_tagged_partition(
+      left, right: real,
+      points, tags: real_sequence,
+      count: nat): bool =
+    count > 0
+      AND points(0) = left
+      AND points(count) = right
+      AND FORALL (index: nat):
+        index < count IMPLIES
+          (points(index) < points(index + 1)
+            AND points(index) <= tags(index)
+            AND tags(index) <= points(index + 1))
+
+  mesh_less_than(
+      points: real_sequence,
+      count: nat,
+      bound: real): bool =
+    FORALL (index: nat):
+      index < count IMPLIES
+        points(index + 1) - points(index) < bound
+
+  riemann_sum(
+      function_value: real_function,
+      points, tags: real_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      riemann_sum(
+        function_value, points, tags, count - 1)
+        + function_value(tags(count - 1))
+            * (points(count) - points(count - 1))
+    ENDIF
+  MEASURE count
+
+  has_interval_integral(
+      function_value: real_function,
+      left, right, integral_value: real): bool =
+    left < right
+      AND FORALL (epsilon_value: posreal):
+        EXISTS (mesh_bound: posreal):
+          FORALL
+              (points, tags: real_sequence),
+              (count: nat):
+            (valid_tagged_partition(
+                left, right, points, tags, count)
+              AND mesh_less_than(
+                points, count, mesh_bound))
+            IMPLIES
+              abs(
+                riemann_sum(
+                  function_value, points, tags, count)
+                  - integral_value)
+                < epsilon_value
+
+  interval_integral(
+      function_value: real_function,
+      left, right: real): real =
+    IF left = right THEN
+      0
+    ELSIF left < right THEN
+      IF EXISTS (integral_value: real):
+          has_interval_integral(
+            function_value, left, right, integral_value)
+      THEN
+        epsilon(
+          LAMBDA (integral_value: real):
+            has_interval_integral(
+              function_value, left, right, integral_value))
+      ELSE
+        0
+      ENDIF
+    ELSE
+      IF EXISTS (integral_value: real):
+          has_interval_integral(
+            function_value, right, left, integral_value)
+      THEN
+        -epsilon(
+          LAMBDA (integral_value: real):
+            has_interval_integral(
+              function_value, right, left, integral_value))
+      ELSE
+        0
+      ENDIF
+    ENDIF
+
+  whole_line_integral(
+      function_value: real_function): real =
+    IF EXISTS (integral_value: real):
+        converges_at_real_top(
+          LAMBDA (radius: real):
+            interval_integral(
+              function_value, -radius, radius),
+          integral_value)
+    THEN
+      epsilon(
+        LAMBDA (integral_value: real):
+          converges_at_real_top(
+            LAMBDA (radius: real):
+              interval_integral(
+                function_value, -radius, radius),
+            integral_value))
+    ELSE
+      0
+    ENDIF
+
+  weighted_lattice_count(x, y: real): real =
+    (lattice_count(x, y) :: real)
+      * real_exponential(-(x ^ 2) - y ^ 2)
+
+  inner_integral(y: real): real =
+    whole_line_integral(
+      LAMBDA (x: real):
+        weighted_lattice_count(x, y))
+
+  iterated_integral: real =
+    whole_line_integral(inner_integral)
+
+  putnam_1982_b2_solution(g: real): real =
+    pi * (2 * g - 1) ^ 2
+
+  putnam_1982_b2: bool =
+    iterated_integral
+      = putnam_1982_b2_solution(gaussian_series)
+END putnam_1982_b2

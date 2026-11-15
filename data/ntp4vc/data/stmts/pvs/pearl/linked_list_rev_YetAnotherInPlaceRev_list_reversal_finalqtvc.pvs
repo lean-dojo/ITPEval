@@ -1,0 +1,114 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/linked_list_rev_YetAnotherInPlaceRev_list_reversal_finalqtvc: the
+% final linked-list reversal verification condition relating forward and
+% reversed list layouts under a heap frame condition. This file contains no proof.
+
+linked_list_rev_YetAnotherInPlaceRev_list_reversal_finalqtvc[
+  loc: TYPE+,
+  null_loc: loc
+]: THEORY
+BEGIN
+
+  in_range(i, n: int): bool =
+    0 <= i AND i < n
+
+  valid_cells(s: [int -> loc], n: int): bool =
+    (FORALL (i: int):
+      in_range(i, n) IMPLIES s(i) /= null_loc)
+    AND
+    (FORALL (i, j: int):
+      in_range(i, n)
+        IMPLIES
+          in_range(j, n)
+            IMPLIES
+              i /= j
+                IMPLIES s(i) /= s(j))
+
+  list_lr(
+      next: [loc -> loc],
+      s: [int -> loc],
+      l: loc,
+      lo, hi: int): bool =
+    (0 <= lo AND lo <= hi)
+      AND
+    (IF lo = hi THEN
+       l = null_loc
+     ELSE
+       l = s(lo)
+         AND next(s(hi - 1)) = null_loc
+         AND
+           (FORALL (k: int):
+             (lo <= k AND k < hi - 1)
+               IMPLIES next(s(k)) = s(k + 1))
+     ENDIF)
+
+  list_rl(
+      next: [loc -> loc],
+      s: [int -> loc],
+      l: loc,
+      lo, hi: int): bool =
+    (0 <= lo AND lo <= hi)
+      AND
+    (IF lo = hi THEN
+       l = null_loc
+     ELSE
+       next(s(lo)) = null_loc
+         AND l = s(hi - 1)
+         AND
+           (FORALL (k: int):
+             (lo < k AND k < hi)
+               IMPLIES next(s(k)) = s(k - 1))
+     ENDIF)
+
+  frame(
+      next_new, next_old: [loc -> loc],
+      s: [int -> loc],
+      n: int): bool =
+    FORALL (p: loc):
+      (FORALL (i: int):
+        in_range(i, n) IMPLIES p /= s(i))
+      IMPLIES next_new(p) = next_old(p)
+
+  is_list(
+      next: [loc -> loc],
+      l: loc,
+      s: [int -> loc],
+      n: int): bool =
+    IF n = 0 THEN
+      l = null_loc
+    ELSE
+      l = s(0)
+        AND
+      (FORALL (i: int):
+        in_range(i, n) IMPLIES s(i) /= null_loc)
+        AND next(s(n - 1)) = null_loc
+        AND
+      (FORALL (i: int):
+        (0 <= i AND i < n - 1)
+          IMPLIES next(s(i)) = s(i + 1))
+    ENDIF
+
+  reverse_index(s: [int -> loc], n: int): [int -> loc] =
+    LAMBDA (i: int): s(n - 1 - i)
+
+  list_reversal_final_vc: bool =
+    FORALL
+      (mem1: [loc -> loc]),
+      (s: [int -> loc]),
+      (n: int),
+      (l: loc):
+      (0 <= n AND is_list(mem1, l, s, n))
+        IMPLIES
+          ((valid_cells(s, n)
+              AND list_lr(mem1, s, l, 0, n))
+            AND
+           (FORALL
+             (mem3: [loc -> loc]),
+             (r: loc):
+             (list_rl(mem3, s, r, 0, n)
+                AND frame(mem3, mem1, s, n))
+               IMPLIES
+                 (is_list(mem3, r, reverse_index(s, n), n)
+                    AND frame(mem3, mem1, s, n))))
+
+END linked_list_rev_YetAnotherInPlaceRev_list_reversal_finalqtvc

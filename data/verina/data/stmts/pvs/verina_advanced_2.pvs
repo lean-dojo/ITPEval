@@ -1,0 +1,384 @@
+% Statement-only formalization of the VERINA corpus artifact
+% verina_advanced_2, "LongestCommonSubsequence": row-major dynamic programming
+% computes a longest-common-subsequence length for two finite integer arrays,
+% specified by exhaustive subsequence enumeration. This file contains no proof.
+
+verina_advanced_2: THEORY
+BEGIN
+
+  % Finite PVS lists give the exact extensional contents and order of the Lean
+  % arrays observed by this program.
+  int_list_length(values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        int_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  repeat_int(
+      value: int,
+      count: nat): RECURSIVE list[int] =
+    IF count = 0 THEN
+      null
+    ELSE
+      cons(value, repeat_int(value, count - 1))
+    ENDIF
+  MEASURE count
+
+  repeat_row(
+      row: list[int],
+      count: nat): RECURSIVE list[list[int]] =
+    IF count = 0 THEN
+      null
+    ELSE
+      cons(row, repeat_row(row, count - 1))
+    ENDIF
+  MEASURE count
+
+  zero_matrix(rows, columns: nat): list[list[int]] =
+    repeat_row(repeat_int(0, columns), rows)
+
+  int_list_nth_default(
+      index: nat,
+      values: list[int]): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          int_list_nth_default(index - 1, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  int_list_set_if_in_bounds(
+      index: nat,
+      value: int,
+      values: list[int]): RECURSIVE list[int] =
+    CASES values OF
+      null:
+        null,
+      cons(head, tail):
+        IF index = 0 THEN
+          cons(value, tail)
+        ELSE
+          cons(
+            head,
+            int_list_set_if_in_bounds(
+              index - 1,
+              value,
+              tail))
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  matrix_row_default(
+      index: nat,
+      matrix: list[list[int]]): RECURSIVE list[int] =
+    CASES matrix OF
+      null:
+        null,
+      cons(row, rest):
+        IF index = 0 THEN
+          row
+        ELSE
+          matrix_row_default(index - 1, rest)
+        ENDIF
+    ENDCASES
+  MEASURE matrix BY <<
+
+  matrix_set_row_if_in_bounds(
+      index: nat,
+      row: list[int],
+      matrix: list[list[int]]): RECURSIVE list[list[int]] =
+    CASES matrix OF
+      null:
+        null,
+      cons(head, tail):
+        IF index = 0 THEN
+          cons(row, tail)
+        ELSE
+          cons(
+            head,
+            matrix_set_row_if_in_bounds(
+              index - 1,
+              row,
+              tail))
+        ENDIF
+    ENDCASES
+  MEASURE matrix BY <<
+
+  matrix_cell(
+      row_index, column_index: nat,
+      matrix: list[list[int]]): int =
+    int_list_nth_default(
+      column_index,
+      matrix_row_default(row_index, matrix))
+
+  matrix_set_cell_if_in_bounds(
+      row_index, column_index: nat,
+      value: int,
+      matrix: list[list[int]]): list[list[int]] =
+    LET old_row: list[int] =
+          matrix_row_default(row_index, matrix),
+        new_row: list[int] =
+          int_list_set_if_in_bounds(
+            column_index,
+            value,
+            old_row)
+    IN
+      matrix_set_row_if_in_bounds(
+        row_index,
+        new_row,
+        matrix)
+
+  intMax(x, y: int): int =
+    IF x < y THEN y ELSE x ENDIF
+
+  LongestCommonSubsequence_precond(
+      a, b: list[int]): bool =
+    TRUE
+
+  lcs_update_cell(
+      a, b: list[int],
+      i, j: nat,
+      dp: list[list[int]]): list[list[int]] =
+    IF i = 0 OR j = 0 THEN
+      dp
+    ELSE
+      LET a_value: int =
+            int_list_nth_default(i - 1, a),
+          b_value: int =
+            int_list_nth_default(j - 1, b),
+          new_value: int =
+            IF a_value = b_value THEN
+              matrix_cell(i - 1, j - 1, dp) + 1
+            ELSE
+              intMax(
+                matrix_cell(i - 1, j, dp),
+                matrix_cell(i, j - 1, dp))
+            ENDIF
+      IN
+        matrix_set_cell_if_in_bounds(
+          i,
+          j,
+          new_value,
+          dp)
+    ENDIF
+
+  lcs_columns(
+      a, b: list[int],
+      i, j, remaining_columns: nat,
+      dp: list[list[int]]): RECURSIVE list[list[int]] =
+    IF remaining_columns = 0 THEN
+      dp
+    ELSE
+      LET updated: list[list[int]] =
+        lcs_update_cell(a, b, i, j, dp)
+      IN
+        lcs_columns(
+          a,
+          b,
+          i,
+          j + 1,
+          remaining_columns - 1,
+          updated)
+    ENDIF
+  MEASURE remaining_columns
+
+  lcs_rows(
+      a, b: list[int],
+      i, remaining_rows, column_count: nat,
+      dp: list[list[int]]): RECURSIVE list[list[int]] =
+    IF remaining_rows = 0 THEN
+      dp
+    ELSE
+      LET after_row: list[list[int]] =
+        lcs_columns(
+          a,
+          b,
+          i,
+          0,
+          column_count,
+          dp)
+      IN
+        lcs_rows(
+          a,
+          b,
+          i + 1,
+          remaining_rows - 1,
+          column_count,
+          after_row)
+    ENDIF
+  MEASURE remaining_rows
+
+  LongestCommonSubsequence(
+      a, b: list[int]): int =
+    LET m: nat = int_list_length(a),
+        n: nat = int_list_length(b),
+        initial_dp: list[list[int]] =
+          zero_matrix(m + 1, n + 1),
+        final_dp: list[list[int]] =
+          lcs_rows(
+            a,
+            b,
+            0,
+            m + 1,
+            n + 1,
+            initial_dp)
+    IN
+      matrix_cell(m, n, final_dp)
+
+  append_subsequence_lists(
+      first, second: list[list[int]]):
+        RECURSIVE list[list[int]] =
+    CASES first OF
+      null:
+        second,
+      cons(head, tail):
+        cons(
+          head,
+          append_subsequence_lists(tail, second))
+    ENDCASES
+  MEASURE first BY <<
+
+  prepend_to_each(
+      value: int,
+      subsequences: list[list[int]]):
+        RECURSIVE list[list[int]] =
+    CASES subsequences OF
+      null:
+        null,
+      cons(head, tail):
+        cons(
+          cons(value, head),
+          prepend_to_each(value, tail))
+    ENDCASES
+  MEASURE subsequences BY <<
+
+  allSubseq_fold(
+      remaining: list[int],
+      accumulator: list[list[int]]):
+        RECURSIVE list[list[int]] =
+    CASES remaining OF
+      null:
+        accumulator,
+      cons(value, rest):
+        allSubseq_fold(
+          rest,
+          append_subsequence_lists(
+            accumulator,
+            prepend_to_each(value, accumulator)))
+    ENDCASES
+  MEASURE remaining BY <<
+
+  reverse_int_list_acc(
+      values, accumulator: list[int]): RECURSIVE list[int] =
+    CASES values OF
+      null:
+        accumulator,
+      cons(head, tail):
+        reverse_int_list_acc(
+          tail,
+          cons(head, accumulator))
+    ENDCASES
+  MEASURE values BY <<
+
+  reverse_int_list(values: list[int]): list[int] =
+    reverse_int_list_acc(values, null)
+
+  reverse_each(
+      subsequences: list[list[int]]):
+        RECURSIVE list[list[int]] =
+    CASES subsequences OF
+      null:
+        null,
+      cons(head, tail):
+        cons(
+          reverse_int_list(head),
+          reverse_each(tail))
+    ENDCASES
+  MEASURE subsequences BY <<
+
+  allSubseq(values: list[int]): list[list[int]] =
+    reverse_each(
+      allSubseq_fold(
+        values,
+        cons(null[int], null[list[int]])))
+
+  subsequence_member(
+      candidate: list[int],
+      subsequences: list[list[int]]): RECURSIVE bool =
+    CASES subsequences OF
+      null:
+        FALSE,
+      cons(head, tail):
+        candidate = head
+          OR subsequence_member(candidate, tail)
+    ENDCASES
+  MEASURE subsequences BY <<
+
+  commonSubseqLens_from(
+      subsequences_a, subsequences_b: list[list[int]]):
+        RECURSIVE list[int] =
+    CASES subsequences_a OF
+      null:
+        null,
+      cons(head, tail):
+        IF subsequence_member(head, subsequences_b) THEN
+          cons(
+            int_list_length(head),
+            commonSubseqLens_from(tail, subsequences_b))
+        ELSE
+          commonSubseqLens_from(tail, subsequences_b)
+        ENDIF
+    ENDCASES
+  MEASURE subsequences_a BY <<
+
+  int_member(
+      value: int,
+      values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        FALSE,
+      cons(head, tail):
+        value = head OR int_member(value, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  all_at_most(
+      upper_bound: int,
+      values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        head <= upper_bound
+          AND all_at_most(upper_bound, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  LongestCommonSubsequence_postcond(
+      a, b: list[int],
+      result: int): bool =
+    LET subseqA: list[list[int]] = allSubseq(a),
+        subseqB: list[list[int]] = allSubseq(b),
+        commonSubseqLens: list[int] =
+          commonSubseqLens_from(subseqA, subseqB)
+    IN
+      int_member(result, commonSubseqLens)
+        AND all_at_most(result, commonSubseqLens)
+
+  LongestCommonSubsequence_spec_satisfied: bool =
+    FORALL (a, b: list[int]):
+      LongestCommonSubsequence_precond(a, b) IMPLIES
+        LongestCommonSubsequence_postcond(
+          a,
+          b,
+          LongestCommonSubsequence(a, b))
+
+END verina_advanced_2

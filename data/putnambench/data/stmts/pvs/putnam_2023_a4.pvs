@@ -1,0 +1,122 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2023_a4:
+% the integer span of the twelve normalized regular-icosahedron vertex vectors
+% is dense in real three-dimensional Euclidean space. This file contains no proof.
+
+putnam_2023_a4: THEORY
+BEGIN
+  coordinate: TYPE = below(3)
+  vertex_index: TYPE = below(12)
+  vector: TYPE = [coordinate -> real]
+  vertex_family: TYPE = [vertex_index -> vector]
+  integer_coefficients: TYPE = [vertex_index -> int]
+  matrix: TYPE = [coordinate, coordinate -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  dot_product(x, y: vector): real =
+    x(0) * y(0) + x(1) * y(1) + x(2) * y(2)
+
+  squared_distance(x, y: vector): real =
+    (x(0) - y(0)) ^ 2
+      + (x(1) - y(1)) ^ 2
+      + (x(2) - y(2)) ^ 2
+
+  scalar_multiply(scalar: real, x: vector): vector =
+    LAMBDA (c: coordinate): scalar * x(c)
+
+  matrix_vector_product(A: matrix, x: vector): vector =
+    LAMBDA (row: coordinate):
+      A(row, 0) * x(0)
+        + A(row, 1) * x(1)
+        + A(row, 2) * x(2)
+
+  linear_isometric_equivalence(G, H: matrix): bool =
+    (FORALL (x: vector):
+      matrix_vector_product(G, matrix_vector_product(H, x)) = x)
+      AND (FORALL (x: vector):
+        matrix_vector_product(H, matrix_vector_product(G, x)) = x)
+      AND (FORALL (x, y: vector):
+        dot_product(
+          matrix_vector_product(G, x),
+          matrix_vector_product(G, y))
+          = dot_product(x, y))
+
+  sqrt_value(root, radicand: real): bool =
+    0 <= root AND root ^ 2 = radicand
+
+  icosahedron_vertex(index: vertex_index, phi: real): vector =
+    LAMBDA (c: coordinate):
+      IF index = 0 THEN
+        IF c = 0 THEN 1 ELSIF c = 1 THEN phi ELSE 0 ENDIF
+      ELSIF index = 1 THEN
+        IF c = 0 THEN -1 ELSIF c = 1 THEN phi ELSE 0 ENDIF
+      ELSIF index = 2 THEN
+        IF c = 0 THEN 1 ELSIF c = 1 THEN -phi ELSE 0 ENDIF
+      ELSIF index = 3 THEN
+        IF c = 0 THEN -1 ELSIF c = 1 THEN -phi ELSE 0 ENDIF
+      ELSIF index = 4 THEN
+        IF c = 0 THEN phi ELSIF c = 2 THEN 1 ELSE 0 ENDIF
+      ELSIF index = 5 THEN
+        IF c = 0 THEN phi ELSIF c = 2 THEN -1 ELSE 0 ENDIF
+      ELSIF index = 6 THEN
+        IF c = 0 THEN -phi ELSIF c = 2 THEN 1 ELSE 0 ENDIF
+      ELSIF index = 7 THEN
+        IF c = 0 THEN -phi ELSIF c = 2 THEN -1 ELSE 0 ENDIF
+      ELSIF index = 8 THEN
+        IF c = 1 THEN 1 ELSIF c = 2 THEN phi ELSE 0 ENDIF
+      ELSIF index = 9 THEN
+        IF c = 1 THEN -1 ELSIF c = 2 THEN phi ELSE 0 ENDIF
+      ELSIF index = 10 THEN
+        IF c = 1 THEN 1 ELSIF c = 2 THEN -phi ELSE 0 ENDIF
+      ELSE
+        IF c = 1 THEN -1 ELSIF c = 2 THEN -phi ELSE 0 ENDIF
+      ENDIF
+
+  regular_icosahedron_vertices(vertices: vertex_family): bool =
+    EXISTS (sqrt_five, phi, scale: real), (G, H: matrix):
+      sqrt_value(sqrt_five, 5)
+        AND phi = (1 + sqrt_five) / 2
+        AND 0 < scale
+        AND scale ^ 2 = 1 + phi ^ 2
+        AND linear_isometric_equivalence(G, H)
+        AND (FORALL (index: vertex_index):
+          matrix_vector_product(G, vertices(index))
+            = scalar_multiply(
+                safe_div(1, scale),
+                icosahedron_vertex(index, phi)))
+
+  integer_combination(
+      coefficients: integer_coefficients,
+      vertices: vertex_family): vector =
+    LAMBDA (c: coordinate):
+      (coefficients(0) :: real) * vertices(0)(c)
+        + (coefficients(1) :: real) * vertices(1)(c)
+        + (coefficients(2) :: real) * vertices(2)(c)
+        + (coefficients(3) :: real) * vertices(3)(c)
+        + (coefficients(4) :: real) * vertices(4)(c)
+        + (coefficients(5) :: real) * vertices(5)(c)
+        + (coefficients(6) :: real) * vertices(6)(c)
+        + (coefficients(7) :: real) * vertices(7)(c)
+        + (coefficients(8) :: real) * vertices(8)(c)
+        + (coefficients(9) :: real) * vertices(9)(c)
+        + (coefficients(10) :: real) * vertices(10)(c)
+        + (coefficients(11) :: real) * vertices(11)(c)
+
+  putnam_2023_a4: bool =
+    FORALL
+        (vertices: vertex_family),
+        (target: vector),
+        (epsilon_value: posreal):
+      regular_icosahedron_vertices(vertices)
+        IMPLIES
+          EXISTS (coefficients: integer_coefficients):
+            squared_distance(
+              integer_combination(coefficients, vertices),
+              target)
+              < epsilon_value ^ 2
+END putnam_2023_a4

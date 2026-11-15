@@ -1,0 +1,78 @@
+theory avl_AVL_balanceqtvc
+  imports "NTP4Verif.NTP4Verif" "Why3STD.Ref_Ref"
+begin
+typedecl  t
+consts zero :: "t"
+consts op :: "t \<Rightarrow> t \<Rightarrow> t"
+axiomatization where assoc:   "op a (op b c) = op (op a b) c"
+  for a :: "t"
+  and b :: "t"
+  and c :: "t"
+axiomatization where neutral'0:   "op x zero = x"
+  for x :: "t"
+axiomatization where neutral'1:   "x = op zero x"
+  for x :: "t"
+consts agg :: "('a \<Rightarrow> t) \<Rightarrow> 'a list \<Rightarrow> t"
+axiomatization where agg_empty:   "agg f ([] :: 'a list) = zero"
+  for f :: "'a \<Rightarrow> t"
+axiomatization where agg_sing:   "agg f s = f (s ! (0 :: nat))"
+ if "int (length s) = (1 :: int)"
+  for s :: "'a list"
+  and f :: "'a \<Rightarrow> t"
+axiomatization where agg_cat:   "agg f (s1 @ s2) = op (agg f s1) (agg f s2)"
+  for f :: "'a \<Rightarrow> t"
+  and s1 :: "'a list"
+  and s2 :: "'a list"
+typedecl 'a t1
+consts measure :: "'a t1 \<Rightarrow> t"
+consts balancing :: "nat"
+axiomatization where balancing'def:   "(0 :: int) < int balancing"
+datatype 'a tree = Empty | Node "'a tree" "'a t1" "'a tree" "nat" "t"
+datatype 'a m = m'mk (seq: "'a t1 list") (hgt: "int")
+definition node_model :: "'a list \<Rightarrow> 'a \<Rightarrow> 'a list \<Rightarrow> 'a list"
+  where "node_model l d r = l @ Cons d r" for l d r
+fun seq_model :: "'a tree \<Rightarrow> 'a t1 list"
+  where "seq_model (Empty :: 'a tree) = ([] :: 'a t1 list)"
+      | "seq_model (Node l d r x x0) = node_model (seq_model l) d (seq_model r)" for l d r x x0
+fun real_height :: "'a tree \<Rightarrow> int"
+  where "real_height (Empty :: 'a tree) = (0 :: int)"
+      | "real_height (Node l x r x0 x1) = (let hl :: int = real_height l; hr :: int = real_height r in (1 :: int) + (if hl < hr then hr else hl))" for l x r x0 x1
+consts measure_closure :: "'a t1 \<Rightarrow> t"
+axiomatization where measure_closure_def:   "measure_closure y = measure y"
+  for y :: "'a t1"
+fun balanced :: "'a tree \<Rightarrow> _"
+  where "balanced (Empty :: 'a tree) = True"
+      | "balanced (Node l x r h m1) = (int h = real_height (Node l x r h m1) \<and> m1 = agg measure_closure (seq_model (Node l x r h m1)) \<and> (-int balancing \<le> real_height r - real_height l \<and> real_height r - real_height l \<le> int balancing) \<and> balanced l \<and> balanced r)" for l x r h m1
+typedecl 'a t2
+consts repr :: "'a t2 \<Rightarrow> 'a tree"
+consts m1 :: "'a t2 \<Rightarrow> 'a m"
+axiomatization where t'invariant'0:   "balanced (repr self)"
+  for self :: "'a t2"
+axiomatization where t'invariant'1:   "seq (m1 self) = seq_model (repr self)"
+  for self :: "'a t2"
+axiomatization where t'invariant'2:   "hgt (m1 self) = real_height (repr self)"
+  for self :: "'a t2"
+definition t'eq :: "'a t2 \<Rightarrow> 'a t2 \<Rightarrow> _"
+  where "t'eq a b \<longleftrightarrow> repr a = repr b \<and> m1 a = m1 b" for a b
+axiomatization where t'inj:   "a = b"
+ if "t'eq a b"
+  for a :: "'a t2"
+  and b :: "'a t2"
+datatype 'a view = AEmpty | ANode "'a t2" "'a t1" "'a t2" "nat" "t"
+theorem balance'vc:
+  fixes l :: "'a t2"
+  fixes r :: "'a t2"
+  fixes hl :: "nat"
+  fixes hr :: "nat"
+  fixes o1 :: "nat"
+  fixes d :: "'a t1"
+  assumes fact0: "-int balancing - (1 :: int) \<le> hgt (m1 l) - hgt (m1 r)"
+  assumes fact1: "hgt (m1 l) - hgt (m1 r) \<le> int balancing + (1 :: int)"
+  assumes fact2: "int hl = hgt (m1 l)"
+  assumes fact3: "int hr = hgt (m1 r)"
+  assumes fact4: "int o1 = -int hr"
+  shows "int o1 \<le> int hl - int hr"
+  and "int hl - int hr \<le> int hl"
+  and "\<forall>(df :: nat). int df = int hl - int hr \<longrightarrow> (if balancing < df then \<forall>(o2 :: 'a view). (case o2 of (AEmpty :: 'a view) \<Rightarrow> hgt (m1 l) = (0 :: int) \<and> seq (m1 l) = ([] :: 'a t1 list) | ANode l1 d r1 h s \<Rightarrow> seq (m1 l) = node_model (seq (m1 l1)) d (seq (m1 r1)) \<and> s = agg measure_closure (seq (m1 l)) \<and> (let hl1 :: int = hgt (m1 l1); hr1 :: int = hgt (m1 r1) in (-int balancing \<le> hl1 - hr1 \<and> hl1 - hr1 \<le> int balancing) \<and> hgt (m1 l) = int h \<and> int h = (1 :: int) + (if hl1 < hr1 then hr1 else hl1))) \<longrightarrow> (case o2 of (AEmpty :: 'a view) \<Rightarrow> False | ANode ll ld lr _ _ \<Rightarrow> (\<forall>(o3 :: nat). int o3 = hgt (m1 lr) \<longrightarrow> (\<forall>(o4 :: nat). int o4 = hgt (m1 ll) \<longrightarrow> (if o3 \<le> o4 then (-int balancing \<le> hgt (m1 lr) - hgt (m1 r) \<and> hgt (m1 lr) - hgt (m1 r) \<le> int balancing) \<and> (\<forall>(o5 :: 'a t2). seq (m1 o5) = node_model (seq (m1 lr)) d (seq (m1 r)) \<and> hgt (m1 o5) = (1 :: int) + (if hgt (m1 lr) < hgt (m1 r) then hgt (m1 r) else hgt (m1 lr)) \<longrightarrow> -int balancing \<le> hgt (m1 ll) - hgt (m1 o5) \<and> hgt (m1 ll) - hgt (m1 o5) \<le> int balancing) else \<forall>(o5 :: 'a view). (case o5 of (AEmpty :: 'a view) \<Rightarrow> hgt (m1 lr) = (0 :: int) \<and> seq (m1 lr) = ([] :: 'a t1 list) | ANode l1 d1 r1 h s \<Rightarrow> seq (m1 lr) = node_model (seq (m1 l1)) d1 (seq (m1 r1)) \<and> s = agg measure_closure (seq (m1 lr)) \<and> (let hl1 :: int = hgt (m1 l1); hr1 :: int = hgt (m1 r1) in (-int balancing \<le> hl1 - hr1 \<and> hl1 - hr1 \<le> int balancing) \<and> hgt (m1 lr) = int h \<and> int h = (1 :: int) + (if hl1 < hr1 then hr1 else hl1))) \<longrightarrow> (case o5 of (AEmpty :: 'a view) \<Rightarrow> False | ANode lrl lrd lrr _ _ \<Rightarrow> (-int balancing \<le> hgt (m1 lrr) - hgt (m1 r) \<and> hgt (m1 lrr) - hgt (m1 r) \<le> int balancing) \<and> (\<forall>(o6 :: 'a t2). seq (m1 o6) = node_model (seq (m1 lrr)) d (seq (m1 r)) \<and> hgt (m1 o6) = (1 :: int) + (if hgt (m1 lrr) < hgt (m1 r) then hgt (m1 r) else hgt (m1 lrr)) \<longrightarrow> (-int balancing \<le> hgt (m1 ll) - hgt (m1 lrl) \<and> hgt (m1 ll) - hgt (m1 lrl) \<le> int balancing) \<and> (\<forall>(o7 :: 'a t2). seq (m1 o7) = node_model (seq (m1 ll)) ld (seq (m1 lrl)) \<and> hgt (m1 o7) = (1 :: int) + (if hgt (m1 ll) < hgt (m1 lrl) then hgt (m1 lrl) else hgt (m1 ll)) \<longrightarrow> -int balancing \<le> hgt (m1 o7) - hgt (m1 o6) \<and> hgt (m1 o7) - hgt (m1 o6) \<le> int balancing))))))) else \<forall>(o2 :: nat). int o2 = -int balancing \<longrightarrow> (if df < o2 then \<forall>(o3 :: 'a view). (case o3 of (AEmpty :: 'a view) \<Rightarrow> hgt (m1 r) = (0 :: int) \<and> seq (m1 r) = ([] :: 'a t1 list) | ANode l1 d1 r1 h s \<Rightarrow> seq (m1 r) = node_model (seq (m1 l1)) d1 (seq (m1 r1)) \<and> s = agg measure_closure (seq (m1 r)) \<and> (let hl1 :: int = hgt (m1 l1); hr1 :: int = hgt (m1 r1) in (-int balancing \<le> hl1 - hr1 \<and> hl1 - hr1 \<le> int balancing) \<and> hgt (m1 r) = int h \<and> int h = (1 :: int) + (if hl1 < hr1 then hr1 else hl1))) \<longrightarrow> (case o3 of (AEmpty :: 'a view) \<Rightarrow> False | ANode rl rd rr _ _ \<Rightarrow> (\<forall>(o4 :: nat). int o4 = hgt (m1 rl) \<longrightarrow> (\<forall>(o5 :: nat). int o5 = hgt (m1 rr) \<longrightarrow> (if o4 \<le> o5 then (-int balancing \<le> hgt (m1 l) - hgt (m1 rl) \<and> hgt (m1 l) - hgt (m1 rl) \<le> int balancing) \<and> (\<forall>(o6 :: 'a t2). seq (m1 o6) = node_model (seq (m1 l)) d (seq (m1 rl)) \<and> hgt (m1 o6) = (1 :: int) + (if hgt (m1 l) < hgt (m1 rl) then hgt (m1 rl) else hgt (m1 l)) \<longrightarrow> -int balancing \<le> hgt (m1 o6) - hgt (m1 rr) \<and> hgt (m1 o6) - hgt (m1 rr) \<le> int balancing) else \<forall>(o6 :: 'a view). (case o6 of (AEmpty :: 'a view) \<Rightarrow> hgt (m1 rl) = (0 :: int) \<and> seq (m1 rl) = ([] :: 'a t1 list) | ANode l1 d1 r1 h s \<Rightarrow> seq (m1 rl) = node_model (seq (m1 l1)) d1 (seq (m1 r1)) \<and> s = agg measure_closure (seq (m1 rl)) \<and> (let hl1 :: int = hgt (m1 l1); hr1 :: int = hgt (m1 r1) in (-int balancing \<le> hl1 - hr1 \<and> hl1 - hr1 \<le> int balancing) \<and> hgt (m1 rl) = int h \<and> int h = (1 :: int) + (if hl1 < hr1 then hr1 else hl1))) \<longrightarrow> (case o6 of (AEmpty :: 'a view) \<Rightarrow> False | ANode rll rld rlr _ _ \<Rightarrow> (-int balancing \<le> hgt (m1 rlr) - hgt (m1 rr) \<and> hgt (m1 rlr) - hgt (m1 rr) \<le> int balancing) \<and> (\<forall>(o7 :: 'a t2). seq (m1 o7) = node_model (seq (m1 rlr)) rd (seq (m1 rr)) \<and> hgt (m1 o7) = (1 :: int) + (if hgt (m1 rlr) < hgt (m1 rr) then hgt (m1 rr) else hgt (m1 rlr)) \<longrightarrow> (-int balancing \<le> hgt (m1 l) - hgt (m1 rll) \<and> hgt (m1 l) - hgt (m1 rll) \<le> int balancing) \<and> (\<forall>(o8 :: 'a t2). seq (m1 o8) = node_model (seq (m1 l)) d (seq (m1 rll)) \<and> hgt (m1 o8) = (1 :: int) + (if hgt (m1 l) < hgt (m1 rll) then hgt (m1 rll) else hgt (m1 l)) \<longrightarrow> -int balancing \<le> hgt (m1 o8) - hgt (m1 o7) \<and> hgt (m1 o8) - hgt (m1 o7) \<le> int balancing))))))) else -int balancing \<le> hgt (m1 l) - hgt (m1 r) \<and> hgt (m1 l) - hgt (m1 r) \<le> int balancing)) \<and> (\<forall>(result :: 'a t2). (if balancing < df then \<exists>(o2 :: 'a view). (case o2 of (AEmpty :: 'a view) \<Rightarrow> hgt (m1 l) = (0 :: int) \<and> seq (m1 l) = ([] :: 'a t1 list) | ANode l1 d1 r1 h s \<Rightarrow> seq (m1 l) = node_model (seq (m1 l1)) d1 (seq (m1 r1)) \<and> s = agg measure_closure (seq (m1 l)) \<and> (let hl1 :: int = hgt (m1 l1); hr1 :: int = hgt (m1 r1) in (-int balancing \<le> hl1 - hr1 \<and> hl1 - hr1 \<le> int balancing) \<and> hgt (m1 l) = int h \<and> int h = (1 :: int) + (if hl1 < hr1 then hr1 else hl1))) \<and> (case o2 of (AEmpty :: 'a view) \<Rightarrow> False | ANode ll ld lr _ _ \<Rightarrow> (\<exists>(o3 :: nat). int o3 = hgt (m1 lr) \<and> (\<exists>(o4 :: nat). int o4 = hgt (m1 ll) \<and> (if o3 \<le> o4 then \<exists>(o5 :: 'a t2). (seq (m1 o5) = node_model (seq (m1 lr)) d (seq (m1 r)) \<and> hgt (m1 o5) = (1 :: int) + (if hgt (m1 lr) < hgt (m1 r) then hgt (m1 r) else hgt (m1 lr))) \<and> seq (m1 result) = node_model (seq (m1 ll)) ld (seq (m1 o5)) \<and> hgt (m1 result) = (1 :: int) + (if hgt (m1 ll) < hgt (m1 o5) then hgt (m1 o5) else hgt (m1 ll)) else \<exists>(o5 :: 'a view). (case o5 of (AEmpty :: 'a view) \<Rightarrow> hgt (m1 lr) = (0 :: int) \<and> seq (m1 lr) = ([] :: 'a t1 list) | ANode l1 d1 r1 h s \<Rightarrow> seq (m1 lr) = node_model (seq (m1 l1)) d1 (seq (m1 r1)) \<and> s = agg measure_closure (seq (m1 lr)) \<and> (let hl1 :: int = hgt (m1 l1); hr1 :: int = hgt (m1 r1) in (-int balancing \<le> hl1 - hr1 \<and> hl1 - hr1 \<le> int balancing) \<and> hgt (m1 lr) = int h \<and> int h = (1 :: int) + (if hl1 < hr1 then hr1 else hl1))) \<and> (case o5 of (AEmpty :: 'a view) \<Rightarrow> False | ANode lrl lrd lrr _ _ \<Rightarrow> (\<exists>(o6 :: 'a t2). (seq (m1 o6) = node_model (seq (m1 lrr)) d (seq (m1 r)) \<and> hgt (m1 o6) = (1 :: int) + (if hgt (m1 lrr) < hgt (m1 r) then hgt (m1 r) else hgt (m1 lrr))) \<and> (\<exists>(o7 :: 'a t2). (seq (m1 o7) = node_model (seq (m1 ll)) ld (seq (m1 lrl)) \<and> hgt (m1 o7) = (1 :: int) + (if hgt (m1 ll) < hgt (m1 lrl) then hgt (m1 lrl) else hgt (m1 ll))) \<and> seq (m1 result) = node_model (seq (m1 o7)) lrd (seq (m1 o6)) \<and> hgt (m1 result) = (1 :: int) + (if hgt (m1 o7) < hgt (m1 o6) then hgt (m1 o6) else hgt (m1 o7))))))))) else \<exists>(o2 :: nat). int o2 = -int balancing \<and> (if df < o2 then \<exists>(o3 :: 'a view). (case o3 of (AEmpty :: 'a view) \<Rightarrow> hgt (m1 r) = (0 :: int) \<and> seq (m1 r) = ([] :: 'a t1 list) | ANode l1 d1 r1 h s \<Rightarrow> seq (m1 r) = node_model (seq (m1 l1)) d1 (seq (m1 r1)) \<and> s = agg measure_closure (seq (m1 r)) \<and> (let hl1 :: int = hgt (m1 l1); hr1 :: int = hgt (m1 r1) in (-int balancing \<le> hl1 - hr1 \<and> hl1 - hr1 \<le> int balancing) \<and> hgt (m1 r) = int h \<and> int h = (1 :: int) + (if hl1 < hr1 then hr1 else hl1))) \<and> (case o3 of (AEmpty :: 'a view) \<Rightarrow> False | ANode rl rd rr _ _ \<Rightarrow> (\<exists>(o4 :: nat). int o4 = hgt (m1 rl) \<and> (\<exists>(o5 :: nat). int o5 = hgt (m1 rr) \<and> (if o4 \<le> o5 then \<exists>(o6 :: 'a t2). (seq (m1 o6) = node_model (seq (m1 l)) d (seq (m1 rl)) \<and> hgt (m1 o6) = (1 :: int) + (if hgt (m1 l) < hgt (m1 rl) then hgt (m1 rl) else hgt (m1 l))) \<and> seq (m1 result) = node_model (seq (m1 o6)) rd (seq (m1 rr)) \<and> hgt (m1 result) = (1 :: int) + (if hgt (m1 o6) < hgt (m1 rr) then hgt (m1 rr) else hgt (m1 o6)) else \<exists>(o6 :: 'a view). (case o6 of (AEmpty :: 'a view) \<Rightarrow> hgt (m1 rl) = (0 :: int) \<and> seq (m1 rl) = ([] :: 'a t1 list) | ANode l1 d1 r1 h s \<Rightarrow> seq (m1 rl) = node_model (seq (m1 l1)) d1 (seq (m1 r1)) \<and> s = agg measure_closure (seq (m1 rl)) \<and> (let hl1 :: int = hgt (m1 l1); hr1 :: int = hgt (m1 r1) in (-int balancing \<le> hl1 - hr1 \<and> hl1 - hr1 \<le> int balancing) \<and> hgt (m1 rl) = int h \<and> int h = (1 :: int) + (if hl1 < hr1 then hr1 else hl1))) \<and> (case o6 of (AEmpty :: 'a view) \<Rightarrow> False | ANode rll rld rlr _ _ \<Rightarrow> (\<exists>(o7 :: 'a t2). (seq (m1 o7) = node_model (seq (m1 rlr)) rd (seq (m1 rr)) \<and> hgt (m1 o7) = (1 :: int) + (if hgt (m1 rlr) < hgt (m1 rr) then hgt (m1 rr) else hgt (m1 rlr))) \<and> (\<exists>(o8 :: 'a t2). (seq (m1 o8) = node_model (seq (m1 l)) d (seq (m1 rll)) \<and> hgt (m1 o8) = (1 :: int) + (if hgt (m1 l) < hgt (m1 rll) then hgt (m1 rll) else hgt (m1 l))) \<and> seq (m1 result) = node_model (seq (m1 o8)) rld (seq (m1 o7)) \<and> hgt (m1 result) = (1 :: int) + (if hgt (m1 o8) < hgt (m1 o7) then hgt (m1 o7) else hgt (m1 o8))))))))) else seq (m1 result) = node_model (seq (m1 l)) d (seq (m1 r)) \<and> hgt (m1 result) = (1 :: int) + (if hgt (m1 l) < hgt (m1 r) then hgt (m1 r) else hgt (m1 l)))) \<longrightarrow> seq (m1 result) = node_model (seq (m1 l)) d (seq (m1 r)) \<and> (let hl1 :: int = hgt (m1 l); hr1 :: int = hgt (m1 r); he :: int = (1 :: int) + (if hl1 < hr1 then hr1 else hl1); hres :: int = hgt (m1 result) in ((0 :: int) \<le> he - hres \<and> he - hres \<le> (1 :: int)) \<and> (-int balancing \<le> hl1 - hr1 \<and> hl1 - hr1 \<le> int balancing \<longrightarrow> he = hres)))"
+  sorry
+end

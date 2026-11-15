@@ -1,0 +1,109 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/verifythis_2019_ghc_sort_Top_findqtvc: the recursive verification
+% condition for finding an integer value in a nonempty half-open sequence
+% interval with a positive occurrence count. This file contains no proof.
+
+verifythis_2019_ghc_sort_Top_findqtvc: THEORY
+BEGIN
+
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  nth_default(values: list[int], index: nat): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          nth_default(tail, index - 1)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  interval_occurrences_span(
+      value: int,
+      values: list[int],
+      lower: int,
+      span: nat): RECURSIVE int =
+    IF span = 0 THEN
+      0
+    ELSE
+      (IF nth_default(values, int_to_nat(lower)) = value
+       THEN 1
+       ELSE 0
+       ENDIF)
+        + interval_occurrences_span(
+            value, values, lower + 1, span - 1)
+    ENDIF
+  MEASURE span
+
+  interval_occurrences(
+      value: int,
+      values: list[int],
+      lower, upper: int): int =
+    interval_occurrences_span(
+      value,
+      values,
+      lower,
+      int_to_nat(upper - lower))
+
+  recursive_call_obligation(
+      values: list[int],
+      value, start, finish: int): bool =
+    LET next_start: int = start + 1
+    IN
+      (0 <= finish - start
+        AND finish - next_start < finish - start)
+      AND
+      (0 <= next_start
+        AND next_start < finish
+        AND finish <= length(values))
+      AND
+      1 <= interval_occurrences(
+        value, values, next_start, finish)
+
+  result_branch(
+      values: list[int],
+      value, start, finish, first, result: int): bool =
+    IF first = value THEN
+      result = start
+    ELSE
+      (start + 1 <= result AND result < finish)
+        AND nth_default(values, int_to_nat(result)) = value
+    ENDIF
+
+  result_postcondition(
+      values: list[int],
+      value, start, finish, result: int): bool =
+    (start <= result AND result < finish)
+      AND nth_default(values, int_to_nat(result)) = value
+
+  find_vc: bool =
+    FORALL
+        (start, finish: int),
+        (values: list[int]),
+        (value: int):
+      (0 <= start
+        AND start < finish
+        AND finish <= length(values)
+        AND 1 <= interval_occurrences(
+          value, values, start, finish))
+        IMPLIES
+      (LET first: int =
+         nth_default(values, int_to_nat(start))
+       IN
+         ((first /= value)
+            IMPLIES
+              recursive_call_obligation(
+                values, value, start, finish))
+         AND
+         (FORALL (result: int):
+           result_branch(
+             values, value, start, finish, first, result)
+             IMPLIES
+               result_postcondition(
+                 values, value, start, finish, result)))
+
+END verifythis_2019_ghc_sort_Top_findqtvc

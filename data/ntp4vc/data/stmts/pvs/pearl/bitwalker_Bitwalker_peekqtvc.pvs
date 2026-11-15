@@ -1,0 +1,269 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/bitwalker_Bitwalker_peekqtvc: the bit-stream peek verification
+% condition for 32-bit positions, a byte-addressed stream, and construction
+% of a 64-bit return value. This file contains no proof.
+
+bitwalker_Bitwalker_peekqtvc: THEORY
+BEGIN
+
+  IMPORTING
+    bv[8], bv[32], bv[64], bv[128],
+    bv_nat[8], bv_nat[32], bv_nat[64], bv_nat[128],
+    bv_arith_nat_defs[32], bv_arith_nat_defs[128],
+    bv_arithmetic_defs[32],
+    bv_extend_defs[32]
+
+  word8: TYPE = bvec[8]
+  word32: TYPE = bvec[32]
+  word64: TYPE = bvec[64]
+  word128: TYPE = bvec[128]
+
+  unsigned8(value: word8): int = bv2nat[8](value)
+  unsigned32(value: word32): int = bv2nat[32](value)
+  unsigned64(value: word64): int = bv2nat[64](value)
+  unsigned128(value: word128): int = bv2nat[128](value)
+
+  word32_of(value: below(exp2(32))): word32 =
+    nat2bv[32](value)
+
+  zero8: word8 = fill[8](FALSE)
+  zero32: word32 = fill[32](FALSE)
+  zero64: word64 = fill[64](FALSE)
+  one32: word32 = word32_of(1)
+  sixty_four32: word32 = word32_of(64)
+  max32: word32 = word32_of(4294967295)
+
+  add32(left, right: word32): word32 = left + right
+  sub32(left, right: word32): word32 = left - right
+
+  extend32_to128(value: word32): word128 =
+    zero_extend[32](128)(value)
+
+  bit8(value: word8, index: int): bool =
+    IF 0 <= index AND index < 8 THEN
+      value(index)
+    ELSE
+      FALSE
+    ENDIF
+
+  bit64(value: word64, index: int): bool =
+    IF 0 <= index AND index < 64 THEN
+      value(index)
+    ELSE
+      FALSE
+    ENDIF
+
+  nth_byte_default(stream: list[word8], index: int): word8 =
+    IF 0 <= index AND index < length(stream) THEN
+      nth(stream, index)
+    ELSE
+      zero8
+    ENDIF
+
+  nth8_stream(stream: list[word8], position: int): bool =
+    bit8(
+      nth_byte_default(stream, ndiv(position, 8)),
+      7 - mod(position, 8))
+
+  maxvalue(len: word32): word64 =
+    IF unsigned32(len) < 64 THEN
+      LAMBDA (index: below(64)):
+        index = unsigned32(len)
+    ELSE
+      zero64
+    ENDIF
+
+  stream_bit_length(stream: list[word8]): int =
+    8 * (length(stream) :: int)
+
+  wide_no_overflow(left, right: word32): bool =
+    unsigned32(left) + unsigned32(right) < 4294967296
+      OR
+    unsigned128(
+      extend32_to128(left) + extend32_to128(right))
+      <=
+    unsigned128(extend32_to128(max32))
+
+  returned_bits(
+      addr: list[word8],
+      start, len: word32,
+      retval: word64): bool =
+    (FORALL (index: int):
+      0 <= index AND index < unsigned32(len)
+        IMPLIES
+          bit64(retval, index)
+            =
+          nth8_stream(
+            addr,
+            unsigned32(start) + unsigned32(len) - index - 1))
+      AND
+    (FORALL (index: int):
+      unsigned32(len) <= index AND index < 64
+        IMPLIES bit64(retval, index) = FALSE)
+
+  loop_invariant(
+      addr: list[word8],
+      start, len, index: word32,
+      retval: word64): bool =
+    (0 <= unsigned32(index)
+      AND unsigned32(index) <= unsigned32(len))
+      AND
+    (FORALL (bit_index: int):
+      unsigned32(len) - unsigned32(index) <= bit_index
+        AND bit_index < unsigned32(len)
+      IMPLIES
+        bit64(retval, bit_index)
+          =
+        nth8_stream(
+          addr,
+          unsigned32(start) + unsigned32(len) - bit_index - 1))
+      AND
+    (FORALL (bit_index: int):
+      0 <= bit_index
+        AND bit_index < unsigned32(len) - unsigned32(index)
+      IMPLIES bit64(retval, bit_index) = FALSE)
+      AND
+    (FORALL (bit_index: int):
+      unsigned32(len) <= bit_index AND bit_index < 64
+        IMPLIES bit64(retval, bit_index) = FALSE)
+
+  initial_loop_state(
+      addr: list[word8],
+      start, len: word32): bool =
+    ((0 <= 0 AND 0 <= unsigned32(len))
+      AND
+    (FORALL (bit_index: int):
+      unsigned32(len) - 0 <= bit_index
+        AND bit_index < unsigned32(len)
+      IMPLIES
+        bit64(zero64, bit_index)
+          =
+        nth8_stream(
+          addr,
+          unsigned32(start) + unsigned32(len) - bit_index - 1))
+      AND
+    (FORALL (bit_index: int):
+      0 <= bit_index AND bit_index < unsigned32(len) - 0
+        IMPLIES bit64(zero64, bit_index) = FALSE)
+      AND
+    (FORALL (bit_index: int):
+      unsigned32(len) <= bit_index AND bit_index < 64
+        IMPLIES bit64(zero64, bit_index) = FALSE))
+
+  unchanged_except(
+      old_value, new_value: word64,
+      changed_index: int): bool =
+    FORALL (bit_index: int):
+      ((0 <= bit_index AND bit_index < 64)
+        AND NOT bit_index = changed_index)
+      IMPLIES
+        bit64(new_value, bit_index)
+          = bit64(old_value, bit_index)
+
+  loop_step(
+      addr: list[word8],
+      start, len, lstart, index: word32,
+      retval: word64): bool =
+    IF unsigned32(index) < unsigned32(len) THEN
+      wide_no_overflow(start, index)
+        AND
+      (unsigned32(add32(start, index))
+          = unsigned32(start) + unsigned32(index)
+       IMPLIES
+        (stream_bit_length(addr) < 4294967296
+          AND
+         unsigned32(add32(start, index))
+           < stream_bit_length(addr))
+          AND
+        wide_no_overflow(lstart, index)
+          AND
+        (unsigned32(add32(lstart, index))
+            = unsigned32(lstart) + unsigned32(index)
+         IMPLIES
+          unsigned32(add32(lstart, index)) < 64
+            AND
+          (FORALL (new_value: word64):
+            (unchanged_except(
+               retval,
+               new_value,
+               63 - unsigned32(add32(lstart, index)))
+              AND
+             nth8_stream(
+               addr,
+               unsigned32(add32(start, index)))
+               =
+             bit64(
+               new_value,
+               63 - unsigned32(add32(lstart, index))))
+            IMPLIES
+              wide_no_overflow(index, one32)
+                AND
+              (unsigned32(add32(index, one32))
+                  = unsigned32(index) + 1
+               IMPLIES
+                (0
+                   <= unsigned32(len) - unsigned32(index)
+                  AND
+                 unsigned32(len)
+                     - unsigned32(add32(index, one32))
+                   <
+                 unsigned32(len) - unsigned32(index))
+                  AND
+                loop_invariant(
+                  addr,
+                  start,
+                  len,
+                  add32(index, one32),
+                  new_value)))))
+    ELSE
+      (stream_bit_length(addr)
+          < unsigned32(start) + unsigned32(len)
+       IMPLIES retval = zero64)
+        AND
+      (unsigned32(start) + unsigned32(len)
+          <= stream_bit_length(addr)
+       IMPLIES returned_bits(addr, start, len, retval))
+    ENDIF
+
+  main_body(
+      addr: list[word8],
+      start, len: word32): bool =
+    IF stream_bit_length(addr) < unsigned32(add32(start, len)) THEN
+      unsigned32(start) + unsigned32(len)
+        <= stream_bit_length(addr)
+      IMPLIES returned_bits(addr, start, len, zero64)
+    ELSE
+      (unsigned32(len) <= 64
+        OR unsigned32(len) <= unsigned32(sixty_four32))
+        AND
+      (LET lstart: word32 = sub32(sixty_four32, len)
+       IN
+         unsigned32(lstart) = 64 - unsigned32(len)
+         IMPLIES
+           initial_loop_state(addr, start, len)
+             AND
+           (FORALL (index: word32), (retval: word64):
+             loop_invariant(addr, start, len, index, retval)
+             IMPLIES
+               loop_step(
+                 addr, start, len, lstart, index, retval)))
+    ENDIF
+
+  peek_vc: bool =
+    FORALL
+        (len: word32),
+        (start: word32),
+        (addr: list[word8]):
+      (unsigned32(len) <= 64
+        AND
+       unsigned32(start) + unsigned32(len) < 4294967296
+        AND
+       stream_bit_length(addr) < 4294967296)
+      IMPLIES
+        wide_no_overflow(start, len)
+          AND
+        (unsigned32(add32(start, len))
+            = unsigned32(start) + unsigned32(len)
+         IMPLIES main_body(addr, start, len))
+
+END bitwalker_Bitwalker_peekqtvc

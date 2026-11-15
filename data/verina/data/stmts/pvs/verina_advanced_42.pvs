@@ -1,0 +1,191 @@
+% Statement-only formalization of the VERINA corpus artifact
+% verina_advanced_42, catalog title "maxProfit": computing the maximum
+% single-transaction stock profit with the specified one-pass minimum-tracking
+% program and its ordered-day optimality contract. This file contains no proof.
+
+verina_advanced_42: THEORY
+BEGIN
+
+  min_profit_state: TYPE =
+    [# minimum_so_far: nat, maximum_profit: nat #]
+
+  nat_min(first, second: nat): nat =
+    IF first <= second THEN first ELSE second ENDIF
+
+  nat_max(first, second: nat): nat =
+    IF first >= second THEN first ELSE second ENDIF
+
+  nat_subtract(first, second: nat): nat =
+    IF first >= second THEN first - second ELSE 0 ENDIF
+
+  nat_list_length(values: list[nat]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        nat_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  maxProfit_precond(prices: list[nat]): bool =
+    TRUE
+
+  updateMinAndProfit(
+      price, minSoFar, currentMaxProfit: nat):
+        min_profit_state =
+    LET newMin: nat =
+          nat_min(minSoFar, price),
+        profit: nat =
+          IF price > minSoFar THEN
+            nat_subtract(price, minSoFar)
+          ELSE
+            0
+          ENDIF,
+        newMaxProfit: nat =
+          nat_max(currentMaxProfit, profit)
+    IN
+      (# minimum_so_far := newMin,
+         maximum_profit := newMaxProfit #)
+
+  maxProfitAux(
+      prices: list[nat],
+      minSoFar, currentMaxProfit: nat): RECURSIVE nat =
+    CASES prices OF
+      null:
+        currentMaxProfit,
+      cons(price, remaining):
+        LET updated: min_profit_state =
+              updateMinAndProfit(
+                price,
+                minSoFar,
+                currentMaxProfit)
+        IN
+          maxProfitAux(
+            remaining,
+            minimum_so_far(updated),
+            maximum_profit(updated))
+    ENDCASES
+  MEASURE prices BY <<
+
+  maxProfit(prices: list[nat]): nat =
+    CASES prices OF
+      null:
+        0,
+      cons(first_price, remaining):
+        maxProfitAux(remaining, first_price, 0)
+    ENDCASES
+
+  all_later_profits_bounded(
+      buy_price: nat,
+      later_prices: list[nat],
+      result: nat): RECURSIVE bool =
+    CASES later_prices OF
+      null:
+        TRUE,
+      cons(sell_price, remaining):
+        nat_subtract(sell_price, buy_price) <= result
+          AND all_later_profits_bounded(
+            buy_price,
+            remaining,
+            result)
+    ENDCASES
+  MEASURE later_prices BY <<
+
+  all_transaction_profits_bounded(
+      prices: list[nat],
+      result: nat): RECURSIVE bool =
+    CASES prices OF
+      null:
+        TRUE,
+      cons(buy_price, later_prices):
+        all_later_profits_bounded(
+          buy_price,
+          later_prices,
+          result)
+          AND all_transaction_profits_bounded(
+            later_prices,
+            result)
+    ENDCASES
+  MEASURE prices BY <<
+
+  all_later_prices_at_most(
+      buy_price: nat,
+      later_prices: list[nat]): RECURSIVE bool =
+    CASES later_prices OF
+      null:
+        TRUE,
+      cons(sell_price, remaining):
+        sell_price <= buy_price
+          AND all_later_prices_at_most(
+            buy_price,
+            remaining)
+    ENDCASES
+  MEASURE later_prices BY <<
+
+  no_profitable_transaction(
+      prices: list[nat]): RECURSIVE bool =
+    CASES prices OF
+      null:
+        TRUE,
+      cons(buy_price, later_prices):
+        all_later_prices_at_most(
+          buy_price,
+          later_prices)
+          AND no_profitable_transaction(later_prices)
+    ENDCASES
+  MEASURE prices BY <<
+
+  later_price_achieves_profit(
+      buy_price: nat,
+      later_prices: list[nat],
+      result: nat): RECURSIVE bool =
+    CASES later_prices OF
+      null:
+        FALSE,
+      cons(sell_price, remaining):
+        nat_subtract(sell_price, buy_price) = result
+          OR later_price_achieves_profit(
+            buy_price,
+            remaining,
+            result)
+    ENDCASES
+  MEASURE later_prices BY <<
+
+  transaction_achieves_profit(
+      prices: list[nat],
+      result: nat): RECURSIVE bool =
+    CASES prices OF
+      null:
+        FALSE,
+      cons(buy_price, later_prices):
+        later_price_achieves_profit(
+          buy_price,
+          later_prices,
+          result)
+          OR transaction_achieves_profit(
+            later_prices,
+            result)
+    ENDCASES
+  MEASURE prices BY <<
+
+  maxProfit_postcond(
+      prices: list[nat],
+      result: nat): bool =
+    all_transaction_profits_bounded(prices, result)
+      AND
+        ((result = 0)
+          IFF
+            (nat_list_length(prices) <= 1
+              OR no_profitable_transaction(prices)))
+      AND
+        (result > 0 IMPLIES
+          transaction_achieves_profit(prices, result))
+
+  maxProfit_spec_satisfied: bool =
+    FORALL (prices: list[nat]):
+      maxProfit_precond(prices) IMPLIES
+        maxProfit_postcond(
+          prices,
+          maxProfit(prices))
+
+END verina_advanced_42

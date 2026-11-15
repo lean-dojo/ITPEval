@@ -1,0 +1,200 @@
+% Statement-only formalization of the Babel-formal artifact integral_comp_neg_Iic:
+% abstract ordered algebra, interval preimages under negation, and integral identities.
+% This file contains no proof.
+
+integral_comp_neg_Iic[
+  R: TYPE+,
+  zero: R,
+  one: R,
+  add: [R, R -> R],
+  opp: [R -> R],
+  mul: [R, R -> R],
+  le: [R, R -> bool],
+  lt: [R, R -> bool],
+  absR: [R -> R],
+  sigma: [[R -> bool], [R -> R] -> R]
+]: THEORY
+BEGIN
+  rfield_laws: bool =
+    (FORALL (x, y: R): add(x, y) = add(y, x))
+      AND (FORALL (x, y, z: R):
+        add(add(x, y), z) = add(x, add(y, z)))
+      AND (FORALL (x: R): add(x, zero) = x)
+      AND (FORALL (x: R): add(opp(x), x) = zero)
+      AND (FORALL (x, y, z: R):
+        add(x, z) = add(y, z) IMPLIES x = y)
+      AND (FORALL (x, y: R): mul(x, y) = mul(y, x))
+      AND (FORALL (x, y, z: R):
+        mul(mul(x, y), z) = mul(x, mul(y, z)))
+      AND (FORALL (x: R): mul(x, one) = x)
+      AND (FORALL (x, y, z: R):
+        mul(x, add(y, z)) = add(mul(x, y), mul(x, z)))
+      AND (FORALL (x: R): opp(opp(x)) = x)
+      AND (FORALL (x, y, z: R):
+        le(x, y) IMPLIES le(add(x, z), add(y, z)))
+      AND (FORALL (x, y, z: R):
+        le(zero, z) IMPLIES
+          (le(x, y) IMPLIES le(mul(x, z), mul(y, z))))
+      AND le(zero, one)
+      AND (FORALL (x, y: R): le(x, y) OR le(y, x))
+      AND (FORALL (x, y: R): le(x, y) OR NOT le(x, y))
+      AND (FORALL (x, y: R):
+        le(x, y) IMPLIES le(opp(y), opp(x)))
+      AND (FORALL (x, y: R):
+        le(x, y) IMPLIES (le(y, x) IMPLIES x = y))
+      AND (FORALL (x, y: R):
+        lt(x, y) IMPLIES lt(opp(y), opp(x)))
+      AND (FORALL (x: R): le(x, x))
+      AND (FORALL (x, y, z: R):
+        le(x, y) IMPLIES (le(y, z) IMPLIES le(x, z)))
+      AND (FORALL (x, y: R):
+        lt(x, y) = (le(x, y) AND NOT (x = y)))
+      AND (FORALL (x: R):
+        le(zero, x) IMPLIES absR(x) = x)
+      AND (FORALL (x: R):
+        le(x, zero) IMPLIES absR(x) = opp(x))
+      AND (FORALL (x: R): le(zero, absR(x)))
+      AND (FORALL (x: R): absR(opp(x)) = absR(x))
+      AND (FORALL (x, y: R):
+        le(absR(add(x, y)), add(absR(x), absR(y))))
+
+  integral_laws: bool =
+    (FORALL (D: [R -> bool]), (f: [R -> R]), (c: R):
+      sigma(D, LAMBDA (x: R): mul(c, f(x))) =
+        mul(c, sigma(D, f)))
+      AND (FORALL (D: [R -> bool]), (f, g: [R -> R]):
+        (FORALL (x: R): D(x) IMPLIES f(x) = g(x))
+          IMPLIES sigma(D, f) = sigma(D, g))
+      AND (FORALL (D: [R -> bool]):
+        sigma(D, LAMBDA (x: R): zero) = zero)
+      AND (FORALL (D: [R -> bool]), (f, g: [R -> R]):
+        sigma(D, LAMBDA (x: R): add(f(x), g(x))) =
+          add(sigma(D, f), sigma(D, g)))
+      AND (FORALL (D, E: [R -> bool]), (f: [R -> R]):
+        (FORALL (x: R): D(x) IMPLIES (E(x) IMPLIES FALSE))
+          IMPLIES
+            sigma(LAMBDA (x: R): D(x) OR E(x), f) =
+              add(sigma(D, f), sigma(E, f)))
+      AND (FORALL (D: [R -> bool]), (f, g: [R -> R]):
+        (FORALL (x: R): D(x) IMPLIES le(f(x), g(x)))
+          IMPLIES le(sigma(D, f), sigma(D, g)))
+      AND (FORALL (D, E: [R -> bool]), (f: [R -> R]):
+        (FORALL (x: R): D(x) = E(x))
+          IMPLIES sigma(D, f) = sigma(E, f))
+
+  integral_context: bool = rfield_laws AND integral_laws
+
+  iic(c: R): [R -> bool] =
+    LAMBDA (x: R): le(x, c)
+
+  ioi(c: R): [R -> bool] =
+    LAMBDA (x: R): lt(c, x)
+
+  iio(c: R): [R -> bool] =
+    LAMBDA (x: R): lt(x, c)
+
+  unionD(D, E: [R -> bool]): [R -> bool] =
+    LAMBDA (x: R): D(x) OR E(x)
+
+  interD(D, E: [R -> bool]): [R -> bool] =
+    LAMBDA (x: R): D(x) AND E(x)
+
+  preimage(g: [R -> R], D: [R -> bool]): [R -> bool] =
+    LAMBDA (x: R): D(g(x))
+
+  lt_irrefl: bool =
+    rfield_laws IMPLIES
+      (FORALL (x: R): NOT lt(x, x))
+
+  lt_trans_strict: bool =
+    rfield_laws IMPLIES
+      (FORALL (x, y, z: R):
+        lt(x, y) IMPLIES (lt(y, z) IMPLIES lt(x, z)))
+
+  preimage_union: bool =
+    (FORALL (D, E: [R -> bool]), (g: [R -> R]), (x: R):
+      preimage(g, unionD(D, E))(x) =
+        (preimage(g, D)(x) OR preimage(g, E)(x)))
+
+  preimage_inter: bool =
+    (FORALL (D, E: [R -> bool]), (g: [R -> R]), (x: R):
+      preimage(g, interD(D, E))(x) =
+        (preimage(g, D)(x) AND preimage(g, E)(x)))
+
+  preimage_neg_Ioi: bool =
+    rfield_laws IMPLIES
+      (FORALL (c, x: R):
+        preimage(opp, ioi(c))(x) = lt(x, opp(c)))
+
+  preimage_neg_Iic: bool =
+    rfield_laws IMPLIES
+      (FORALL (c, x: R):
+        preimage(opp, iic(c))(x) = iic(x)(opp(c)))
+
+  preimage_comp: bool =
+    (FORALL (D: [R -> bool]), (g, h: [R -> R]), (x: R):
+      preimage(g, preimage(h, D))(x) =
+        preimage(LAMBDA (y: R): h(g(y)), D)(x))
+
+  integral_neg: bool =
+    integral_context IMPLIES
+      (FORALL (D: [R -> bool]), (f: [R -> R]):
+        sigma(D, LAMBDA (x: R): opp(f(x))) =
+          opp(sigma(D, f)))
+
+  integral_sub: bool =
+    integral_context IMPLIES
+      (FORALL (D: [R -> bool]), (f, g: [R -> R]):
+        sigma(D, LAMBDA (x: R): add(f(x), opp(g(x)))) =
+          add(sigma(D, f), opp(sigma(D, g))))
+
+  sigma_empty: bool =
+    integral_context IMPLIES
+      (FORALL (f: [R -> R]):
+        sigma(LAMBDA (x: R): FALSE, f) = zero)
+
+  sigma_bilinear: bool =
+    integral_context IMPLIES
+      (FORALL (D: [R -> bool]), (f, g: [R -> R]), (c, d: R):
+        sigma(
+          D,
+          LAMBDA (x: R):
+            add(mul(c, f(x)), mul(d, g(x)))) =
+          add(mul(c, sigma(D, f)), mul(d, sigma(D, g))))
+
+  sigma_le_monotone: bool =
+    integral_context IMPLIES
+      (FORALL (D: [R -> bool]), (f, g: [R -> R]):
+        (FORALL (x: R): D(x) IMPLIES le(f(x), g(x)))
+          IMPLIES le(sigma(D, f), sigma(D, g)))
+
+  sigma_nonneg: bool =
+    integral_context IMPLIES
+      (FORALL (D: [R -> bool]), (f: [R -> R]):
+        (FORALL (x: R): D(x) IMPLIES le(zero, f(x)))
+          IMPLIES le(zero, sigma(D, f)))
+
+  sigma_split: bool =
+    integral_context IMPLIES
+      (FORALL (D, P: [R -> bool]), (f: [R -> R]):
+        (FORALL (x: R):
+          D(x) IMPLIES (P(x) OR NOT P(x)))
+          IMPLIES
+            sigma(D, f) =
+              add(
+                sigma(LAMBDA (x: R): D(x) AND P(x), f),
+                sigma(LAMBDA (x: R): D(x) AND NOT P(x), f)))
+
+  sigma_preimage_neg_Ioi: bool =
+    integral_context IMPLIES
+      (FORALL (f: [R -> R]), (c: R):
+        sigma(preimage(opp, ioi(c)), f) =
+          sigma(iio(opp(c)), f))
+
+  sigma_abs_bound: bool =
+    integral_context IMPLIES
+      (FORALL (D: [R -> bool]), (f: [R -> R]):
+        le(
+          absR(sigma(D, f)),
+          sigma(D, LAMBDA (x: R): absR(f(x)))))
+END integral_comp_neg_Iic

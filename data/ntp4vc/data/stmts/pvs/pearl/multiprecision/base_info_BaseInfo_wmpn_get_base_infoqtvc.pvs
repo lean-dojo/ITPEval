@@ -1,0 +1,164 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/multiprecision/base_info_BaseInfo_wmpn_get_base_infoqtvc: the
+% verification condition for computing the largest base power fitting in a
+% 64-bit limb and packaging its base, exponent, and power. This file contains
+% no proof.
+
+base_info_BaseInfo_wmpn_get_base_infoqtvc: THEORY
+BEGIN
+
+  IMPORTING
+    bv[32], bv[64],
+    bv_nat[32], bv_nat[64]
+
+  word32: TYPE = bvec[32]
+  word64: TYPE = bvec[64]
+
+  max_uint32: nat = 4294967295
+  max_uint64: nat = 18446744073709551615
+  radix: nat = 18446744073709551616
+
+  unsigned32_nat(value: word32): nat =
+    bv2nat[32](value)
+
+  unsigned64_nat(value: word64): nat =
+    bv2nat[64](value)
+
+  unsigned32(value: word32): int =
+    unsigned32_nat(value)
+
+  unsigned64(value: word64): int =
+    unsigned64_nat(value)
+
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  nat_power(base: int, exponent: nat): RECURSIVE int =
+    IF exponent = 0 THEN
+      1
+    ELSE
+      base * nat_power(base, exponent - 1)
+    ENDIF
+  MEASURE exponent
+
+  int_power(base, exponent: int): int =
+    nat_power(base, int_to_nat(exponent))
+
+  natural_quotient(numerator, denominator: nat): nat =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      ndiv(numerator, denominator)
+    ENDIF
+
+  limb_quotient(base: word64): nat =
+    natural_quotient(max_uint64, unsigned64_nat(base))
+
+  uint32_in_bounds(value: int): bool =
+    0 <= value AND value <= max_uint32
+
+  uint64_in_bounds(value: int): bool =
+    0 <= value AND value <= max_uint64
+
+  wmpn_base_info: TYPE =
+    [# base_value: int,
+       exponent_value: word32,
+       base_power_value: word64 #]
+
+  base_info_invariant(info: wmpn_base_info): bool =
+    2 <= base_value(info)
+      AND base_value(info) <= 256
+      AND unsigned64(base_power_value(info)) < radix
+      AND
+        radix
+          <= unsigned64(base_power_value(info)) * base_value(info)
+      AND 7 <= unsigned32(exponent_value(info))
+      AND unsigned32(exponent_value(info)) <= 63
+      AND
+        unsigned64(base_power_value(info))
+          = int_power(
+              base_value(info),
+              unsigned32(exponent_value(info)))
+
+  wmpn_get_base_info_vc: bool =
+    FORALL (b1: word64):
+      2 <= unsigned64(b1)
+        IMPLIES
+      unsigned64(b1) <= 256
+        IMPLIES
+      NOT unsigned64(b1) = 0
+        AND uint64_in_bounds(limb_quotient(b1))
+        AND
+          (FORALL (m: word64):
+            unsigned64(m) = limb_quotient(b1)
+              IMPLIES
+                (int_power(unsigned64(b1), 1) = unsigned64(b1)
+                  AND 1 <= 1
+                  AND 1 <= 64)
+                AND
+                  (FORALL (exp1: word32), (p: word64):
+                    (int_power(
+                        unsigned64(b1),
+                        unsigned32(exp1))
+                        = unsigned64(p)
+                      AND 1 <= unsigned32(exp1)
+                      AND unsigned32(exp1) <= 64)
+                    IMPLIES
+                      (IF unsigned64(p) <= unsigned64(m) THEN
+                         uint64_in_bounds(
+                           unsigned64(p) * unsigned64(b1))
+                           AND
+                             (FORALL (o1: word64):
+                               unsigned64(o1)
+                                   = unsigned64(p) * unsigned64(b1)
+                                 IMPLIES
+                                   uint32_in_bounds(
+                                     unsigned32(exp1) + 1)
+                                     AND
+                                       (FORALL (o2: word32):
+                                         unsigned32(o2)
+                                             = unsigned32(exp1) + 1
+                                           IMPLIES
+                                             (0
+                                                <= unsigned64(m)
+                                                     - unsigned64(p)
+                                               AND
+                                                 unsigned64(m)
+                                                     - unsigned64(o1)
+                                                   < unsigned64(m)
+                                                       - unsigned64(p))
+                                             AND
+                                               int_power(
+                                                 unsigned64(b1),
+                                                 unsigned32(o2))
+                                                 = unsigned64(o1)
+                                             AND 1 <= unsigned32(o2)
+                                             AND unsigned32(o2) <= 64))
+                       ELSE
+                         LET base_integer: int = unsigned64(b1) IN
+                           ((2 <= base_integer
+                               AND base_integer <= 256)
+                             AND
+                               (unsigned64(p) < radix
+                                 AND
+                                   radix
+                                     <= unsigned64(p) * base_integer)
+                             AND
+                               (7 <= unsigned32(exp1)
+                                 AND unsigned32(exp1) <= 63)
+                             AND
+                               unsigned64(p)
+                                 = int_power(
+                                     base_integer,
+                                     unsigned32(exp1)))
+                           AND
+                             (FORALL (result: wmpn_base_info):
+                               (base_info_invariant(result)
+                                 AND base_value(result) = base_integer
+                                 AND exponent_value(result) = exp1
+                                 AND base_power_value(result) = p)
+                               IMPLIES
+                                 base_value(result) = unsigned64(b1))
+                       ENDIF)))
+
+END base_info_BaseInfo_wmpn_get_base_infoqtvc

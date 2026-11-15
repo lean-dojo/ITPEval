@@ -1,0 +1,104 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/decrease1_Decrease1_search_recqtvc: an integer-list recursive zero
+% search verification condition using an adjacent-decrease assumption,
+% termination measures, and the first-zero result specification. This file
+% contains no proof.
+
+decrease1_Decrease1_search_recqtvc: THEORY
+BEGIN
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  nth_default(values: list[int], index: nat): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          nth_default(tail, index - 1)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  decrease1(values: list[int]): bool =
+    FORALL (index: int):
+      (0 <= index AND index < length(values) - 1)
+        IMPLIES
+          nth_default(values, int_to_nat(index)) - 1
+            <=
+          nth_default(values, int_to_nat(index + 1))
+
+  zero_free_between(
+      values: list[int],
+      lower, upper: int): bool =
+    FORALL (index: int):
+      (lower <= index AND index < upper)
+        IMPLIES
+          nth_default(values, int_to_nat(index)) /= 0
+
+  search_result(
+      values: list[int],
+      lower, result: int): bool =
+    (result = -1
+      AND zero_free_between(values, lower, length(values)))
+      OR
+    ((lower <= result AND result < length(values))
+      AND nth_default(values, int_to_nat(result)) = 0
+      AND zero_free_between(values, lower, result))
+
+  search_rec_vc: bool =
+    FORALL (values: list[int]), (index: int):
+      decrease1(values) IMPLIES
+      0 <= index IMPLIES
+      LET upper: int = length(values) IN
+        ((index < upper
+          IMPLIES
+            (0 <= index AND index < length(values))
+              AND
+            (nth_default(values, int_to_nat(index)) /= 0
+              IMPLIES
+                (0 <= index AND index < length(values))
+                  AND
+                IF 0 < nth_default(values, int_to_nat(index)) THEN
+                  (0 <= index AND index < length(values))
+                    AND
+                  LET next: int =
+                    index + nth_default(values, int_to_nat(index))
+                  IN
+                    (0 <= length(values) - index
+                      AND
+                     length(values) - next
+                       < length(values) - index)
+                      AND decrease1(values)
+                      AND 0 <= next
+                ELSE
+                  LET next: int = index + 1 IN
+                    (0 <= length(values) - index
+                      AND
+                     length(values) - next
+                       < length(values) - index)
+                      AND decrease1(values)
+                      AND 0 <= next
+                ENDIF))
+          AND
+        (FORALL (result: int):
+          (IF index < upper THEN
+             IF nth_default(values, int_to_nat(index)) = 0 THEN
+               result = index
+             ELSE
+               IF 0 < nth_default(values, int_to_nat(index)) THEN
+                 LET next: int =
+                   index + nth_default(values, int_to_nat(index))
+                 IN search_result(values, next, result)
+               ELSE
+                 LET next: int = index + 1 IN
+                   search_result(values, next, result)
+               ENDIF
+             ENDIF
+           ELSE
+             result = -1
+           ENDIF)
+            IMPLIES search_result(values, index, result)))
+END decrease1_Decrease1_search_recqtvc

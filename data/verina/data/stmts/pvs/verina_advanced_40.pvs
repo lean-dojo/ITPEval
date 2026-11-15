@@ -1,0 +1,69 @@
+% Statement-only formalization of the VERINA corpus artifact
+% verina_advanced_40, catalog title "maxOfList": recursively computing the
+% maximum element of a nonempty list of natural numbers and specifying
+% membership and upper-bound correctness. This file contains no proof.
+
+verina_advanced_40: THEORY
+BEGIN
+
+  nat_list_length(values: list[nat]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        nat_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  nat_member(
+      value: nat,
+      values: list[nat]): RECURSIVE bool =
+    CASES values OF
+      null:
+        FALSE,
+      cons(head, tail):
+        value = head OR nat_member(value, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  maxOfList_precond(lst: list[nat]): bool =
+    nat_list_length(lst) > 0
+
+  maxOfList_helper(values: list[nat]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        CASES tail OF
+          null:
+            head,
+          cons(next, rest):
+            LET max_tail: nat = maxOfList_helper(tail)
+            IN
+              IF head > max_tail THEN
+                head
+              ELSE
+                max_tail
+              ENDIF
+        ENDCASES
+    ENDCASES
+  MEASURE values BY <<
+
+  maxOfList(lst: list[nat]): nat =
+    maxOfList_helper(lst)
+
+  maxOfList_postcond(
+      lst: list[nat],
+      result: nat): bool =
+    nat_member(result, lst)
+      AND (FORALL (value: nat):
+        nat_member(value, lst) IMPLIES value <= result)
+
+  maxOfList_spec_satisfied: bool =
+    FORALL (lst: list[nat]):
+      maxOfList_precond(lst) IMPLIES
+        maxOfList_postcond(
+          lst,
+          maxOfList(lst))
+
+END verina_advanced_40

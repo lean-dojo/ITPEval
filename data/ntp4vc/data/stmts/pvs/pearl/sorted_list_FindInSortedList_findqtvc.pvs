@@ -1,0 +1,73 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/sorted_list_FindInSortedList_findqtvc: the verification condition for
+% finding an integer in a sorted list, including the recursive-tail obligation
+% and the Boolean membership result specification. This file contains no proof.
+
+sorted_list_FindInSortedList_findqtvc: THEORY
+BEGIN
+  list_member(value: int, values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        FALSE,
+      cons(head, tail):
+        value = head OR list_member(value, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  sorted(values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(first, rest):
+        CASES rest OF
+          null:
+            TRUE,
+          cons(second, tail):
+            first <= second AND sorted(rest)
+        ENDCASES
+    ENDCASES
+  MEASURE values BY <<
+
+  recursive_tail_obligation(values: list[int], value: int): bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        value /= head IMPLIES
+          head < value IMPLIES
+            (CASES values OF
+               null:
+                 FALSE,
+               cons(ignored, recovered_tail):
+                 recovered_tail = tail
+             ENDCASES)
+              AND sorted(tail)
+    ENDCASES
+
+  branch_result(
+      values: list[int],
+      value: int,
+      result: bool): bool =
+    CASES values OF
+      null:
+        result = FALSE,
+      cons(head, tail):
+        IF value = head THEN
+          result = TRUE
+        ELSIF head < value THEN
+          result = list_member(value, tail)
+        ELSE
+          result = FALSE
+        ENDIF
+    ENDCASES
+
+  find_vc: bool =
+    FORALL (values: list[int]), (value: int):
+      sorted(values) IMPLIES
+        recursive_tail_obligation(values, value)
+          AND
+        (FORALL (result: bool):
+          branch_result(values, value, result)
+            IMPLIES
+              ((result = TRUE) = list_member(value, values)))
+END sorted_list_FindInSortedList_findqtvc

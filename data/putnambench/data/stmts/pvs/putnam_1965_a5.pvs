@@ -1,0 +1,93 @@
+% Statement-only formalization of PutnamBench artifact putnam_1965_a5:
+% the number of permutations of 1 through n in which each entry after the
+% first differs by one from an earlier entry is 2^(n - 1). This file contains
+% no proof.
+
+putnam_1965_a5: THEORY
+BEGIN
+  natural_function: TYPE = [nat -> nat]
+  ordering_set: TYPE = [natural_function -> bool]
+  ordering_enumeration: TYPE = [nat -> natural_function]
+
+  in_interval(value, n: nat): bool =
+    1 <= value AND value <= n
+
+  permutation_on_interval(
+      p: natural_function,
+      n: nat): bool =
+    (FORALL (index: nat):
+      in_interval(index, n) IMPLIES in_interval(p(index), n))
+      AND
+        (FORALL (left, right: nat):
+          in_interval(left, n)
+            AND in_interval(right, n)
+            AND p(left) = p(right)
+          IMPLIES left = right)
+      AND
+        (FORALL (value: nat):
+          in_interval(value, n) IMPLIES
+            EXISTS (index: nat):
+              in_interval(index, n) AND p(index) = value)
+      AND
+        (FORALL (index: nat):
+          NOT in_interval(index, n) IMPLIES p(index) = 0)
+
+  earlier_adjacent_entry(
+      p: natural_function,
+      n: nat): bool =
+    FORALL (position: nat):
+      2 <= position AND position <= n IMPLIES
+        EXISTS (earlier: nat):
+          1 <= earlier
+            AND earlier < position
+            AND
+              (p(position) = p(earlier) + 1
+                OR p(earlier) = p(position) + 1)
+
+  admissible_orderings(n: nat): ordering_set =
+    LAMBDA (p: natural_function):
+      permutation_on_interval(p, n)
+        AND earlier_adjacent_entry(p, n)
+
+  injective_below(
+      enumeration: ordering_enumeration,
+      bound: nat): bool =
+    FORALL (i, j: nat):
+      i < bound
+        AND j < bound
+        AND enumeration(i) = enumeration(j)
+      IMPLIES i = j
+
+  enumerates_exactly(
+      enumeration: ordering_enumeration,
+      set_value: ordering_set,
+      bound: nat): bool =
+    FORALL (p: natural_function):
+      set_value(p)
+        IFF
+          EXISTS (position: nat):
+            position < bound AND enumeration(position) = p
+
+  has_cardinality(
+      set_value: ordering_set,
+      cardinality: nat): bool =
+    EXISTS (enumeration: ordering_enumeration):
+      injective_below(enumeration, cardinality)
+        AND enumerates_exactly(
+          enumeration,
+          set_value,
+          cardinality)
+
+  nat_predecessor(n: nat): nat =
+    IF n = 0 THEN 0 ELSE n - 1 ENDIF
+
+  putnam_1965_a5_solution(n: nat): nat =
+    (2 :: nat) ^ nat_predecessor(n)
+
+  putnam_1965_a5: bool =
+    FORALL (n: nat):
+      n > 0 IMPLIES
+        has_cardinality(
+          admissible_orderings(n),
+          putnam_1965_a5_solution(n))
+END putnam_1965_a5

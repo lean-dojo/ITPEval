@@ -1,0 +1,100 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1979_b3:
+% over a finite field of odd cardinality n, exactly (n - 1) / 2 constant
+% shifts of a monic irreducible quadratic remain irreducible. This file
+% contains no proof.
+
+putnam_1979_b3[
+  FieldElement: TYPE+,
+  zero_F, one_F: FieldElement,
+  add_F, multiply_F:
+    [FieldElement, FieldElement -> FieldElement],
+  negate_F, inverse_F: [FieldElement -> FieldElement]
+]: THEORY
+BEGIN
+  field_set: TYPE = [FieldElement -> bool]
+  field_enumeration: TYPE = [nat -> FieldElement]
+
+  field_axioms: bool =
+    zero_F /= one_F
+      AND (FORALL (x, y: FieldElement):
+        add_F(x, y) = add_F(y, x))
+      AND (FORALL (x, y, z: FieldElement):
+        add_F(add_F(x, y), z) = add_F(x, add_F(y, z)))
+      AND (FORALL (x: FieldElement):
+        add_F(x, zero_F) = x)
+      AND (FORALL (x: FieldElement):
+        add_F(x, negate_F(x)) = zero_F)
+      AND (FORALL (x, y: FieldElement):
+        multiply_F(x, y) = multiply_F(y, x))
+      AND (FORALL (x, y, z: FieldElement):
+        multiply_F(multiply_F(x, y), z)
+          = multiply_F(x, multiply_F(y, z)))
+      AND (FORALL (x: FieldElement):
+        multiply_F(x, one_F) = x)
+      AND (FORALL (x, y, z: FieldElement):
+        multiply_F(x, add_F(y, z))
+          = add_F(multiply_F(x, y), multiply_F(x, z)))
+      AND (FORALL (x: FieldElement):
+        x /= zero_F IMPLIES
+          multiply_F(x, inverse_F(x)) = one_F)
+
+  injective_below(
+      enumeration: field_enumeration,
+      bound: nat): bool =
+    FORALL (i, j: nat):
+      i < bound AND j < bound
+        AND enumeration(i) = enumeration(j)
+      IMPLIES i = j
+
+  enumerates_exactly(
+      enumeration: field_enumeration,
+      set_value: field_set,
+      bound: nat): bool =
+    FORALL (x: FieldElement):
+      set_value(x)
+        IFF
+          EXISTS (i: nat):
+            i < bound AND enumeration(i) = x
+
+  has_cardinality(
+      set_value: field_set,
+      cardinality: nat): bool =
+    EXISTS (enumeration: field_enumeration):
+      injective_below(enumeration, cardinality)
+        AND enumerates_exactly(
+          enumeration, set_value, cardinality)
+
+  whole_field: field_set =
+    LAMBDA (x: FieldElement): TRUE
+
+  quadratic_value(
+      b, c, x: FieldElement): FieldElement =
+    add_F(
+      add_F(
+        multiply_F(x, x),
+        multiply_F(b, x)),
+      c)
+
+  % A monic quadratic over a field is irreducible exactly when it has no
+  % root in that field.
+  irreducible_monic_quadratic(
+      b, c: FieldElement): bool =
+    FORALL (x: FieldElement):
+      quadratic_value(b, c, x) /= zero_F
+
+  irreducible_shifts(
+      b, c: FieldElement): field_set =
+    LAMBDA (d: FieldElement):
+      irreducible_monic_quadratic(b, add_F(c, d))
+
+  putnam_1979_b3: bool =
+    field_axioms IMPLIES
+      (FORALL (n: nat), (b, c: FieldElement):
+        (has_cardinality(whole_field, n)
+          AND mod(n, 2) = 1
+          AND irreducible_monic_quadratic(b, c))
+        IMPLIES
+          has_cardinality(
+            irreducible_shifts(b, c),
+            ndiv(n, 2)))
+END putnam_1979_b3

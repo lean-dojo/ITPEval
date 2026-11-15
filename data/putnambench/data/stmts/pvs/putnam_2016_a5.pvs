@@ -1,0 +1,145 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2016_a5:
+% every element of a finite group generated jointly, but not individually, by
+% g and h, with g of odd order, is a product of at most the group order many
+% factors g^(+/-1)h^(+/-1).
+% This file contains no proof.
+
+putnam_2016_a5[
+  Element: TYPE+,
+  multiply: [Element, Element -> Element],
+  inverse: [Element -> Element],
+  one: Element
+]: THEORY
+BEGIN
+  IMPORTING finite_sets[Element]
+
+  element_set: TYPE = finite_set[Element]
+  word: TYPE = [nat -> Element]
+
+  subset_of(A, B: element_set): bool =
+    FORALL (x: Element):
+      A(x) IMPLIES B(x)
+
+  finite_group(carrier: element_set): bool =
+    carrier(one)
+      AND
+        (FORALL (x, y: Element):
+          carrier(x) AND carrier(y) IMPLIES
+            carrier(multiply(x, y)))
+      AND
+        (FORALL (x: Element):
+          carrier(x) IMPLIES carrier(inverse(x)))
+      AND
+        (FORALL (x, y, z: Element):
+          carrier(x) AND carrier(y) AND carrier(z) IMPLIES
+            multiply(multiply(x, y), z)
+              = multiply(x, multiply(y, z)))
+      AND
+        (FORALL (x: Element):
+          carrier(x) IMPLIES
+            multiply(one, x) = x
+              AND multiply(x, one) = x)
+      AND
+        (FORALL (x: Element):
+          carrier(x) IMPLIES
+            multiply(inverse(x), x) = one
+              AND multiply(x, inverse(x)) = one)
+
+  is_subgroup(
+      subgroup, carrier: element_set): bool =
+    subset_of(subgroup, carrier)
+      AND subgroup(one)
+      AND
+        (FORALL (x, y: Element):
+          subgroup(x) AND subgroup(y) IMPLIES
+            subgroup(multiply(x, y)))
+      AND
+        (FORALL (x: Element):
+          subgroup(x) IMPLIES subgroup(inverse(x)))
+
+  generated_by_two(
+      carrier: element_set,
+      g, h: Element): bool =
+    carrier(g)
+      AND carrier(h)
+      AND
+        (FORALL (subgroup: element_set):
+          (is_subgroup(subgroup, carrier)
+            AND subgroup(g)
+            AND subgroup(h))
+          IMPLIES subset_of(carrier, subgroup))
+
+  generated_by_one(
+      carrier: element_set,
+      g: Element): bool =
+    carrier(g)
+      AND
+        (FORALL (subgroup: element_set):
+          (is_subgroup(subgroup, carrier)
+            AND subgroup(g))
+          IMPLIES subset_of(carrier, subgroup))
+
+  group_power(base: Element, exponent: nat): RECURSIVE Element =
+    IF exponent = 0 THEN
+      one
+    ELSE
+      multiply(
+        group_power(base, exponent - 1),
+        base)
+    ENDIF
+  MEASURE exponent
+
+  is_odd(value: nat): bool =
+    EXISTS (half: nat):
+      value = 2 * half + 1
+
+  has_odd_order(g: Element): bool =
+    EXISTS (order: nat):
+      order > 0
+        AND is_odd(order)
+        AND group_power(g, order) = one
+        AND
+          (FORALL (exponent: nat):
+            exponent > 0 AND exponent < order IMPLIES
+              group_power(g, exponent) /= one)
+
+  allowed_factor(value, g, h: Element): bool =
+    value = multiply(g, h)
+      OR value = multiply(inverse(g), h)
+      OR value = multiply(g, inverse(h))
+      OR value = multiply(inverse(g), inverse(h))
+
+  finite_product(values: word, count: nat): RECURSIVE Element =
+    IF count = 0 THEN
+      one
+    ELSE
+      multiply(
+        finite_product(values, count - 1),
+        values(count - 1))
+    ENDIF
+  MEASURE count
+
+  has_required_word(
+      carrier: element_set,
+      g, h, x: Element): bool =
+    EXISTS (values: word), (length: nat):
+      1 <= length
+        AND length <= card(carrier)
+        AND
+          (FORALL (index: nat):
+            index < length IMPLIES
+              allowed_factor(values(index), g, h))
+        AND x = finite_product(values, length)
+
+  putnam_2016_a5: bool =
+    FORALL (carrier: element_set), (g, h: Element):
+      (finite_group(carrier)
+        AND generated_by_two(carrier, g, h)
+        AND NOT generated_by_one(carrier, g)
+        AND NOT generated_by_one(carrier, h)
+        AND has_odd_order(g))
+      IMPLIES
+        (FORALL (x: Element):
+          carrier(x) IMPLIES
+            has_required_word(carrier, g, h, x))
+END putnam_2016_a5

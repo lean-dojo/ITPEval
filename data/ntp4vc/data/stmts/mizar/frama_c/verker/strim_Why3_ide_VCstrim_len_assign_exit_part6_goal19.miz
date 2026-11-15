@@ -1,0 +1,176 @@
+:: Statement-only formalization of the NTP4VC corpus artifact
+:: frama_c/verker/strim_Why3_ide_VCstrim_len_assign_exit_part6_goal19:
+:: the strim length-assignment exit verification condition concludes that the
+:: byte following the current address is included in the original string
+:: region, under the stated string-validity, byte-range, address-order,
+:: whitespace, memory-validity, linkage, and scan assumptions.
+:: This file contains no proof.
+
+environ
+  vocabularies TARSKI, XBOOLE_0, SUBSET_1, RELAT_1, FUNCT_1,
+    FUNCT_2, PARTFUN1, ZFMISC_1, NUMBERS, XREAL_0, CARD_1,
+    XXREAL_0, ARYTM_1, ARYTM_3, REAL_1, INT_1, NAT_1,
+    VALUED_0, VALUED_1, ORDINAL1, MCART_1, MARGREL1, XBOOLEAN;
+  notations TARSKI, XBOOLE_0, SUBSET_1, ZFMISC_1, XTUPLE_0,
+    MCART_1, RELAT_1, FUNCT_1, RELSET_1, PARTFUN1, FUNCT_2,
+    ORDINAL1, CARD_1, NUMBERS, XCMPLX_0, XREAL_0, REAL_1,
+    INT_1, NAT_1, XXREAL_0, MARGREL1;
+  constructors FUNCT_1, RELSET_1, PARTFUN1, FUNCT_2, CARD_1,
+    REAL_1, INT_1, XXREAL_0, ZFMISC_1, MCART_1, NAT_1,
+    MARGREL1;
+  registrations XBOOLE_0, SUBSET_1, RELAT_1, FUNCT_1, RELSET_1,
+    FUNCT_2, NUMBERS, CARD_1, XXREAL_0, MEMBERED, VALUED_0,
+    VALUED_1, XCMPLX_0, XREAL_0, ORDINAL1, INT_1, NAT_1,
+    MARGREL1;
+  requirements REAL, NUMERALS, SUBSET, BOOLE, ARITHM;
+  equalities XBOOLEAN;
+
+begin
+
+::$P-
+theorem
+  for a,a1,a2,a3,a4 being Element of [:INT,INT:],
+      t1 being Function of [:INT,INT:],INT,
+      t,Region,ToUint64 being Function of INT,INT,
+      Base,Offset being Function of [:INT,INT:],INT,
+      shft being Function of
+        [:[:INT,INT:],INT:],[:INT,INT:],
+      LStrlen being Function of
+        [:Funcs([:INT,INT:],INT),[:INT,INT:]:],INT,
+      Linked being Subset of Funcs(INT,INT),
+      SConst being Subset of Funcs([:INT,INT:],INT),
+      PIsSpace being Subset of INT,
+      AddrLE,AddrLT,ValidRW,Invalid,Included,PValidStr being set,
+      p being Element of BOOLEAN,
+      x,x1,x2 being Integer
+  st
+    (for b,o being Integer holds
+       Base.[b,o] = b & Offset.[b,o] = o) &
+
+    (for p being Element of [:INT,INT:], k being Integer holds
+       shft.[p,k] = [Base.p,Offset.p + k]) &
+
+    (for p,q being Element of [:INT,INT:]
+       st Base.p = Base.q
+     holds
+       ([p,q] in AddrLE iff Offset.p <= Offset.q)) &
+
+    (for p,q being Element of [:INT,INT:]
+       st Base.p = Base.q
+     holds
+       ([p,q] in AddrLT iff Offset.p < Offset.q)) &
+
+    (for malloc being Function of INT,INT,
+         p being Element of [:INT,INT:],
+         n being Integer
+     holds
+       [malloc,[p,n]] in ValidRW iff
+       (0 < n implies
+         0 < Base.p &
+         0 <= Offset.p &
+         Offset.p + n <= malloc.(Base.p))) &
+
+    (for malloc being Function of INT,INT,
+         p being Element of [:INT,INT:],
+         n being Integer
+     holds
+       [malloc,[p,n]] in Invalid iff
+       (0 < n implies
+         malloc.(Base.p) <= Offset.p or Offset.p + n <= 0)) &
+
+    (for p,q being Element of [:INT,INT:],
+         plen,qlen being Integer
+     holds
+       [p,[plen,[q,qlen]]] in Included iff
+       (0 < plen implies
+         0 <= qlen &
+         Base.p = Base.q &
+         Offset.q <= Offset.p &
+         Offset.p + plen <= Offset.q + qlen)) &
+
+    (for z being Integer holds
+       ex w being Integer st
+         w = ToUint64.z &
+         0 <= w &
+         w < 65536 * 65536 * 65536 * 65536) &
+
+    (for z being Integer
+       st 0 <= z & z < 65536 * 65536 * 65536 * 65536
+     holds
+       ToUint64.z = z) &
+
+    (for z being Integer holds
+       ToUint64.(ToUint64.z) = ToUint64.z) &
+
+    (for z being Integer holds
+       (z in PIsSpace iff
+         z = 9 or z = 10 or z = 12 or z = 13 or z = 32)) &
+
+    (for malloc being Function of INT,INT,
+         mchar being Function of [:INT,INT:],INT,
+         s being Element of [:INT,INT:]
+     holds
+       [malloc,[mchar,s]] in PValidStr iff
+       ex j being Integer st
+         mchar.(shft.[s,j]) = 0 &
+         0 <= j &
+         j < 65536 * 65536 * 65536 * 65536 &
+         [malloc,[shft.[s,0],1+j]] in ValidRW &
+         (for k being Integer st k <= j holds
+            ex c being Integer st
+              c = mchar.(shft.[s,k]) &
+              -(128) <= c & c < 128)) &
+
+    (for mchar being Function of [:INT,INT:],INT,
+         s being Element of [:INT,INT:]
+     holds
+       ex len0,len1,cast being Integer st
+         len0 = LStrlen.[mchar,s] &
+         len1 = LStrlen.[mchar,shft.[s,1]] &
+         cast = ToUint64.(1 + len1) &
+         (mchar.(shft.[s,0]) = 0 implies len0 = 0) &
+         (mchar.(shft.[s,0]) <> 0 implies cast = len0) &
+         0 <= len0 &
+         len0 < 65536 * 65536 * 65536 * 65536) &
+
+    x = LStrlen.[t1,a] &
+    a2 = shft.[a,x-1] &
+    x1 = t1.a2 &
+    x2 = t1.a1 &
+    a3 = shft.[a,-1] &
+    a4 = shft.[a1,1] &
+
+    x <> 0 &
+    t1.(shft.[a,x]) = 0 &
+    x1 <> 0 &
+    0 < x &
+    Region.(Base.a) <= 0 &
+    t in Linked &
+    t1 in SConst &
+    -(128) <= x2 & x2 < 128 &
+    [t,[t1,a]] in PValidStr &
+    0 <= x &
+    x < 65536 * 65536 * 65536 * 65536 &
+    [a3,a1] in AddrLE &
+    not [t,[a4,1]] in Invalid &
+    [a1,a2] in AddrLE &
+    -(128) <= x1 & x1 < 128 &
+
+    (([a,a1] in AddrLE &
+       p = FALSE &
+       not (x2 in PIsSpace)) or
+     (not ([a,a1] in AddrLE) &
+       (a3 = a1 or not (x2 in PIsSpace)))) &
+
+    (for i being Integer st 0 <= i & i < x holds
+       t1.(shft.[a,i]) <> 0) &
+
+    (for a5 being Element of [:INT,INT:]
+       st [a1,a5] in AddrLT & [a5,a2] in AddrLE
+     holds
+       t1.a5 in PIsSpace)
+  holds
+    [a4,[1,[shft.[a,0],1+x]]] in Included
+proof
+end;
+::$P+

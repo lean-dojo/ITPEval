@@ -1,0 +1,277 @@
+% Statement-only formalization of the VERINA corpus artifact
+% verina_advanced_47, catalog title "mergeIntervals": insertion-sorting
+% integer intervals by start point, merging overlaps, and requiring the
+% specified coverage, separation, endpoint, and gap conditions. This file contains no proof.
+
+verina_advanced_47: THEORY
+BEGIN
+
+  interval: TYPE =
+    [# interval_start: int, interval_end: int #]
+
+  mergeIntervals_precond(
+      intervals: list[interval]): RECURSIVE bool =
+    CASES intervals OF
+      null:
+        TRUE,
+      cons(current, rest):
+        interval_start(current) <= interval_end(current)
+          AND mergeIntervals_precond(rest)
+    ENDCASES
+  MEASURE intervals BY <<
+
+  int_max(first, second: int): int =
+    IF first >= second THEN first ELSE second ENDIF
+
+  insert_by_start(
+      value: interval,
+      sorted: list[interval]): RECURSIVE list[interval] =
+    CASES sorted OF
+      null:
+        cons(value, null),
+      cons(head, tail):
+        IF interval_start(value) <= interval_start(head) THEN
+          cons(value, cons(head, tail))
+        ELSE
+          cons(head, insert_by_start(value, tail))
+        ENDIF
+    ENDCASES
+  MEASURE sorted BY <<
+
+  sort_by_start(
+      intervals: list[interval]): RECURSIVE list[interval] =
+    CASES intervals OF
+      null:
+        null,
+      cons(head, tail):
+        insert_by_start(
+          head,
+          sort_by_start(tail))
+    ENDCASES
+  MEASURE intervals BY <<
+
+  reverse_interval_list_acc(
+      remaining,
+      accumulator: list[interval]): RECURSIVE list[interval] =
+    CASES remaining OF
+      null:
+        accumulator,
+      cons(head, tail):
+        reverse_interval_list_acc(
+          tail,
+          cons(head, accumulator))
+    ENDCASES
+  MEASURE remaining BY <<
+
+  reverse_interval_list(
+      intervals: list[interval]): list[interval] =
+    reverse_interval_list_acc(intervals, null)
+
+  merge_sorted_intervals(
+      remaining,
+      accumulator: list[interval]): RECURSIVE list[interval] =
+    CASES remaining OF
+      null:
+        reverse_interval_list(accumulator),
+      cons(current, rest):
+        CASES accumulator OF
+          null:
+            merge_sorted_intervals(
+              rest,
+              cons(current, null)),
+          cons(previous, accumulator_tail):
+            IF interval_start(current) <= interval_end(previous) THEN
+              merge_sorted_intervals(
+                rest,
+                cons(
+                  (# interval_start := interval_start(previous),
+                     interval_end :=
+                       int_max(
+                         interval_end(previous),
+                         interval_end(current)) #),
+                  accumulator_tail))
+            ELSE
+              merge_sorted_intervals(
+                rest,
+                cons(
+                  current,
+                  cons(previous, accumulator_tail)))
+            ENDIF
+        ENDCASES
+    ENDCASES
+  MEASURE remaining BY <<
+
+  mergeIntervals(
+      intervals: list[interval]): list[interval] =
+    merge_sorted_intervals(
+      sort_by_start(intervals),
+      null)
+
+  result_contains_interval(
+      original: interval,
+      result: list[interval]): RECURSIVE bool =
+    CASES result OF
+      null:
+        FALSE,
+      cons(candidate, rest):
+        (interval_start(candidate) <= interval_start(original)
+          AND interval_end(original) <= interval_end(candidate))
+          OR result_contains_interval(original, rest)
+    ENDCASES
+  MEASURE result BY <<
+
+  all_original_intervals_covered(
+      originals,
+      result: list[interval]): RECURSIVE bool =
+    CASES originals OF
+      null:
+        TRUE,
+      cons(original, rest):
+        result_contains_interval(original, result)
+          AND all_original_intervals_covered(rest, result)
+    ENDCASES
+  MEASURE originals BY <<
+
+  no_overlap(
+      result: list[interval]): RECURSIVE bool =
+    CASES result OF
+      null:
+        TRUE,
+      cons(first, tail):
+        CASES tail OF
+          null:
+            TRUE,
+          cons(second, rest):
+            interval_end(first) < interval_start(second)
+              AND no_overlap(tail)
+        ENDCASES
+    ENDCASES
+  MEASURE result BY <<
+
+  has_start_endpoint(
+      requested_start: int,
+      intervals: list[interval]): RECURSIVE bool =
+    CASES intervals OF
+      null:
+        FALSE,
+      cons(current, rest):
+        interval_start(current) = requested_start
+          OR has_start_endpoint(requested_start, rest)
+    ENDCASES
+  MEASURE intervals BY <<
+
+  has_end_endpoint(
+      requested_end: int,
+      intervals: list[interval]): RECURSIVE bool =
+    CASES intervals OF
+      null:
+        FALSE,
+      cons(current, rest):
+        interval_end(current) = requested_end
+          OR has_end_endpoint(requested_end, rest)
+    ENDCASES
+  MEASURE intervals BY <<
+
+  result_endpoints_bounded(
+      originals,
+      result: list[interval]): RECURSIVE bool =
+    CASES result OF
+      null:
+        TRUE,
+      cons(current, rest):
+        has_start_endpoint(
+          interval_start(current),
+          originals)
+          AND has_end_endpoint(
+                interval_end(current),
+                originals)
+          AND result_endpoints_bounded(
+                originals,
+                rest)
+    ENDCASES
+  MEASURE result BY <<
+
+  has_bridging_predecessor(
+      result_start, result_end, current_start: int,
+      originals: list[interval]): RECURSIVE bool =
+    CASES originals OF
+      null:
+        FALSE,
+      cons(candidate, rest):
+        (result_start <= interval_start(candidate)
+          AND interval_end(candidate) <= result_end
+          AND interval_start(candidate) < current_start
+          AND interval_end(candidate) >= current_start)
+          OR has_bridging_predecessor(
+               result_start,
+               result_end,
+               current_start,
+               rest)
+    ENDCASES
+  MEASURE originals BY <<
+
+  contained_inputs_have_no_gap(
+      result_start, result_end: int,
+      originals,
+      remaining: list[interval]): RECURSIVE bool =
+    CASES remaining OF
+      null:
+        TRUE,
+      cons(current, rest):
+        IF result_start <= interval_start(current)
+             AND interval_end(current) <= result_end THEN
+          (interval_start(current) = result_start
+            OR has_bridging_predecessor(
+                 result_start,
+                 result_end,
+                 interval_start(current),
+                 originals))
+            AND contained_inputs_have_no_gap(
+                  result_start,
+                  result_end,
+                  originals,
+                  rest)
+        ELSE
+          contained_inputs_have_no_gap(
+            result_start,
+            result_end,
+            originals,
+            rest)
+        ENDIF
+    ENDCASES
+  MEASURE remaining BY <<
+
+  no_spurious_merge(
+      originals,
+      result: list[interval]): RECURSIVE bool =
+    CASES result OF
+      null:
+        TRUE,
+      cons(current, rest):
+        contained_inputs_have_no_gap(
+          interval_start(current),
+          interval_end(current),
+          originals,
+          originals)
+          AND no_spurious_merge(
+                originals,
+                rest)
+    ENDCASES
+  MEASURE result BY <<
+
+  mergeIntervals_postcond(
+      intervals,
+      result: list[interval]): bool =
+    all_original_intervals_covered(intervals, result)
+      AND no_overlap(result)
+      AND result_endpoints_bounded(intervals, result)
+      AND no_spurious_merge(intervals, result)
+
+  mergeIntervals_spec_satisfied: bool =
+    FORALL (intervals: list[interval]):
+      mergeIntervals_precond(intervals) IMPLIES
+        mergeIntervals_postcond(
+          intervals,
+          mergeIntervals(intervals))
+
+END verina_advanced_47

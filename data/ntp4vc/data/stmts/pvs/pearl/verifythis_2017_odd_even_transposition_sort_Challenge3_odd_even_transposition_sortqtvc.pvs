@@ -1,0 +1,415 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/verifythis_2017_odd_even_transposition_sort_Challenge3_odd_even_transposition_sortqtvc:
+% the verification condition for sequential odd-even transposition sort,
+% including permutation, odd/even adjacent-pair invariants, inversion-count
+% descent, and final sortedness. This file contains no proof.
+
+verifythis_2017_odd_even_transposition_sort_Challenge3_odd_even_transposition_sortqtvc: THEORY
+BEGIN
+
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  nth_default(values: list[int], index: nat): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          nth_default(tail, index - 1)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  list_set(
+      values: list[int],
+      index: nat,
+      value: int): RECURSIVE list[int] =
+    CASES values OF
+      null:
+        null,
+      cons(head, tail):
+        IF index = 0 THEN
+          cons(value, tail)
+        ELSE
+          cons(head, list_set(tail, index - 1, value))
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  occurrence_count(value: int, values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        (IF value = head THEN 1 ELSE 0 ENDIF)
+          + occurrence_count(value, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  list_permutation(left, right: list[int]): bool =
+    FORALL (value: int):
+      occurrence_count(value, left) = occurrence_count(value, right)
+
+  sorted_sub(values: list[int], lower, upper: int): bool =
+    FORALL (i1, i2: int):
+      (lower <= i1 AND i1 <= i2 AND i2 < upper)
+        IMPLIES
+          nth_default(values, int_to_nat(i1))
+            <= nth_default(values, int_to_nat(i2))
+
+  sorted(values: list[int]): bool =
+    sorted_sub(values, 0, length(values))
+
+  count_smaller(pivot: int, values: list[int]): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        (IF head < pivot THEN 1 ELSE 0 ENDIF)
+          + count_smaller(pivot, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  inversions(values: list[int]): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        count_smaller(head, tail) + inversions(tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  array_exchange(
+      before, after: list[int],
+      first_index, second_index: int): bool =
+    after =
+      list_set(
+        list_set(
+          before,
+          int_to_nat(first_index),
+          nth_default(before, int_to_nat(second_index))),
+        int_to_nat(second_index),
+        nth_default(before, int_to_nat(first_index)))
+
+  odd_sorted(values: list[int], upper: int): bool =
+    FORALL (i: int):
+      0 <= i
+        IMPLIES
+      2 * i + 2 < upper
+        IMPLIES
+          nth_default(values, int_to_nat(2 * i + 1))
+            <= nth_default(values, int_to_nat(2 * i + 2))
+
+  even_sorted(values: list[int], upper: int): bool =
+    FORALL (i: int):
+      0 <= i
+        IMPLIES
+      2 * i + 1 < upper
+        IMPLIES
+          nth_default(values, int_to_nat(2 * i))
+            <= nth_default(values, int_to_nat(2 * i + 1))
+
+  variant_flag(is_sorted: bool): int =
+    IF is_sorted = TRUE THEN 0 ELSE 1 ENDIF
+
+  odd_initial(original, baseline: list[int]): bool =
+    (0 <= 0 AND 0 <= 1 AND 1 = 2 * 0 + 1)
+      AND list_permutation(original, baseline)
+      AND odd_sorted(baseline, 1)
+      AND (NOT TRUE IMPLIES inversions(baseline) < inversions(baseline))
+
+  odd_invariant(
+      original, baseline, current: list[int],
+      half_index: int,
+      is_sorted: bool): bool =
+    (0 <= half_index AND 0 <= 2 * half_index + 1)
+      AND list_permutation(original, current)
+      AND odd_sorted(current, 2 * half_index + 1)
+      AND
+    (IF is_sorted = TRUE THEN
+       inversions(current) = inversions(baseline)
+     ELSE
+       inversions(current) < inversions(baseline)
+     ENDIF)
+
+  odd_swap_post(
+      original, baseline, before, after: list[int],
+      half_index: int): bool =
+    (0 <= length(before) - (2 * half_index + 1)
+      AND
+     length(after) - (2 * half_index + 1 + 2)
+       < length(before) - (2 * half_index + 1))
+      AND
+    (0 <= half_index + 1
+      AND 0 <= 2 * half_index + 1 + 2
+      AND 2 * half_index + 1 + 2 = 2 * (half_index + 1) + 1)
+      AND list_permutation(original, after)
+      AND odd_sorted(after, 2 * half_index + 1 + 2)
+      AND
+    (IF FALSE = TRUE THEN
+       inversions(after) = inversions(baseline)
+     ELSE
+       inversions(after) < inversions(baseline)
+     ENDIF)
+
+  odd_no_swap_post(
+      original, baseline, current: list[int],
+      half_index: int,
+      is_sorted: bool): bool =
+    (0 <= length(current) - (2 * half_index + 1)
+      AND
+     length(current) - (2 * half_index + 1 + 2)
+       < length(current) - (2 * half_index + 1))
+      AND
+    (0 <= half_index + 1
+      AND 0 <= 2 * half_index + 1 + 2
+      AND 2 * half_index + 1 + 2 = 2 * (half_index + 1) + 1)
+      AND list_permutation(original, current)
+      AND odd_sorted(current, 2 * half_index + 1 + 2)
+      AND
+    (IF is_sorted = TRUE THEN
+       inversions(current) = inversions(baseline)
+     ELSE
+       inversions(current) < inversions(baseline)
+     ENDIF)
+
+  even_invariant(
+      original, baseline, current: list[int],
+      half_index: int,
+      is_sorted: bool): bool =
+    (0 <= half_index AND 0 <= 2 * half_index)
+      AND 0 <= 2 * half_index
+      AND list_permutation(original, current)
+      AND (is_sorted = TRUE
+             IMPLIES odd_sorted(current, length(current)))
+      AND even_sorted(current, 2 * half_index)
+      AND
+    (IF is_sorted = TRUE THEN
+       inversions(current) = inversions(baseline)
+     ELSE
+       inversions(current) < inversions(baseline)
+     ENDIF)
+      AND (is_sorted = TRUE
+             OR inversions(current) < inversions(baseline))
+
+  even_initial(
+      original, baseline, current: list[int],
+      is_sorted: bool): bool =
+    (0 <= 0 AND 0 <= 0 AND 0 = 2 * 0)
+      AND 0 <= 0
+      AND list_permutation(original, current)
+      AND (is_sorted = TRUE
+             IMPLIES odd_sorted(current, length(current)))
+      AND even_sorted(current, 0)
+      AND
+    (IF is_sorted = TRUE THEN
+       inversions(current) = inversions(baseline)
+     ELSE
+       inversions(current) < inversions(baseline)
+     ENDIF)
+      AND (is_sorted = TRUE
+             OR inversions(current) < inversions(baseline))
+
+  even_swap_post(
+      original, baseline, before, after: list[int],
+      half_index: int): bool =
+    (0 <= length(before) - 2 * half_index
+      AND
+     length(after) - (2 * half_index + 2)
+       < length(before) - 2 * half_index)
+      AND
+    (0 <= half_index + 1
+      AND 0 <= 2 * half_index + 2
+      AND 2 * half_index + 2 = 2 * (half_index + 1))
+      AND 0 <= 2 * half_index + 2
+      AND list_permutation(original, after)
+      AND (FALSE = TRUE
+             IMPLIES odd_sorted(after, length(after)))
+      AND even_sorted(after, 2 * half_index + 2)
+      AND
+    (IF FALSE = TRUE THEN
+       inversions(after) = inversions(baseline)
+     ELSE
+       inversions(after) < inversions(baseline)
+     ENDIF)
+      AND (FALSE = TRUE
+             OR inversions(after) < inversions(baseline))
+
+  even_no_swap_post(
+      original, baseline, current: list[int],
+      half_index: int,
+      is_sorted: bool): bool =
+    (0 <= length(current) - 2 * half_index
+      AND
+     length(current) - (2 * half_index + 2)
+       < length(current) - 2 * half_index)
+      AND
+    (0 <= half_index + 1
+      AND 0 <= 2 * half_index + 2
+      AND 2 * half_index + 2 = 2 * (half_index + 1))
+      AND 0 <= 2 * half_index + 2
+      AND list_permutation(original, current)
+      AND (is_sorted = TRUE
+             IMPLIES odd_sorted(current, length(current)))
+      AND even_sorted(current, 2 * half_index + 2)
+      AND
+    (IF is_sorted = TRUE THEN
+       inversions(current) = inversions(baseline)
+     ELSE
+       inversions(current) < inversions(baseline)
+     ENDIF)
+      AND (is_sorted = TRUE
+             OR inversions(current) < inversions(baseline))
+
+  outer_loop_post(
+      original, baseline, current: list[int],
+      old_sorted, new_sorted: bool): bool =
+    ((0 <= variant_flag(old_sorted)
+       AND variant_flag(new_sorted) < variant_flag(old_sorted))
+      OR
+     (variant_flag(old_sorted) = variant_flag(new_sorted)
+       AND 0 <= inversions(baseline)
+       AND inversions(current) < inversions(baseline)))
+      AND list_permutation(original, current)
+      AND (new_sorted = TRUE IMPLIES sorted(current))
+
+  even_iteration(
+      original, baseline, current: list[int],
+      half_index: int,
+      old_sorted, is_sorted: bool): bool =
+    IF 2 * half_index < length(current) - 1 THEN
+      LET next_index: int = 2 * half_index + 1
+      IN
+        (0 <= next_index AND next_index < length(current))
+          AND
+        (0 <= 2 * half_index
+          AND 2 * half_index < length(current))
+          AND
+        IF nth_default(current, int_to_nat(next_index))
+             < nth_default(current, int_to_nat(2 * half_index))
+        THEN
+          LET swap_index: int = 2 * half_index + 1
+          IN
+            ((0 <= 2 * half_index
+               AND 2 * half_index < length(current))
+              AND 0 <= swap_index
+              AND swap_index < length(current))
+              AND
+            (FORALL (after: list[int]):
+              length(after) = length(current)
+                IMPLIES
+              (array_exchange(
+                 current, after, 2 * half_index, swap_index)
+                IMPLIES
+                  even_swap_post(
+                    original, baseline, current, after, half_index)))
+        ELSE
+          even_no_swap_post(
+            original, baseline, current, half_index, is_sorted)
+        ENDIF
+    ELSE
+      outer_loop_post(
+        original, baseline, current, old_sorted, is_sorted)
+    ENDIF
+
+  even_phase(
+      original, baseline, current: list[int],
+      old_sorted, initial_sorted: bool): bool =
+    even_initial(
+      original, baseline, current, initial_sorted)
+      AND
+    (FORALL
+        (half_index: int),
+        (is_sorted: bool),
+        (next: list[int]):
+      length(next) = length(current)
+        IMPLIES
+      (even_invariant(
+         original, baseline, next, half_index, is_sorted)
+        IMPLIES
+          even_iteration(
+            original, baseline, next,
+            half_index, old_sorted, is_sorted)))
+
+  odd_iteration(
+      original, baseline, current: list[int],
+      half_index: int,
+      old_sorted, is_sorted: bool): bool =
+    IF 2 * half_index + 1 < length(current) - 1 THEN
+      LET next_index: int = 2 * half_index + 1 + 1
+      IN
+        (0 <= next_index AND next_index < length(current))
+          AND
+        (0 <= 2 * half_index + 1
+          AND 2 * half_index + 1 < length(current))
+          AND
+        IF nth_default(current, int_to_nat(next_index))
+             < nth_default(current, int_to_nat(2 * half_index + 1))
+        THEN
+          LET swap_index: int = 2 * half_index + 1 + 1
+          IN
+            ((0 <= 2 * half_index + 1
+               AND 2 * half_index + 1 < length(current))
+              AND 0 <= swap_index
+              AND swap_index < length(current))
+              AND
+            (FORALL (after: list[int]):
+              length(after) = length(current)
+                IMPLIES
+              (array_exchange(
+                 current, after, 2 * half_index + 1, swap_index)
+                IMPLIES
+                  odd_swap_post(
+                    original, baseline, current, after, half_index)))
+        ELSE
+          odd_no_swap_post(
+            original, baseline, current, half_index, is_sorted)
+        ENDIF
+    ELSE
+      even_phase(
+        original, baseline, current, old_sorted, is_sorted)
+    ENDIF
+
+  odd_phase(
+      original, baseline: list[int],
+      old_sorted: bool): bool =
+    odd_initial(original, baseline)
+      AND
+    (FORALL
+        (half_index: int),
+        (is_sorted: bool),
+        (current: list[int]):
+      length(current) = length(baseline)
+        IMPLIES
+      (odd_invariant(
+         original, baseline, current, half_index, is_sorted)
+        IMPLIES
+          odd_iteration(
+            original, baseline, current,
+            half_index, old_sorted, is_sorted)))
+
+  outer_iteration(
+      original, current: list[int],
+      is_sorted: bool): bool =
+    IF is_sorted /= TRUE THEN
+      odd_phase(original, current, is_sorted)
+    ELSE
+      sorted(current) AND list_permutation(original, current)
+    ENDIF
+
+  odd_even_transposition_sort_vc: bool =
+    FORALL (a: list[int]):
+      list_permutation(a, a)
+        AND
+      (FORALL (is_sorted: bool), (a1: list[int]):
+        length(a1) = length(a)
+          IMPLIES
+        ((list_permutation(a, a1)
+           AND (is_sorted = TRUE IMPLIES sorted(a1)))
+          IMPLIES
+            outer_iteration(a, a1, is_sorted)))
+
+END verifythis_2017_odd_even_transposition_sort_Challenge3_odd_even_transposition_sortqtvc

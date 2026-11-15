@@ -1,0 +1,437 @@
+% Statement-only formalization of the Thousand Theorems corpus artifact
+% Q1148215, "Mitchell's embedding theorem": every abelian category admits a
+% full and faithful embedding into modules over a ring that preserves finite
+% limits and finite colimits. This file contains no proof.
+
+Q1148215_mitchell_s_embedding_theorem[
+  Object, Morphism: TYPE+,
+  object_p: [Object -> bool],
+  morphism_p: [Morphism -> bool],
+  dom, cod: [Morphism -> Object],
+  identity: [Object -> Morphism],
+  compose: [Morphism, Morphism -> Morphism],
+  zero_arrow: [Object, Object -> Morphism],
+  add_arrow: [Morphism, Morphism -> Morphism],
+  neg_arrow: [Morphism -> Morphism]
+]: THEORY
+
+BEGIN
+
+  atom: TYPE = [Object, Morphism, nat]
+  code: TYPE = [atom -> bool]
+  code_set: TYPE = [code -> bool]
+  code_unary: TYPE = [code -> code]
+  code_binary: TYPE = [code, code -> code]
+
+  % PVS cannot existentially quantify over carrier types. If kappa bounds the
+  % object and arrow carriers and nat, code has powerset cardinality 2^kappa.
+  % A second powerset gives enough room for module vectors independently of
+  % the embedding ring's carrier.
+  module_code: TYPE = [code -> bool]
+  module_code_unary: TYPE = [module_code -> module_code]
+  module_carrier_family: TYPE = [Object, module_code -> bool]
+  module_zero_family: TYPE = [Object -> module_code]
+  module_unary_family: TYPE = [Object, module_code -> module_code]
+  module_binary_family: TYPE =
+    [Object, module_code, module_code -> module_code]
+  scalar_family: TYPE = [Object, code, module_code -> module_code]
+  morphism_map_family: TYPE = [Morphism, module_code -> module_code]
+
+  hom(f: Morphism, X, Y: Object): bool =
+    object_p(X) AND object_p(Y) AND morphism_p(f)
+      AND dom(f) = X AND cod(f) = Y
+
+  category_laws: bool =
+    (FORALL (f: Morphism):
+      morphism_p(f) IMPLIES object_p(dom(f)) AND object_p(cod(f)))
+    AND
+    (FORALL (X: Object):
+      object_p(X) IMPLIES hom(identity(X), X, X))
+    AND
+    (FORALL (X, Y, Z: Object), (f, g: Morphism):
+      hom(f, X, Y) AND hom(g, Y, Z)
+        IMPLIES hom(compose(g, f), X, Z))
+    AND
+    (FORALL (X, Y: Object), (f: Morphism):
+      hom(f, X, Y) IMPLIES
+        compose(identity(Y), f) = f
+          AND compose(f, identity(X)) = f)
+    AND
+    (FORALL (W, X, Y, Z: Object), (f, g, h: Morphism):
+      hom(f, W, X) AND hom(g, X, Y) AND hom(h, Y, Z)
+        IMPLIES
+          compose(h, compose(g, f)) = compose(compose(h, g), f))
+
+  preadditive_laws: bool =
+    category_laws
+    AND
+    (FORALL (X, Y: Object):
+      object_p(X) AND object_p(Y) IMPLIES hom(zero_arrow(X, Y), X, Y))
+    AND
+    (FORALL (X, Y: Object), (f: Morphism):
+      hom(f, X, Y) IMPLIES hom(neg_arrow(f), X, Y))
+    AND
+    (FORALL (X, Y: Object), (f, g: Morphism):
+      hom(f, X, Y) AND hom(g, X, Y)
+        IMPLIES hom(add_arrow(f, g), X, Y))
+    AND
+    (FORALL (X, Y: Object), (f: Morphism):
+      hom(f, X, Y) IMPLIES
+        add_arrow(zero_arrow(X, Y), f) = f
+          AND add_arrow(f, zero_arrow(X, Y)) = f
+          AND add_arrow(f, neg_arrow(f)) = zero_arrow(X, Y)
+          AND add_arrow(neg_arrow(f), f) = zero_arrow(X, Y))
+    AND
+    (FORALL (X, Y: Object), (f, g: Morphism):
+      hom(f, X, Y) AND hom(g, X, Y)
+        IMPLIES add_arrow(f, g) = add_arrow(g, f))
+    AND
+    (FORALL (X, Y: Object), (f, g, h: Morphism):
+      hom(f, X, Y) AND hom(g, X, Y) AND hom(h, X, Y)
+        IMPLIES
+          add_arrow(add_arrow(f, g), h) = add_arrow(f, add_arrow(g, h)))
+    AND
+    (FORALL (X, Y, Z: Object), (f, g, h: Morphism):
+      hom(f, X, Y) AND hom(g, X, Y) AND hom(h, Y, Z)
+        IMPLIES
+          compose(h, add_arrow(f, g)) =
+            add_arrow(compose(h, f), compose(h, g)))
+    AND
+    (FORALL (X, Y, Z: Object), (f, g, h: Morphism):
+      hom(f, X, Y) AND hom(g, Y, Z) AND hom(h, Y, Z)
+        IMPLIES
+          compose(add_arrow(g, h), f) =
+            add_arrow(compose(g, f), compose(h, f)))
+
+  zero_object(Z: Object): bool =
+    object_p(Z)
+    AND
+    (FORALL (X: Object):
+      object_p(X) IMPLIES
+        EXISTS (f: Morphism):
+          hom(f, Z, X)
+          AND (FORALL (g: Morphism): hom(g, Z, X) IMPLIES g = f))
+    AND
+    (FORALL (X: Object):
+      object_p(X) IMPLIES
+        EXISTS (f: Morphism):
+          hom(f, X, Z)
+          AND (FORALL (g: Morphism): hom(g, X, Z) IMPLIES g = f))
+
+  binary_biproduct(
+    X, Y, B: Object,
+    i1, i2, p1, p2: Morphism
+  ): bool =
+    object_p(X) AND object_p(Y) AND object_p(B)
+    AND hom(i1, X, B) AND hom(i2, Y, B)
+    AND hom(p1, B, X) AND hom(p2, B, Y)
+    AND compose(p1, i1) = identity(X)
+    AND compose(p2, i2) = identity(Y)
+    AND compose(p1, i2) = zero_arrow(Y, X)
+    AND compose(p2, i1) = zero_arrow(X, Y)
+    AND add_arrow(compose(i1, p1), compose(i2, p2)) = identity(B)
+
+  kernel(k, f: Morphism): bool =
+    morphism_p(k) AND morphism_p(f) AND cod(k) = dom(f)
+    AND compose(f, k) = zero_arrow(dom(k), cod(f))
+    AND
+    (FORALL (X: Object), (h: Morphism):
+      object_p(X) AND hom(h, X, dom(f))
+        AND compose(f, h) = zero_arrow(X, cod(f))
+      IMPLIES
+        EXISTS (u: Morphism):
+          hom(u, X, dom(k)) AND compose(k, u) = h
+          AND
+          (FORALL (v: Morphism):
+            hom(v, X, dom(k)) AND compose(k, v) = h IMPLIES v = u))
+
+  cokernel(f, q: Morphism): bool =
+    morphism_p(f) AND morphism_p(q) AND cod(f) = dom(q)
+    AND compose(q, f) = zero_arrow(dom(f), cod(q))
+    AND
+    (FORALL (X: Object), (h: Morphism):
+      object_p(X) AND hom(h, cod(f), X)
+        AND compose(h, f) = zero_arrow(dom(f), X)
+      IMPLIES
+        EXISTS (u: Morphism):
+          hom(u, cod(q), X) AND compose(u, q) = h
+          AND
+          (FORALL (v: Morphism):
+            hom(v, cod(q), X) AND compose(v, q) = h IMPLIES v = u))
+
+  monomorphism(f: Morphism): bool =
+    morphism_p(f)
+    AND
+    (FORALL (X: Object), (g, h: Morphism):
+      object_p(X) AND hom(g, X, dom(f)) AND hom(h, X, dom(f))
+        AND compose(f, g) = compose(f, h)
+      IMPLIES g = h)
+
+  epimorphism(f: Morphism): bool =
+    morphism_p(f)
+    AND
+    (FORALL (X: Object), (g, h: Morphism):
+      object_p(X) AND hom(g, cod(f), X) AND hom(h, cod(f), X)
+        AND compose(g, f) = compose(h, f)
+      IMPLIES g = h)
+
+  abelian_category: bool =
+    preadditive_laws
+    AND (EXISTS (Z: Object): zero_object(Z))
+    AND
+    (FORALL (X, Y: Object):
+      object_p(X) AND object_p(Y) IMPLIES
+        EXISTS (B: Object), (i1, i2, p1, p2: Morphism):
+          binary_biproduct(X, Y, B, i1, i2, p1, p2))
+    AND
+    (FORALL (f: Morphism):
+      morphism_p(f) IMPLIES EXISTS (k: Morphism): kernel(k, f))
+    AND
+    (FORALL (f: Morphism):
+      morphism_p(f) IMPLIES EXISTS (q: Morphism): cokernel(f, q))
+    AND
+    (FORALL (f: Morphism):
+      monomorphism(f) IMPLIES
+        EXISTS (q: Morphism): cokernel(f, q) AND kernel(f, q))
+    AND
+    (FORALL (f: Morphism):
+      epimorphism(f) IMPLIES
+        EXISTS (k: Morphism): kernel(k, f) AND cokernel(k, f))
+
+  ring_laws(
+    ring_elements: code_set,
+    rzero, rone: code,
+    radd, rmul: code_binary,
+    rneg: code_unary
+  ): bool =
+    ring_elements(rzero) AND ring_elements(rone)
+    AND
+    (FORALL (a: code):
+      ring_elements(a) IMPLIES ring_elements(rneg(a)))
+    AND
+    (FORALL (a, b: code):
+      ring_elements(a) AND ring_elements(b) IMPLIES
+        ring_elements(radd(a, b)) AND ring_elements(rmul(a, b)))
+    AND
+    (FORALL (a: code):
+      ring_elements(a) IMPLIES
+        radd(rzero, a) = a AND radd(a, rzero) = a
+        AND radd(a, rneg(a)) = rzero AND radd(rneg(a), a) = rzero
+        AND rmul(rone, a) = a AND rmul(a, rone) = a)
+    AND
+    (FORALL (a, b: code):
+      ring_elements(a) AND ring_elements(b) IMPLIES
+        radd(a, b) = radd(b, a))
+    AND
+    (FORALL (a, b, c: code):
+      ring_elements(a) AND ring_elements(b) AND ring_elements(c) IMPLIES
+        radd(radd(a, b), c) = radd(a, radd(b, c))
+        AND rmul(rmul(a, b), c) = rmul(a, rmul(b, c))
+        AND rmul(a, radd(b, c)) = radd(rmul(a, b), rmul(a, c))
+        AND rmul(radd(a, b), c) = radd(rmul(a, c), rmul(b, c)))
+
+  module_laws(
+    X: Object,
+    ring_elements: code_set,
+    rzero, rone: code,
+    radd, rmul: code_binary,
+    module_elements: module_carrier_family,
+    mzero: module_zero_family,
+    madd: module_binary_family,
+    mneg: module_unary_family,
+    smul: scalar_family
+  ): bool =
+    module_elements(X, mzero(X))
+    AND
+    (FORALL (x: module_code):
+      module_elements(X, x) IMPLIES module_elements(X, mneg(X, x)))
+    AND
+    (FORALL (x, y: module_code):
+      module_elements(X, x) AND module_elements(X, y) IMPLIES
+        module_elements(X, madd(X, x, y)))
+    AND
+    (FORALL (r: code), (x: module_code):
+      ring_elements(r) AND module_elements(X, x) IMPLIES
+        module_elements(X, smul(X, r, x)))
+    AND
+    (FORALL (x: module_code):
+      module_elements(X, x) IMPLIES
+        madd(X, mzero(X), x) = x AND madd(X, x, mzero(X)) = x
+        AND madd(X, x, mneg(X, x)) = mzero(X)
+        AND madd(X, mneg(X, x), x) = mzero(X)
+        AND smul(X, rone, x) = x
+        AND smul(X, rzero, x) = mzero(X))
+    AND
+    (FORALL (x, y: module_code):
+      module_elements(X, x) AND module_elements(X, y) IMPLIES
+        madd(X, x, y) = madd(X, y, x))
+    AND
+    (FORALL (x, y, z: module_code):
+      module_elements(X, x) AND module_elements(X, y)
+        AND module_elements(X, z)
+      IMPLIES
+        madd(X, madd(X, x, y), z) = madd(X, x, madd(X, y, z)))
+    AND
+    (FORALL (r, s: code), (x: module_code):
+      ring_elements(r) AND ring_elements(s) AND module_elements(X, x)
+      IMPLIES
+        smul(X, radd(r, s), x) =
+          madd(X, smul(X, r, x), smul(X, s, x))
+        AND smul(X, rmul(r, s), x) = smul(X, r, smul(X, s, x)))
+    AND
+    (FORALL (r: code), (x, y: module_code):
+      ring_elements(r) AND module_elements(X, x) AND module_elements(X, y)
+      IMPLIES
+        smul(X, r, madd(X, x, y)) =
+          madd(X, smul(X, r, x), smul(X, r, y)))
+
+  linear_map(
+    X, Y: Object,
+    linear: module_code_unary,
+    ring_elements: code_set,
+    module_elements: module_carrier_family,
+    mzero: module_zero_family,
+    madd: module_binary_family,
+    smul: scalar_family
+  ): bool =
+    (FORALL (x: module_code):
+      module_elements(X, x) IMPLIES module_elements(Y, linear(x)))
+    AND linear(mzero(X)) = mzero(Y)
+    AND
+    (FORALL (x, y: module_code):
+      module_elements(X, x) AND module_elements(X, y) IMPLIES
+        linear(madd(X, x, y)) = madd(Y, linear(x), linear(y)))
+    AND
+    (FORALL (r: code), (x: module_code):
+      ring_elements(r) AND module_elements(X, x) IMPLIES
+        linear(smul(X, r, x)) = smul(Y, r, linear(x)))
+
+  mapped_linear(
+    f: Morphism,
+    ring_elements: code_set,
+    module_elements: module_carrier_family,
+    mzero: module_zero_family,
+    madd: module_binary_family,
+    smul: scalar_family,
+    fmap: morphism_map_family
+  ): bool =
+    (FORALL (x: module_code):
+      module_elements(dom(f), x) IMPLIES
+        module_elements(cod(f), fmap(f, x)))
+    AND fmap(f, mzero(dom(f))) = mzero(cod(f))
+    AND
+    (FORALL (x, y: module_code):
+      module_elements(dom(f), x) AND module_elements(dom(f), y) IMPLIES
+        fmap(f, madd(dom(f), x, y)) =
+          madd(cod(f), fmap(f, x), fmap(f, y)))
+    AND
+    (FORALL (r: code), (x: module_code):
+      ring_elements(r) AND module_elements(dom(f), x) IMPLIES
+        fmap(f, smul(dom(f), r, x)) =
+          smul(cod(f), r, fmap(f, x)))
+
+  embedding_laws(
+    ring_elements: code_set,
+    rzero, rone: code,
+    radd, rmul: code_binary,
+    rneg: code_unary,
+    module_elements: module_carrier_family,
+    mzero: module_zero_family,
+    madd: module_binary_family,
+    mneg: module_unary_family,
+    smul: scalar_family,
+    fmap: morphism_map_family
+  ): bool =
+    ring_laws(ring_elements, rzero, rone, radd, rmul, rneg)
+    AND
+    (FORALL (X: Object):
+      object_p(X) IMPLIES
+        module_laws(
+          X, ring_elements, rzero, rone, radd, rmul,
+          module_elements, mzero, madd, mneg, smul))
+    AND
+    (FORALL (f: Morphism):
+      morphism_p(f) IMPLIES
+        mapped_linear(
+          f, ring_elements, module_elements, mzero, madd, smul, fmap))
+    AND
+    (FORALL (X: Object), (x: module_code):
+      object_p(X) AND module_elements(X, x) IMPLIES
+        fmap(identity(X), x) = x)
+    AND
+    (FORALL (X, Y, Z: Object), (f, g: Morphism), (x: module_code):
+      hom(f, X, Y) AND hom(g, Y, Z) AND module_elements(X, x)
+      IMPLIES fmap(compose(g, f), x) = fmap(g, fmap(f, x)))
+    AND
+    (FORALL (X, Y: Object), (linear: module_code_unary):
+      object_p(X) AND object_p(Y)
+        AND linear_map(
+          X, Y, linear, ring_elements, module_elements, mzero, madd, smul)
+      IMPLIES
+        EXISTS (f: Morphism):
+          hom(f, X, Y)
+          AND
+          (FORALL (x: module_code):
+            module_elements(X, x) IMPLIES fmap(f, x) = linear(x)))
+    AND
+    (FORALL (X, Y: Object), (f, g: Morphism):
+      hom(f, X, Y) AND hom(g, X, Y)
+        AND
+        (FORALL (x: module_code):
+          module_elements(X, x) IMPLIES fmap(f, x) = fmap(g, x))
+      IMPLIES f = g)
+    AND
+    (FORALL (X, Y: Object), (x: module_code):
+      object_p(X) AND object_p(Y) AND module_elements(X, x) IMPLIES
+        fmap(zero_arrow(X, Y), x) = mzero(Y))
+    AND
+    (FORALL (X, Y: Object), (f, g: Morphism), (x: module_code):
+      hom(f, X, Y) AND hom(g, X, Y) AND module_elements(X, x)
+      IMPLIES
+        fmap(add_arrow(f, g), x) =
+          madd(Y, fmap(f, x), fmap(g, x)))
+    AND
+    (FORALL (k, f: Morphism):
+      kernel(k, f) IMPLIES
+        (FORALL (x, y: module_code):
+          module_elements(dom(k), x) AND module_elements(dom(k), y)
+            AND fmap(k, x) = fmap(k, y)
+          IMPLIES x = y)
+        AND
+        (FORALL (x: module_code):
+          module_elements(dom(f), x) IMPLIES
+            (fmap(f, x) = mzero(cod(f)) IFF
+              EXISTS (y: module_code):
+                module_elements(dom(k), y) AND fmap(k, y) = x)))
+    AND
+    (FORALL (f, q: Morphism):
+      cokernel(f, q) IMPLIES
+        (FORALL (y: module_code):
+          module_elements(cod(q), y) IMPLIES
+            EXISTS (x: module_code):
+              module_elements(dom(q), x) AND fmap(q, x) = y)
+        AND
+        (FORALL (x: module_code):
+          module_elements(dom(q), x) IMPLIES
+            (fmap(q, x) = mzero(cod(q)) IFF
+              EXISTS (y: module_code):
+                module_elements(dom(f), y) AND fmap(f, y) = x)))
+
+  mitchell_s_embedding_theorem: bool =
+    abelian_category IMPLIES
+      EXISTS
+        (ring_elements: code_set),
+        (rzero, rone: code),
+        (radd, rmul: code_binary),
+        (rneg: code_unary),
+        (module_elements: module_carrier_family),
+        (mzero: module_zero_family),
+        (madd: module_binary_family),
+        (mneg: module_unary_family),
+        (smul: scalar_family),
+        (fmap: morphism_map_family):
+          embedding_laws(
+            ring_elements, rzero, rone, radd, rmul, rneg,
+            module_elements, mzero, madd, mneg, smul, fmap)
+
+END Q1148215_mitchell_s_embedding_theorem

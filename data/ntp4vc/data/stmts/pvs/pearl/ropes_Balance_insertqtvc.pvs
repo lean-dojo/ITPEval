@@ -1,0 +1,541 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/ropes_Balance_insertqtvc: the recursive rope-queue insertion
+% verification condition, preserving rope invariants, the unchanged prefix,
+% and modeled string concatenation across both insertion branches. This file
+% contains no proof.
+
+ropes_Balance_insertqtvc[Char, CharString: TYPE+]: THEORY
+BEGIN
+
+  string_length_function: TYPE = [CharString -> int]
+  string_index_function: TYPE = [CharString, int -> Char]
+  string_app_function: TYPE = [CharString, CharString -> CharString]
+  string_sub_function: TYPE = [CharString, int, int -> CharString]
+  fibonacci_function: TYPE = [int -> int]
+
+  rope: DATATYPE
+  BEGIN
+    RopeEmp: RopeEmp?
+    RopeStr(
+        leaf_string: CharString,
+        leaf_offset: int,
+        leaf_length: int): RopeStr?
+    RopeApp(
+        app_left: rope,
+        app_right: rope,
+        stored_length: int): RopeApp?
+  END rope
+
+  rope_length(r: rope): int =
+    CASES r OF
+      RopeEmp:
+        0,
+      RopeStr(leaf, offset, len):
+        len,
+      RopeApp(left, right, len):
+        len
+    ENDCASES
+
+  strings_equal(
+      string_length: string_length_function,
+      string_index: string_index_function,
+      left, right: CharString): bool =
+    string_length(left) = string_length(right)
+      AND
+        (FORALL (index: int):
+          0 <= index
+            AND index < string_length(left)
+            IMPLIES string_index(left, index) = string_index(right, index))
+
+  rope_invariant(
+      r: rope,
+      string_length: string_length_function): RECURSIVE bool =
+    CASES r OF
+      RopeEmp:
+        TRUE,
+      RopeStr(leaf, offset, len):
+        0 < len
+          AND 0 <= offset
+          AND offset < string_length(leaf)
+          AND offset + len <= string_length(leaf),
+      RopeApp(left, right, len):
+        0 < rope_length(left)
+          AND rope_invariant(left, string_length)
+          AND 0 < rope_length(right)
+          AND rope_invariant(right, string_length)
+          AND len = rope_length(left) + rope_length(right)
+    ENDCASES
+  MEASURE r BY <<
+
+  rope_string(
+      r: rope,
+      empty_string: CharString,
+      string_app: string_app_function,
+      string_sub: string_sub_function): RECURSIVE CharString =
+    CASES r OF
+      RopeEmp:
+        empty_string,
+      RopeStr(leaf, offset, len):
+        string_sub(leaf, offset, len),
+      RopeApp(left, right, len):
+        string_app(
+          rope_string(left, empty_string, string_app, string_sub),
+          rope_string(right, empty_string, string_app, string_sub))
+    ENDCASES
+  MEASURE r BY <<
+
+  rope_array: TYPE =
+    [# queue_length: nat,
+       queue_get: [int -> rope] #]
+
+  string_of_array_function: TYPE =
+    [rope_array, int, int -> CharString]
+
+  update_rope_map(
+      values: [int -> rope],
+      index: int,
+      value: rope): [int -> rope] =
+    values WITH [(index) := value]
+
+  queue_set(
+      q: rope_array,
+      index: int,
+      value: rope): rope_array =
+    (# queue_length := queue_length(q),
+       queue_get := update_rope_map(queue_get(q), index, value) #)
+
+  string_context(
+      string_length: string_length_function,
+      string_index: string_index_function,
+      empty_string: CharString,
+      string_app: string_app_function,
+      string_sub: string_sub_function): bool =
+    (FORALL (value: CharString):
+      0 <= string_length(value))
+      AND string_length(empty_string) = 0
+      AND
+        (FORALL (left, right: CharString):
+          strings_equal(
+            string_length,
+            string_index,
+            left,
+            right)
+            IMPLIES left = right)
+      AND
+        (FORALL (left, right: CharString):
+          string_length(string_app(left, right))
+            = string_length(left) + string_length(right))
+      AND
+        (FORALL (left, right: CharString), (index: int):
+          0 <= index
+            AND index < string_length(left)
+            IMPLIES
+              string_index(string_app(left, right), index)
+                = string_index(left, index))
+      AND
+        (FORALL (left, right: CharString), (index: int):
+          string_length(left) <= index
+            AND index < string_length(left) + string_length(right)
+            IMPLIES
+              string_index(string_app(left, right), index)
+                = string_index(
+                    right,
+                    index - string_length(left)))
+      AND
+        (FORALL (value: CharString), (offset, len: int):
+          0 <= len
+            AND 0 <= offset
+            AND offset <= string_length(value)
+            AND offset + len <= string_length(value)
+            IMPLIES
+              string_length(string_sub(value, offset, len)) = len)
+      AND
+        (FORALL (value: CharString), (offset, len, index: int):
+          0 <= len
+            AND 0 <= offset
+            AND offset <= string_length(value)
+            AND offset + len <= string_length(value)
+            AND 0 <= index
+            AND index < len
+            IMPLIES
+              string_index(string_sub(value, offset, len), index)
+                = string_index(value, offset + index))
+
+  fibonacci_context(fib: fibonacci_function): bool =
+    FORALL (index: int):
+      0 <= index
+        IMPLIES
+          fib(index)
+            =
+              IF index = 0 THEN
+                0
+              ELSIF index = 1 THEN
+                1
+              ELSE
+                fib(index - 1) + fib(index - 2)
+              ENDIF
+
+  string_of_array_context(
+      string_length: string_length_function,
+      string_index: string_index_function,
+      empty_string: CharString,
+      string_app: string_app_function,
+      string_sub: string_sub_function,
+      string_of_array: string_of_array_function): bool =
+    (FORALL (q: rope_array), (lower: int):
+      0 <= lower
+        AND lower <= queue_length(q)
+        IMPLIES
+          strings_equal(
+            string_length,
+            string_index,
+            string_of_array(q, lower, lower),
+            empty_string))
+      AND
+        (FORALL (q: rope_array), (lower, upper: int):
+          0 <= lower
+            AND lower < upper
+            AND upper <= queue_length(q)
+            IMPLIES
+              strings_equal(
+                string_length,
+                string_index,
+                string_of_array(q, lower, upper),
+                string_app(
+                  string_of_array(q, lower + 1, upper),
+                  rope_string(
+                    queue_get(q)(lower),
+                    empty_string,
+                    string_app,
+                    string_sub))))
+
+  background_context(
+      string_length: string_length_function,
+      string_index: string_index_function,
+      empty_string: CharString,
+      string_app: string_app_function,
+      string_sub: string_sub_function,
+      fib: fibonacci_function,
+      maximum: int,
+      string_of_array: string_of_array_function): bool =
+    string_context(
+      string_length,
+      string_index,
+      empty_string,
+      string_app,
+      string_sub)
+      AND fibonacci_context(fib)
+      AND 2 <= maximum
+      AND
+        string_of_array_context(
+          string_length,
+          string_index,
+          empty_string,
+          string_app,
+          string_sub,
+          string_of_array)
+
+  all_invariant(
+      q: rope_array,
+      maximum: int,
+      string_length: string_length_function): bool =
+    FORALL (index: int):
+      2 <= index
+        AND index <= maximum
+        IMPLIES rope_invariant(queue_get(q)(index), string_length)
+
+  unchanged_prefix(
+      left, right: rope_array,
+      upper: int): bool =
+    FORALL (index: int):
+      2 <= index
+        AND index < upper
+        IMPLIES queue_get(left)(index) = queue_get(right)(index)
+
+  insertion_postcondition(
+      original, result: rope_array,
+      start, maximum: int,
+      inserted: rope,
+      string_length: string_length_function,
+      string_index: string_index_function,
+      empty_string: CharString,
+      string_app: string_app_function,
+      string_sub: string_sub_function,
+      string_of_array: string_of_array_function): bool =
+    all_invariant(result, maximum, string_length)
+      AND unchanged_prefix(result, original, start)
+      AND
+        strings_equal(
+          string_length,
+          string_index,
+          string_of_array(result, start, maximum + 1),
+          string_app(
+            string_of_array(original, start, maximum + 1),
+            rope_string(
+              inserted,
+              empty_string,
+              string_app,
+              string_sub)))
+
+  recursive_result_condition(
+      cleared, result: rope_array,
+      next_index, maximum: int,
+      carried: rope,
+      string_length: string_length_function,
+      string_index: string_index_function,
+      empty_string: CharString,
+      string_app: string_app_function,
+      string_sub: string_sub_function,
+      string_of_array: string_of_array_function): bool =
+    all_invariant(result, maximum, string_length)
+      AND unchanged_prefix(result, cleared, next_index)
+      AND
+        strings_equal(
+          string_length,
+          string_index,
+          string_of_array(result, next_index, maximum + 1),
+          string_app(
+            string_of_array(cleared, next_index, maximum + 1),
+            rope_string(
+              carried,
+              empty_string,
+              string_app,
+              string_sub)))
+
+  recursive_call_obligation(
+      original, cleared: rope_array,
+      start, next_index, maximum: int,
+      inserted, carried: rope,
+      string_length: string_length_function,
+      string_index: string_index_function,
+      empty_string: CharString,
+      string_app: string_app_function,
+      string_sub: string_sub_function,
+      fib: fibonacci_function,
+      string_of_array: string_of_array_function): bool =
+    ((0 <= maximum - start
+        AND maximum - next_index < maximum - start)
+      AND
+        (2 <= next_index
+          AND next_index < queue_length(cleared)
+          AND queue_length(cleared) = maximum + 1)
+      AND rope_invariant(carried, string_length)
+      AND all_invariant(cleared, maximum, string_length)
+      AND
+        string_length(
+          string_of_array(cleared, next_index, maximum + 1))
+          + rope_length(carried)
+          < fib(maximum + 1))
+      AND
+        (FORALL (result: rope_array):
+          queue_length(result) = queue_length(cleared)
+            IMPLIES
+              recursive_result_condition(
+                cleared,
+                result,
+                next_index,
+                maximum,
+                carried,
+                string_length,
+                string_index,
+                empty_string,
+                string_app,
+                string_sub,
+                string_of_array)
+                IMPLIES
+                  insertion_postcondition(
+                    original,
+                    result,
+                    start,
+                    maximum,
+                    inserted,
+                    string_length,
+                    string_index,
+                    empty_string,
+                    string_app,
+                    string_sub,
+                    string_of_array))
+
+  successful_branch(
+      original: rope_array,
+      start, maximum: int,
+      inserted, combined: rope,
+      string_length: string_length_function,
+      string_index: string_index_function,
+      empty_string: CharString,
+      string_app: string_app_function,
+      string_sub: string_sub_function,
+      string_of_array: string_of_array_function): bool =
+    LET updated: rope_array =
+      queue_set(original, start, combined)
+    IN
+      (0 <= start AND start < queue_length(original))
+        AND
+          (queue_length(updated) = queue_length(original)
+            IMPLIES
+              queue_get(updated)
+                = update_rope_map(
+                    queue_get(original),
+                    start,
+                    combined)
+                IMPLIES
+                  insertion_postcondition(
+                    original,
+                    updated,
+                    start,
+                    maximum,
+                    inserted,
+                    string_length,
+                    string_index,
+                    empty_string,
+                    string_app,
+                    string_sub,
+                    string_of_array))
+
+  recursive_branch(
+      original: rope_array,
+      start, maximum: int,
+      inserted, carried: rope,
+      string_length: string_length_function,
+      string_index: string_index_function,
+      empty_string: CharString,
+      string_app: string_app_function,
+      string_sub: string_sub_function,
+      fib: fibonacci_function,
+      string_of_array: string_of_array_function): bool =
+    LET cleared: rope_array =
+          queue_set(original, start, RopeEmp),
+        next_index: int = start + 1
+    IN
+      (0 <= start AND start < queue_length(original))
+        AND
+          (queue_length(cleared) = queue_length(original)
+            IMPLIES
+              queue_get(cleared)
+                = update_rope_map(
+                    queue_get(original),
+                    start,
+                    RopeEmp)
+                IMPLIES
+                  recursive_call_obligation(
+                    original,
+                    cleared,
+                    start,
+                    next_index,
+                    maximum,
+                    inserted,
+                    carried,
+                    string_length,
+                    string_index,
+                    empty_string,
+                    string_app,
+                    string_sub,
+                    fib,
+                    string_of_array))
+
+  insert_vc: bool =
+    FORALL
+      (string_length: string_length_function),
+      (string_index: string_index_function),
+      (empty_string: CharString),
+      (string_app: string_app_function),
+      (string_sub: string_sub_function),
+      (fib: fibonacci_function),
+      (maximum: int),
+      (string_of_array: string_of_array_function):
+      background_context(
+        string_length,
+        string_index,
+        empty_string,
+        string_app,
+        string_sub,
+        fib,
+        maximum,
+        string_of_array)
+        IMPLIES
+          (FORALL
+              (start: int),
+              (original: rope_array),
+              (inserted: rope):
+            2 <= start
+              IMPLIES start < queue_length(original)
+              IMPLIES queue_length(original) = maximum + 1
+              IMPLIES rope_invariant(inserted, string_length)
+              IMPLIES all_invariant(original, maximum, string_length)
+              IMPLIES
+                string_length(
+                  string_of_array(
+                    original,
+                    start,
+                    maximum + 1))
+                  + rope_length(inserted)
+                  < fib(maximum + 1)
+              IMPLIES
+                (0 <= start
+                  AND start < queue_length(original)
+                  AND
+                    LET current: rope =
+                      queue_get(original)(start)
+                    IN
+                      (rope_invariant(current, string_length)
+                        AND rope_invariant(inserted, string_length))
+                        AND
+                          (FORALL (combined: rope):
+                            rope_invariant(combined, string_length)
+                              AND
+                                strings_equal(
+                                  string_length,
+                                  string_index,
+                                  rope_string(
+                                    combined,
+                                    empty_string,
+                                    string_app,
+                                    string_sub),
+                                  string_app(
+                                    rope_string(
+                                      current,
+                                      empty_string,
+                                      string_app,
+                                      string_sub),
+                                    rope_string(
+                                      inserted,
+                                      empty_string,
+                                      string_app,
+                                      string_sub)))
+                              IMPLIES
+                                LET next_index: int = start + 1
+                                IN
+                                  0 <= next_index
+                                    AND
+                                      IF rope_length(combined)
+                                           < fib(next_index)
+                                      THEN
+                                        successful_branch(
+                                          original,
+                                          start,
+                                          maximum,
+                                          inserted,
+                                          combined,
+                                          string_length,
+                                          string_index,
+                                          empty_string,
+                                          string_app,
+                                          string_sub,
+                                          string_of_array)
+                                      ELSE
+                                        recursive_branch(
+                                          original,
+                                          start,
+                                          maximum,
+                                          inserted,
+                                          combined,
+                                          string_length,
+                                          string_index,
+                                          empty_string,
+                                          string_app,
+                                          string_sub,
+                                          fib,
+                                          string_of_array)
+                                      ENDIF)))
+
+END ropes_Balance_insertqtvc

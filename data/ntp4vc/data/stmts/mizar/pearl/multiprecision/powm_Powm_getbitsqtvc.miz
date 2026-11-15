@@ -1,0 +1,323 @@
+:: Statement-only formalization of the NTP4VC corpus artifact
+:: pearl/multiprecision/powm_Powm_getbitsqtvc: the verification condition
+:: for extracting a window of fewer than 64 bits from a multiprecision
+:: integer, including one- and two-limb cases and the resulting value
+:: relation. This file contains no proof.
+
+environ
+  vocabularies TARSKI, XBOOLE_0, SUBSET_1, RELAT_1, FUNCT_1,
+    FUNCT_2, PARTFUN1, ZFMISC_1, NUMBERS, XREAL_0, CARD_1,
+    XXREAL_0, ARYTM_1, ARYTM_3, REAL_1, INT_1, NAT_1,
+    VALUED_0, VALUED_1, ORDINAL1, MCART_1, MARGREL1,
+    XBOOLEAN, NEWTON, FINSEQ_1, FINSEQ_2;
+  notations TARSKI, XBOOLE_0, SUBSET_1, ZFMISC_1, XTUPLE_0,
+    MCART_1, RELAT_1, FUNCT_1, RELSET_1, PARTFUN1, FUNCT_2,
+    ORDINAL1, CARD_1, NUMBERS, XCMPLX_0, XREAL_0, REAL_1,
+    INT_1, NAT_1, NAT_D, NEWTON, XXREAL_0, MARGREL1, XBOOLEAN,
+    FINSEQ_1, FINSEQ_2;
+  constructors FUNCT_1, RELSET_1, PARTFUN1, FUNCT_2, CARD_1,
+    REAL_1, INT_1, XXREAL_0, ZFMISC_1, MCART_1, NAT_1,
+    NAT_D, NEWTON, MARGREL1, FINSEQ_1, FINSEQ_2;
+  registrations XBOOLE_0, SUBSET_1, RELAT_1, FUNCT_1,
+    RELSET_1, FUNCT_2, NUMBERS, CARD_1, XXREAL_0, MEMBERED,
+    VALUED_0, VALUED_1, XCMPLX_0, XREAL_0, ORDINAL1, INT_1,
+    NAT_1, NEWTON, MARGREL1, XBOOLEAN, FINSEQ_1, FINSEQ_2;
+  requirements REAL, NUMERALS, SUBSET, BOOLE, ARITHM;
+  equalities XBOOLEAN;
+
+begin
+
+::$P-
+theorem
+  for P,Z being non empty set,
+      Data being Function of P,INT*,
+      Offset,Minimum,Maximum being Function of P,INT,
+      Writable being Function of P,BOOLEAN,
+      Zone being Function of P,Z,
+      Pelt being Function of [:P,INT:],INT,
+      VSub being Function of [:P,[:INT,INT:]:],INT,
+      Value,ValueB being Function of [:P,INT:],INT,
+      Pow2,PowRadix being Function of INT,INT,
+      GoodResult being Subset of INT,
+      p being Element of P,
+      nbits,bi,pn being Integer st
+    (for q being Element of P, k being Nat st k in dom (Data.q)
+     holds
+       ex d being Integer st
+         d = (Data.q).k & 0 <= d & d < (2 |^ 64)) &
+    (for q being Element of P, j being Element of INT holds
+       (len (Data.q) = 0 implies Pelt.[q,j] = 0) &
+       (j < 0 & 0 < len (Data.q) implies
+          Pelt.[q,j] = (Data.q).1) &
+       (0 <= j & j < len (Data.q) implies
+          Pelt.[q,j] = (Data.q).(j+1)) &
+       (len (Data.q) <= j implies Pelt.[q,j] = 0)) &
+    (for pv being Integer st pv = Pow2.0 holds pv = 1) &
+    (for e being Element of INT st e < 0 holds
+       for pv being Integer st pv = Pow2.e holds pv = 1) &
+    (for e being Element of INT st 0 <= e holds
+       for pv1,pv2 being Integer st
+         pv1 = Pow2.(e+1) & pv2 = Pow2.e
+       holds pv1 = 2 * pv2) &
+    (for pv being Integer st pv = PowRadix.0 holds pv = 1) &
+    (for e being Element of INT st e < 0 holds
+       for pv being Integer st pv = PowRadix.e holds pv = 1) &
+    (for e being Element of INT st 0 <= e holds
+       for pv1,pv2 being Integer st
+         pv1 = PowRadix.(e+1) & pv2 = PowRadix.e
+       holds pv1 = (2 |^ 64) * pv2) &
+    (for q being Element of P, n,m being Element of INT holds
+       (n < m implies
+          for v,limb,vnext being Integer st
+            v = VSub.[q,[n,m]] &
+            limb = Pelt.[q,n] &
+            vnext = VSub.[q,[n+1,m]]
+          holds v = limb + (2 |^ 64) * vnext) &
+       (not n < m implies VSub.[q,[n,m]] = 0)) &
+    (for q being Element of P, sz being Element of INT holds
+       for v,vs being Integer st
+         v = Value.[q,sz] &
+         vs = VSub.[q,[Offset.q,Offset.q+sz]]
+       holds v = vs) &
+    (for q being Element of P, bits being Element of INT holds
+       (bits < 0 implies ValueB.[q,bits] = 0) &
+       (0 <= bits implies
+          for i being Element of INT st i = bits div 64 holds
+            for vb,v,radixPower,limb,bitPower being Integer st
+              vb = ValueB.[q,bits] &
+              v = Value.[q,i] &
+              radixPower = PowRadix.i &
+              limb = Pelt.[q,Offset.q+i] &
+              bitPower = Pow2.(bits-64*i)
+            holds
+              vb = v + radixPower * (limb mod bitPower))) &
+    (for result being Integer holds
+       (result in GoodResult iff
+         for vb,vbPrev,powerDiff,powerN,whole being Integer st
+           vb = ValueB.[p,bi] &
+           vbPrev = ValueB.[p,bi-nbits] &
+           powerDiff = Pow2.(bi-nbits) &
+           powerN = Pow2.nbits &
+           whole = Value.[p,pn]
+         holds
+           (nbits <= bi implies
+             vb = vbPrev + powerDiff * result) &
+           (bi < nbits implies vb = result) &
+           0 <= result &
+           result < powerN &
+           (nbits <= bi implies
+             result = (whole div powerDiff) mod powerN))) &
+    -(2 |^ 31) <= nbits & nbits <= (2 |^ 31) - 1 &
+    -(2 |^ 31) <= bi & bi <= (2 |^ 31) - 1 &
+    -(2 |^ 31) <= pn & pn <= (2 |^ 31) - 1 &
+    1 <= nbits &
+    nbits < 64 &
+    0 <= bi &
+    1 <= pn &
+    0 <= pn &
+    0 <= Minimum.p &
+    Minimum.p <= Offset.p &
+    Offset.p + pn <= Maximum.p &
+    Maximum.p <= len (Data.p) &
+    (bi + 63) div 64 <= pn
+  holds
+    (bi < nbits implies
+      0 <= bi &
+      (for o1 being Integer st
+         0 <= o1 & o1 < (2 |^ 64) &
+         o1 = bi
+       holds
+         (0 <= o1 & o1 < 64) &
+         (for power1 being Integer st power1 = Pow2.o1 holds
+            power1 <= (2 |^ 64) - 1 &
+            (for o2 being Integer st
+               0 <= o2 & o2 < (2 |^ 64) &
+               o2 = power1
+             holds
+               Minimum.p <= Offset.p &
+               Offset.p < Maximum.p &
+               (for o3 being Integer st
+                  o3 = Pelt.[p,Offset.p]
+                holds
+                  o2 <> 0 &
+                  0 <= o3 mod o2 &
+                  o3 mod o2 <= (2 |^ 64) - 1 &
+                  (for result being Integer st
+                     0 <= result & result < (2 |^ 64) &
+                     result = o3 mod o2
+                   holds
+                     result in GoodResult)))))) &
+    (not bi < nbits implies
+      -(2 |^ 31) <= bi-nbits &
+      bi-nbits <= (2 |^ 31) - 1 &
+      (for o1 being Integer st
+         -(2 |^ 31) <= o1 & o1 <= (2 |^ 31) - 1 &
+         o1 = bi-nbits
+       holds
+         64 <> 0 &
+         -(2 |^ 31) <= o1 div 64 &
+         o1 div 64 <= (2 |^ 31) - 1 &
+         (for o2 being Integer st
+            -(2 |^ 31) <= o2 & o2 <= (2 |^ 31) - 1 &
+            o2 = o1 div 64
+          holds
+            64 <> 0 &
+            -(2 |^ 31) <= o1 mod 64 &
+            o1 mod 64 <= (2 |^ 31) - 1 &
+            (for o3 being Integer st
+               -(2 |^ 31) <= o3 & o3 <= (2 |^ 31) - 1 &
+               o3 = o1 mod 64
+             holds
+               Minimum.p <= Offset.p + o2 &
+               Offset.p + o2 < Maximum.p &
+               -(2 |^ 31) <= o2 + 1 &
+               o2 + 1 <= (2 |^ 31) - 1 &
+               (for o4 being Integer st
+                  -(2 |^ 31) <= o4 &
+                  o4 <= (2 |^ 31) - 1 &
+                  o4 = o2 + 1
+                holds
+                  Minimum.p <= Offset.p + o4 &
+                  Offset.p + o4 <= Maximum.p &
+                  0 <= o3 &
+                     (for o5 being Integer st
+                        0 <= o5 & o5 < (2 |^ 64) &
+                        o5 = o3
+                      holds
+                        0 <= o5 &
+                        o5 < 64 &
+                        (for limb,power5,power3 being Integer st
+                           limb = Pelt.[p,Offset.p+o2] &
+                           power5 = Pow2.o5 &
+                           power3 = Pow2.o3
+                         holds
+                          for o6 being Integer st
+                            0 <= o6 & o6 < (2 |^ 64) &
+                            o6 = limb div power5
+                          holds
+                           power3 <> 0 &
+                           -(2 |^ 31) <= 64-o3 &
+                           64-o3 <= (2 |^ 31) - 1 &
+                           (for nbitsR being Integer st
+                              -(2 |^ 31) <= nbitsR &
+                              nbitsR <= (2 |^ 31) - 1 &
+                              nbitsR = 64-o3
+                            holds
+                              (nbitsR < nbits implies
+                                -(2 |^ 31) <= o2+1 &
+                                o2+1 <= (2 |^ 31) - 1 &
+                                (for o7 being Integer st
+                                   -(2 |^ 31) <= o7 &
+                                   o7 <= (2 |^ 31) - 1 &
+                                   o7 = o2+1
+                                 holds
+                                   Minimum.p <= Offset.p+o7 &
+                                   Offset.p+o7 < Maximum.p &
+                                   0 <= nbitsR &
+                                   (for o8 being Integer st
+                                      0 <= o8 &
+                                      o8 < (2 |^ 64) &
+                                      o8 = nbitsR
+                                    holds
+                                      0 <= o8 & o8 < 64 &
+                                      (for nextLimb,power8 being Integer st
+                                         nextLimb =
+                                           Pelt.[p,Offset.p+o7] &
+                                         power8 = Pow2.o8
+                                       holds
+                                        for prs being Integer st
+                                          0 <= prs &
+                                          prs < (2 |^ 64) &
+                                          prs =
+                                            (nextLimb * power8)
+                                              mod (2 |^ 64) &
+                                          prs <=
+                                            (2 |^ 64) - power8
+                                        holds
+                                          -(2 |^ 31) <= o2+2 &
+                                          o2+2 <= (2 |^ 31) - 1 &
+                                          (for o9 being Integer st
+                                             -(2 |^ 31) <= o9 &
+                                             o9 <= (2 |^ 31) - 1 &
+                                             o9 = o2+2
+                                           holds
+                                             Minimum.p <=
+                                               Offset.p+o9 &
+                                             Offset.p+o9 <= Maximum.p &
+                                             (2 |^ 64) <> 0 &
+                                                0 <= o6+prs &
+                                                o6+prs <=
+                                                  (2 |^ 64)-1 &
+                                                (for o10 being Integer st
+                                                   0 <= o10 &
+                                                   o10 < (2 |^ 64) &
+                                                   o10 = o6+prs
+                                                 holds
+                                                   0 <= nbits &
+                                                   (for o11 being Integer st
+                                                      0 <= o11 &
+                                                      o11 < (2 |^ 64) &
+                                                      o11 = nbits
+                                                    holds
+                                                      (0 <= o11 &
+                                                        o11 < 64) &
+                                                      (for power11 being
+                                                           Integer st
+                                                         power11 =
+                                                           Pow2.o11
+                                                       holds
+                                                         power11 <=
+                                                           (2 |^ 64)-1 &
+                                                         (for o12 being
+                                                              Integer st
+                                                            0 <= o12 &
+                                                            o12 <
+                                                              (2 |^ 64) &
+                                                            o12 = power11
+                                                          holds
+                                                            o12 <> 0 &
+                                                            0 <=
+                                                              o10 mod o12 &
+                                                            o10 mod o12 <=
+                                                              (2 |^ 64)-1 &
+                                                            (for result
+                                                                 being
+                                                                 Integer st
+                                                               0 <= result &
+                                                               result <
+                                                                 (2 |^ 64) &
+                                                               result =
+                                                                 o10 mod o12
+                                                             holds
+                                                               result in
+                                                                 GoodResult
+                                                            )))))))) &
+                              (not nbitsR < nbits implies
+                                0 <= nbits &
+                                (for o7 being Integer st
+                                   0 <= o7 & o7 < (2 |^ 64) &
+                                   o7 = nbits
+                                 holds
+                                   (0 <= o7 & o7 < 64) &
+                                   (for power7 being Integer st
+                                      power7 = Pow2.o7
+                                    holds
+                                      power7 <= (2 |^ 64)-1 &
+                                      (for o8 being Integer st
+                                         0 <= o8 &
+                                         o8 < (2 |^ 64) &
+                                         o8 = power7
+                                       holds
+                                         o8 <> 0 &
+                                         0 <= o6 mod o8 &
+                                         o6 mod o8 <= (2 |^ 64)-1 &
+                                         (for result being Integer st
+                                            0 <= result &
+                                            result < (2 |^ 64) &
+                                            result = o6 mod o8
+                                          holds
+                                            result in
+                                              GoodResult)))))))))))))))
+proof
+end;
+::$P+

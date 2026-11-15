@@ -1,0 +1,436 @@
+% Statement-only formalization of the Thousand Theorems artifact Q1097021,
+% "Minkowski's theorem": a symmetric convex set in a finite-dimensional real
+% normed space whose Haar measure exceeds 2^real-finrank times a lattice
+% fundamental-domain measure contains a nonzero lattice point. This file contains no proof.
+
+minkowski_s_theorem_Q1097021[
+  E: TYPE+,
+  zeroE: E,
+  addE: [E, E -> E],
+  negE: [E -> E],
+  smulE: [real, E -> E],
+  normE: [E -> real]
+]: THEORY
+BEGIN
+  point_set: TYPE = [E -> bool]
+  point_set_sequence: TYPE = [nat -> point_set]
+  sigma_algebra: TYPE = [point_set -> bool]
+  real_sequence: TYPE = [nat -> real]
+  vector_sequence: TYPE = [nat -> E]
+
+  measure_value: TYPE =
+    [# infinite_flag: bool, finite_part: real #]
+  measure_value_sequence: TYPE = [nat -> measure_value]
+  measure_map: TYPE = [point_set -> measure_value]
+
+  subE(x, y: E): E =
+    addE(x, negE(y))
+
+  empty_set: point_set =
+    LAMBDA (x: E): FALSE
+
+  full_set: point_set =
+    LAMBDA (x: E): TRUE
+
+  complement(A: point_set): point_set =
+    LAMBDA (x: E): NOT A(x)
+
+  intersection(A, B: point_set): point_set =
+    LAMBDA (x: E): A(x) AND B(x)
+
+  symmetric_difference(A, B: point_set): point_set =
+    LAMBDA (x: E):
+      (A(x) AND NOT B(x)) OR (B(x) AND NOT A(x))
+
+  countable_union(sets: point_set_sequence): point_set =
+    LAMBDA (x: E):
+      EXISTS (index: nat): sets(index)(x)
+
+  pairwise_disjoint(sets: point_set_sequence): bool =
+    FORALL (left_index, right_index: nat):
+      left_index /= right_index IMPLIES
+        FORALL (x: E):
+          NOT (sets(left_index)(x) AND sets(right_index)(x))
+
+  translate(a: E, A: point_set): point_set =
+    LAMBDA (x: E):
+      EXISTS (y: E):
+        A(y) AND x = addE(a, y)
+
+  normed_real_vector_space_laws: bool =
+    (FORALL (x, y: E):
+      addE(x, y) = addE(y, x))
+      AND (FORALL (x, y, z: E):
+        addE(addE(x, y), z) = addE(x, addE(y, z)))
+      AND (FORALL (x: E):
+        addE(x, zeroE) = x)
+      AND (FORALL (x: E):
+        addE(x, negE(x)) = zeroE)
+      AND (FORALL (a: real), (x, y: E):
+        smulE(a, addE(x, y)) =
+          addE(smulE(a, x), smulE(a, y)))
+      AND (FORALL (a, b: real), (x: E):
+        smulE(a + b, x) =
+          addE(smulE(a, x), smulE(b, x)))
+      AND (FORALL (a, b: real), (x: E):
+        smulE(a * b, x) = smulE(a, smulE(b, x)))
+      AND (FORALL (x: E):
+        smulE(1, x) = x)
+      AND (FORALL (x: E):
+        normE(x) >= 0)
+      AND (FORALL (x: E):
+        (normE(x) = 0 IFF x = zeroE))
+      AND (FORALL (a: real), (x: E):
+        normE(smulE(a, x)) = abs(a) * normE(x))
+      AND (FORALL (x, y: E):
+        normE(addE(x, y)) <= normE(x) + normE(y))
+
+  finite_linear_combination(
+      coefficients: real_sequence,
+      vectors: vector_sequence,
+      count: nat): RECURSIVE E =
+    IF count = 0 THEN
+      zeroE
+    ELSE
+      addE(
+        finite_linear_combination(
+          coefficients, vectors, count - 1),
+        smulE(
+          coefficients(count - 1),
+          vectors(count - 1)))
+    ENDIF
+  MEASURE count
+
+  supported_below(
+      rank: nat,
+      coordinates: real_sequence): bool =
+    FORALL (index: nat):
+      rank <= index IMPLIES coordinates(index) = 0
+
+  unique_basis_coordinates(
+      rank: nat,
+      basis: vector_sequence,
+      x: E,
+      coordinates: real_sequence): bool =
+    supported_below(rank, coordinates)
+      AND x = finite_linear_combination(
+        coordinates, basis, rank)
+      AND (FORALL (other: real_sequence):
+        (supported_below(rank, other)
+          AND x = finite_linear_combination(
+            other, basis, rank))
+        IMPLIES other = coordinates)
+
+  basis_of_real_finrank(
+      rank: nat,
+      basis: vector_sequence): bool =
+    FORALL (x: E):
+      EXISTS (coordinates: real_sequence):
+        unique_basis_coordinates(
+          rank, basis, x, coordinates)
+
+  is_real_finrank(rank: nat): bool =
+    EXISTS (basis: vector_sequence):
+      basis_of_real_finrank(rank, basis)
+
+  open_set(A: point_set): bool =
+    FORALL (x: E):
+      A(x) IMPLIES
+        EXISTS (radius: posreal):
+          FORALL (y: E):
+            normE(subE(y, x)) < radius IMPLIES A(y)
+
+  is_sigma_algebra(Sigma: sigma_algebra): bool =
+    Sigma(empty_set)
+      AND Sigma(full_set)
+      AND (FORALL (A: point_set):
+        Sigma(A) IMPLIES Sigma(complement(A)))
+      AND (FORALL (sets: point_set_sequence):
+        (FORALL (index: nat):
+          Sigma(sets(index)))
+        IMPLIES Sigma(countable_union(sets)))
+
+  contains_open_sets(Sigma: sigma_algebra): bool =
+    FORALL (A: point_set):
+      open_set(A) IMPLIES Sigma(A)
+
+  borel_set(A: point_set): bool =
+    FORALL (Sigma: sigma_algebra):
+      (is_sigma_algebra(Sigma) AND contains_open_sets(Sigma))
+        IMPLIES Sigma(A)
+
+  zero_measure_value: measure_value =
+    (# infinite_flag := FALSE, finite_part := 0 #)
+
+  infinite_measure_value: measure_value =
+    (# infinite_flag := TRUE, finite_part := 0 #)
+
+  finite_measure_value(value: real): measure_value =
+    (# infinite_flag := FALSE, finite_part := value #)
+
+  canonical_measure_value(value: measure_value): bool =
+    IF infinite_flag(value) THEN
+      finite_part(value) = 0
+    ELSE
+      finite_part(value) >= 0
+    ENDIF
+
+  measure_value_is_zero(value: measure_value): bool =
+    NOT infinite_flag(value)
+      AND finite_part(value) = 0
+
+  measure_value_is_finite(value: measure_value): bool =
+    canonical_measure_value(value)
+      AND NOT infinite_flag(value)
+
+  measure_value_add(
+      left, right: measure_value): measure_value =
+    IF infinite_flag(left) OR infinite_flag(right) THEN
+      infinite_measure_value
+    ELSE
+      finite_measure_value(
+        finite_part(left) + finite_part(right))
+    ENDIF
+
+  measure_value_lt(
+      left, right: measure_value): bool =
+    canonical_measure_value(left)
+      AND canonical_measure_value(right)
+      AND IF infinite_flag(right) THEN
+        NOT infinite_flag(left)
+      ELSIF infinite_flag(left) THEN
+        FALSE
+      ELSE
+        finite_part(left) < finite_part(right)
+      ENDIF
+
+  measure_value_scale(
+      value: measure_value,
+      factor: real): measure_value =
+    IF factor <= 0 THEN
+      zero_measure_value
+    ELSIF infinite_flag(value) THEN
+      infinite_measure_value
+    ELSE
+      finite_measure_value(factor * finite_part(value))
+    ENDIF
+
+  partial_real_sum(
+      values: real_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      partial_real_sum(values, count - 1)
+        + values(count - 1)
+    ENDIF
+  MEASURE count
+
+  converges_to_real(
+      values: real_sequence,
+      limit: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(values(index) - limit) < epsilon_value
+
+  unbounded_above(values: real_sequence): bool =
+    FORALL (bound: real):
+      EXISTS (index: nat):
+        bound < values(index)
+
+  partial_measure_sum(
+      values: measure_value_sequence,
+      count: nat): real =
+    partial_real_sum(
+      LAMBDA (index: nat):
+        finite_part(values(index)),
+      count)
+
+  extended_nonnegative_sum(
+      values: measure_value_sequence,
+      total: measure_value): bool =
+    canonical_measure_value(total)
+      AND (FORALL (index: nat):
+        canonical_measure_value(values(index)))
+      AND IF infinite_flag(total) THEN
+        (EXISTS (index: nat):
+          infinite_flag(values(index)))
+          OR ((FORALL (index: nat):
+                NOT infinite_flag(values(index)))
+            AND unbounded_above(
+              LAMBDA (count: nat):
+                partial_measure_sum(values, count)))
+      ELSE
+        (FORALL (index: nat):
+          NOT infinite_flag(values(index)))
+          AND converges_to_real(
+            LAMBDA (count: nat):
+              partial_measure_sum(values, count),
+            finite_part(total))
+      ENDIF
+
+  covered_by_null_borel_set(
+      M: measure_map,
+      A: point_set): bool =
+    EXISTS (cover: point_set):
+      borel_set(cover)
+        AND (FORALL (x: E):
+          A(x) IMPLIES cover(x))
+        AND measure_value_is_zero(M(cover))
+
+  is_measure(M: measure_map): bool =
+    measure_value_is_zero(M(empty_set))
+      AND (FORALL (A: point_set):
+        canonical_measure_value(M(A)))
+      AND (FORALL (A, B: point_set):
+        covered_by_null_borel_set(
+          M, symmetric_difference(A, B))
+        IMPLIES M(A) = M(B))
+      AND (FORALL (sets: point_set_sequence):
+        ((FORALL (index: nat):
+            borel_set(sets(index)))
+          AND pairwise_disjoint(sets))
+        IMPLIES
+          extended_nonnegative_sum(
+            LAMBDA (index: nat):
+              M(sets(index)),
+            M(countable_union(sets))))
+
+  null_set(M: measure_map, A: point_set): bool =
+    covered_by_null_borel_set(M, A)
+
+  null_measurable_set(
+      M: measure_map,
+      A: point_set): bool =
+    EXISTS (measurable_version: point_set):
+      borel_set(measurable_version)
+        AND null_set(
+          M,
+          symmetric_difference(A, measurable_version))
+
+  add_invariant_measure(M: measure_map): bool =
+    FORALL (a: E), (A: point_set):
+      M(translate(a, A)) = M(A)
+
+  locally_finite_measure(M: measure_map): bool =
+    FORALL (x: E):
+      EXISTS (neighborhood: point_set):
+        open_set(neighborhood)
+          AND neighborhood(x)
+          AND measure_value_is_finite(M(neighborhood))
+
+  nonzero_measure(M: measure_map): bool =
+    EXISTS (A: point_set):
+      borel_set(A)
+        AND NOT measure_value_is_zero(M(A))
+
+  is_add_haar_measure(M: measure_map): bool =
+    is_measure(M)
+      AND add_invariant_measure(M)
+      AND locally_finite_measure(M)
+      AND nonzero_measure(M)
+
+  additive_subgroup(lattice: point_set): bool =
+    lattice(zeroE)
+      AND (FORALL (x, y: E):
+        lattice(x) AND lattice(y)
+          IMPLIES lattice(addE(x, y)))
+      AND (FORALL (x: E):
+        lattice(x) IMPLIES lattice(negE(x)))
+
+  countable_set(A: point_set): bool =
+    EXISTS (code: [E -> nat]):
+      FORALL (x, y: E):
+        A(x) AND A(y) AND code(x) = code(y)
+          IMPLIES x = y
+
+  countable_additive_subgroup(lattice: point_set): bool =
+    additive_subgroup(lattice)
+      AND countable_set(lattice)
+
+  union_of_lattice_translates(
+      lattice, fundamental_set: point_set): point_set =
+    LAMBDA (x: E):
+      EXISTS (a, y: E):
+        lattice(a)
+          AND fundamental_set(y)
+          AND x = addE(a, y)
+
+  almost_disjoint(
+      M: measure_map,
+      A, B: point_set): bool =
+    null_set(M, intersection(A, B))
+
+  is_add_fundamental_domain(
+      lattice, fundamental_set: point_set,
+      M: measure_map): bool =
+    null_measurable_set(M, fundamental_set)
+      AND (FORALL (a, b: E):
+        lattice(a)
+          AND lattice(b)
+          AND a /= b
+        IMPLIES
+          almost_disjoint(
+            M,
+            translate(a, fundamental_set),
+            translate(b, fundamental_set)))
+      AND null_set(
+        M,
+        complement(
+          union_of_lattice_translates(
+            lattice, fundamental_set)))
+
+  symmetric_set(A: point_set): bool =
+    FORALL (x: E):
+      A(x) IMPLIES A(negE(x))
+
+  convex_set(A: point_set): bool =
+    FORALL (x, y: E), (a, b: real):
+      A(x)
+        AND A(y)
+        AND a >= 0
+        AND b >= 0
+        AND a + b = 1
+      IMPLIES
+        A(addE(smulE(a, x), smulE(b, y)))
+
+  two_power(dimension: nat): RECURSIVE real =
+    IF dimension = 0 THEN
+      1
+    ELSE
+      2 * two_power(dimension - 1)
+    ENDIF
+  MEASURE dimension
+
+  finrank_scaled_measure_lt(
+      M: measure_map,
+      fundamental_set, convex_body: point_set): bool =
+    EXISTS (dimension: nat):
+      is_real_finrank(dimension)
+        AND measure_value_lt(
+          measure_value_scale(
+            M(fundamental_set),
+            two_power(dimension)),
+          M(convex_body))
+
+  minkowski_s_theorem: bool =
+    normed_real_vector_space_laws IMPLIES
+      FORALL
+          (M: measure_map),
+          (lattice, fundamental_set, convex_body: point_set):
+        (is_add_haar_measure(M)
+          AND countable_additive_subgroup(lattice)
+          AND is_add_fundamental_domain(
+            lattice, fundamental_set, M)
+          AND symmetric_set(convex_body)
+          AND convex_set(convex_body)
+          AND finrank_scaled_measure_lt(
+            M, fundamental_set, convex_body))
+        IMPLIES
+          EXISTS (x: E):
+            lattice(x)
+              AND x /= zeroE
+              AND convex_body(x)
+END minkowski_s_theorem_Q1097021

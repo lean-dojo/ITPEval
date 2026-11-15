@@ -1,0 +1,87 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1979_a4:
+% equal finite red and blue point sets in the real plane, with no three union
+% points collinear, admit a perfect red-blue matching by pairwise disjoint
+% closed straight line segments. This file contains no proof.
+
+putnam_1979_a4: THEORY
+BEGIN
+  point: TYPE = [# x_coord: real, y_coord: real #]
+  segment: TYPE = [# red_endpoint: point, blue_endpoint: point #]
+
+  IMPORTING finite_sets[point], finite_sets[segment]
+
+  cross_from(P, Q, R: point): real =
+    (x_coord(Q) - x_coord(P)) * (y_coord(R) - y_coord(P))
+      - (y_coord(Q) - y_coord(P)) * (x_coord(R) - x_coord(P))
+
+  collinear(P, Q, R: point): bool =
+    cross_from(P, Q, R) = 0
+
+  in_union(P: point, red_points, blue_points: finite_set[point]): bool =
+    red_points(P) OR blue_points(P)
+
+  disjoint_colors(
+      red_points, blue_points: finite_set[point]): bool =
+    NOT
+      (EXISTS (P: point):
+        red_points(P) AND blue_points(P))
+
+  no_three_collinear(
+      red_points, blue_points: finite_set[point]): bool =
+    FORALL (P, Q, R: point):
+      (in_union(P, red_points, blue_points)
+        AND in_union(Q, red_points, blue_points)
+        AND in_union(R, red_points, blue_points)
+        AND P /= Q
+        AND P /= R
+        AND Q /= R)
+      IMPLIES NOT collinear(P, Q, R)
+
+  segment_point(L: segment, t: real): point =
+    (# x_coord :=
+         t * x_coord(red_endpoint(L))
+           + (1 - t) * x_coord(blue_endpoint(L)),
+       y_coord :=
+         t * y_coord(red_endpoint(L))
+           + (1 - t) * y_coord(blue_endpoint(L)) #)
+
+  segment_belongs_to_colors(
+      L: segment,
+      red_points, blue_points: finite_set[point]): bool =
+    red_points(red_endpoint(L))
+      AND blue_points(blue_endpoint(L))
+
+  distinct_segments_are_disjoint(L, M: segment): bool =
+    red_endpoint(L) /= red_endpoint(M)
+      AND blue_endpoint(L) /= blue_endpoint(M)
+      AND
+        (FORALL (x, y: real):
+          (0 <= x AND x <= 1 AND 0 <= y AND y <= 1)
+          IMPLIES segment_point(L, x) /= segment_point(M, y))
+
+  valid_matching(
+      matching: finite_set[segment],
+      red_points, blue_points: finite_set[point]): bool =
+    card(matching) = card(red_points)
+      AND
+        (FORALL (L: segment):
+          matching(L)
+          IMPLIES
+            segment_belongs_to_colors(
+              L, red_points, blue_points))
+      AND
+        (FORALL (L, M: segment):
+          matching(L) AND matching(M) AND L /= M
+          IMPLIES distinct_segments_are_disjoint(L, M))
+
+  putnam_1979_a4: bool =
+    FORALL
+        (red_points, blue_points: finite_set[point]):
+      (card(red_points) = card(blue_points)
+        AND disjoint_colors(red_points, blue_points)
+        AND no_three_collinear(red_points, blue_points))
+      IMPLIES
+        EXISTS (matching: finite_set[segment]):
+          valid_matching(
+            matching, red_points, blue_points)
+END putnam_1979_a4

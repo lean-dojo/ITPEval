@@ -1,0 +1,125 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1991_a5:
+% the maximum over 0 <= y <= 1 of the integral from 0 to y of
+% sqrt(x^4 + (y - y^2)^2) is 1/3. This file contains no proof.
+
+putnam_1991_a5: THEORY
+BEGIN
+  real_function: TYPE = [real -> real]
+  real_sequence: TYPE = [nat -> real]
+
+  nonnegative_square_root(value: real): real =
+    IF 0 <= value THEN
+      epsilon(
+        LAMBDA (root: real):
+          0 <= root AND root * root = value)
+    ELSE
+      0
+    ENDIF
+
+  integrand(y: real): real_function =
+    LAMBDA (x: real):
+      nonnegative_square_root(
+        x ^ 4 + (y - y ^ 2) ^ 2)
+
+  valid_tagged_partition(
+      left, right: real,
+      points, tags: real_sequence,
+      count: nat): bool =
+    count > 0
+      AND points(0) = left
+      AND points(count) = right
+      AND FORALL (index: nat):
+        index < count IMPLIES
+          (points(index) < points(index + 1)
+            AND points(index) <= tags(index)
+            AND tags(index) <= points(index + 1))
+
+  mesh_less_than(
+      points: real_sequence,
+      count: nat,
+      bound: real): bool =
+    FORALL (index: nat):
+      index < count IMPLIES
+        points(index + 1) - points(index) < bound
+
+  riemann_sum(
+      function_value: real_function,
+      points, tags: real_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      riemann_sum(
+        function_value, points, tags, count - 1)
+        + function_value(tags(count - 1))
+            * (points(count) - points(count - 1))
+    ENDIF
+  MEASURE count
+
+  has_interval_integral(
+      function_value: real_function,
+      left, right, integral_value: real): bool =
+    left < right
+      AND FORALL (epsilon_value: posreal):
+        EXISTS (mesh_bound: posreal):
+          FORALL
+              (points, tags: real_sequence),
+              (count: nat):
+            (valid_tagged_partition(
+                left, right, points, tags, count)
+              AND mesh_less_than(
+                points, count, mesh_bound))
+            IMPLIES
+              abs(
+                riemann_sum(
+                  function_value, points, tags, count)
+                  - integral_value)
+                < epsilon_value
+
+  interval_integral(
+      function_value: real_function,
+      left, right: real): real =
+    IF left = right THEN
+      0
+    ELSIF left < right THEN
+      IF EXISTS (integral_value: real):
+          has_interval_integral(
+            function_value, left, right, integral_value)
+      THEN
+        epsilon(
+          LAMBDA (integral_value: real):
+            has_interval_integral(
+              function_value, left, right, integral_value))
+      ELSE
+        0
+      ENDIF
+    ELSE
+      IF EXISTS (integral_value: real):
+          has_interval_integral(
+            function_value, right, left, integral_value)
+      THEN
+        -epsilon(
+          LAMBDA (integral_value: real):
+            has_interval_integral(
+              function_value, right, left, integral_value))
+      ELSE
+        0
+      ENDIF
+    ENDIF
+
+  objective(y: real): real =
+    interval_integral(integrand(y), 0, y)
+
+  putnam_1991_a5_solution: real = 1 / 3
+
+  putnam_1991_a5: bool =
+    (EXISTS (y: real):
+      0 <= y
+        AND y <= 1
+        AND objective(y) = putnam_1991_a5_solution)
+      AND
+        (FORALL (y: real):
+          (0 <= y AND y <= 1)
+            IMPLIES
+              objective(y) <= putnam_1991_a5_solution)
+END putnam_1991_a5

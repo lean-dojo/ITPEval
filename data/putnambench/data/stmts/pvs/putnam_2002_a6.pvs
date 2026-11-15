@@ -1,0 +1,67 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2002_a6:
+% the reciprocal series for the base-b digit-length recurrence converges
+% exactly when the integer base b is 2. This file contains no proof.
+
+putnam_2002_a6: THEORY
+BEGIN
+  recurrence_function: TYPE = [nat, nat -> real]
+
+  base_digit_count_is(
+      base, value, digit_count: nat): bool =
+    digit_count > 0
+      AND base ^ (digit_count - 1) <= value
+      AND value < base ^ digit_count
+
+  satisfies_recurrence(f: recurrence_function): bool =
+    FORALL (base: nat):
+      base >= 2 IMPLIES
+        (f(base, 1) = 1
+          AND f(base, 2) = 2
+          AND FORALL (value: nat):
+            value >= 3 IMPLIES
+              EXISTS (digit_count: nat):
+                base_digit_count_is(
+                  base, value, digit_count)
+                  AND f(base, value) =
+                    (value :: real)
+                      * f(base, digit_count))
+
+  safe_reciprocal(value: real): real =
+    IF value = 0 THEN
+      0
+    ELSE
+      1 / value
+    ENDIF
+
+  partial_sum(
+      f: recurrence_function,
+      base, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      partial_sum(f, base, count - 1)
+        + safe_reciprocal(f(base, count))
+    ENDIF
+  MEASURE count
+
+  series_converges(
+      f: recurrence_function,
+      base: nat): bool =
+    EXISTS (limit_value: real):
+      FORALL (epsilon_value: posreal):
+        EXISTS (cutoff: nat):
+          FORALL (count: nat):
+            cutoff <= count IMPLIES
+              abs(
+                partial_sum(f, base, count)
+                  - limit_value)
+                < epsilon_value
+
+  putnam_2002_a6: bool =
+    FORALL (f: recurrence_function):
+      satisfies_recurrence(f) IMPLIES
+        FORALL (base: nat):
+          base >= 2 IMPLIES
+            (series_converges(f, base)
+              IFF base = 2)
+END putnam_2002_a6

@@ -1,0 +1,67 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1994_a5:
+% sums of exactly 1994 terms at strictly increasing indices from a positive
+% real sequence tending to zero leave an open gap in every nonempty interval.
+% This file contains no proof.
+
+putnam_1994_a5: THEORY
+BEGIN
+  real_sequence: TYPE = [nat -> real]
+  natural_sequence: TYPE = [nat -> nat]
+  real_set: TYPE = [real -> bool]
+
+  converges_to_zero(sequence: real_sequence): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index)) < epsilon_value
+
+  selected_sum(
+      sequence: real_sequence,
+      indices: natural_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      selected_sum(sequence, indices, count - 1)
+        + sequence(indices(count - 1))
+    ENDIF
+  MEASURE count
+
+  strictly_increasing_prefix(
+      indices: natural_sequence,
+      count: nat): bool =
+    FORALL (j, k: nat):
+      (j < count AND k < count AND j < k)
+        IMPLIES indices(j) < indices(k)
+
+  is_sum_of_1994_terms(
+      sequence: real_sequence,
+      value: real): bool =
+    EXISTS (indices: natural_sequence):
+      strictly_increasing_prefix(indices, 1994)
+        AND value = selected_sum(sequence, indices, 1994)
+
+  is_representable_set(
+      sequence: real_sequence,
+      S: real_set): bool =
+    FORALL (value: real):
+      S(value) IFF is_sum_of_1994_terms(sequence, value)
+
+  contains_open_gap_in_every_interval(S: real_set): bool =
+    FORALL (a, b: real):
+      a < b IMPLIES
+        EXISTS (c, d: real):
+          a <= c
+            AND c < d
+            AND d <= b
+            AND (FORALL (value: real):
+              (c < value AND value < d) IMPLIES NOT S(value))
+
+  putnam_1994_a5: bool =
+    FORALL (sequence: real_sequence), (S: real_set):
+      ((FORALL (index: nat): sequence(index) > 0)
+        AND converges_to_zero(sequence)
+        AND is_representable_set(sequence, S))
+      IMPLIES contains_open_gap_in_every_interval(S)
+END putnam_1994_a5

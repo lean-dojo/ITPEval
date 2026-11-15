@@ -1,0 +1,152 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2015_a1:
+% an interior point on the positive branch y = 1/x that maximizes the area
+% of triangle APB makes the areas between the hyperbola and the chords AP
+% and PB equal. This file contains no proof.
+
+putnam_2015_a1: THEORY
+BEGIN
+  point: TYPE = [# x_coord: real, y_coord: real #]
+  real_function: TYPE = [real -> real]
+  real_sequence: TYPE = [nat -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  on_positive_hyperbola(P: point): bool =
+    x_coord(P) > 0
+      AND y_coord(P) = safe_div(1, x_coord(P))
+
+  cross_from(P, Q, R: point): real =
+    (x_coord(Q) - x_coord(P)) * (y_coord(R) - y_coord(P))
+      - (y_coord(Q) - y_coord(P)) * (x_coord(R) - x_coord(P))
+
+  triangle_area(P, Q, R: point): real =
+    abs(cross_from(P, Q, R)) / 2
+
+  chord_value(P, Q: point, x: real): real =
+    safe_div(
+      y_coord(Q) - y_coord(P),
+      x_coord(Q) - x_coord(P))
+      * (x - x_coord(P))
+      + y_coord(P)
+
+  valid_tagged_partition(
+      left, right: real,
+      points, tags: real_sequence,
+      count: nat): bool =
+    count > 0
+      AND points(0) = left
+      AND points(count) = right
+      AND FORALL (index: nat):
+        index < count IMPLIES
+          (points(index) < points(index + 1)
+            AND points(index) <= tags(index)
+            AND tags(index) <= points(index + 1))
+
+  mesh_less_than(
+      points: real_sequence,
+      count: nat,
+      bound: real): bool =
+    FORALL (index: nat):
+      index < count IMPLIES
+        points(index + 1) - points(index) < bound
+
+  riemann_sum(
+      function_value: real_function,
+      points, tags: real_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      riemann_sum(
+        function_value, points, tags, count - 1)
+        + function_value(tags(count - 1))
+            * (points(count) - points(count - 1))
+    ENDIF
+  MEASURE count
+
+  has_interval_integral(
+      function_value: real_function,
+      left, right, integral_value: real): bool =
+    left < right
+      AND FORALL (epsilon_value: posreal):
+        EXISTS (mesh_bound: posreal):
+          FORALL
+              (points, tags: real_sequence),
+              (count: nat):
+            (valid_tagged_partition(
+                left, right, points, tags, count)
+              AND mesh_less_than(
+                points, count, mesh_bound))
+            IMPLIES
+              abs(
+                riemann_sum(
+                  function_value, points, tags, count)
+                  - integral_value)
+                < epsilon_value
+
+  interval_integral(
+      function_value: real_function,
+      left, right: real): real =
+    IF left = right THEN
+      0
+    ELSIF left < right THEN
+      IF EXISTS (integral_value: real):
+          has_interval_integral(
+            function_value, left, right, integral_value)
+      THEN
+        epsilon(
+          LAMBDA (integral_value: real):
+            has_interval_integral(
+              function_value, left, right, integral_value))
+      ELSE
+        0
+      ENDIF
+    ELSE
+      IF EXISTS (integral_value: real):
+          has_interval_integral(
+            function_value, right, left, integral_value)
+      THEN
+        -epsilon(
+          LAMBDA (integral_value: real):
+            has_interval_integral(
+              function_value, right, left, integral_value))
+      ELSE
+        0
+      ENDIF
+    ENDIF
+
+  chord_gap(P, Q: point): real_function =
+    LAMBDA (x: real):
+      chord_value(P, Q, x) - safe_div(1, x)
+
+  putnam_2015_a1: bool =
+    FORALL (A, B, P: point):
+      (on_positive_hyperbola(A)
+        AND on_positive_hyperbola(B)
+        AND x_coord(A) < x_coord(B)
+        AND on_positive_hyperbola(P)
+        AND x_coord(A) < x_coord(P)
+        AND x_coord(P) < x_coord(B)
+        AND (FORALL (P_prime: point):
+          (on_positive_hyperbola(P_prime)
+            AND x_coord(A) < x_coord(P_prime)
+            AND x_coord(P_prime) < x_coord(B))
+          IMPLIES
+            triangle_area(A, P_prime, B)
+              <= triangle_area(A, P, B)))
+      IMPLIES
+        interval_integral(
+          chord_gap(A, P),
+          x_coord(A),
+          x_coord(P))
+          =
+        interval_integral(
+          chord_gap(P, B),
+          x_coord(P),
+          x_coord(B))
+END putnam_2015_a1

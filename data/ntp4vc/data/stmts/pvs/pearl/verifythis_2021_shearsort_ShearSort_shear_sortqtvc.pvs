@@ -1,0 +1,839 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/verifythis_2021_shearsort_ShearSort_shear_sortqtvc: the complete
+% ShearSort verification condition for logarithmic phase bounds, alternating
+% row order, column sorting, zero-one separation, and preservation of matrix
+% multiplicities. This file contains no proof.
+
+verifythis_2021_shearsort_ShearSort_shear_sortqtvc: THEORY
+BEGIN
+
+  matrix_int: TYPE =
+    [# rows: nat, columns: nat, elts: [int, int -> int] #]
+
+  index_pair: TYPE =
+    [# lower: int, upper: int #]
+
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  matrix_rows(m: matrix_int): int =
+    rows(m)
+
+  matrix_columns(m: matrix_int): int =
+    columns(m)
+
+  interval_count_from(
+      predicate: [int -> bool],
+      current: int,
+      remaining: nat): RECURSIVE nat =
+    IF remaining = 0 THEN
+      0
+    ELSE
+      (IF predicate(current) THEN 1 ELSE 0 ENDIF)
+        + interval_count_from(predicate, current + 1, remaining - 1)
+    ENDIF
+  MEASURE remaining
+
+  numof(
+      predicate: [int -> bool],
+      lower_bound, upper_bound: int): int =
+    interval_count_from(
+      predicate,
+      lower_bound,
+      int_to_nat(upper_bound - lower_bound))
+
+  matrix_occurrence_rows(
+      requested: int,
+      entries: [int, int -> int],
+      column_count, row_index: int,
+      remaining_rows: nat): RECURSIVE int =
+    IF remaining_rows = 0 THEN
+      0
+    ELSE
+      numof(
+        LAMBDA (column_index: int):
+          entries(row_index, column_index) = requested,
+        0,
+        column_count)
+        + matrix_occurrence_rows(
+            requested,
+            entries,
+            column_count,
+            row_index + 1,
+            remaining_rows - 1)
+    ENDIF
+  MEASURE remaining_rows
+
+  matrix_occurrence(
+      requested: int,
+      entries: [int, int -> int],
+      row_count, column_count: int): int =
+    matrix_occurrence_rows(
+      requested,
+      entries,
+      column_count,
+      0,
+      int_to_nat(row_count))
+
+  interval_permutation(
+      first, second: [int -> int],
+      lower_bound, upper_bound: int): bool =
+    FORALL (value: int):
+      numof(
+        LAMBDA (index: int): first(index) = value,
+        lower_bound,
+        upper_bound)
+      =
+      numof(
+        LAMBDA (index: int): second(index) = value,
+        lower_bound,
+        upper_bound)
+
+  int_power(base, exponent: int): int =
+    base ^ int_to_nat(exponent)
+
+  % Why3 ComputerDivision is truncating signed integer division. Every
+  % divisor in this VC is 2; the zero case only totalizes this helper.
+  computer_div(dividend, divisor: int): int =
+    IF divisor = 0 THEN
+      0
+    ELSIF 0 <= dividend THEN
+      IF 0 < divisor THEN
+        ndiv(int_to_nat(dividend), int_to_nat(divisor))
+      ELSE
+        -ndiv(int_to_nat(dividend), int_to_nat(-divisor))
+      ENDIF
+    ELSE
+      IF 0 < divisor THEN
+        -ndiv(int_to_nat(-dividend), int_to_nat(divisor))
+      ELSE
+        ndiv(int_to_nat(-dividend), int_to_nat(-divisor))
+      ENDIF
+    ENDIF
+
+  computer_mod(dividend, divisor: int): int =
+    dividend - divisor * computer_div(dividend, divisor)
+
+  same_shape(first, second: matrix_int): bool =
+    matrix_rows(first) = matrix_rows(second)
+      AND matrix_columns(first) = matrix_columns(second)
+
+  row_order(
+      row: [int -> int],
+      ascending: bool,
+      column_count: int): bool =
+    FORALL (j, k: int):
+      (0 <= j AND j <= k AND k < column_count)
+        IMPLIES
+          IF ascending THEN row(j) <= row(k) ELSE row(k) <= row(j) ENDIF
+
+  row_snake(
+      entries: [int, int -> int],
+      row_count, column_count: int): bool =
+    FORALL (i, j, k: int):
+      (0 <= i AND i < row_count
+        AND 0 <= j AND j <= k AND k < column_count)
+      IMPLIES
+        IF computer_mod(i, 2) = 0 THEN
+          entries(i, j) <= entries(i, k)
+        ELSE
+          entries(i, k) <= entries(i, j)
+        ENDIF
+
+  cross_sorted(
+      entries: [int, int -> int],
+      row_count, column_count: int): bool =
+    FORALL (i, j1, j2, k: int):
+      (0 <= i AND i < k AND k < row_count
+        AND 0 <= j1 AND j1 < column_count
+        AND 0 <= j2 AND j2 < column_count)
+      IMPLIES
+        entries(i, j1) <= entries(k, j2)
+
+  row_permuted(after, before: matrix_int): bool =
+    FORALL (i: int):
+      (0 <= i AND i < matrix_rows(after))
+      IMPLIES
+        interval_permutation(
+          LAMBDA (j: int): elts(after)(i, j),
+          LAMBDA (j: int): elts(before)(i, j),
+          0,
+          matrix_columns(after))
+
+  column_permuted(after, before: matrix_int): bool =
+    FORALL (j: int):
+      (0 <= j AND j < matrix_columns(after))
+      IMPLIES
+        interval_permutation(
+          LAMBDA (i: int): elts(after)(i, j),
+          LAMBDA (i: int): elts(before)(i, j),
+          0,
+          matrix_rows(after))
+
+  column_sorted(m: matrix_int): bool =
+    FORALL (i, j, k: int):
+      (0 <= i AND i <= k AND k < matrix_rows(m)
+        AND 0 <= j AND j < matrix_columns(m))
+      IMPLIES
+        elts(m)(i, j) <= elts(m)(k, j)
+
+  threshold_bounds(
+      entries: [int, int -> int],
+      zeros, ones: [int -> int],
+      width, row_count, column_count: int): bool =
+    (FORALL (value: int):
+      0 <= zeros(value)
+        AND zeros(value) <= ones(value)
+        AND ones(value) <= row_count)
+    AND
+    (FORALL (value: int):
+      ones(value) <= zeros(value) + width)
+    AND
+    (FORALL (value, i, j: int):
+      (0 <= i AND i < zeros(value)
+        AND 0 <= j AND j < column_count)
+      IMPLIES entries(i, j) <= value)
+    AND
+    (FORALL (value, i, j: int):
+      (ones(value) <= i AND i < row_count
+        AND 0 <= j AND j < column_count)
+      IMPLIES value < entries(i, j))
+
+  occurrences_preserved(
+      original, current: matrix_int,
+      row_count, column_count: int): bool =
+    FORALL (value: int):
+      matrix_occurrence(value, elts(original), row_count, column_count)
+        =
+      matrix_occurrence(value, elts(current), row_count, column_count)
+
+  logarithmic_bound(k, index, row_count: int): bool =
+    0 < k
+      AND (k - 1) * int_power(2, index) < row_count
+      AND row_count <= k * int_power(2, index)
+
+  select_contract(
+      first, second: [int -> int],
+      value, column_count: int,
+      result: bool): bool =
+    (result IMPLIES
+      (FORALL (i: int):
+        (0 <= i AND i < column_count)
+        IMPLIES first(i) <= value OR second(i) <= value))
+    AND
+    (NOT result IMPLIES
+      (FORALL (i: int):
+        (0 <= i AND i < column_count)
+        IMPLIES value < first(i) OR value < second(i)))
+
+  select_vc(value, column_count: int): bool =
+    FORALL (first, second: [int -> int], ascending: bool):
+      (row_order(first, ascending, column_count)
+        AND row_order(second, NOT ascending, column_count))
+      IMPLIES
+        IF NOT ascending THEN
+          ((0 <= (IF ascending THEN 0 ELSE 1 ENDIF)
+              AND
+            (IF TRUE THEN 0 ELSE 1 ENDIF)
+              < (IF ascending THEN 0 ELSE 1 ENDIF))
+            AND row_order(second, TRUE, column_count)
+            AND row_order(first, FALSE, column_count))
+          AND
+          (FORALL (result: bool):
+            select_contract(second, first, value, column_count, result)
+            IMPLIES
+              select_contract(first, second, value, column_count, result))
+        ELSE
+          ((0 <= 0 AND 0 <= column_count)
+            AND
+            (FORALL (j: int):
+              (0 <= j AND j < 0)
+              IMPLIES first(j) <= value AND value < second(j)))
+          AND
+          (FORALL (i: int):
+            ((0 <= i AND i <= column_count)
+              AND
+              (FORALL (j: int):
+                (0 <= j AND j < i)
+                IMPLIES first(j) <= value AND value < second(j)))
+            IMPLIES
+              (FORALL (continue: bool):
+                continue =
+                  (IF NOT (i = column_count) THEN
+                    IF first(i) <= value THEN
+                      IF value < second(i) THEN TRUE ELSE FALSE ENDIF
+                    ELSE
+                      FALSE
+                    ENDIF
+                  ELSE
+                    FALSE
+                  ENDIF)
+                IMPLIES
+                  IF continue THEN
+                    (0 <= column_count - i
+                      AND column_count - (i + 1) < column_count - i)
+                    AND (0 <= i + 1 AND i + 1 <= column_count)
+                    AND
+                    (FORALL (j: int):
+                      (0 <= j AND j < i + 1)
+                      IMPLIES first(j) <= value AND value < second(j))
+                  ELSE
+                    (FORALL (result: bool):
+                      result =
+                        (IF i = column_count THEN
+                          TRUE
+                        ELSE
+                          IF second(i) <= value THEN TRUE ELSE FALSE ENDIF
+                        ENDIF)
+                      IMPLIES
+                        select_contract(
+                          first,
+                          second,
+                          value,
+                          column_count,
+                          result))
+                  ENDIF))
+        ENDIF
+
+  pair_specification(
+      entries: [int, int -> int],
+      nz, no, kd, row_count, column_count, value: int): bool =
+    0 <= nz
+      AND nz <= no
+      AND no <= row_count
+      AND no <= nz + kd
+      AND
+      (FORALL (j: int):
+        (0 <= j AND j < column_count)
+        IMPLIES
+          nz <= numof(
+            LAMBDA (row: int): entries(row, j) <= value,
+            0,
+            row_count)
+          AND
+          row_count - no <= numof(
+            LAMBDA (row: int): value < entries(row, j),
+            0,
+            row_count))
+
+  nzo_invariant(
+      entries: [int, int -> int],
+      z, ob, nz, no, index, row_count, column_count, value: int): bool =
+    z <= index
+      AND index <= ob
+      AND z <= nz
+      AND no <= ob
+      AND index - z = 2 * (nz - z + ob - no)
+      AND
+      (FORALL (j: int):
+        (0 <= j AND j < column_count)
+        IMPLIES
+          nz <= numof(
+            LAMBDA (row: int): entries(row, j) <= value,
+            0,
+            index)
+          AND
+          row_count - no <=
+            numof(
+              LAMBDA (row: int): value < entries(row, j),
+              0,
+              index)
+            +
+            numof(
+              LAMBDA (row: int): value < entries(row, j),
+              ob,
+              row_count))
+
+  nzo_vc(
+      entries: [int, int -> int],
+      zeros, ones: [int -> int],
+      kd, row_count, column_count, value: int): bool =
+    LET z: int = zeros(value),
+        ob: int = ones(value)
+    IN
+      nzo_invariant(
+        entries, z, ob, z, ob, z, row_count, column_count, value)
+      AND
+      (FORALL (index, no, nz: int):
+        nzo_invariant(
+          entries,
+          z,
+          ob,
+          nz,
+          no,
+          index,
+          row_count,
+          column_count,
+          value)
+        IMPLIES
+          IF index + 1 < ob THEN
+            select_vc(value, column_count)
+            AND NOT (2 = 0)
+            AND
+            LET ascending: bool = computer_mod(index, 2) = 0,
+                first: [int -> int] =
+                  LAMBDA (j: int): entries(index, j),
+                second: [int -> int] =
+                  LAMBDA (j: int): entries(index + 1, j)
+            IN
+              row_order(first, ascending, column_count)
+              AND row_order(second, NOT ascending, column_count)
+              AND
+              (FORALL (result: bool):
+                select_contract(
+                  first, second, value, column_count, result)
+                IMPLIES
+                  IF result THEN
+                    (0 <= ob - index
+                      AND ob - (index + 2) < ob - index)
+                    AND
+                    nzo_invariant(
+                      entries,
+                      z,
+                      ob,
+                      nz + 1,
+                      no,
+                      index + 2,
+                      row_count,
+                      column_count,
+                      value)
+                  ELSE
+                    (0 <= ob - index
+                      AND ob - (index + 2) < ob - index)
+                    AND
+                    nzo_invariant(
+                      entries,
+                      z,
+                      ob,
+                      nz,
+                      no - 1,
+                      index + 2,
+                      row_count,
+                      column_count,
+                      value)
+                  ENDIF)
+          ELSE
+            pair_specification(
+              entries,
+              nz,
+              no,
+              kd,
+              row_count,
+              column_count,
+              value)
+          ENDIF)
+
+  auxiliary_up(
+      entries: [int, int -> int],
+      row_count, column_count: int): bool =
+    FORALL (value, i, j: int):
+      (0 <= i AND i < row_count
+        AND
+        0 < numof(
+          LAMBDA (row: int): entries(row, j) <= value,
+          i + 1,
+          row_count)
+        AND 0 <= j AND j < column_count
+        AND value < entries(i, j))
+      IMPLIES
+        LET next: int = i + 1 IN
+          (0 <= row_count - i AND row_count - next < row_count - i)
+          AND (0 <= next AND next < row_count)
+          AND
+          0 < numof(
+            LAMBDA (row: int): entries(row, j) <= value,
+            next + 1,
+            row_count)
+          AND 0 <= j
+          AND j < column_count
+          AND value < entries(next, j)
+
+  auxiliary_down(
+      entries: [int, int -> int],
+      row_count, column_count: int): bool =
+    FORALL (value, i, j: int):
+      (0 <= i AND i < row_count
+        AND
+        0 < numof(
+          LAMBDA (row: int): value < entries(row, j),
+          0,
+          i)
+        AND 0 <= j AND j < column_count
+        AND entries(i, j) <= value)
+      IMPLIES
+        LET previous: int = i - 1 IN
+          (0 <= i AND previous < i)
+          AND (0 <= previous AND previous < row_count)
+          AND
+          0 < numof(
+            LAMBDA (row: int): value < entries(row, j),
+            0,
+            previous)
+          AND 0 <= j
+          AND j < column_count
+          AND entries(previous, j) <= value
+
+  final_condition(m: matrix_int): bool =
+    cross_sorted(elts(m), matrix_rows(m), matrix_columns(m))
+      AND row_snake(elts(m), matrix_rows(m), matrix_columns(m))
+
+  column_phase(
+      original, row_sorted_matrix: matrix_int,
+      zeros, ones, new_zeros, new_ones: [int -> int],
+      index, logarithm, kd, row_count, column_count: int): bool =
+    (index = logarithm
+      IMPLIES
+        threshold_bounds(
+          elts(row_sorted_matrix),
+          zeros,
+          ones,
+          1,
+          row_count,
+          column_count))
+    AND
+    ((index = logarithm
+      IMPLIES
+        cross_sorted(
+          elts(row_sorted_matrix), row_count, column_count))
+      IMPLIES
+        (FORALL (column_sorted_matrix: matrix_int):
+          same_shape(column_sorted_matrix, row_sorted_matrix)
+          IMPLIES
+            (column_permuted(column_sorted_matrix, row_sorted_matrix)
+              AND column_sorted(column_sorted_matrix))
+            IMPLIES
+              auxiliary_up(
+                elts(column_sorted_matrix), row_count, column_count)
+              AND
+              auxiliary_down(
+                elts(column_sorted_matrix), row_count, column_count)
+              AND
+              threshold_bounds(
+                elts(column_sorted_matrix),
+                new_zeros,
+                new_ones,
+                kd,
+                row_count,
+                column_count)
+              AND logarithmic_bound(kd, index + 1, row_count)
+              AND
+              (logarithm < index + 1
+                IMPLIES
+                  row_snake(
+                    elts(column_sorted_matrix),
+                    row_count,
+                    column_count))
+              AND
+              occurrences_preserved(
+                original,
+                column_sorted_matrix,
+                row_count,
+                column_count)))
+
+  projection_phase(
+      original, row_sorted_matrix: matrix_int,
+      entries: [int, int -> int],
+      zeros, ones: [int -> int],
+      index, logarithm, kd, row_count, column_count: int): bool =
+    FORALL (nzo: [int -> index_pair]):
+      (FORALL (value: int):
+        pair_specification(
+          entries,
+          lower(nzo(value)),
+          upper(nzo(value)),
+          kd,
+          row_count,
+          column_count,
+          value))
+      IMPLIES
+        (FORALL (value0: int):
+          pair_specification(
+            entries,
+            lower(nzo(value0)),
+            upper(nzo(value0)),
+            kd,
+            row_count,
+            column_count,
+            value0)
+          IMPLIES
+            (FORALL (result: int):
+              result = lower(nzo(value0))
+              IMPLIES result = lower(nzo(value0)))
+            AND
+            (FORALL (new_zeros: [int -> int]):
+              (FORALL (value: int):
+                new_zeros(value) = lower(nzo(value)))
+              IMPLIES
+                (FORALL (value1: int):
+                  pair_specification(
+                    entries,
+                    lower(nzo(value1)),
+                    upper(nzo(value1)),
+                    kd,
+                    row_count,
+                    column_count,
+                    value1)
+                  IMPLIES
+                    (FORALL (result: int):
+                      result = upper(nzo(value1))
+                      IMPLIES result = upper(nzo(value1)))
+                    AND
+                    (FORALL (new_ones: [int -> int]):
+                      (FORALL (value: int):
+                        new_ones(value) = upper(nzo(value)))
+                      IMPLIES
+                        column_phase(
+                          original,
+                          row_sorted_matrix,
+                          zeros,
+                          ones,
+                          new_zeros,
+                          new_ones,
+                          index,
+                          logarithm,
+                          kd,
+                          row_count,
+                          column_count)))))
+
+  nzo_phase(
+      original, row_sorted_matrix: matrix_int,
+      zeros, ones: [int -> int],
+      index, logarithm, kd, row_count, column_count: int): bool =
+    (FORALL (value: int):
+      nzo_vc(
+        elts(row_sorted_matrix),
+        zeros,
+        ones,
+        kd,
+        row_count,
+        column_count,
+        value))
+    AND
+    projection_phase(
+      original,
+      row_sorted_matrix,
+      elts(row_sorted_matrix),
+      zeros,
+      ones,
+      index,
+      logarithm,
+      kd,
+      row_count,
+      column_count)
+
+  loop_body(
+      original, current: matrix_int,
+      zeros, ones: [int -> int],
+      k, index, logarithm, row_count, column_count: int): bool =
+    FORALL (row_sorted_matrix: matrix_int):
+      same_shape(row_sorted_matrix, current)
+      IMPLIES
+        (row_permuted(row_sorted_matrix, current)
+          AND row_snake(
+            elts(row_sorted_matrix),
+            matrix_rows(row_sorted_matrix),
+            matrix_columns(row_sorted_matrix)))
+        IMPLIES
+          NOT (2 = 0)
+          AND
+          LET kd: int = computer_div(k + 1, 2) IN
+            nzo_phase(
+              original,
+              row_sorted_matrix,
+              zeros,
+              ones,
+              index,
+              logarithm,
+              kd,
+              row_count,
+              column_count)
+
+  loop_invariant(
+      original, current: matrix_int,
+      zeros, ones: [int -> int],
+      k, index, logarithm, row_count, column_count: int): bool =
+    0 <= index
+      AND index <= logarithm
+      AND
+      threshold_bounds(
+        elts(current), zeros, ones, k, row_count, column_count)
+      AND logarithmic_bound(k, index, row_count)
+      AND
+      (logarithm < index
+        IMPLIES row_snake(elts(current), row_count, column_count))
+      AND
+      occurrences_preserved(
+        original, current, row_count, column_count)
+
+  post_loop(
+      original, current: matrix_int,
+      zeros, ones: [int -> int],
+      k, logarithm, row_count, column_count: int): bool =
+    threshold_bounds(
+      elts(current), zeros, ones, k, row_count, column_count)
+      AND logarithmic_bound(k, logarithm + 1, row_count)
+      AND
+      (logarithm < logarithm + 1
+        IMPLIES row_snake(elts(current), row_count, column_count))
+      AND
+      occurrences_preserved(
+        original, current, row_count, column_count)
+
+  completion(
+      original, current: matrix_int,
+      row_count, column_count: int): bool =
+    cross_sorted(elts(current), row_count, column_count)
+    IMPLIES
+      final_condition(current)
+      AND
+      occurrences_preserved(
+        original,
+        current,
+        matrix_rows(current),
+        matrix_columns(current))
+
+  initial_condition(
+      m: matrix_int,
+      logarithm, row_count, column_count: int): bool =
+    threshold_bounds(
+      elts(m),
+      LAMBDA (value: int): 0,
+      LAMBDA (value: int): row_count,
+      row_count,
+      row_count,
+      column_count)
+      AND logarithmic_bound(row_count, 0, row_count)
+      AND
+      (logarithm < 0
+        IMPLIES row_snake(elts(m), row_count, column_count))
+
+  shear_sort_vc: bool =
+    FORALL (m: matrix_int):
+      LET row_count: int = matrix_rows(m),
+          column_count: int = matrix_columns(m)
+      IN
+        IF NOT (row_count = 0) THEN
+          LET initial_p: int = row_count - 1 IN
+            ((0 <= 0 AND 0 <= initial_p)
+              AND initial_p * int_power(2, 0) < row_count
+              AND row_count <= int_power(2, 0) * (initial_p + 1))
+            AND
+            (FORALL (p, logarithm: int):
+              ((0 <= logarithm AND 0 <= p)
+                AND
+                (NOT (logarithm = 0)
+                  IMPLIES int_power(2, logarithm - 1) <= row_count)
+                AND p * int_power(2, logarithm) < row_count
+                AND
+                row_count <=
+                  int_power(2, logarithm) * (p + 1))
+              IMPLIES
+                IF NOT (p = 0) THEN
+                  NOT (2 = 0)
+                  AND (0 <= p AND computer_div(p, 2) < p)
+                  AND (0 <= logarithm + 1 AND 0 <= computer_div(p, 2))
+                  AND
+                  (NOT (logarithm + 1 = 0)
+                    IMPLIES
+                      int_power(2, logarithm + 1 - 1) <= row_count)
+                  AND
+                  computer_div(p, 2)
+                    * int_power(2, logarithm + 1)
+                    < row_count
+                  AND
+                  row_count <=
+                    int_power(2, logarithm + 1)
+                      * (computer_div(p, 2) + 1)
+                ELSE
+                  (FORALL (
+                      ones, zeros: [int -> int],
+                      current: matrix_int):
+                    same_shape(current, m)
+                    IMPLIES
+                      threshold_bounds(
+                        elts(current),
+                        zeros,
+                        ones,
+                        1,
+                        row_count,
+                        column_count)
+                    IMPLIES
+                      cross_sorted(
+                        elts(current), row_count, column_count))
+                  AND
+                  (0 <= logarithm + 1
+                    IMPLIES
+                      initial_condition(
+                        m, logarithm, row_count, column_count)
+                      AND
+                      (FORALL (
+                          ones, zeros: [int -> int],
+                          k: int,
+                          current: matrix_int):
+                        same_shape(current, m)
+                        IMPLIES
+                          (FORALL (index: int):
+                            loop_invariant(
+                              m,
+                              current,
+                              zeros,
+                              ones,
+                              k,
+                              index,
+                              logarithm,
+                              row_count,
+                              column_count)
+                            IMPLIES
+                              loop_body(
+                                m,
+                                current,
+                                zeros,
+                                ones,
+                                k,
+                                index,
+                                logarithm,
+                                row_count,
+                                column_count))
+                          AND
+                          (post_loop(
+                            m,
+                            current,
+                            zeros,
+                            ones,
+                            k,
+                            logarithm,
+                            row_count,
+                            column_count)
+                            IMPLIES
+                              threshold_bounds(
+                                elts(current),
+                                zeros,
+                                ones,
+                                1,
+                                row_count,
+                                column_count)
+                              AND
+                              completion(
+                                m,
+                                current,
+                                row_count,
+                                column_count))))
+                  AND
+                  (logarithm + 1 < 0
+                    IMPLIES
+                      threshold_bounds(
+                        elts(m),
+                        LAMBDA (value: int): 0,
+                        LAMBDA (value: int): row_count,
+                        1,
+                        row_count,
+                        column_count)
+                      AND
+                      (cross_sorted(elts(m), row_count, column_count)
+                        IMPLIES final_condition(m)))
+                ENDIF)
+        ELSE
+          final_condition(m)
+        ENDIF
+
+END verifythis_2021_shearsort_ShearSort_shear_sortqtvc

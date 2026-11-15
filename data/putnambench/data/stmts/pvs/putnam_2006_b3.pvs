@@ -1,0 +1,77 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2006_b3:
+% the maximum number of unordered linear partitions of an n-point set in the
+% real plane is the binomial coefficient n choose 2 plus one. This file
+% contains no proof.
+
+putnam_2006_b3: THEORY
+BEGIN
+  point: TYPE = [# x_coord: real, y_coord: real #]
+
+  IMPORTING finite_sets[point], finite_sets_of_sets[point]
+
+  point_set: TYPE = finite_set[point]
+
+  IMPORTING finite_sets[point_set], finite_sets_of_sets[point_set]
+
+  linear_partition: TYPE = finite_set[point_set]
+  linear_partition_family: TYPE = finite_set[linear_partition]
+
+  all_subsets(S: point_set): linear_partition =
+    powerset(S)
+
+  is_linear_partition(
+      S: point_set,
+      AB: linear_partition): bool =
+    card(AB) = 2
+      AND EXISTS (A, B: point_set):
+        AB(A)
+          AND AB(B)
+          AND A /= B
+          AND
+            (FORALL (P: point):
+              S(P) IFF (A(P) OR B(P)))
+          AND
+            (FORALL (P: point):
+              NOT (A(P) AND B(P)))
+          AND
+            (EXISTS (m, b: real):
+              (FORALL (P: point):
+                A(P) IMPLIES
+                  y_coord(P) > m * x_coord(P) + b)
+                AND
+              (FORALL (P: point):
+                B(P) IMPLIES
+                  y_coord(P) < m * x_coord(P) + b))
+
+  linear_partitions(S: point_set): linear_partition_family =
+    intersection(
+      powerset(all_subsets(S)),
+      {AB: linear_partition | is_linear_partition(S, AB)})
+
+  binomial_coefficient(n, k: nat): RECURSIVE nat =
+    IF k = 0 THEN
+      1
+    ELSIF n = 0 THEN
+      0
+    ELSE
+      binomial_coefficient(n - 1, k - 1)
+        + binomial_coefficient(n - 1, k)
+    ENDIF
+  MEASURE n
+
+  putnam_2006_b3_solution(n: nat): nat =
+    binomial_coefficient(n, 2) + 1
+
+  putnam_2006_b3: bool =
+    FORALL (n: nat):
+      n > 0 IMPLIES
+        (EXISTS (S: point_set):
+          card(S) = n
+            AND card(linear_partitions(S))
+              = putnam_2006_b3_solution(n))
+        AND
+          (FORALL (S: point_set):
+            card(S) = n IMPLIES
+              card(linear_partitions(S))
+                <= putnam_2006_b3_solution(n))
+END putnam_2006_b3

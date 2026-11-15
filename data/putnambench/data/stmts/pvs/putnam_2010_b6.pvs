@@ -1,0 +1,76 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2010_b6:
+% agreement of ordinary and entrywise powers of a positive-dimensional real
+% square matrix through exponent n+1 forces agreement at every positive
+% exponent. This file contains no proof.
+
+putnam_2010_b6: THEORY
+BEGIN
+  matrix(n: posnat): TYPE = [below(n), below(n) -> real]
+  matrix_sequence(n: posnat): TYPE = [nat -> matrix(n)]
+
+  bounded_real_sum(
+      n: posnat,
+      values: [below(n) -> real],
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      bounded_real_sum(n, values, count - 1)
+        + IF count <= n THEN
+            values(count - 1)
+          ELSE
+            0
+          ENDIF
+    ENDIF
+  MEASURE count
+
+  identity_matrix(n: posnat): matrix(n) =
+    LAMBDA (row, column: below(n)):
+      IF row = column THEN 1 ELSE 0 ENDIF
+
+  matrix_multiply(n: posnat)(A, B: matrix(n)): matrix(n) =
+    LAMBDA (row, column: below(n)):
+      bounded_real_sum(
+        n,
+        LAMBDA (inner: below(n)):
+          A(row, inner) * B(inner, column),
+        n)
+
+  matrix_power(
+      n: posnat)(
+      A: matrix(n),
+      exponent: nat): RECURSIVE matrix(n) =
+    IF exponent = 0 THEN
+      identity_matrix(n)
+    ELSE
+      matrix_multiply(
+        n)(
+        A,
+        matrix_power(n)(A, exponent - 1))
+    ENDIF
+  MEASURE exponent
+
+  entrywise_power(
+      n: posnat)(
+      A: matrix(n),
+      exponent: nat): matrix(n) =
+    LAMBDA (row, column: below(n)):
+      A(row, column) ^ exponent
+
+  putnam_2010_b6: bool =
+    FORALL
+        (n: posnat),
+        (A: matrix(n)),
+        (Apow: matrix_sequence(n)):
+      (FORALL (k: nat):
+        k > 0 IMPLIES
+          Apow(k) = entrywise_power(n)(A, k))
+      IMPLIES
+        ((FORALL (k: nat):
+            1 <= k AND k <= n + 1 IMPLIES
+              matrix_power(n)(A, k) = Apow(k))
+          IMPLIES
+            (FORALL (k: nat):
+              k >= 1 IMPLIES
+                matrix_power(n)(A, k) = Apow(k)))
+END putnam_2010_b6

@@ -1,0 +1,79 @@
+(*
+COST Verification Competition. vladimir@cost-ic0701.org
+
+Challenge 2: Maximum in a tree
+
+
+Given: A non-empty binary tree, where every node carries an integer.
+
+Implement and verify a program that computes the maximum of the values
+in the tree.
+
+Please base your program on the following data structure signature:
+
+public class Tree {
+
+    int value;
+    Tree left;
+    Tree right;
+
+}
+
+You may represent empty trees as null references or as you consider
+appropriate.
+*)
+
+theory BinTree
+
+  use int.Int
+  use int.MinMax
+
+  type tree = Null | Tree int tree tree
+
+  (* tests whether an integer v occurs in t *)
+  predicate mem (v:int) (t:tree) =
+    match t with
+    | Null -> false
+    | Tree x l r -> x=v \/ mem v l \/ mem v r
+    end
+
+  (* tests whether an integer is greater or equal to all values of a tree *)
+  predicate ge_tree (v:int) (t:tree) =
+    match t with
+    | Null -> true
+    | Tree x l r -> v >= x /\ ge_tree v l /\ ge_tree v r
+    end
+
+  let ghost ge_trans (t:tree) (x y:int) : unit
+    requires { x >= y }
+    requires { ge_tree y t }
+    ensures  { ge_tree x t }
+  = ()
+
+end
+
+module TreeMax
+
+  use int.Int
+  use int.MinMax
+  use BinTree
+
+  let rec max_aux (t:tree) (acc:int) variant {t}
+    ensures { ge_tree result t /\ result >= acc /\
+      (result = acc \/ mem result t) }
+  = match t with
+    | Null -> acc
+    | Tree v l r ->
+        max_aux l (max_aux r (MinMax.max v acc))
+    end
+
+  let max (t: tree)
+    requires { t <> Null }
+    ensures  { ge_tree result t /\ mem result t }
+  = match t with
+    | Null -> absurd
+    | Tree v l r ->
+        max_aux l (max_aux r v)
+    end
+
+end

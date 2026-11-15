@@ -1,0 +1,122 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/vacid_0_sparse_array_SparseArray_getqtvc: the sparse-array get
+% verification condition, relating valid indices, membership, stored values,
+% and the default value returned for absent elements. This file contains no proof.
+
+vacid_0_sparse_array_SparseArray_getqtvc[
+  Element: TYPE+
+]: THEORY
+BEGIN
+
+  maxlen: int = 1000
+
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  nth_element(
+      values: list[Element],
+      index: nat,
+      default_value: Element): RECURSIVE Element =
+    CASES values OF
+      null:
+        default_value,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          nth_element(tail, index - 1, default_value)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  nth_int(
+      values: list[int],
+      index: nat): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          nth_int(tail, index - 1)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  sparse_array: TYPE =
+    [# values: list[Element],
+       index_values: list[int],
+       back_values: list[int],
+       card: int,
+       def1: Element #]
+
+  sparse_array_invariant(a: sparse_array): bool =
+    0 <= a`card
+      AND a`card <= length(a`values)
+      AND length(a`values) <= maxlen
+      AND length(a`values) = length(a`index_values)
+      AND length(a`index_values) = length(a`back_values)
+      AND
+    (FORALL (j: int):
+      (0 <= j AND j < a`card)
+        IMPLIES
+          (0 <= nth_int(a`back_values, int_to_nat(j))
+            AND
+           nth_int(a`back_values, int_to_nat(j))
+             < length(a`values))
+          AND
+          nth_int(
+            a`index_values,
+            int_to_nat(
+              nth_int(a`back_values, int_to_nat(j))))
+            = j)
+
+  is_elt(a: sparse_array, i: int): bool =
+    (0 <= nth_int(a`index_values, int_to_nat(i))
+      AND
+     nth_int(a`index_values, int_to_nat(i)) < a`card)
+      AND
+    nth_int(
+      a`back_values,
+      int_to_nat(
+        nth_int(a`index_values, int_to_nat(i))))
+      = i
+
+  value(a: sparse_array, i: int): Element =
+    IF is_elt(a, i) THEN
+      nth_element(a`values, int_to_nat(i), a`def1)
+    ELSE
+      a`def1
+    ENDIF
+
+  sparse_length(a: sparse_array): int =
+    length(a`values)
+
+  get_vc: bool =
+    FORALL (i: int), (a: sparse_array):
+      (sparse_array_invariant(a)
+        AND 0 <= i
+        AND i < sparse_length(a))
+        IMPLIES
+          0 <= i
+            AND i < sparse_length(a)
+            AND
+          (is_elt(a, i)
+            IMPLIES
+              0 <= i
+                AND i < length(a`values))
+            AND
+          (FORALL (result: Element):
+            (IF is_elt(a, i) THEN
+               result =
+                 nth_element(
+                   a`values,
+                   int_to_nat(i),
+                   a`def1)
+             ELSE
+               result = a`def1
+             ENDIF)
+              IMPLIES result = value(a, i))
+
+END vacid_0_sparse_array_SparseArray_getqtvc

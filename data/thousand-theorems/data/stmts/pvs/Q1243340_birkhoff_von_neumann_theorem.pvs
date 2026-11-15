@@ -1,0 +1,163 @@
+% Statement-only formalization of the Thousand Theorems artifact Q1243340,
+% "Birkhoff–Von Neumann theorem": over any linearly ordered field and finite
+% index type, the doubly stochastic matrices are exactly the finite convex
+% combinations of permutation matrices. This file contains no proof.
+
+Q1243340_birkhoff_von_neumann_theorem[
+  I: TYPE,
+  R: TYPE+,
+  zero, one: R,
+  neg, inv: [R -> R],
+  add, mul: [R, R -> R],
+  le: [R, R -> bool]
+]: THEORY
+BEGIN
+  matrix: TYPE = [I, I -> R]
+  permutation: TYPE = [I -> I]
+
+  IMPORTING finite_sets[I], finite_sets[permutation]
+
+  additive_group_laws: bool =
+    (FORALL (x, y: R): add(x, y) = add(y, x))
+      AND
+    (FORALL (x, y, z: R):
+      add(add(x, y), z) = add(x, add(y, z)))
+      AND
+    (FORALL (x: R):
+      add(x, zero) = x
+        AND add(x, neg(x)) = zero)
+
+  field_multiplication_laws: bool =
+    zero /= one
+      AND
+    inv(zero) = zero
+      AND
+    (FORALL (x, y: R): mul(x, y) = mul(y, x))
+      AND
+    (FORALL (x, y, z: R):
+      mul(mul(x, y), z) = mul(x, mul(y, z)))
+      AND
+    (FORALL (x: R): mul(x, one) = x)
+      AND
+    (FORALL (x, y, z: R):
+      mul(x, add(y, z)) =
+        add(mul(x, y), mul(x, z)))
+      AND
+    (FORALL (x: R):
+      x /= zero IMPLIES mul(x, inv(x)) = one)
+
+  linear_order_laws: bool =
+    (FORALL (x: R): le(x, x))
+      AND
+    (FORALL (x, y, z: R):
+      le(x, y) AND le(y, z) IMPLIES le(x, z))
+      AND
+    (FORALL (x, y: R):
+      le(x, y) AND le(y, x) IMPLIES x = y)
+      AND
+    (FORALL (x, y: R):
+      le(x, y) OR le(y, x))
+
+  ordered_ring_laws: bool =
+    le(zero, one)
+      AND
+    (FORALL (x, y, z: R):
+      le(x, y) IMPLIES le(add(x, z), add(y, z)))
+      AND
+    (FORALL (x, y: R):
+      le(zero, x) AND le(zero, y)
+        IMPLIES le(zero, mul(x, y)))
+
+  linearly_ordered_field_laws: bool =
+    additive_group_laws
+      AND field_multiplication_laws
+      AND linear_order_laws
+      AND ordered_ring_laws
+
+  full_index_set(carrier: finite_set[I]): bool =
+    FORALL (i: I): member(i, carrier)
+
+  index_sum_value(values: [I -> R], total: R): bool =
+    EXISTS
+      (carrier: finite_set[I]),
+      (enumeration: [below(card(carrier)) -> (carrier)]),
+      (partial_sums: [upto(card(carrier)) -> R]):
+        full_index_set(carrier)
+          AND bijective?(enumeration)
+          AND partial_sums(0) = zero
+          AND
+            (FORALL (k: below(card(carrier))):
+              partial_sums(k + 1) =
+                add(partial_sums(k), values(enumeration(k))))
+          AND total = partial_sums(card(carrier))
+
+  permutation_sum_value(
+      support: finite_set[permutation],
+      values: [permutation -> R],
+      total: R): bool =
+    EXISTS
+      (enumeration:
+        [below(card(support)) -> (support)]),
+      (partial_sums: [upto(card(support)) -> R]):
+        bijective?(enumeration)
+          AND partial_sums(0) = zero
+          AND
+            (FORALL (k: below(card(support))):
+              partial_sums(k + 1) =
+                add(partial_sums(k), values(enumeration(k))))
+          AND total = partial_sums(card(support))
+
+  is_permutation(p: permutation): bool =
+    (FORALL (i, j: I):
+      p(i) = p(j) IMPLIES i = j)
+      AND
+    (FORALL (j: I):
+      EXISTS (i: I): p(i) = j)
+
+  permutation_matrix_entry(
+      p: permutation,
+      i, j: I): R =
+    IF p(i) = j THEN one ELSE zero ENDIF
+
+  doubly_stochastic(M: matrix): bool =
+    (FORALL (i, j: I): le(zero, M(i, j)))
+      AND
+    (FORALL (i: I):
+      index_sum_value(
+        (LAMBDA (j: I): M(i, j)),
+        one))
+      AND
+    (FORALL (j: I):
+      index_sum_value(
+        (LAMBDA (i: I): M(i, j)),
+        one))
+
+  convex_combination_of_permutation_matrices(
+      M: matrix): bool =
+    EXISTS
+      (support: finite_set[permutation]),
+      (weight: [permutation -> R]):
+        (FORALL (p: permutation):
+          member(p, support) IMPLIES
+            is_permutation(p)
+              AND le(zero, weight(p)))
+          AND permutation_sum_value(support, weight, one)
+          AND
+            (FORALL (i, j: I):
+              permutation_sum_value(
+                support,
+                (LAMBDA (p: permutation):
+                  mul(
+                    weight(p),
+                    permutation_matrix_entry(p, i, j))),
+                M(i, j)))
+
+  doublyStochastic_eq_convexHull_permMatrix: bool =
+    (is_finite_type[I]
+      AND linearly_ordered_field_laws)
+    IMPLIES
+      (FORALL (M: matrix):
+        doubly_stochastic(M)
+          IFF
+        convex_combination_of_permutation_matrices(M))
+END Q1243340_birkhoff_von_neumann_theorem

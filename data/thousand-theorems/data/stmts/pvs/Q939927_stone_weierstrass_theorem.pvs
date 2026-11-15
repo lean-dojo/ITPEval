@@ -1,0 +1,136 @@
+% Statement-only formalization of the Thousand Theorems corpus artifact Q939927,
+% "Stone-Weierstrass theorem": a point-separating real subalgebra of continuous
+% functions on a compact topological space is uniformly dense. This file contains no proof.
+
+stone_weierstrass_theorem_Q939927[
+  X: TYPE,
+  openX: [[X -> bool] -> bool]
+]: THEORY
+BEGIN
+  point_set: TYPE = [X -> bool]
+  point_set_family: TYPE = [point_set -> bool]
+  point_set_sequence: TYPE = [nat -> point_set]
+  real_set: TYPE = [real -> bool]
+  real_function: TYPE = [X -> real]
+  real_subalgebra: TYPE = [real_function -> bool]
+
+  empty_set: point_set =
+    LAMBDA (x: X): FALSE
+
+  whole_set: point_set =
+    LAMBDA (x: X): TRUE
+
+  intersection(U, V: point_set): point_set =
+    LAMBDA (x: X):
+      U(x) AND V(x)
+
+  union_of_family(F: point_set_family): point_set =
+    LAMBDA (x: X):
+      EXISTS (U: point_set):
+        F(U) AND U(x)
+
+  subset_of(U, V: point_set): bool =
+    FORALL (x: X):
+      U(x) IMPLIES V(x)
+
+  topology_laws: bool =
+    openX(empty_set)
+      AND openX(whole_set)
+      AND
+    (FORALL (U, V: point_set):
+      openX(U) AND openX(V)
+        IMPLIES openX(intersection(U, V)))
+      AND
+    (FORALL (F: point_set_family):
+      (FORALL (U: point_set):
+        F(U) IMPLIES openX(U))
+      IMPLIES openX(union_of_family(F)))
+
+  open_cover(F: point_set_family): bool =
+    (FORALL (U: point_set):
+      F(U) IMPLIES openX(U))
+      AND subset_of(whole_set, union_of_family(F))
+
+  finite_subcover(F: point_set_family): bool =
+    EXISTS
+        (count: nat),
+        (chosen: point_set_sequence):
+      (FORALL (index: nat):
+        index < count IMPLIES F(chosen(index)))
+        AND
+      (FORALL (x: X):
+        EXISTS (index: nat):
+          index < count AND chosen(index)(x))
+
+  compact_space: bool =
+    FORALL (F: point_set_family):
+      open_cover(F) IMPLIES finite_subcover(F)
+
+  real_open(U: real_set): bool =
+    FORALL (a: real):
+      U(a) IMPLIES
+        EXISTS (radius: real):
+          radius > 0
+            AND FORALL (b: real):
+              abs(b - a) < radius IMPLIES U(b)
+
+  preimage(f: real_function, U: real_set): point_set =
+    LAMBDA (x: X):
+      U(f(x))
+
+  continuous(f: real_function): bool =
+    FORALL (U: real_set):
+      real_open(U) IMPLIES openX(preimage(f, U))
+
+  constant_function(c: real): real_function =
+    LAMBDA (x: X): c
+
+  function_add(f, g: real_function): real_function =
+    LAMBDA (x: X):
+      f(x) + g(x)
+
+  function_neg(f: real_function): real_function =
+    LAMBDA (x: X):
+      -f(x)
+
+  function_mul(f, g: real_function): real_function =
+    LAMBDA (x: X):
+      f(x) * g(x)
+
+  subalgebra_of_continuous_functions(A: real_subalgebra): bool =
+    (FORALL (f: real_function):
+      A(f) IMPLIES continuous(f))
+      AND
+    (FORALL (c: real):
+      A(constant_function(c)))
+      AND
+    (FORALL (f, g: real_function):
+      A(f) AND A(g) IMPLIES
+        A(function_add(f, g))
+          AND A(function_mul(f, g)))
+      AND
+    (FORALL (f: real_function):
+      A(f) IMPLIES A(function_neg(f)))
+
+  separates_points(A: real_subalgebra): bool =
+    FORALL (x, y: X):
+      x /= y IMPLIES
+        EXISTS (f: real_function):
+          A(f) AND f(x) /= f(y)
+
+  uniformly_dense(A: real_subalgebra): bool =
+    FORALL (f: real_function), (epsilon_value: real):
+      continuous(f) AND epsilon_value > 0 IMPLIES
+        EXISTS (g: real_function):
+          A(g)
+            AND FORALL (x: X):
+              abs(g(x) - f(x)) < epsilon_value
+
+  stone_weierstrass_theorem: bool =
+    (topology_laws AND compact_space)
+      IMPLIES
+        FORALL (A: real_subalgebra):
+          (subalgebra_of_continuous_functions(A)
+            AND separates_points(A))
+          IMPLIES uniformly_dense(A)
+END stone_weierstrass_theorem_Q939927

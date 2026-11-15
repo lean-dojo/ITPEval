@@ -1,0 +1,188 @@
+% Statement-only formalization of the Thousand Theorems corpus artifact Q530152,
+% "Picard&ndash;Lindelöf theorem": a time-dependent vector field satisfying
+% local Lipschitz, continuity, norm-bound, and interval-size hypotheses on a
+% Banach space has a local solution through each permitted initial point.
+% This file contains no proof.
+
+picard_lindelof_theorem_Q530152[
+  E: TYPE+,
+  zeroE: E,
+  addE: [E, E -> E],
+  negE: [E -> E],
+  smulE: [real, E -> E],
+  normE: [E -> real]
+]: THEORY
+BEGIN
+  e_sequence: TYPE = [nat -> E]
+  curve: TYPE = [real -> E]
+  time_dependent_vector_field: TYPE = [real -> [E -> E]]
+
+  subE(x, y: E): E =
+    addE(x, negE(y))
+
+  normed_real_vector_space: bool =
+    (FORALL (x, y: E):
+      addE(x, y) = addE(y, x))
+      AND (FORALL (x, y, z: E):
+        addE(addE(x, y), z) = addE(x, addE(y, z)))
+      AND (FORALL (x: E):
+        addE(x, zeroE) = x)
+      AND (FORALL (x: E):
+        addE(x, negE(x)) = zeroE)
+      AND (FORALL (a_scalar: real), (x, y: E):
+        smulE(a_scalar, addE(x, y)) =
+          addE(smulE(a_scalar, x), smulE(a_scalar, y)))
+      AND (FORALL (a_scalar, b_scalar: real), (x: E):
+        smulE(a_scalar + b_scalar, x) =
+          addE(smulE(a_scalar, x), smulE(b_scalar, x)))
+      AND (FORALL (a_scalar, b_scalar: real), (x: E):
+        smulE(a_scalar * b_scalar, x) =
+          smulE(a_scalar, smulE(b_scalar, x)))
+      AND (FORALL (x: E):
+        smulE(1, x) = x)
+      AND (FORALL (x: E):
+        0 <= normE(x))
+      AND (FORALL (x: E):
+        normE(x) = 0 IFF x = zeroE)
+      AND (FORALL (a_scalar: real), (x: E):
+        normE(smulE(a_scalar, x)) =
+          abs(a_scalar) * normE(x))
+      AND (FORALL (x, y: E):
+        normE(addE(x, y)) <= normE(x) + normE(y))
+
+  converges_to_e(values: e_sequence, limit: E): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            normE(subE(values(index), limit)) < epsilon_value
+
+  cauchy_e(values: e_sequence): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (left_index, right_index: nat):
+          cutoff <= left_index AND cutoff <= right_index IMPLIES
+            normE(
+              subE(values(left_index), values(right_index)))
+              < epsilon_value
+
+  complete_space_e: bool =
+    FORALL (values: e_sequence):
+      cauchy_e(values) IMPLIES
+        EXISTS (limit: E):
+          converges_to_e(values, limit)
+
+  in_closed_interval(t, tmin, tmax: real): bool =
+    tmin <= t AND t <= tmax
+
+  in_closed_ball(
+      point, center: E,
+      radius: real): bool =
+    normE(subE(point, center)) <= radius
+
+  max_real(left, right: real): real =
+    IF left <= right THEN right ELSE left ENDIF
+
+  lipschitz_on_closed_ball(
+      function_value: [E -> E],
+      center: E,
+      radius, constant: real): bool =
+    FORALL (left, right: E):
+      (in_closed_ball(left, center, radius)
+        AND in_closed_ball(right, center, radius))
+      IMPLIES
+        normE(
+          subE(function_value(left), function_value(right)))
+          <= constant * normE(subE(left, right))
+
+  continuous_in_time_on_interval(
+      vector_field: time_dependent_vector_field,
+      point: E,
+      tmin, tmax: real): bool =
+    FORALL (t: real):
+      in_closed_interval(t, tmin, tmax) IMPLIES
+        FORALL (epsilon_value: posreal):
+          EXISTS (radius: posreal):
+            FORALL (nearby: real):
+              (in_closed_interval(nearby, tmin, tmax)
+                AND abs(nearby - t) < radius)
+              IMPLIES
+                normE(
+                  subE(
+                    vector_field(nearby)(point),
+                    vector_field(t)(point)))
+                  < epsilon_value
+
+  has_derivative_within_interval_at(
+      function_value: curve,
+      derivative: E,
+      t, tmin, tmax: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (radius: posreal):
+        FORALL (nearby: real):
+          (in_closed_interval(nearby, tmin, tmax)
+            AND abs(nearby - t) < radius)
+          IMPLIES
+            normE(
+              subE(
+                subE(function_value(nearby), function_value(t)),
+                smulE(nearby - t, derivative)))
+              <= epsilon_value * abs(nearby - t)
+
+  is_picard_lindelof(
+      vector_field: time_dependent_vector_field,
+      tmin, tmax, t0: real,
+      center: E,
+      ball_radius, initial_radius,
+      norm_bound, lipschitz_constant: real): bool =
+    (FORALL (t: real):
+      in_closed_interval(t, tmin, tmax) IMPLIES
+        lipschitz_on_closed_ball(
+          vector_field(t),
+          center,
+          ball_radius,
+          lipschitz_constant))
+      AND (FORALL (point: E):
+        in_closed_ball(point, center, ball_radius) IMPLIES
+          continuous_in_time_on_interval(
+            vector_field, point, tmin, tmax))
+      AND (FORALL (t: real), (point: E):
+        (in_closed_interval(t, tmin, tmax)
+          AND in_closed_ball(point, center, ball_radius))
+        IMPLIES
+          normE(vector_field(t)(point)) <= norm_bound)
+      AND norm_bound
+        * max_real(tmax - t0, t0 - tmin)
+          <= ball_radius - initial_radius
+
+  picard_lindelof_theorem: bool =
+    (normed_real_vector_space AND complete_space_e) IMPLIES
+      FORALL
+          (vector_field: time_dependent_vector_field),
+          (tmin, tmax, t0: real),
+          (center, initial_point: E),
+          (ball_radius, initial_radius,
+            norm_bound, lipschitz_constant: real):
+        (in_closed_interval(t0, tmin, tmax)
+          AND ball_radius >= 0
+          AND initial_radius >= 0
+          AND norm_bound >= 0
+          AND lipschitz_constant >= 0
+          AND is_picard_lindelof(
+            vector_field,
+            tmin, tmax, t0,
+            center,
+            ball_radius, initial_radius,
+            norm_bound, lipschitz_constant)
+          AND in_closed_ball(
+            initial_point, center, initial_radius))
+        IMPLIES
+          EXISTS (solution: curve):
+            solution(t0) = initial_point
+              AND FORALL (t: real):
+                in_closed_interval(t, tmin, tmax) IMPLIES
+                  has_derivative_within_interval_at(
+                    solution,
+                    vector_field(t)(solution(t)),
+                    t, tmin, tmax)
+END picard_lindelof_theorem_Q530152

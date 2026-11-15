@@ -1,0 +1,68 @@
+% Statement-only formalization of PutnamBench artifact putnam_1985_a3:
+% the diagonal sequence from the recurrence a_m(0) = d / 2^m and
+% a_m(j+1) = a_m(j)^2 + 2*a_m(j) converges to exp(d) - 1.
+% This file contains no proof.
+
+putnam_1985_a3: THEORY
+BEGIN
+  real_sequence: TYPE = [nat -> real]
+  sequence_family: TYPE = [nat, nat -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  nat_factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * nat_factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  exponential_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        exponential_partial(x, count - 1)
+          + safe_div(
+              x ^ index,
+              nat_factorial(index) :: real)
+    ENDIF
+  MEASURE count
+
+  real_exponential(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat):
+            exponential_partial(x, count),
+          value))
+
+  putnam_1985_a3_solution(d: real): real =
+    real_exponential(d) - 1
+
+  putnam_1985_a3: bool =
+    FORALL (d: real), (a: sequence_family):
+      ((FORALL (m: nat):
+          a(m, 0) = d / (2 ^ m))
+        AND
+        (FORALL (m, j: nat):
+          a(m, j + 1) =
+            a(m, j) ^ 2 + 2 * a(m, j)))
+      IMPLIES
+        converges_to(
+          LAMBDA (n: nat): a(n, n),
+          putnam_1985_a3_solution(d))
+END putnam_1985_a3

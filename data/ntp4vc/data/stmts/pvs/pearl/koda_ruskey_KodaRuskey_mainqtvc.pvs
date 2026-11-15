@@ -1,0 +1,365 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/koda_ruskey_KodaRuskey_mainqtvc: the Koda-Ruskey forest-coloring
+% main verification condition, establishing the initial stack invariants and
+% enumeration of all distinct valid colorings. This file contains no proof.
+
+koda_ruskey_KodaRuskey_mainqtvc: THEORY
+BEGIN
+
+  color: DATATYPE
+  BEGIN
+    White: White?
+    Black: Black?
+  END color
+
+  forest: DATATYPE
+  BEGIN
+    E: E?
+    N(node_index: int, left_forest, right_forest: forest): N?
+  END forest
+
+  coloring: TYPE = [int -> color]
+
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  nth_color_nat(
+      values: list[color],
+      index: nat): RECURSIVE color =
+    CASES values OF
+      null:
+        White,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          nth_color_nat(tail, index - 1)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  nth_color(values: list[color], index: int): color =
+    nth_color_nat(values, int_to_nat(index))
+
+  coloring_of(values: list[color]): coloring =
+    LAMBDA (index: int): nth_color(values, index)
+
+  nth_coloring_nat(
+      values: list[coloring],
+      index: nat): RECURSIVE coloring =
+    CASES values OF
+      null:
+        LAMBDA (ignored: int): White,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          nth_coloring_nat(tail, index - 1)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  nth_coloring(values: list[coloring], index: int): coloring =
+    nth_coloring_nat(values, int_to_nat(index))
+
+  size_forest(values: forest): RECURSIVE int =
+    CASES values OF
+      E:
+        0,
+      N(index, left, right):
+        1 + size_forest(left) + size_forest(right)
+    ENDCASES
+  MEASURE values BY <<
+
+  mem_forest(index: int, values: forest): RECURSIVE bool =
+    CASES values OF
+      E:
+        FALSE,
+      N(root, left, right):
+        root = index
+          OR mem_forest(index, left)
+          OR mem_forest(index, right)
+    ENDCASES
+  MEASURE values BY <<
+
+  between_range_forest(
+      lower, upper: int,
+      values: forest): bool =
+    FORALL (index: int):
+      mem_forest(index, values)
+        IMPLIES lower <= index AND index < upper
+
+  disjoint(left, right: forest): bool =
+    FORALL (index: int):
+      mem_forest(index, left)
+        IMPLIES NOT mem_forest(index, right)
+
+  no_repeated_forest(values: forest): RECURSIVE bool =
+    CASES values OF
+      E:
+        TRUE,
+      N(index, left, right):
+        no_repeated_forest(left)
+          AND no_repeated_forest(right)
+          AND NOT mem_forest(index, left)
+          AND NOT mem_forest(index, right)
+          AND disjoint(left, right)
+    ENDCASES
+  MEASURE values BY <<
+
+  valid_nums_forest(values: forest, bound: int): bool =
+    between_range_forest(0, bound, values)
+      AND no_repeated_forest(values)
+
+  white_forest(
+      values: forest,
+      colors: coloring): RECURSIVE bool =
+    CASES values OF
+      E:
+        TRUE,
+      N(index, left, right):
+        colors(index) = White
+          AND white_forest(left, colors)
+          AND white_forest(right, colors)
+    ENDCASES
+  MEASURE values BY <<
+
+  valid_coloring(
+      values: forest,
+      colors: coloring): RECURSIVE bool =
+    CASES values OF
+      E:
+        TRUE,
+      N(index, left, right):
+        valid_coloring(right, colors)
+          AND
+        (IF colors(index) = White THEN
+           white_forest(left, colors)
+         ELSE
+           valid_coloring(left, colors)
+         ENDIF)
+    ENDCASES
+  MEASURE values BY <<
+
+  mem_stack(
+      index: int,
+      stack: list[forest]): RECURSIVE bool =
+    CASES stack OF
+      null:
+        FALSE,
+      cons(head, tail):
+        mem_forest(index, head) OR mem_stack(index, tail)
+    ENDCASES
+  MEASURE stack BY <<
+
+  even_forest(values: forest): RECURSIVE bool =
+    CASES values OF
+      E:
+        FALSE,
+      N(index, left, right):
+        NOT even_forest(left) OR even_forest(right)
+    ENDCASES
+  MEASURE values BY <<
+
+  final_forest(
+      values: forest,
+      colors: coloring): RECURSIVE bool =
+    CASES values OF
+      E:
+        TRUE,
+      N(index, left, right):
+        colors(index) = Black
+          AND final_forest(left, colors)
+          AND
+        (IF NOT even_forest(left) THEN
+           white_forest(right, colors)
+         ELSE
+           final_forest(right, colors)
+         ENDIF)
+    ENDCASES
+  MEASURE values BY <<
+
+  unchanged(
+      stack: list[forest],
+      first, second: coloring): bool =
+    FORALL (index: int):
+      mem_stack(index, stack)
+        IMPLIES first(index) = second(index)
+
+  inverse(
+      stack: list[forest],
+      first, second: coloring): RECURSIVE bool =
+    CASES stack OF
+      null:
+        TRUE,
+      cons(head, tail):
+        ((white_forest(head, first) AND final_forest(head, second))
+          OR
+         (final_forest(head, first) AND white_forest(head, second)))
+          AND
+        (IF even_forest(head) THEN
+           unchanged(tail, first, second)
+         ELSE
+           inverse(tail, first, second)
+         ENDIF)
+    ENDCASES
+  MEASURE stack BY <<
+
+  any_stack(
+      stack: list[forest],
+      colors: coloring): RECURSIVE bool =
+    CASES stack OF
+      null:
+        TRUE,
+      cons(head, tail):
+        (white_forest(head, colors) OR final_forest(head, colors))
+          AND any_stack(tail, colors)
+    ENDCASES
+  MEASURE stack BY <<
+
+  substack(
+      stack: list[forest],
+      whole: forest,
+      colors: coloring): RECURSIVE bool =
+    CASES whole OF
+      E:
+        stack = cons(E, null),
+      N(index, left, right):
+        stack = cons(whole, null)
+          OR substack(stack, right, colors)
+          OR
+        (EXISTS (prefix: list[forest]):
+          substack(prefix, left, colors)
+            AND colors(index) = Black
+            AND stack = append(prefix, cons(right, null)))
+    ENDCASES
+  MEASURE whole BY <<
+
+  count_forest(values: forest): RECURSIVE int =
+    CASES values OF
+      E:
+        1,
+      N(index, left, right):
+        (1 + count_forest(left)) * count_forest(right)
+    ENDCASES
+  MEASURE values BY <<
+
+  count_stack(stack: list[forest]): RECURSIVE int =
+    CASES stack OF
+      null:
+        1,
+      cons(head, tail):
+        count_forest(head) * count_stack(tail)
+    ENDCASES
+  MEASURE stack BY <<
+
+  eq_coloring(
+      bound: int,
+      first, second: coloring): bool =
+    FORALL (index: int):
+      (0 <= index AND index < bound)
+        IMPLIES first(index) = second(index)
+
+  stored_solutions(
+      original_forest: forest,
+      bits: coloring,
+      stack: list[forest],
+      before, after: list[coloring]): bool =
+    LET bound: int = size_forest(original_forest),
+        start: int = length(before),
+        stop: int = length(after)
+    IN
+      stop - start = count_stack(stack)
+        AND
+      (FORALL (position: int):
+        (0 <= position AND position < start)
+          IMPLIES
+            eq_coloring(
+              bound,
+              nth_coloring(after, position),
+              nth_coloring(before, position)))
+        AND
+      (FORALL (position: int):
+        (start <= position AND position < stop)
+          IMPLIES
+            valid_coloring(
+              original_forest,
+              nth_coloring(after, position))
+              AND
+            (FORALL (index: int):
+              (0 <= index AND index < bound)
+                IMPLIES
+                  (NOT mem_stack(index, stack)
+                    IMPLIES
+                      nth_coloring(after, position)(index)
+                        = bits(index)))
+              AND
+            (FORALL (other: int):
+              (start <= other AND other < stop)
+                IMPLIES
+                  (position /= other
+                    IMPLIES
+                      NOT eq_coloring(
+                        bound,
+                        nth_coloring(after, position),
+                        nth_coloring(after, other)))))
+
+  main_vc: bool =
+    FORALL
+        (f0: forest),
+        (bits: list[color]):
+      (white_forest(f0, coloring_of(bits))
+        AND size_forest(f0) = length(bits)
+        AND valid_nums_forest(f0, length(bits)))
+      IMPLIES
+        LET initial_stack: list[forest] = cons(f0, null)
+        IN
+          (size_forest(f0) = length(bits)
+            AND valid_nums_forest(f0, length(bits))
+            AND substack(initial_stack, f0, coloring_of(bits))
+            AND any_stack(initial_stack, coloring_of(bits))
+            AND valid_coloring(f0, coloring_of(bits)))
+          AND
+          (FORALL
+              (bits1: list[color]),
+              (visited: list[coloring]):
+            length(bits1) = length(bits)
+              IMPLIES
+                (((FORALL (index: int):
+                    NOT mem_stack(index, initial_stack)
+                      IMPLIES
+                        nth_color(bits1, index) = nth_color(bits, index))
+                  AND inverse(
+                    initial_stack,
+                    coloring_of(bits),
+                    coloring_of(bits1))
+                  AND valid_coloring(f0, coloring_of(bits1))
+                  AND stored_solutions(
+                    f0,
+                    coloring_of(bits1),
+                    initial_stack,
+                    null,
+                    visited))
+                IMPLIES
+                  (length(visited) = count_forest(f0)
+                    AND
+                    (FORALL (position: int):
+                      (0 <= position
+                        AND position < length(visited))
+                        IMPLIES
+                          valid_coloring(
+                            f0,
+                            nth_coloring(visited, position))
+                          AND
+                          (FORALL (other: int):
+                            (0 <= other
+                              AND other < length(visited))
+                              IMPLIES
+                                (position /= other
+                                  IMPLIES
+                                    NOT eq_coloring(
+                                      length(bits1),
+                                      nth_coloring(visited, position),
+                                      nth_coloring(visited, other))))))))
+
+END koda_ruskey_KodaRuskey_mainqtvc

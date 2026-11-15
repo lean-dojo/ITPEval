@@ -1,0 +1,313 @@
+% Statement-only formalization of Thousand Theorems artifact Q3527118
+% (thousand-theorems__pvs__Q3527118), "Mahler's theorem": every continuous
+% function on the p-adic integers with values in a complete nonarchimedean
+% normed module is the sum of its Mahler series. This file contains no proof.
+
+mahler_s_theorem_Q3527118[
+  p: nat,
+  Zp: TYPE+,
+  zeroZ, oneZ: Zp,
+  addZ, mulZ: [Zp, Zp -> Zp],
+  negZ: [Zp -> Zp],
+  natCastZ: [nat -> Zp],
+  normZ: [Zp -> real],
+  E: TYPE+,
+  zeroE: E,
+  addE: [E, E -> E],
+  negE: [E -> E],
+  smulE: [Zp, E -> E],
+  normE: [E -> real]
+]: THEORY
+BEGIN
+  zp_sequence: TYPE = [nat -> Zp]
+  e_sequence: TYPE = [nat -> E]
+  zp_function: TYPE = [Zp -> Zp]
+  e_function: TYPE = [Zp -> E]
+
+  subZ(x, y: Zp): Zp =
+    addZ(x, negZ(y))
+
+  subE(x, y: E): E =
+    addE(x, negE(y))
+
+  nat_divides(divisor, value: nat): bool =
+    EXISTS (quotient: nat):
+      value = divisor * quotient
+
+  prime_nat(value: nat): bool =
+    value >= 2
+      AND FORALL (divisor: nat):
+        nat_divides(divisor, value)
+          IMPLIES divisor = 1 OR divisor = value
+
+  binomial_coefficient(n, k: nat): RECURSIVE nat =
+    IF k = 0 THEN
+      1
+    ELSIF n = 0 THEN
+      0
+    ELSE
+      binomial_coefficient(n - 1, k - 1)
+        + binomial_coefficient(n - 1, k)
+    ENDIF
+  MEASURE n
+
+  padic_radius(level: nat): real =
+    IF p ^ level = 0 THEN
+      0
+    ELSE
+      1 / ((p ^ level) :: real)
+    ENDIF
+
+  congruent_mod(left, right, modulus: nat): bool =
+    EXISTS (left_multiple, right_multiple: nat):
+      left + left_multiple * modulus =
+        right + right_multiple * modulus
+
+  zp_commutative_ring_laws: bool =
+    (FORALL (x, y, z: Zp):
+      addZ(addZ(x, y), z) = addZ(x, addZ(y, z)))
+      AND (FORALL (x, y: Zp):
+        addZ(x, y) = addZ(y, x))
+      AND (FORALL (x: Zp):
+        addZ(x, zeroZ) = x)
+      AND (FORALL (x: Zp):
+        addZ(x, negZ(x)) = zeroZ)
+      AND (FORALL (x, y, z: Zp):
+        mulZ(mulZ(x, y), z) = mulZ(x, mulZ(y, z)))
+      AND (FORALL (x, y: Zp):
+        mulZ(x, y) = mulZ(y, x))
+      AND (FORALL (x: Zp):
+        mulZ(x, oneZ) = x)
+      AND (FORALL (x, y, z: Zp):
+        mulZ(x, addZ(y, z)) =
+          addZ(mulZ(x, y), mulZ(x, z)))
+      AND (FORALL (x: Zp):
+        mulZ(x, zeroZ) = zeroZ)
+
+  natural_embedding_laws: bool =
+    natCastZ(0) = zeroZ
+      AND natCastZ(1) = oneZ
+      AND (FORALL (n: nat):
+        natCastZ(n + 1) = addZ(natCastZ(n), oneZ))
+      AND (FORALL (m, n: nat):
+        natCastZ(m + n) = addZ(natCastZ(m), natCastZ(n)))
+      AND (FORALL (m, n: nat):
+        natCastZ(m * n) = mulZ(natCastZ(m), natCastZ(n)))
+
+  zp_norm_laws: bool =
+    (FORALL (x: Zp):
+      0 <= normZ(x))
+      AND (FORALL (x: Zp):
+        normZ(x) = 0 IFF x = zeroZ)
+      AND (FORALL (x: Zp):
+        normZ(negZ(x)) = normZ(x))
+      AND (FORALL (x, y: Zp):
+        normZ(addZ(x, y)) <=
+          IF normZ(x) >= normZ(y) THEN normZ(x) ELSE normZ(y) ENDIF)
+      AND (FORALL (x, y: Zp):
+        normZ(mulZ(x, y)) <= normZ(x) * normZ(y))
+      AND normZ(oneZ) = 1
+
+  zp_converges(values: zp_sequence, limit: Zp): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            normZ(subZ(values(index), limit)) < epsilon_value
+
+  zp_cauchy(values: zp_sequence): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (left_index, right_index: nat):
+          cutoff <= left_index AND cutoff <= right_index
+          IMPLIES
+            normZ(
+              subZ(
+                values(left_index),
+                values(right_index))) < epsilon_value
+
+  zp_complete: bool =
+    FORALL (values: zp_sequence):
+      zp_cauchy(values) IMPLIES
+        EXISTS (limit: Zp):
+          zp_converges(values, limit)
+
+  natural_embedding_is_dense: bool =
+    FORALL (x: Zp), (epsilon_value: posreal):
+      EXISTS (n: nat):
+        normZ(subZ(x, natCastZ(n))) < epsilon_value
+
+  natural_embedding_has_padic_metric: bool =
+    FORALL (m, n, level: nat):
+      normZ(subZ(natCastZ(m), natCastZ(n)))
+          <= padic_radius(level)
+        IFF
+          congruent_mod(m, n, p ^ level)
+
+  padic_integer_context: bool =
+    prime_nat(p)
+      AND zp_commutative_ring_laws
+      AND natural_embedding_laws
+      AND zp_norm_laws
+      AND zp_complete
+      AND natural_embedding_is_dense
+      AND natural_embedding_has_padic_metric
+
+  continuous_zp_to_zp(f: zp_function): bool =
+    FORALL (x: Zp), (epsilon_value: posreal):
+      EXISTS (delta_value: posreal):
+        FORALL (y: Zp):
+          normZ(subZ(y, x)) < delta_value
+            IMPLIES
+              normZ(subZ(f(y), f(x))) < epsilon_value
+
+  continuous_zp_to_e(f: e_function): bool =
+    FORALL (x: Zp), (epsilon_value: posreal):
+      EXISTS (delta_value: posreal):
+        FORALL (y: Zp):
+          normZ(subZ(y, x)) < delta_value
+            IMPLIES
+              normE(subE(f(y), f(x))) < epsilon_value
+
+  mahler_basis_context(basis: [nat, Zp -> Zp]): bool =
+    (FORALL (degree: nat):
+      continuous_zp_to_zp(
+        LAMBDA (x: Zp): basis(degree, x)))
+      AND (FORALL (degree, n: nat):
+        basis(degree, natCastZ(n)) =
+          natCastZ(binomial_coefficient(n, degree)))
+
+  e_additive_group_laws: bool =
+    (FORALL (x, y, z: E):
+      addE(addE(x, y), z) = addE(x, addE(y, z)))
+      AND (FORALL (x, y: E):
+        addE(x, y) = addE(y, x))
+      AND (FORALL (x: E):
+        addE(x, zeroE) = x)
+      AND (FORALL (x: E):
+        addE(x, negE(x)) = zeroE)
+
+  zp_module_laws: bool =
+    (FORALL (a: Zp), (x, y: E):
+      smulE(a, addE(x, y)) =
+        addE(smulE(a, x), smulE(a, y)))
+      AND (FORALL (a, b: Zp), (x: E):
+        smulE(addZ(a, b), x) =
+          addE(smulE(a, x), smulE(b, x)))
+      AND (FORALL (a, b: Zp), (x: E):
+        smulE(mulZ(a, b), x) =
+          smulE(a, smulE(b, x)))
+      AND (FORALL (x: E):
+        smulE(oneZ, x) = x)
+      AND (FORALL (x: E):
+        smulE(zeroZ, x) = zeroE)
+      AND (FORALL (a: Zp):
+        smulE(a, zeroE) = zeroE)
+
+  e_nonarchimedean_norm_laws: bool =
+    (FORALL (x: E):
+      0 <= normE(x))
+      AND (FORALL (x: E):
+        normE(x) = 0 IFF x = zeroE)
+      AND (FORALL (x: E):
+        normE(negE(x)) = normE(x))
+      AND (FORALL (x, y: E):
+        normE(addE(x, y)) <=
+          IF normE(x) >= normE(y) THEN normE(x) ELSE normE(y) ENDIF)
+      AND (FORALL (a: Zp), (x: E):
+        normE(smulE(a, x)) <= normZ(a) * normE(x))
+
+  e_converges(values: e_sequence, limit: E): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            normE(subE(values(index), limit)) < epsilon_value
+
+  e_cauchy(values: e_sequence): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (left_index, right_index: nat):
+          cutoff <= left_index AND cutoff <= right_index
+          IMPLIES
+            normE(
+              subE(
+                values(left_index),
+                values(right_index))) < epsilon_value
+
+  e_complete: bool =
+    FORALL (values: e_sequence):
+      e_cauchy(values) IMPLIES
+        EXISTS (limit: E):
+          e_converges(values, limit)
+
+  padic_banach_module_context: bool =
+    e_additive_group_laws
+      AND zp_module_laws
+      AND e_nonarchimedean_norm_laws
+      AND e_complete
+
+  forward_difference_iterate(
+      f: e_function,
+      degree: nat,
+      x: Zp): RECURSIVE E =
+    IF degree = 0 THEN
+      f(x)
+    ELSE
+      subE(
+        forward_difference_iterate(
+          f, degree - 1, addZ(x, oneZ)),
+        forward_difference_iterate(
+          f, degree - 1, x))
+    ENDIF
+  MEASURE degree
+
+  mahler_term(
+      basis: [nat, Zp -> Zp],
+      f: e_function,
+      degree: nat,
+      x: Zp): E =
+    smulE(
+      basis(degree, x),
+      forward_difference_iterate(
+        f, degree, zeroZ))
+
+  mahler_partial_sum(
+      basis: [nat, Zp -> Zp],
+      f: e_function,
+      count: nat,
+      x: Zp): RECURSIVE E =
+    IF count = 0 THEN
+      zeroE
+    ELSE
+      addE(
+        mahler_partial_sum(basis, f, count - 1, x),
+        mahler_term(basis, f, count - 1, x))
+    ENDIF
+  MEASURE count
+
+  mahler_series_converges_uniformly_to(
+      basis: [nat, Zp -> Zp],
+      f: e_function): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (count: nat):
+          cutoff <= count IMPLIES
+            FORALL (x: Zp):
+              normE(
+                subE(
+                  mahler_partial_sum(basis, f, count, x),
+                  f(x))) < epsilon_value
+
+  mahler_s_theorem: bool =
+    (padic_integer_context
+      AND padic_banach_module_context)
+    IMPLIES
+      EXISTS (basis: [nat, Zp -> Zp]):
+        mahler_basis_context(basis)
+          AND FORALL (f: e_function):
+            continuous_zp_to_e(f)
+              IMPLIES
+                mahler_series_converges_uniformly_to(
+                  basis, f)
+END mahler_s_theorem_Q3527118

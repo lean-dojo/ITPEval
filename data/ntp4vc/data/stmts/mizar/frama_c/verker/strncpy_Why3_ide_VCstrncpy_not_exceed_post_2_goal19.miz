@@ -1,0 +1,190 @@
+:: Statement-only formalization of the NTP4VC corpus artifact
+:: frama_c/verker/strncpy_Why3_ide_VCstrncpy_not_exceed_post_2_goal19:
+:: the strncpy non-exceed postcondition concludes bounded-string validity at
+:: the initial destination address, under the stated havoc-memory, address,
+:: string-validity, range, linkage, constancy, writable-memory, and
+:: prefix-equality assumptions. This file contains no proof.
+
+environ
+  vocabularies TARSKI, XBOOLE_0, SUBSET_1, RELAT_1, FUNCT_1,
+    FUNCT_2, PARTFUN1, ZFMISC_1, NUMBERS, XREAL_0, CARD_1,
+    XXREAL_0, ARYTM_1, ARYTM_3, REAL_1, INT_1, NAT_1,
+    VALUED_0, VALUED_1, ORDINAL1, MCART_1;
+  notations TARSKI, XBOOLE_0, SUBSET_1, ZFMISC_1, XTUPLE_0,
+    MCART_1, RELAT_1, FUNCT_1, RELSET_1, PARTFUN1, FUNCT_2,
+    ORDINAL1, CARD_1, NUMBERS, XCMPLX_0, XREAL_0, REAL_1,
+    INT_1, NAT_1, XXREAL_0;
+  constructors FUNCT_1, RELSET_1, PARTFUN1, FUNCT_2, CARD_1,
+    REAL_1, INT_1, XXREAL_0, ZFMISC_1, MCART_1, NAT_1;
+  registrations XBOOLE_0, SUBSET_1, RELAT_1, FUNCT_1, RELSET_1,
+    FUNCT_2, NUMBERS, CARD_1, XXREAL_0, MEMBERED, VALUED_0,
+    VALUED_1, XCMPLX_0, XREAL_0, ORDINAL1, INT_1, NAT_1;
+  requirements REAL, NUMERALS, SUBSET, BOOLE, ARITHM;
+
+begin
+
+::$P-
+theorem
+  for a3,a1,a,a2 being Element of [:INT,INT:],
+      t1,t2,t3 being Function of [:INT,INT:],INT,
+      t,Region,ToUint64 being Function of INT,INT,
+      Base,Offset being Function of [:INT,INT:],INT,
+      shft being Function of
+        [:[:INT,INT:],INT:],[:INT,INT:],
+      LStrlen being Function of
+        [:Funcs([:INT,INT:],INT),[:INT,INT:]:],INT,
+      LStrnlen being Function of
+        [:Funcs([:INT,INT:],INT),
+          [:[:INT,INT:],INT:]:],INT,
+      Linked being Subset of Funcs(INT,INT),
+      SConst being Subset of Funcs([:INT,INT:],INT),
+      AddrLE,ValidRW,Separated,PValidStr,PValidStrn being set,
+      x4,len0,len1,len2,len3 being Integer
+  st
+    (for b,o being Integer holds
+       Base.[b,o] = b & Offset.[b,o] = o) &
+
+    (for p being Element of [:INT,INT:], k being Integer holds
+       shft.[p,k] = [Base.p,Offset.p + k]) &
+
+    (for p,q being Element of [:INT,INT:]
+       st Base.p = Base.q
+     holds
+       ([p,q] in AddrLE iff Offset.p <= Offset.q)) &
+
+    (for p,q being Element of [:INT,INT:],
+         plen,qlen being Integer
+     holds
+       [p,[plen,[q,qlen]]] in Separated iff
+       plen <= 0 or qlen <= 0 or Base.p <> Base.q or
+       Offset.q + qlen <= Offset.p or
+       Offset.p + plen <= Offset.q) &
+
+    (for malloc being Function of INT,INT,
+         p being Element of [:INT,INT:],
+         n being Integer
+     holds
+       [malloc,[p,n]] in ValidRW iff
+       (0 < n implies
+         0 < Base.p &
+         0 <= Offset.p &
+         Offset.p + n <= malloc.(Base.p))) &
+
+    (for z being Integer holds
+       ex w being Integer st
+         w = ToUint64.z &
+         0 <= w &
+         w < 65536 * 65536 * 65536 * 65536) &
+
+    (for z being Integer
+       st 0 <= z & z < 65536 * 65536 * 65536 * 65536
+     holds
+       ToUint64.z = z) &
+
+    (for z being Integer holds
+       ToUint64.(ToUint64.z) = ToUint64.z) &
+
+    (for mchar being Function of [:INT,INT:],INT,
+         s being Element of [:INT,INT:]
+     holds
+       ex len0,len1,cast being Integer st
+         len0 = LStrlen.[mchar,s] &
+         len1 = LStrlen.[mchar,shft.[s,1]] &
+         cast = ToUint64.(1 + len1) &
+         (mchar.(shft.[s,0]) = 0 implies len0 = 0) &
+         (mchar.(shft.[s,0]) <> 0 implies cast = len0) &
+         0 <= len0 &
+         len0 < 65536 * 65536 * 65536 * 65536) &
+
+    (for mchar being Function of [:INT,INT:],INT,
+         s being Element of [:INT,INT:],
+         cnt being Integer
+     holds
+       ex len0,len1,nextcnt,cast being Integer st
+         len0 = LStrnlen.[mchar,[s,cnt]] &
+         nextcnt = ToUint64.(cnt - 1) &
+         len1 = LStrnlen.[mchar,[shft.[s,1],nextcnt]] &
+         cast = ToUint64.(1 + len1) &
+         ((cnt = 0 or mchar.(shft.[s,0]) = 0)
+           implies len0 = 0) &
+         (cnt <> 0 & mchar.(shft.[s,0]) <> 0
+           implies cast = len0) &
+         0 <= len0 &
+         len0 < 65536 * 65536 * 65536 * 65536) &
+
+    (for malloc being Function of INT,INT,
+         mchar being Function of [:INT,INT:],INT,
+         s being Element of [:INT,INT:]
+     holds
+       [malloc,[mchar,s]] in PValidStr iff
+       ex i being Integer st
+         mchar.(shft.[s,i]) = 0 &
+         0 <= i &
+         i < 65536 * 65536 * 65536 * 65536 &
+         [malloc,[shft.[s,0],1+i]] in ValidRW &
+         (for j being Integer st j <= i holds
+            ex c being Integer st
+              c = mchar.(shft.[s,j]) &
+              -(128) <= c & c < 128)) &
+
+    (for malloc being Function of INT,INT,
+         mchar being Function of [:INT,INT:],INT,
+         s being Element of [:INT,INT:],
+         cnt being Integer
+     holds
+       [malloc,[mchar,[s,cnt]]] in PValidStrn iff
+       [malloc,[shft.[s,0],1+cnt]] in ValidRW or
+       ((ex i being Integer st
+           mchar.(shft.[s,i]) = 0 &
+           i < cnt &
+           0 <= i &
+           i < 65536 * 65536 * 65536 * 65536 &
+           [malloc,[shft.[s,0],1+i]] in ValidRW) &
+        (for j being Integer st j <= cnt holds
+           ex c being Integer st
+             c = mchar.(shft.[s,j]) &
+             -(128) <= c & c < 128))) &
+
+    x4 = Offset.a - Offset.a1 &
+    len0 = LStrnlen.[t3,[a3,0]] &
+    len1 = LStrlen.[t2,a3] &
+    len2 = LStrnlen.[t3,[a3,x4]] &
+    len3 = LStrnlen.[t2,[a3,x4]] &
+
+    Base.a3 <> Base.a1 &
+
+    (for p being Element of [:INT,INT:] holds
+       ([p,[1,[shft.[a1,0],
+          1 + len0]]] in Separated
+         implies t3.p = t2.p) &
+       (not [p,[1,[shft.[a1,0],
+          1 + len0]]] in Separated
+         implies t3.p = t1.p)) &
+
+    Offset.a1 <= Offset.a &
+    Region.(Base.a1) <= 0 &
+    Region.(Base.a3) <= 0 &
+    Offset.a < Offset.a1 + len1 &
+    t in Linked &
+    t2 in SConst &
+    [a1,a] in AddrLE &
+    [a3,a2] in AddrLE &
+    [t,[t2,a3]] in PValidStr &
+    [t,[t3,a2]] in PValidStr &
+    0 <= x4 &
+    x4 < 65536 * 65536 * 65536 * 65536 &
+    [t,[t2,[a3,x4]]] in PValidStrn &
+    [t,[t3,[a,x4]]] in PValidStrn &
+    [a,shft.[a1,x4]] in AddrLE &
+    [a2,shft.[a3,len2]] in AddrLE &
+    [t,[shft.[a1,0],1 + len3]] in ValidRW &
+
+    (for i being Integer
+       st 0 <= i & i + Offset.a3 < Offset.a2
+     holds
+       t3.(shft.[a3,i]) = t3.(shft.[a1,i]))
+  holds
+    [t,[t3,[a1,x4]]] in PValidStrn
+proof
+end;
+::$P+

@@ -1,0 +1,271 @@
+% Statement-only formalization of PutnamBench artifact putnam_1963_a3:
+% the zero-initial-data solution of an iterated Euler differential equation
+% on the real half-line is characterized by an explicit integral formula.
+% This file contains no proof.
+
+putnam_1963_a3: THEORY
+BEGIN
+  real_set: TYPE = [real -> bool]
+  real_function: TYPE = [real -> real]
+  differential_operator: TYPE =
+    [nat -> [real_function -> real_function]]
+  real_sequence: TYPE = [nat -> real]
+
+  at_least_one: real_set =
+    LAMBDA (x: real): 1 <= x
+
+  open_ball(center, radius: real): real_set =
+    LAMBDA (x: real): abs(x - center) < radius
+
+  has_derivative_at(
+      f: real_function,
+      derivative, x: real): bool =
+    FORALL (epsilon_value: real):
+      epsilon_value > 0 IMPLIES
+        EXISTS (delta: real):
+          delta > 0
+            AND FORALL (h: real):
+              (NOT (h = 0) AND abs(h) < delta)
+                IMPLIES
+                  abs(
+                    f(x + h) - f(x)
+                      - derivative * h)
+                    < epsilon_value * abs(h)
+
+  differentiable_at(f: real_function, x: real): bool =
+    EXISTS (derivative: real):
+      has_derivative_at(f, derivative, x)
+
+  derivative_value(f: real_function, x: real): real =
+    IF EXISTS (derivative: real):
+        has_derivative_at(f, derivative, x)
+    THEN
+      epsilon(
+        LAMBDA (derivative: real):
+          has_derivative_at(f, derivative, x))
+    ELSE
+      0
+    ENDIF
+
+  derivative_function(f: real_function): real_function =
+    LAMBDA (x: real): derivative_value(f, x)
+
+  iterated_derivative(
+      f: real_function,
+      order: nat): RECURSIVE real_function =
+    IF order = 0 THEN
+      f
+    ELSE
+      derivative_function(
+        iterated_derivative(f, order - 1))
+    ENDIF
+  MEASURE order
+
+  continuous_on(f: real_function, domain: real_set): bool =
+    FORALL (x: real):
+      domain(x) IMPLIES
+        FORALL (epsilon_value: real):
+          epsilon_value > 0 IMPLIES
+            EXISTS (delta: real):
+              delta > 0
+                AND FORALL (z: real):
+                  (domain(z) AND abs(z - x) < delta)
+                    IMPLIES
+                      abs(f(z) - f(x)) < epsilon_value
+
+  continuously_differentiable_through_on(
+      f: real_function,
+      order: nat,
+      domain: real_set): bool =
+    (FORALL (index: nat):
+      index <= order IMPLIES
+        continuous_on(
+          iterated_derivative(f, index), domain))
+      AND FORALL (index: nat):
+        index < order IMPLIES
+          FORALL (x: real):
+            domain(x) IMPLIES
+              differentiable_at(
+                iterated_derivative(f, index), x)
+
+  continuously_differentiable_through_at(
+      f: real_function,
+      order: nat,
+      x: real): bool =
+    EXISTS (radius: real):
+      radius > 0
+        AND continuously_differentiable_through_on(
+          f, order, open_ball(x, radius))
+
+  factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  nat_predecessor(index: nat): nat =
+    IF index = 0 THEN 0 ELSE index - 1 ENDIF
+
+  inverse_or_zero(value: real): real =
+    IF value = 0 THEN 0 ELSE 1 / value ENDIF
+
+  solution_kernel(
+      f: real_function,
+      order: nat,
+      x, t: real): real =
+    (x - t) ^ nat_predecessor(order)
+      * f(t)
+      * inverse_or_zero(
+          (factorial(nat_predecessor(order)) :: real)
+            * t ^ order)
+
+  valid_partition(
+      points: real_sequence,
+      count: nat,
+      left, right: real): bool =
+    count > 0
+      AND points(0) = left
+      AND points(count) = right
+      AND FORALL (index: nat):
+        index < count IMPLIES
+          points(index) < points(index + 1)
+
+  valid_tags(
+      points, tags: real_sequence,
+      count: nat): bool =
+    FORALL (index: nat):
+      index < count IMPLIES
+        points(index) <= tags(index)
+          AND tags(index) <= points(index + 1)
+
+  mesh_less_than(
+      points: real_sequence,
+      count: nat,
+      bound: real): bool =
+    FORALL (index: nat):
+      index < count IMPLIES
+        points(index + 1) - points(index) < bound
+
+  riemann_sum(
+      f: real_function,
+      points, tags: real_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      riemann_sum(f, points, tags, count - 1)
+        + f(tags(count - 1))
+            * (points(count) - points(count - 1))
+    ENDIF
+  MEASURE count
+
+  has_interval_integral(
+      f: real_function,
+      left, right, integral_value: real): bool =
+    left < right
+      AND FORALL (epsilon_value: real):
+        epsilon_value > 0 IMPLIES
+          EXISTS (mesh_bound: real):
+            mesh_bound > 0
+              AND FORALL
+                  (points, tags: real_sequence),
+                  (count: nat):
+                (valid_partition(
+                    points, count, left, right)
+                  AND valid_tags(points, tags, count)
+                  AND mesh_less_than(
+                    points, count, mesh_bound))
+                IMPLIES
+                  abs(
+                    riemann_sum(
+                      f, points, tags, count)
+                      - integral_value)
+                    < epsilon_value
+
+  interval_integral(
+      f: real_function,
+      left, right: real): real =
+    IF left = right THEN
+      0
+    ELSIF left < right THEN
+      IF EXISTS (integral_value: real):
+          has_interval_integral(
+            f, left, right, integral_value)
+      THEN
+        epsilon(
+          LAMBDA (integral_value: real):
+            has_interval_integral(
+              f, left, right, integral_value))
+      ELSE
+        0
+      ENDIF
+    ELSE
+      IF EXISTS (integral_value: real):
+          has_interval_integral(
+            f, right, left, integral_value)
+      THEN
+        -epsilon(
+          LAMBDA (integral_value: real):
+            has_interval_integral(
+              f, right, left, integral_value))
+      ELSE
+        0
+      ENDIF
+    ENDIF
+
+  operator_recurrence(P: differential_operator): bool =
+    (FORALL (g: real_function), (x: real):
+      P(0)(g)(x) = g(x))
+      AND FORALL
+          (index: nat),
+          (g: real_function),
+          (x: real):
+        P(index + 1)(g)(x) =
+          P(index)(
+            LAMBDA (z: real):
+              z * derivative_value(g, z)
+                - (index :: real) * g(z))(x)
+
+  zero_initial_data(y: real_function, order: nat): bool =
+    FORALL (index: nat):
+      index < order IMPLIES
+        iterated_derivative(y, index)(1) = 0
+
+  satisfies_equation(
+      P: differential_operator,
+      order: nat,
+      y, f: real_function): bool =
+    FORALL (x: real):
+      x >= 1 IMPLIES P(order)(y)(x) = f(x)
+
+  satisfies_integral_formula(
+      f, y: real_function,
+      order: nat): bool =
+    FORALL (x: real):
+      x >= 1 IMPLIES
+        y(x) =
+          interval_integral(
+            LAMBDA (t: real):
+              solution_kernel(f, order, x, t),
+            1,
+            x)
+
+  putnam_1963_a3: bool =
+    FORALL
+        (P: differential_operator),
+        (order: nat),
+        (f, y: real_function):
+      (operator_recurrence(P)
+        AND order > 0
+        AND continuous_on(f, at_least_one)
+        AND continuously_differentiable_through_on(
+          y, order, at_least_one)
+        AND continuously_differentiable_through_at(
+          y, order, 1))
+      IMPLIES
+        ((zero_initial_data(y, order)
+            AND satisfies_equation(P, order, y, f))
+          IFF satisfies_integral_formula(f, y, order))
+END putnam_1963_a3

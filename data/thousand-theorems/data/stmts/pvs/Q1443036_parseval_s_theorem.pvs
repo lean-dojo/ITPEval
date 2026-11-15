@@ -1,0 +1,691 @@
+% Statement-only formalization of the Thousand Theorems corpus artifact Q1443036
+% (thousand-theorems__pvs__Q1443036), "Parseval's theorem": for a complex L2
+% function on an additive circle with probability-normalized Haar measure, the
+% sum of squared Fourier-coefficient norms equals its squared L2 norm. This file
+% contains no proof.
+
+Q1443036_parseval_s_theorem[T: posreal]: THEORY
+BEGIN
+  complex: TYPE = [# real_part: real, imag_part: real #]
+  complex_function: TYPE = [real -> complex]
+  real_function: TYPE = [real -> real]
+  real_function_sequence: TYPE = [nat -> real_function]
+  real_sequence: TYPE = [nat -> real]
+
+  event: TYPE = [real -> bool]
+  event_sequence: TYPE = [nat -> event]
+  sigma_algebra: TYPE = [event -> bool]
+
+  measure_value: TYPE =
+    [# infinite_flag: bool, finite_part: real #]
+  measure_value_sequence: TYPE = [nat -> measure_value]
+  measure_map: TYPE = [event -> measure_value]
+  nonnegative_function: TYPE = [real -> measure_value]
+
+  circle_measure_space: TYPE =
+    [# measurable_sets: sigma_algebra,
+       measure_of: measure_map #]
+
+  complex_zero: complex =
+    (# real_part := 0, imag_part := 0 #)
+
+  complex_add(left, right: complex): complex =
+    (# real_part := real_part(left) + real_part(right),
+       imag_part := imag_part(left) + imag_part(right) #)
+
+  complex_neg(value: complex): complex =
+    (# real_part := -real_part(value),
+       imag_part := -imag_part(value) #)
+
+  complex_mul(left, right: complex): complex =
+    (# real_part :=
+         real_part(left) * real_part(right)
+           - imag_part(left) * imag_part(right),
+       imag_part :=
+         real_part(left) * imag_part(right)
+           + imag_part(left) * real_part(right) #)
+
+  complex_norm_squared(value: complex): real =
+    real_part(value) ^ 2 + imag_part(value) ^ 2
+
+  in_circle_carrier(x: real): bool =
+    0 <= x AND x < T
+
+  same_circle_point(x, y: real): bool =
+    EXISTS (period: int):
+      x - y = (period :: real) * T
+
+  circle_representative(x: real): real =
+    epsilon(
+      LAMBDA (y: real):
+        in_circle_carrier(y) AND same_circle_point(x, y))
+
+  circle_translate(x, shift: real): real =
+    circle_representative(x + shift)
+
+  full_event: event =
+    LAMBDA (x: real): in_circle_carrier(x)
+
+  empty_event: event =
+    LAMBDA (x: real): FALSE
+
+  carrier_event(A: event): bool =
+    FORALL (x: real):
+      A(x) IMPLIES in_circle_carrier(x)
+
+  event_complement(A: event): event =
+    LAMBDA (x: real):
+      in_circle_carrier(x) AND NOT A(x)
+
+  countable_union(events: event_sequence): event =
+    LAMBDA (x: real):
+      in_circle_carrier(x)
+        AND EXISTS (index: nat): events(index)(x)
+
+  pairwise_disjoint(events: event_sequence): bool =
+    FORALL (left_index, right_index: nat):
+      left_index /= right_index IMPLIES
+        FORALL (x: real):
+          in_circle_carrier(x) IMPLIES
+            NOT (events(left_index)(x)
+              AND events(right_index)(x))
+
+  pairwise_disjoint_below(
+      events: event_sequence,
+      count: nat): bool =
+    FORALL (left_index, right_index: nat):
+      left_index < count
+        AND right_index < count
+        AND left_index /= right_index
+      IMPLIES
+        FORALL (x: real):
+          in_circle_carrier(x) IMPLIES
+            NOT (events(left_index)(x)
+              AND events(right_index)(x))
+
+  finite_real_sum(values: real_sequence, count: nat):
+      RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      finite_real_sum(values, count - 1)
+        + values(count - 1)
+    ENDIF
+  MEASURE count
+
+  converges_to_real(values: real_sequence, limit: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(values(index) - limit) < epsilon_value
+
+  zero_measure_value: measure_value =
+    (# infinite_flag := FALSE, finite_part := 0 #)
+
+  infinite_measure_value: measure_value =
+    (# infinite_flag := TRUE, finite_part := 0 #)
+
+  finite_measure_value(value: real): measure_value =
+    (# infinite_flag := FALSE, finite_part := value #)
+
+  canonical_measure_value(value: measure_value): bool =
+    IF infinite_flag(value) THEN
+      finite_part(value) = 0
+    ELSE
+      finite_part(value) >= 0
+    ENDIF
+
+  measure_value_is_zero(value: measure_value): bool =
+    NOT infinite_flag(value)
+      AND finite_part(value) = 0
+
+  measure_value_le(left, right: measure_value): bool =
+    canonical_measure_value(left)
+      AND canonical_measure_value(right)
+      AND IF infinite_flag(right) THEN
+        TRUE
+      ELSIF infinite_flag(left) THEN
+        FALSE
+      ELSE
+        finite_part(left) <= finite_part(right)
+      ENDIF
+
+  measure_value_add(left, right: measure_value): measure_value =
+    IF infinite_flag(left) OR infinite_flag(right) THEN
+      infinite_measure_value
+    ELSE
+      finite_measure_value(
+        finite_part(left) + finite_part(right))
+    ENDIF
+
+  measure_value_product(left, right: measure_value):
+      measure_value =
+    IF measure_value_is_zero(left)
+        OR measure_value_is_zero(right) THEN
+      zero_measure_value
+    ELSIF infinite_flag(left)
+        OR infinite_flag(right) THEN
+      infinite_measure_value
+    ELSE
+      finite_measure_value(
+        finite_part(left) * finite_part(right))
+    ENDIF
+
+  unbounded_above(values: real_sequence): bool =
+    FORALL (bound: real):
+      EXISTS (index: nat):
+        bound < values(index)
+
+  partial_measure_sum(
+      values: measure_value_sequence,
+      count: nat): real =
+    finite_real_sum(
+      LAMBDA (index: nat):
+        finite_part(values(index)),
+      count)
+
+  extended_nonnegative_sum(
+      values: measure_value_sequence,
+      total: measure_value): bool =
+    canonical_measure_value(total)
+      AND (FORALL (index: nat):
+        canonical_measure_value(values(index)))
+      AND IF infinite_flag(total) THEN
+        (EXISTS (index: nat):
+          infinite_flag(values(index)))
+          OR ((FORALL (index: nat):
+                NOT infinite_flag(values(index)))
+            AND unbounded_above(
+              LAMBDA (count: nat):
+                partial_measure_sum(values, count)))
+      ELSE
+        (FORALL (index: nat):
+          NOT infinite_flag(values(index)))
+          AND converges_to_real(
+            LAMBDA (count: nat):
+              partial_measure_sum(values, count),
+            finite_part(total))
+      ENDIF
+
+  is_sigma_algebra(Sigma: sigma_algebra): bool =
+    (FORALL (A: event):
+      Sigma(A) IMPLIES carrier_event(A))
+      AND Sigma(full_event)
+      AND (FORALL (A: event):
+        Sigma(A) IMPLIES Sigma(event_complement(A)))
+      AND (FORALL (events: event_sequence):
+        (FORALL (index: nat): Sigma(events(index)))
+          IMPLIES Sigma(countable_union(events)))
+
+  is_measure(
+      M: measure_map,
+      Sigma: sigma_algebra): bool =
+    is_sigma_algebra(Sigma)
+      AND measure_value_is_zero(M(empty_event))
+      AND (FORALL (A: event):
+        Sigma(A) IMPLIES canonical_measure_value(M(A)))
+      AND (FORALL (events: event_sequence):
+        ((FORALL (index: nat): Sigma(events(index)))
+          AND pairwise_disjoint(events))
+        IMPLIES
+          extended_nonnegative_sum(
+            LAMBDA (index: nat): M(events(index)),
+            M(countable_union(events))))
+
+  open_circle_event(U: event): bool =
+    carrier_event(U)
+      AND FORALL (x: real):
+        U(x) IMPLIES
+          EXISTS (radius: posreal):
+            FORALL (y: real):
+              (in_circle_carrier(y)
+                AND abs(y - x) < radius)
+              IMPLIES U(y)
+
+  generated_borel_sigma(Sigma: sigma_algebra): bool =
+    is_sigma_algebra(Sigma)
+      AND (FORALL (U: event):
+        open_circle_event(U) IMPLIES Sigma(U))
+      AND (FORALL (Other: sigma_algebra):
+        (is_sigma_algebra(Other)
+          AND (FORALL (U: event):
+            open_circle_event(U) IMPLIES Other(U)))
+        IMPLIES
+          FORALL (A: event):
+            Sigma(A) IMPLIES Other(A))
+
+  translated_event(A: event, shift: real): event =
+    LAMBDA (x: real):
+      in_circle_carrier(x)
+        AND A(circle_translate(x, -shift))
+
+  canonical_haar_space(space: circle_measure_space): bool =
+    LET Sigma: sigma_algebra = measurable_sets(space),
+        M: measure_map = measure_of(space) IN
+      generated_borel_sigma(Sigma)
+        AND is_measure(M, Sigma)
+        AND M(full_event) = finite_measure_value(1)
+        AND (FORALL (A: event), (shift: real):
+          Sigma(A) IMPLIES
+            M(translated_event(A, shift)) = M(A))
+
+  haar_space: circle_measure_space =
+    epsilon(
+      LAMBDA (space: circle_measure_space):
+        canonical_haar_space(space))
+
+  haar_sigma: sigma_algebra =
+    measurable_sets(haar_space)
+
+  haar_measure: measure_map =
+    measure_of(haar_space)
+
+  null_event(A: event): bool =
+    carrier_event(A)
+      AND EXISTS (measurable_cover: event):
+        haar_sigma(measurable_cover)
+          AND (FORALL (x: real):
+            in_circle_carrier(x) AND A(x)
+              IMPLIES measurable_cover(x))
+          AND measure_value_is_zero(
+            haar_measure(measurable_cover))
+
+  almost_everywhere(property: [real -> bool]): bool =
+    null_event(
+      LAMBDA (x: real):
+        in_circle_carrier(x) AND NOT property(x))
+
+  finite_simple_real_value(
+      coefficients: real_sequence,
+      pieces: event_sequence,
+      count: nat,
+      x: real): real =
+    finite_real_sum(
+      LAMBDA (index: nat):
+        IF index < count AND pieces(index)(x) THEN
+          coefficients(index)
+        ELSE
+          0
+        ENDIF,
+      count)
+
+  measurable_simple_real(
+      function_value: real_function): bool =
+    EXISTS
+        (coefficients: real_sequence),
+        (pieces: event_sequence),
+        (count: nat):
+      pairwise_disjoint_below(pieces, count)
+        AND (FORALL (index: nat):
+          index < count IMPLIES
+            haar_sigma(pieces(index)))
+        AND (FORALL (x: real):
+          in_circle_carrier(x) IMPLIES
+            function_value(x) =
+              finite_simple_real_value(
+                coefficients, pieces, count, x))
+
+  strongly_measurable_real(
+      function_value: real_function): bool =
+    EXISTS (approximants: real_function_sequence):
+      (FORALL (index: nat):
+        measurable_simple_real(approximants(index)))
+        AND (FORALL (x: real):
+          in_circle_carrier(x) IMPLIES
+            converges_to_real(
+              LAMBDA (index: nat):
+                approximants(index)(x),
+              function_value(x)))
+
+  ae_strongly_measurable_real(
+      function_value: real_function): bool =
+    EXISTS (measurable_version: real_function):
+      strongly_measurable_real(measurable_version)
+        AND almost_everywhere(
+          LAMBDA (x: real):
+            function_value(x) = measurable_version(x))
+
+  canonical_nonnegative_function(
+      function_value: nonnegative_function): bool =
+    FORALL (x: real):
+      in_circle_carrier(x) IMPLIES
+        canonical_measure_value(function_value(x))
+
+  finite_simple_nonnegative_value(
+      coefficients: measure_value_sequence,
+      pieces: event_sequence,
+      count: nat,
+      x: real): RECURSIVE measure_value =
+    IF count = 0 THEN
+      zero_measure_value
+    ELSE
+      measure_value_add(
+        finite_simple_nonnegative_value(
+          coefficients, pieces, count - 1, x),
+        IF pieces(count - 1)(x) THEN
+          coefficients(count - 1)
+        ELSE
+          zero_measure_value
+        ENDIF)
+    ENDIF
+  MEASURE count
+
+  measurable_simple_nonnegative(
+      coefficients: measure_value_sequence,
+      pieces: event_sequence,
+      count: nat): bool =
+    pairwise_disjoint_below(pieces, count)
+      AND (FORALL (index: nat):
+        index < count IMPLIES
+          canonical_measure_value(coefficients(index))
+            AND NOT infinite_flag(coefficients(index))
+            AND haar_sigma(pieces(index)))
+
+  measurable_simple_minorant(
+      function_value: nonnegative_function,
+      coefficients: measure_value_sequence,
+      pieces: event_sequence,
+      count: nat): bool =
+    canonical_nonnegative_function(function_value)
+      AND measurable_simple_nonnegative(
+        coefficients, pieces, count)
+      AND (FORALL (x: real):
+        in_circle_carrier(x) IMPLIES
+          measure_value_le(
+            finite_simple_nonnegative_value(
+              coefficients, pieces, count, x),
+            function_value(x)))
+
+  finite_simple_nonnegative_integral(
+      coefficients: measure_value_sequence,
+      pieces: event_sequence,
+      count: nat): RECURSIVE measure_value =
+    IF count = 0 THEN
+      zero_measure_value
+    ELSE
+      measure_value_add(
+        finite_simple_nonnegative_integral(
+          coefficients, pieces, count - 1),
+        measure_value_product(
+          coefficients(count - 1),
+          haar_measure(pieces(count - 1))))
+    ENDIF
+  MEASURE count
+
+  lower_integral_upper_bound(
+      function_value: nonnegative_function,
+      upper: measure_value): bool =
+    canonical_measure_value(upper)
+      AND FORALL
+          (coefficients: measure_value_sequence),
+          (pieces: event_sequence),
+          (count: nat):
+        measurable_simple_minorant(
+          function_value, coefficients, pieces, count)
+        IMPLIES
+          measure_value_le(
+            finite_simple_nonnegative_integral(
+              coefficients, pieces, count),
+            upper)
+
+  has_lower_lebesgue_integral(
+      function_value: nonnegative_function,
+      integral_value: measure_value): bool =
+    canonical_nonnegative_function(function_value)
+      AND canonical_measure_value(integral_value)
+      AND lower_integral_upper_bound(
+        function_value, integral_value)
+      AND (FORALL (upper: measure_value):
+        lower_integral_upper_bound(function_value, upper)
+          IMPLIES
+            measure_value_le(integral_value, upper))
+
+  abs_enorm_real(function_value: real_function):
+      nonnegative_function =
+    LAMBDA (x: real):
+      IF in_circle_carrier(x) THEN
+        finite_measure_value(abs(function_value(x)))
+      ELSE
+        zero_measure_value
+      ENDIF
+
+  has_finite_integral_real(
+      function_value: real_function): bool =
+    EXISTS (integral_value: measure_value):
+      has_lower_lebesgue_integral(
+        abs_enorm_real(function_value),
+        integral_value)
+        AND NOT infinite_flag(integral_value)
+
+  integrable_real(function_value: real_function): bool =
+    ae_strongly_measurable_real(function_value)
+      AND has_finite_integral_real(function_value)
+
+  positive_part(function_value: real_function):
+      nonnegative_function =
+    LAMBDA (x: real):
+      IF in_circle_carrier(x) THEN
+        finite_measure_value(
+          IF function_value(x) < 0 THEN
+            0
+          ELSE
+            function_value(x)
+          ENDIF)
+      ELSE
+        zero_measure_value
+      ENDIF
+
+  negative_part(function_value: real_function):
+      nonnegative_function =
+    LAMBDA (x: real):
+      IF in_circle_carrier(x) THEN
+        finite_measure_value(
+          IF function_value(x) < 0 THEN
+            -function_value(x)
+          ELSE
+            0
+          ENDIF)
+      ELSE
+        zero_measure_value
+      ENDIF
+
+  has_real_integral(
+      function_value: real_function,
+      integral_value: real): bool =
+    EXISTS (positive_integral, negative_integral: nonneg_real):
+      has_lower_lebesgue_integral(
+        positive_part(function_value),
+        finite_measure_value(positive_integral))
+        AND has_lower_lebesgue_integral(
+          negative_part(function_value),
+          finite_measure_value(negative_integral))
+        AND integral_value =
+          positive_integral - negative_integral
+
+  real_integral(function_value: real_function): real =
+    IF integrable_real(function_value) THEN
+      epsilon(
+        LAMBDA (integral_value: real):
+          has_real_integral(function_value, integral_value))
+    ELSE
+      0
+    ENDIF
+
+  complex_integral(function_value: complex_function): complex =
+    (# real_part :=
+         real_integral(
+           LAMBDA (x: real):
+             real_part(function_value(x))),
+       imag_part :=
+         real_integral(
+           LAMBDA (x: real):
+             imag_part(function_value(x))) #)
+
+  ae_strongly_measurable_complex(
+      function_value: complex_function): bool =
+    ae_strongly_measurable_real(
+      LAMBDA (x: real):
+        real_part(function_value(x)))
+      AND ae_strongly_measurable_real(
+        LAMBDA (x: real):
+          imag_part(function_value(x)))
+
+  squared_norm_function(
+      function_value: complex_function): real_function =
+    LAMBDA (x: real):
+      complex_norm_squared(function_value(x))
+
+  l2_representative(function_value: complex_function): bool =
+    ae_strongly_measurable_complex(function_value)
+      AND integrable_real(
+        squared_norm_function(function_value))
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  nat_factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * nat_factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  alternating_sign(index: nat): RECURSIVE real =
+    IF index = 0 THEN
+      1
+    ELSE
+      -alternating_sign(index - 1)
+    ENDIF
+  MEASURE index
+
+  sine_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        sine_partial(x, count - 1)
+          + safe_div(
+              ((-1 :: real) ^ index)
+                * x ^ (2 * index + 1),
+              nat_factorial(2 * index + 1) :: real)
+    ENDIF
+  MEASURE count
+
+  cosine_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        cosine_partial(x, count - 1)
+          + safe_div(
+              ((-1 :: real) ^ index)
+                * x ^ (2 * index),
+              nat_factorial(2 * index) :: real)
+    ENDIF
+  MEASURE count
+
+  leibniz_partial_sum(count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        leibniz_partial_sum(count - 1)
+          + safe_div(
+              alternating_sign(index),
+              (2 * index + 1) :: real)
+    ENDIF
+  MEASURE count
+
+  sine_of_real(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to_real(
+          LAMBDA (count: nat):
+            sine_partial(x, count),
+          value))
+
+  cosine_of_real(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to_real(
+          LAMBDA (count: nat):
+            cosine_partial(x, count),
+          value))
+
+  pi: real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to_real(
+          LAMBDA (count: nat):
+            4 * leibniz_partial_sum(count),
+          value))
+
+  fourier_kernel(index: int, x: real): complex =
+    LET angle: real =
+      -2 * pi * (index :: real) * x / T
+    IN
+      (# real_part := cosine_of_real(angle),
+         imag_part := sine_of_real(angle) #)
+
+  fourier_coefficient(
+      function_value: complex_function,
+      index: int): complex =
+    complex_integral(
+      LAMBDA (x: real):
+        complex_mul(
+          fourier_kernel(index, x),
+          function_value(x)))
+
+  fourier_square_partial_sum(
+      function_value: complex_function,
+      radius: nat): RECURSIVE real =
+    IF radius = 0 THEN
+      complex_norm_squared(
+        fourier_coefficient(function_value, 0))
+    ELSE
+      fourier_square_partial_sum(
+        function_value, radius - 1)
+        + complex_norm_squared(
+            fourier_coefficient(
+              function_value, radius :: int))
+        + complex_norm_squared(
+            fourier_coefficient(
+              function_value, -(radius :: int)))
+    ENDIF
+  MEASURE radius
+
+  fourier_square_tsum(
+      function_value: complex_function): real =
+    IF EXISTS (total: real):
+         converges_to_real(
+           LAMBDA (radius: nat):
+             fourier_square_partial_sum(
+               function_value, radius),
+           total)
+    THEN
+      epsilon(
+        LAMBDA (total: real):
+          converges_to_real(
+            LAMBDA (radius: nat):
+              fourier_square_partial_sum(
+                function_value, radius),
+            total))
+    ELSE
+      0
+    ENDIF
+
+  parseval_s_theorem: bool =
+    FORALL (function_value: complex_function):
+      l2_representative(function_value)
+        IMPLIES
+          fourier_square_tsum(function_value)
+            =
+          real_integral(
+            squared_norm_function(function_value))
+END Q1443036_parseval_s_theorem

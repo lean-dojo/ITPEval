@@ -1,0 +1,626 @@
+% Statement-only formalization of "Fair Games Theorem (Optional Stopping)" from Hundred Theorems
+% item 062: submartingales are characterized by monotone expected stopped values at ordered
+% bounded stopping times, with the standard stopped-expectation conclusions. This file contains
+% no proof.
+
+fair_games_theorem_062: THEORY
+BEGIN
+  sample_space: TYPE+
+
+  event: TYPE = [sample_space -> bool]
+  event_sequence: TYPE = [nat -> event]
+  sigma_algebra: TYPE = [event -> bool]
+  probability_measure: TYPE = [event -> real]
+  random_variable: TYPE = [sample_space -> real]
+  real_sequence: TYPE = [nat -> real]
+  process: TYPE = [nat -> random_variable]
+  filtration: TYPE = [nat -> sigma_algebra]
+
+  stopping_instant: TYPE =
+    [# time_is_finite: bool, time_index: nat #]
+  stopping_time: TYPE = [sample_space -> stopping_instant]
+
+  absolute_value(x: real): real =
+    IF x >= 0 THEN x ELSE -x ENDIF
+
+  full_event: event =
+    LAMBDA (omega: sample_space): TRUE
+
+  empty_event: event =
+    LAMBDA (omega: sample_space): FALSE
+
+  event_complement(A: event): event =
+    LAMBDA (omega: sample_space): NOT A(omega)
+
+  event_intersection(A, B: event): event =
+    LAMBDA (omega: sample_space): A(omega) AND B(omega)
+
+  countable_union(events: event_sequence): event =
+    LAMBDA (omega: sample_space):
+      EXISTS (n: nat): events(n)(omega)
+
+  event_subset(A, B: event): bool =
+    FORALL (omega: sample_space):
+      A(omega) IMPLIES B(omega)
+
+  pairwise_disjoint(events: event_sequence): bool =
+    FORALL (i, j: nat):
+      i /= j IMPLIES
+        FORALL (omega: sample_space):
+          NOT (events(i)(omega) AND events(j)(omega))
+
+  pairwise_disjoint_below(
+      events: event_sequence,
+      count: nat): bool =
+    FORALL (i, j: nat):
+      i < count AND j < count AND i /= j IMPLIES
+        FORALL (omega: sample_space):
+          NOT (events(i)(omega) AND events(j)(omega))
+
+  finite_sum(values: real_sequence, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      finite_sum(values, count - 1) + values(count - 1)
+    ENDIF
+  MEASURE count
+
+  converges_to_real(values: real_sequence, limit: real): bool =
+    FORALL (epsilon: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (n: nat):
+          cutoff <= n IMPLIES
+            absolute_value(values(n) - limit) < epsilon
+
+  is_sigma_algebra(Sigma: sigma_algebra): bool =
+    Sigma(full_event)
+      AND (FORALL (A: event):
+        Sigma(A) IMPLIES Sigma(event_complement(A)))
+      AND (FORALL (events: event_sequence):
+        (FORALL (n: nat): Sigma(events(n)))
+          IMPLIES Sigma(countable_union(events)))
+
+  sub_sigma_algebra(
+      smaller, larger: sigma_algebra): bool =
+    FORALL (A: event):
+      smaller(A) IMPLIES larger(A)
+
+  is_probability_measure(
+      M: probability_measure,
+      Sigma: sigma_algebra): bool =
+    is_sigma_algebra(Sigma)
+      AND M(empty_event) = 0
+      AND M(full_event) = 1
+      AND (FORALL (A: event):
+        Sigma(A) IMPLIES
+          0 <= M(A) AND M(A) <= 1)
+      AND (FORALL (events: event_sequence):
+        ((FORALL (n: nat): Sigma(events(n)))
+          AND pairwise_disjoint(events))
+        IMPLIES
+          converges_to_real(
+            LAMBDA (count: nat):
+              finite_sum(
+                LAMBDA (n: nat): M(events(n)),
+                count),
+            M(countable_union(events))))
+
+  probability_space(
+      M: probability_measure,
+      Sigma: sigma_algebra): bool =
+    is_probability_measure(M, Sigma)
+
+  sigma_finite(
+      M: probability_measure,
+      Sigma: sigma_algebra): bool =
+    EXISTS (cover: event_sequence):
+      (FORALL (n: nat):
+        Sigma(cover(n)) AND 0 <= M(cover(n)) AND M(cover(n)) <= 1)
+        AND (FORALL (omega: sample_space):
+          EXISTS (n: nat): cover(n)(omega))
+
+  filtration_on(
+      F: filtration,
+      Sigma: sigma_algebra): bool =
+    is_sigma_algebra(Sigma)
+      AND (FORALL (n: nat):
+        is_sigma_algebra(F(n))
+          AND sub_sigma_algebra(F(n), Sigma))
+      AND (FORALL (i, j: nat):
+        i <= j IMPLIES sub_sigma_algebra(F(i), F(j)))
+
+  sigma_finite_filtration(
+      M: probability_measure,
+      F: filtration): bool =
+    FORALL (n: nat):
+      sigma_finite(M, F(n))
+
+  sublevel_event(
+      X: random_variable,
+      bound: real): event =
+    LAMBDA (omega: sample_space):
+      X(omega) <= bound
+
+  random_variable_on(
+      Sigma: sigma_algebra,
+      X: random_variable): bool =
+    FORALL (bound: real):
+      Sigma(sublevel_event(X, bound))
+
+  measurable_process(
+      X: process,
+      Sigma: sigma_algebra): bool =
+    FORALL (n: nat):
+      random_variable_on(Sigma, X(n))
+
+  adapted(
+      X: process,
+      F: filtration): bool =
+    FORALL (n: nat):
+      random_variable_on(F(n), X(n))
+
+  strongly_adapted(
+      X: process,
+      F: filtration): bool =
+    adapted(X, F)
+
+  positive_part(X: random_variable): random_variable =
+    LAMBDA (omega: sample_space):
+      IF X(omega) >= 0 THEN X(omega) ELSE 0 ENDIF
+
+  negative_part(X: random_variable): random_variable =
+    LAMBDA (omega: sample_space):
+      IF X(omega) <= 0 THEN -X(omega) ELSE 0 ENDIF
+
+  restricted_variable(
+      X: random_variable,
+      A: event): random_variable =
+    LAMBDA (omega: sample_space):
+      IF A(omega) THEN X(omega) ELSE 0 ENDIF
+
+  simple_value(
+      coefficients: real_sequence,
+      pieces: event_sequence,
+      count: nat,
+      omega: sample_space): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      simple_value(coefficients, pieces, count - 1, omega)
+        + IF pieces(count - 1)(omega)
+            THEN coefficients(count - 1)
+          ELSE 0
+          ENDIF
+    ENDIF
+  MEASURE count
+
+  simple_integral(
+      M: probability_measure,
+      coefficients: real_sequence,
+      pieces: event_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      simple_integral(M, coefficients, pieces, count - 1)
+        + coefficients(count - 1) * M(pieces(count - 1))
+    ENDIF
+  MEASURE count
+
+  nonnegative_simple_minorant(
+      Sigma: sigma_algebra,
+      X: random_variable,
+      coefficients: real_sequence,
+      pieces: event_sequence,
+      count: nat): bool =
+    pairwise_disjoint_below(pieces, count)
+      AND (FORALL (k: nat):
+        k < count IMPLIES
+          coefficients(k) >= 0 AND Sigma(pieces(k)))
+      AND (FORALL (omega: sample_space):
+        0 <= simple_value(
+          coefficients, pieces, count, omega)
+          AND simple_value(
+            coefficients, pieces, count, omega) <= X(omega))
+
+  nonnegative_integral_upper_bound(
+      M: probability_measure,
+      Sigma: sigma_algebra,
+      X: random_variable,
+      upper: real): bool =
+    FORALL
+        (coefficients: real_sequence),
+        (pieces: event_sequence),
+        (count: nat):
+      nonnegative_simple_minorant(
+        Sigma, X, coefficients, pieces, count)
+      IMPLIES
+        simple_integral(
+          M, coefficients, pieces, count) <= upper
+
+  has_nonnegative_integral(
+      M: probability_measure,
+      Sigma: sigma_algebra,
+      X: random_variable,
+      value: real): bool =
+    (FORALL (omega: sample_space): X(omega) >= 0)
+      AND value >= 0
+      AND nonnegative_integral_upper_bound(
+        M, Sigma, X, value)
+      AND (FORALL (upper: real):
+        nonnegative_integral_upper_bound(
+          M, Sigma, X, upper)
+        IMPLIES value <= upper)
+
+  has_expectation(
+      M: probability_measure,
+      Sigma: sigma_algebra,
+      X: random_variable,
+      value: real): bool =
+    random_variable_on(Sigma, X)
+      AND EXISTS (positive_integral, negative_integral: real):
+        has_nonnegative_integral(
+          M, Sigma, positive_part(X), positive_integral)
+          AND has_nonnegative_integral(
+            M, Sigma, negative_part(X), negative_integral)
+          AND value = positive_integral - negative_integral
+
+  integrable(
+      M: probability_measure,
+      Sigma: sigma_algebra,
+      X: random_variable): bool =
+    EXISTS (value: real):
+      has_expectation(M, Sigma, X, value)
+
+  integrable_process(
+      M: probability_measure,
+      Sigma: sigma_algebra,
+      X: process): bool =
+    FORALL (n: nat):
+      integrable(M, Sigma, X(n))
+
+  expectation_le(
+      M: probability_measure,
+      Sigma: sigma_algebra,
+      X, Y: random_variable): bool =
+    EXISTS (x_value, y_value: real):
+      has_expectation(M, Sigma, X, x_value)
+        AND has_expectation(M, Sigma, Y, y_value)
+        AND x_value <= y_value
+
+  expectation_equal(
+      M: probability_measure,
+      Sigma: sigma_algebra,
+      X, Y: random_variable): bool =
+    EXISTS (x_value, y_value: real):
+      has_expectation(M, Sigma, X, x_value)
+        AND has_expectation(M, Sigma, Y, y_value)
+        AND x_value = y_value
+
+  canonical_stopping_time(tau: stopping_time): bool =
+    FORALL (omega: sample_space):
+      NOT time_is_finite(tau(omega))
+        IMPLIES time_index(tau(omega)) = 0
+
+  extended_time_le(s, t: stopping_instant): bool =
+    IF time_is_finite(s) THEN
+      NOT time_is_finite(t)
+        OR time_index(s) <= time_index(t)
+    ELSE
+      NOT time_is_finite(t)
+    ENDIF
+
+  stopping_time_le(tau, pi: stopping_time): bool =
+    FORALL (omega: sample_space):
+      extended_time_le(tau(omega), pi(omega))
+
+  stopped_by_event(
+      tau: stopping_time,
+      n: nat): event =
+    LAMBDA (omega: sample_space):
+      time_is_finite(tau(omega))
+        AND time_index(tau(omega)) <= n
+
+  stopping_time_wrt(
+      tau: stopping_time,
+      F: filtration): bool =
+    canonical_stopping_time(tau)
+      AND (FORALL (n: nat):
+        F(n)(stopped_by_event(tau, n)))
+
+  bounded_stopping_time(tau: stopping_time): bool =
+    EXISTS (bound: nat):
+      FORALL (omega: sample_space):
+        time_is_finite(tau(omega))
+          AND time_index(tau(omega)) <= bound
+
+  almost_surely(
+      M: probability_measure,
+      Sigma: sigma_algebra,
+      A: event): bool =
+    Sigma(A) AND M(A) = 1
+
+  almost_surely_bounded(
+      M: probability_measure,
+      Sigma: sigma_algebra,
+      tau: stopping_time): bool =
+    EXISTS (bound: nat):
+      almost_surely(
+        M,
+        Sigma,
+        LAMBDA (omega: sample_space):
+          time_is_finite(tau(omega))
+            AND time_index(tau(omega)) <= bound)
+
+  almost_surely_finite(
+      M: probability_measure,
+      Sigma: sigma_algebra,
+      tau: stopping_time): bool =
+    almost_surely(
+      M,
+      Sigma,
+      LAMBDA (omega: sample_space):
+        time_is_finite(tau(omega)))
+
+  stopping_time_value(
+      tau: stopping_time): random_variable =
+    LAMBDA (omega: sample_space):
+      IF time_is_finite(tau(omega))
+        THEN time_index(tau(omega)) :: real
+      ELSE 0
+      ENDIF
+
+  finite_expected_stopping_time(
+      M: probability_measure,
+      Sigma: sigma_algebra,
+      tau: stopping_time): bool =
+    almost_surely_finite(M, Sigma, tau)
+      AND integrable(M, Sigma, stopping_time_value(tau))
+
+  stopped_value(
+      X: process,
+      tau: stopping_time): random_variable =
+    LAMBDA (omega: sample_space):
+      IF time_is_finite(tau(omega)) THEN
+        X(time_index(tau(omega)))(omega)
+      ELSE
+        0
+      ENDIF
+
+  stopped_process(
+      X: process,
+      tau: stopping_time): process =
+    LAMBDA (n: nat):
+      LAMBDA (omega: sample_space):
+        IF time_is_finite(tau(omega))
+             AND time_index(tau(omega)) <= n THEN
+          X(time_index(tau(omega)))(omega)
+        ELSE
+          X(n)(omega)
+        ENDIF
+
+  submartingale(
+      M: probability_measure,
+      Sigma: sigma_algebra,
+      X: process,
+      F: filtration): bool =
+    adapted(X, F)
+      AND integrable_process(M, Sigma, X)
+      AND (FORALL (i, j: nat), (A: event):
+        (i <= j AND F(i)(A))
+        IMPLIES
+          expectation_le(
+            M,
+            Sigma,
+            restricted_variable(X(i), A),
+            restricted_variable(X(j), A)))
+
+  martingale(
+      M: probability_measure,
+      Sigma: sigma_algebra,
+      X: process,
+      F: filtration): bool =
+    adapted(X, F)
+      AND integrable_process(M, Sigma, X)
+      AND (FORALL (i, j: nat), (A: event):
+        (i <= j AND F(i)(A))
+        IMPLIES
+          expectation_equal(
+            M,
+            Sigma,
+            restricted_variable(X(i), A),
+            restricted_variable(X(j), A)))
+
+  supermartingale(
+      M: probability_measure,
+      Sigma: sigma_algebra,
+      X: process,
+      F: filtration): bool =
+    adapted(X, F)
+      AND integrable_process(M, Sigma, X)
+      AND (FORALL (i, j: nat), (A: event):
+        (i <= j AND F(i)(A))
+        IMPLIES
+          expectation_le(
+            M,
+            Sigma,
+            restricted_variable(X(j), A),
+            restricted_variable(X(i), A)))
+
+  uniformly_bounded_process(
+      M: probability_measure,
+      Sigma: sigma_algebra,
+      X: process): bool =
+    EXISTS (bound: real):
+      FORALL (n: nat):
+        almost_surely(
+          M,
+          Sigma,
+          LAMBDA (omega: sample_space):
+            absolute_value(X(n)(omega)) < bound)
+
+  bounded_process_increments(
+      M: probability_measure,
+      Sigma: sigma_algebra,
+      X: process): bool =
+    EXISTS (bound: real):
+      FORALL (n: nat):
+        almost_surely(
+          M,
+          Sigma,
+          LAMBDA (omega: sample_space):
+            absolute_value(
+              X(n + 1)(omega) - X(n)(omega)) <= bound)
+
+  optional_stopping_conditions(
+      M: probability_measure,
+      Sigma: sigma_algebra,
+      X: process,
+      tau: stopping_time): bool =
+    almost_surely_bounded(M, Sigma, tau)
+      OR (almost_surely_finite(M, Sigma, tau)
+        AND uniformly_bounded_process(M, Sigma, X))
+      OR (finite_expected_stopping_time(M, Sigma, tau)
+        AND bounded_process_increments(M, Sigma, X))
+
+  characterization_context(
+      M: probability_measure,
+      Sigma: sigma_algebra,
+      F: filtration,
+      X: process): bool =
+    probability_space(M, Sigma)
+      AND filtration_on(F, Sigma)
+      AND sigma_finite_filtration(M, F)
+      AND measurable_process(X, Sigma)
+      AND strongly_adapted(X, F)
+      AND integrable_process(M, Sigma, X)
+
+  single_stop_context(
+      M: probability_measure,
+      Sigma: sigma_algebra,
+      F: filtration,
+      X: process,
+      tau: stopping_time): bool =
+    probability_space(M, Sigma)
+      AND filtration_on(F, Sigma)
+      AND measurable_process(X, Sigma)
+      AND adapted(X, F)
+      AND integrable_process(M, Sigma, X)
+      AND stopping_time_wrt(tau, F)
+      AND optional_stopping_conditions(M, Sigma, X, tau)
+
+  expected_stopped_value_mono: bool =
+    FORALL
+        (M: probability_measure),
+        (Sigma: sigma_algebra),
+        (F: filtration),
+        (X: process),
+        (tau, pi: stopping_time):
+      (characterization_context(M, Sigma, F, X)
+        AND submartingale(M, Sigma, X, F)
+        AND stopping_time_wrt(tau, F)
+        AND stopping_time_wrt(pi, F)
+        AND stopping_time_le(tau, pi)
+        AND bounded_stopping_time(pi))
+      IMPLIES
+        expectation_le(
+          M,
+          Sigma,
+          stopped_value(X, tau),
+          stopped_value(X, pi))
+
+  submartingale_optional_stopping_characterization: bool =
+    FORALL
+        (M: probability_measure),
+        (Sigma: sigma_algebra),
+        (F: filtration),
+        (X: process):
+      characterization_context(M, Sigma, F, X)
+      IMPLIES
+        (submartingale(M, Sigma, X, F)
+          IFF
+            (FORALL (tau, pi: stopping_time):
+              (stopping_time_wrt(tau, F)
+                AND stopping_time_wrt(pi, F)
+                AND stopping_time_le(tau, pi)
+                AND bounded_stopping_time(pi))
+              IMPLIES
+                expectation_le(
+                  M,
+                  Sigma,
+                  stopped_value(X, tau),
+                  stopped_value(X, pi))))
+
+  stopped_process_is_submartingale: bool =
+    FORALL
+        (M: probability_measure),
+        (Sigma: sigma_algebra),
+        (F: filtration),
+        (X: process),
+        (tau: stopping_time):
+      (characterization_context(M, Sigma, F, X)
+        AND submartingale(M, Sigma, X, F)
+        AND stopping_time_wrt(tau, F))
+      IMPLIES
+        submartingale(
+          M, Sigma, stopped_process(X, tau), F)
+
+  stopped_value_is_integrable: bool =
+    FORALL
+        (M: probability_measure),
+        (Sigma: sigma_algebra),
+        (F: filtration),
+        (X: process),
+        (tau: stopping_time):
+      single_stop_context(M, Sigma, F, X, tau)
+      IMPLIES
+        integrable(M, Sigma, stopped_value(X, tau))
+
+  optional_stopping_martingale: bool =
+    FORALL
+        (M: probability_measure),
+        (Sigma: sigma_algebra),
+        (F: filtration),
+        (X: process),
+        (tau: stopping_time):
+      (single_stop_context(M, Sigma, F, X, tau)
+        AND martingale(M, Sigma, X, F))
+      IMPLIES
+        expectation_equal(
+          M, Sigma, stopped_value(X, tau), X(0))
+
+  optional_stopping_submartingale: bool =
+    FORALL
+        (M: probability_measure),
+        (Sigma: sigma_algebra),
+        (F: filtration),
+        (X: process),
+        (tau: stopping_time):
+      (single_stop_context(M, Sigma, F, X, tau)
+        AND submartingale(M, Sigma, X, F))
+      IMPLIES
+        expectation_le(
+          M, Sigma, X(0), stopped_value(X, tau))
+
+  optional_stopping_supermartingale: bool =
+    FORALL
+        (M: probability_measure),
+        (Sigma: sigma_algebra),
+        (F: filtration),
+        (X: process),
+        (tau: stopping_time):
+      (single_stop_context(M, Sigma, F, X, tau)
+        AND supermartingale(M, Sigma, X, F))
+      IMPLIES
+        expectation_le(
+          M, Sigma, stopped_value(X, tau), X(0))
+
+  fair_games_theorem: bool =
+    expected_stopped_value_mono
+      AND submartingale_optional_stopping_characterization
+      AND stopped_process_is_submartingale
+      AND stopped_value_is_integrable
+      AND optional_stopping_martingale
+      AND optional_stopping_submartingale
+      AND optional_stopping_supermartingale
+END fair_games_theorem_062

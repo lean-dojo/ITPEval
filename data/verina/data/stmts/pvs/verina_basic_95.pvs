@@ -1,0 +1,122 @@
+% Statement-only formalization of the VERINA corpus artifact verina_basic_95
+% (verina__pvs__verina_basic_95), catalog title "swap": the exact two-update
+% program swaps two in-bounds entries of a finite integer array and satisfies
+% its full size, swapped-entry, and unchanged-other-entry contract. This file
+% contains no proof.
+
+verina_basic_95: THEORY
+BEGIN
+
+  % Finite PVS lists preserve exactly the contents and order of Lean arrays.
+  int_list_length(
+      values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        int_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  % Lean Array.get! on integer arrays returns zero outside the array.
+  int_list_get_bang(
+      index: nat,
+      values: list[int]): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          int_list_get_bang(index - 1, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  % Lean Array.set! replaces an in-bounds entry and leaves an out-of-bounds
+  % array unchanged.
+  int_list_set_bang(
+      index: nat,
+      new_value: int,
+      values: list[int]): RECURSIVE list[int] =
+    CASES values OF
+      null:
+        null[int],
+      cons(head, tail):
+        IF index = 0 THEN
+          cons(new_value, tail)
+        ELSE
+          cons(
+            head,
+            int_list_set_bang(
+              index - 1,
+              new_value,
+              tail))
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  % This is Lean Int.toNat: negative integers map to zero.
+  int_to_nat(value: int): nat =
+    IF value >= 0 THEN value ELSE 0 ENDIF
+
+  swap_precond(
+      arr: list[int],
+      i, j: int): bool =
+    i >= 0
+      AND j >= 0
+      AND int_to_nat(i) < int_list_length(arr)
+      AND int_to_nat(j) < int_list_length(arr)
+
+  % The source precondition proof argument is computationally irrelevant.
+  % Both values are read from the original array, and the updates occur in
+  % source order, including when the two indices are equal.
+  swap(
+      arr: list[int],
+      i, j: int): list[int] =
+    LET i_nat: nat = int_to_nat(i),
+        j_nat: nat = int_to_nat(j),
+        arr1: list[int] =
+          int_list_set_bang(
+            i_nat,
+            int_list_get_bang(j_nat, arr),
+            arr),
+        arr2: list[int] =
+          int_list_set_bang(
+            j_nat,
+            int_list_get_bang(i_nat, arr),
+            arr1)
+    IN
+      arr2
+
+  % The source proof argument to the postcondition is logically irrelevant.
+  swap_postcond(
+      arr: list[int],
+      i, j: int,
+      result: list[int]): bool =
+    int_list_length(result) = int_list_length(arr)
+      AND int_list_get_bang(int_to_nat(i), result)
+            = int_list_get_bang(int_to_nat(j), arr)
+      AND int_list_get_bang(int_to_nat(j), result)
+            = int_list_get_bang(int_to_nat(i), arr)
+      AND
+        (FORALL (k: nat):
+          k < int_list_length(arr)
+            AND k /= int_to_nat(i)
+            AND k /= int_to_nat(j)
+          IMPLIES
+            int_list_get_bang(k, result)
+              = int_list_get_bang(k, arr))
+
+  swap_spec_satisfied: bool =
+    FORALL (arr: list[int], i, j: int):
+      swap_precond(arr, i, j)
+        IMPLIES
+          swap_postcond(
+            arr,
+            i,
+            j,
+            swap(arr, i, j))
+
+END verina_basic_95

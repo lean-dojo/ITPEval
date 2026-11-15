@@ -1,0 +1,65 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2005_a2:
+% the number of rook tours through every point of an n-by-3 integer grid,
+% starting at (1, 1) and ending at (n, 1), is 0 for n = 1 and 2^(n-2)
+% otherwise. This file contains no proof.
+
+putnam_2005_a2: THEORY
+BEGIN
+  point: TYPE = [# x_coord: int, y_coord: int #]
+  tour: TYPE = [nat -> point]
+
+  IMPORTING finite_sets[tour]
+
+  origin: point = (# x_coord := 0, y_coord := 0 #)
+
+  grid_point(P: point, n: posnat): bool =
+    1 <= x_coord(P)
+      AND x_coord(P) <= n
+      AND 1 <= y_coord(P)
+      AND y_coord(P) <= 3
+
+  unit_apart(P, Q: point): bool =
+    (x_coord(P) = x_coord(Q)
+      AND abs(y_coord(Q) - y_coord(P)) = 1)
+      OR
+    (y_coord(P) = y_coord(Q)
+      AND abs(x_coord(Q) - x_coord(P)) = 1)
+
+  visits_exactly_once(
+      p: tour,
+      n: posnat,
+      P: point): bool =
+    EXISTS (i: nat):
+      1 <= i
+        AND i <= 3 * n
+        AND p(i) = P
+        AND (FORALL (j: nat):
+          (1 <= j AND j <= 3 * n AND p(j) = P)
+            IMPLIES j = i)
+
+  rook_tour(p: tour, n: posnat): bool =
+    (FORALL (P: point):
+      grid_point(P, n) IMPLIES visits_exactly_once(p, n, P))
+      AND
+    (FORALL (i: nat):
+      (1 <= i AND i < 3 * n)
+        IMPLIES unit_apart(p(i), p(i + 1)))
+      AND p(0) = origin
+      AND (FORALL (i: nat):
+        i > 3 * n IMPLIES p(i) = origin)
+
+  qualifying(p: tour, n: posnat): bool =
+    rook_tour(p, n)
+      AND p(1) = (# x_coord := 1, y_coord := 1 #)
+      AND p(3 * n) = (# x_coord := n, y_coord := 1 #)
+
+  putnam_2005_a2_solution(n: posnat): nat =
+    IF n = 1 THEN 0 ELSE 2 ^ (n - 2) ENDIF
+
+  putnam_2005_a2: bool =
+    FORALL (n: posnat):
+      EXISTS (solutions: finite_set[tour]):
+        card(solutions) = putnam_2005_a2_solution(n)
+          AND (FORALL (p: tour):
+            solutions(p) IFF qualifying(p, n))
+END putnam_2005_a2

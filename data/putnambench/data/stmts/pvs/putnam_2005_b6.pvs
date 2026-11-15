@@ -1,0 +1,145 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2005_b6:
+% the signed sum over permutations of n elements, weighted by one plus the
+% number of fixed points, equals (-1)^(n+1) times n/(n+1). This file contains
+% no proof.
+
+putnam_2005_b6: THEORY
+BEGIN
+  quotient_aux(
+      numerator, denominator, fuel: nat): RECURSIVE nat =
+    IF fuel = 0
+        OR denominator = 0
+        OR numerator < denominator THEN
+      0
+    ELSE
+      1
+        + quotient_aux(
+            numerator - denominator,
+            denominator,
+            fuel - 1)
+    ENDIF
+  MEASURE fuel
+
+  remainder_aux(
+      numerator, denominator, fuel: nat): RECURSIVE nat =
+    IF fuel = 0
+        OR denominator = 0
+        OR numerator < denominator THEN
+      numerator
+    ELSE
+      remainder_aux(
+        numerator - denominator,
+        denominator,
+        fuel - 1)
+    ENDIF
+  MEASURE fuel
+
+  safe_ndiv(numerator, denominator: nat): nat =
+    quotient_aux(
+      numerator,
+      denominator,
+      numerator + 1)
+
+  safe_mod(numerator, denominator: nat): nat =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      remainder_aux(
+        numerator,
+        denominator,
+        numerator + 1)
+    ENDIF
+
+  function_code_count(n: nat): nat =
+    IF n = 0 THEN 1 ELSE n ^ n ENDIF
+
+  permutation_entry(code, index, n: nat): nat =
+    IF n = 0 THEN
+      0
+    ELSE
+      safe_mod(safe_ndiv(code, n ^ index), n)
+    ENDIF
+
+  permutation_code(code, n: nat): bool =
+    code < function_code_count(n)
+      AND (FORALL (i, j: nat):
+        (i < n
+          AND j < n
+          AND permutation_entry(code, i, n)
+            = permutation_entry(code, j, n))
+        IMPLIES i = j)
+
+  pair_row(pair, n: nat): nat =
+    safe_ndiv(pair, n)
+
+  pair_column(pair, n: nat): nat =
+    safe_mod(pair, n)
+
+  inversion_at(code, pair, n: nat): bool =
+    pair_row(pair, n) < n
+      AND pair_column(pair, n) < n
+      AND pair_row(pair, n) < pair_column(pair, n)
+      AND permutation_entry(code, pair_row(pair, n), n)
+        > permutation_entry(code, pair_column(pair, n), n)
+
+  count_true(
+      property: [nat -> bool],
+      count: nat): RECURSIVE nat =
+    IF count = 0 THEN
+      0
+    ELSE
+      count_true(property, count - 1)
+        + IF property(count - 1) THEN 1 ELSE 0 ENDIF
+    ENDIF
+  MEASURE count
+
+  inversion_count(code, n: nat): nat =
+    count_true(
+      (LAMBDA (pair: nat): inversion_at(code, pair, n)),
+      n * n)
+
+  fixed_point_count(code, n: nat): nat =
+    count_true(
+      (LAMBDA (index: nat):
+        index < n
+          AND permutation_entry(code, index, n) = index),
+      n)
+
+  permutation_sign(code, n: nat): real =
+    IF mod(inversion_count(code, n), 2) = 0 THEN
+      1
+    ELSE
+      -1
+    ENDIF
+
+  signed_fixed_point_sum(
+      n, limit: nat): RECURSIVE real =
+    IF limit = 0 THEN
+      0
+    ELSE
+      LET code: nat = limit - 1 IN
+        signed_fixed_point_sum(n, limit - 1)
+          + IF permutation_code(code, n) THEN
+              permutation_sign(code, n)
+                / ((fixed_point_count(code, n) + 1) :: real)
+            ELSE
+              0
+            ENDIF
+    ENDIF
+  MEASURE limit
+
+  alternating_sign(exponent: nat): RECURSIVE real =
+    IF exponent = 0 THEN
+      1
+    ELSE
+      -alternating_sign(exponent - 1)
+    ENDIF
+  MEASURE exponent
+
+  putnam_2005_b6: bool =
+    FORALL (n: nat):
+      n > 0 IMPLIES
+        signed_fixed_point_sum(n, function_code_count(n))
+          = alternating_sign(n + 1)
+              * (n :: real) / ((n + 1) :: real)
+END putnam_2005_b6

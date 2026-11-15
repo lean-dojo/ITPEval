@@ -1,0 +1,73 @@
+% Statement-only formalization of the Thousand Theorems corpus artifact Q4116459
+% (thousand-theorems__pvs__Q4116459), "Niven's theorem": if a real angle is a
+% rational multiple of pi and has rational cosine, that cosine is one of
+% -1, -1/2, 0, 1/2, or 1. This file contains no proof.
+
+Q4116459_niven_s_theorem: THEORY
+BEGIN
+  real_sequence: TYPE = [nat -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  nat_factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * nat_factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  cosine_partial(argument: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        cosine_partial(argument, count - 1)
+          + safe_div(
+              ((-1 :: real) ^ index) * argument ^ (2 * index),
+              nat_factorial(2 * index) :: real)
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  cosine(argument: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat): cosine_partial(argument, count),
+          value))
+
+  is_pi(value: real): bool =
+    3 < value
+      AND value < 4
+      AND cosine(value / 2) = 0
+
+  pi: real =
+    epsilon(LAMBDA (value: real): is_pi(value))
+
+  rational_multiple_of_pi(theta: real): bool =
+    EXISTS (r: real):
+      rational?(r) AND theta = r * pi
+
+  niven: bool =
+    FORALL (theta: real):
+      (rational_multiple_of_pi(theta)
+        AND rational?(cosine(theta)))
+      IMPLIES
+        (cosine(theta) = -1
+          OR cosine(theta) = ((-1 :: real) / 2)
+          OR cosine(theta) = 0
+          OR cosine(theta) = ((1 :: real) / 2)
+          OR cosine(theta) = 1)
+END Q4116459_niven_s_theorem

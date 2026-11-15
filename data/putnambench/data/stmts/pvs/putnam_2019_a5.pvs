@@ -1,0 +1,181 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2019_a5:
+% for an odd prime p, the greatest exponent n such that (x - 1)^n divides
+% q(x) = sum_{k=1}^{p-1} k^((p - 1)/2)*x^k in F_p[x] is (p - 1)/2.
+% This file contains no proof.
+
+putnam_2019_a5: THEORY
+BEGIN
+  polynomial: TYPE = list[int]
+
+  nat_divides(divisor: posnat, value: nat): bool =
+    EXISTS (quotient: nat):
+      value = divisor * quotient
+
+  prime_nat(value: nat): bool =
+    value >= 2
+      AND FORALL (divisor: posnat):
+        nat_divides(divisor, value)
+          IMPLIES divisor = 1 OR divisor = value
+
+  odd_nat(value: nat): bool =
+    EXISTS (k: nat):
+      value = 2 * k + 1
+
+  polynomial_coefficient(
+      value: polynomial,
+      degree: nat): RECURSIVE int =
+    CASES value OF
+      null: 0,
+      cons(coefficient, tail):
+        IF degree = 0 THEN
+          coefficient
+        ELSE
+          polynomial_coefficient(tail, degree - 1)
+        ENDIF
+    ENDCASES
+  MEASURE value BY <<
+
+  polynomial_add(
+      left, right: polynomial): RECURSIVE polynomial =
+    CASES left OF
+      null: right,
+      cons(left_coefficient, left_tail):
+        CASES right OF
+          null: left,
+          cons(right_coefficient, right_tail):
+            cons(
+              left_coefficient + right_coefficient,
+              polynomial_add(left_tail, right_tail))
+        ENDCASES
+    ENDCASES
+  MEASURE left BY <<
+
+  polynomial_scale(
+      scalar: int,
+      value: polynomial): RECURSIVE polynomial =
+    CASES value OF
+      null: null,
+      cons(coefficient, tail):
+        cons(
+          scalar * coefficient,
+          polynomial_scale(scalar, tail))
+    ENDCASES
+  MEASURE value BY <<
+
+  polynomial_multiply(
+      left, right: polynomial): RECURSIVE polynomial =
+    CASES left OF
+      null: null,
+      cons(coefficient, tail):
+        polynomial_add(
+          polynomial_scale(coefficient, right),
+          cons(0, polynomial_multiply(tail, right)))
+    ENDCASES
+  MEASURE left BY <<
+
+  constant_polynomial(value: int): polynomial =
+    cons(value, null)
+
+  linear_polynomial(
+      constant_coefficient,
+      linear_coefficient: int): polynomial =
+    cons(
+      constant_coefficient,
+      cons(linear_coefficient, null))
+
+  prepend_coefficient(
+      coefficient: int,
+      tail: polynomial): polynomial =
+    cons(coefficient, tail)
+
+  polynomial_power(
+      value: polynomial,
+      exponent: nat): RECURSIVE polynomial =
+    IF exponent = 0 THEN
+      constant_polynomial(1)
+    ELSE
+      polynomial_multiply(
+        polynomial_power(value, exponent - 1),
+        value)
+    ENDIF
+  MEASURE exponent
+
+  coefficient_congruent(
+      left, right: int,
+      modulus: nat): bool =
+    EXISTS (offset: int):
+      left - right = (modulus :: int) * offset
+
+  polynomial_congruent(
+      left, right: polynomial,
+      modulus: nat): bool =
+    FORALL (degree: nat):
+      coefficient_congruent(
+        polynomial_coefficient(left, degree),
+        polynomial_coefficient(right, degree),
+        modulus)
+
+  polynomial_divides_mod(
+      modulus: nat,
+      divisor, dividend: polynomial): bool =
+    EXISTS (quotient: polynomial):
+      polynomial_congruent(
+        dividend,
+        polynomial_multiply(divisor, quotient),
+        modulus)
+
+  coefficient_segment(
+      first, count, exponent: nat): RECURSIVE polynomial =
+    IF count = 0 THEN
+      null
+    ELSE
+      cons(
+        (first ^ exponent) :: int,
+        coefficient_segment(first + 1, count - 1, exponent))
+    ENDIF
+  MEASURE count
+
+  natural_predecessor(value: nat): nat =
+    IF value = 0 THEN 0 ELSE value - 1 ENDIF
+
+  natural_half(value: nat): RECURSIVE nat =
+    IF value < 2 THEN
+      0
+    ELSE
+      1 + natural_half(value - 2)
+    ENDIF
+  MEASURE value
+
+  q_polynomial(
+      p, coefficient_exponent: nat,
+      zero_coefficient: int): polynomial =
+    prepend_coefficient(
+      zero_coefficient,
+      coefficient_segment(
+        1,
+        natural_predecessor(p),
+        coefficient_exponent))
+
+  putnam_2019_a5_solution(p: nat): nat =
+    natural_half(natural_predecessor(p))
+
+  dividing_exponent(p, exponent: nat): bool =
+    polynomial_divides_mod(
+      p,
+      polynomial_power(linear_polynomial(-1, 1), exponent),
+      q_polynomial(p, putnam_2019_a5_solution(p), 0))
+
+  is_greatest_dividing_exponent(p, exponent: nat): bool =
+    dividing_exponent(p, exponent)
+      AND FORALL (candidate: nat):
+        dividing_exponent(p, candidate)
+          IMPLIES candidate <= exponent
+
+  putnam_2019_a5: bool =
+    FORALL (p: nat):
+      (odd_nat(p) AND prime_nat(p))
+        IMPLIES
+          is_greatest_dividing_exponent(
+            p,
+            putnam_2019_a5_solution(p))
+END putnam_2019_a5

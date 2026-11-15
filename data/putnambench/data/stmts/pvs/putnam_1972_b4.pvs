@@ -1,0 +1,83 @@
+% Statement-only formalization of PutnamBench artifact putnam_1972_b4:
+% for every natural number n at least 2, an integer polynomial in three variables
+% recovers x from x^n, x^(n+1), and x + x^(n+2). This file contains no proof.
+
+putnam_1972_b4: THEORY
+BEGIN
+  coefficients: TYPE = [nat, nat, nat -> int]
+
+  sum_third_variable(
+      coefficient: coefficients,
+      first_value, second_value, third_value: int,
+      first_exponent, second_exponent, third_count: nat):
+      RECURSIVE int =
+    IF third_count = 0 THEN
+      0
+    ELSE
+      sum_third_variable(
+        coefficient,
+        first_value, second_value, third_value,
+        first_exponent, second_exponent, third_count - 1)
+        + coefficient(
+            first_exponent,
+            second_exponent,
+            third_count - 1)
+          * first_value ^ first_exponent
+          * second_value ^ second_exponent
+          * third_value ^ (third_count - 1)
+    ENDIF
+  MEASURE third_count
+
+  sum_second_variable(
+      coefficient: coefficients,
+      first_value, second_value, third_value: int,
+      first_exponent, second_count, third_count: nat):
+      RECURSIVE int =
+    IF second_count = 0 THEN
+      0
+    ELSE
+      sum_second_variable(
+        coefficient,
+        first_value, second_value, third_value,
+        first_exponent, second_count - 1, third_count)
+        + sum_third_variable(
+            coefficient,
+            first_value, second_value, third_value,
+            first_exponent, second_count - 1, third_count)
+    ENDIF
+  MEASURE second_count
+
+  polynomial_value(
+      coefficient: coefficients,
+      first_value, second_value, third_value: int,
+      first_count, second_count, third_count: nat):
+      RECURSIVE int =
+    IF first_count = 0 THEN
+      0
+    ELSE
+      polynomial_value(
+        coefficient,
+        first_value, second_value, third_value,
+        first_count - 1, second_count, third_count)
+        + sum_second_variable(
+            coefficient,
+            first_value, second_value, third_value,
+            first_count - 1, second_count, third_count)
+    ENDIF
+  MEASURE first_count
+
+  putnam_1972_b4: bool =
+    FORALL (n: nat):
+      n > 1 IMPLIES
+        EXISTS (coefficient: coefficients),
+               (first_count, second_count, third_count: nat):
+          FORALL (x: int):
+            x = polynomial_value(
+              coefficient,
+              x ^ n,
+              x ^ (n + 1),
+              x + x ^ (n + 2),
+              first_count,
+              second_count,
+              third_count)
+END putnam_1972_b4

@@ -1,0 +1,92 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2018_a4:
+% a floor-increment word equal to the identity in an arbitrary group forces
+% its two generators to commute. This file contains no proof.
+
+putnam_2018_a4[Element: TYPE+]: THEORY
+BEGIN
+  nat_divides(divisor, value: nat): bool =
+    EXISTS (quotient: nat):
+      value = divisor * quotient
+
+  coprime(left, right: nat): bool =
+    FORALL (common_divisor: nat):
+      nat_divides(common_divisor, left)
+        AND nat_divides(common_divisor, right)
+      IMPLIES common_divisor = 1
+
+  group_laws(
+      one: Element,
+      inverse: [Element -> Element],
+      multiply: [Element, Element -> Element]): bool =
+    (FORALL (x, y, z: Element):
+      multiply(multiply(x, y), z)
+        = multiply(x, multiply(y, z)))
+      AND
+    (FORALL (x: Element):
+      multiply(one, x) = x
+        AND multiply(x, one) = x)
+      AND
+    (FORALL (x: Element):
+      multiply(inverse(x), x) = one
+        AND multiply(x, inverse(x)) = one)
+
+  group_power(
+      element: Element,
+      exponent: nat,
+      one: Element,
+      multiply: [Element, Element -> Element]): RECURSIVE Element =
+    IF exponent = 0 THEN
+      one
+    ELSE
+      multiply(
+        group_power(element, exponent - 1, one, multiply),
+        element)
+    ENDIF
+  MEASURE exponent
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  floor_increment(m, n, k: nat): int =
+    floor(safe_div((m * k) :: real, n :: real))
+      - floor(safe_div((m * (k - 1)) :: real, n :: real))
+
+  ordered_word(
+      a: [nat -> nat],
+      g, h: Element,
+      count: nat,
+      one: Element,
+      multiply: [Element, Element -> Element]): RECURSIVE Element =
+    IF count = 0 THEN
+      one
+    ELSE
+      multiply(
+        ordered_word(a, g, h, count - 1, one, multiply),
+        multiply(
+          g,
+          group_power(h, a(count), one, multiply)))
+    ENDIF
+  MEASURE count
+
+  putnam_2018_a4: bool =
+    FORALL (m, n: nat),
+           (a: [nat -> nat]),
+           (one: Element),
+           (inverse: [Element -> Element]),
+           (multiply: [Element, Element -> Element]),
+           (g, h: Element):
+      (m > 0
+        AND n > 0
+        AND coprime(m, n)
+        AND
+          (FORALL (k: nat):
+            1 <= k AND k <= n IMPLIES
+              (a(k) :: int) = floor_increment(m, n, k))
+        AND group_laws(one, inverse, multiply)
+        AND ordered_word(a, g, h, n, one, multiply) = one)
+      IMPLIES multiply(g, h) = multiply(h, g)
+END putnam_2018_a4

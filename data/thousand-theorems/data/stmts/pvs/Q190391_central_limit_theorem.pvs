@@ -1,0 +1,820 @@
+% Statement-only formalization of the Thousand Theorems corpus artifact Q190391,
+% "Central limit theorem": independent identically distributed real random variables
+% with a square-integrable first term have centered square-root-normalized laws
+% converging to the canonical centered Gaussian law with their variance.
+% This file contains no proof.
+
+Q190391_central_limit_theorem[
+  sample_space: TYPE+,
+  limit_sample_space: TYPE+
+]: THEORY
+BEGIN
+  event: TYPE = [sample_space -> bool]
+  event_sequence: TYPE = [nat -> event]
+  sigma_algebra: TYPE = [event -> bool]
+  probability_measure: TYPE = [event -> real]
+  random_variable: TYPE = [sample_space -> real]
+  random_variable_family: TYPE = [nat -> random_variable]
+
+  limit_event: TYPE = [limit_sample_space -> bool]
+  limit_event_sequence: TYPE = [nat -> limit_event]
+  limit_sigma_algebra: TYPE = [limit_event -> bool]
+  limit_probability_measure: TYPE = [limit_event -> real]
+  limit_random_variable: TYPE = [limit_sample_space -> real]
+
+  real_event: TYPE = [real -> bool]
+  real_event_sequence: TYPE = [nat -> real_event]
+  real_sigma_algebra: TYPE = [real_event -> bool]
+  real_sequence: TYPE = [nat -> real]
+  index_sequence: TYPE = [nat -> nat]
+
+  absolute_value(x: real): real =
+    IF x >= 0 THEN x ELSE -x ENDIF
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN 0 ELSE numerator / denominator ENDIF
+
+  factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  alternating_sign(index: nat): RECURSIVE real =
+    IF index = 0 THEN
+      1
+    ELSE
+      -alternating_sign(index - 1)
+    ENDIF
+  MEASURE index
+
+  finite_sum(values: real_sequence, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      finite_sum(values, count - 1) + values(count - 1)
+    ENDIF
+  MEASURE count
+
+  converges_to(values: real_sequence, limit: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            absolute_value(values(index) - limit) < epsilon_value
+
+  sine_partial_sum(count: nat, x: real): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        sine_partial_sum(count - 1, x)
+          + safe_div(
+              alternating_sign(index) * x ^ (2 * index + 1),
+              factorial(2 * index + 1) :: real)
+    ENDIF
+  MEASURE count
+
+  cosine_partial_sum(count: nat, x: real): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        cosine_partial_sum(count - 1, x)
+          + safe_div(
+              alternating_sign(index) * x ^ (2 * index),
+              factorial(2 * index) :: real)
+    ENDIF
+  MEASURE count
+
+  exponential_partial_sum(count: nat, x: real): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        exponential_partial_sum(count - 1, x)
+          + safe_div(x ^ index, factorial(index) :: real)
+    ENDIF
+  MEASURE count
+
+  sine(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat): sine_partial_sum(count, x),
+          value))
+
+  cosine(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat): cosine_partial_sum(count, x),
+          value))
+
+  exponential(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat):
+            exponential_partial_sum(count, x),
+          value))
+
+  full_event: event =
+    LAMBDA (omega: sample_space): TRUE
+
+  empty_event: event =
+    LAMBDA (omega: sample_space): FALSE
+
+  event_complement(A: event): event =
+    LAMBDA (omega: sample_space): NOT A(omega)
+
+  event_intersection(A, B: event): event =
+    LAMBDA (omega: sample_space): A(omega) AND B(omega)
+
+  countable_union(events: event_sequence): event =
+    LAMBDA (omega: sample_space):
+      EXISTS (index: nat): events(index)(omega)
+
+  limit_full_event: limit_event =
+    LAMBDA (omega: limit_sample_space): TRUE
+
+  limit_empty_event: limit_event =
+    LAMBDA (omega: limit_sample_space): FALSE
+
+  limit_event_complement(A: limit_event): limit_event =
+    LAMBDA (omega: limit_sample_space): NOT A(omega)
+
+  limit_countable_union(events: limit_event_sequence): limit_event =
+    LAMBDA (omega: limit_sample_space):
+      EXISTS (index: nat): events(index)(omega)
+
+  real_full_event: real_event =
+    LAMBDA (value: real): TRUE
+
+  real_event_complement(A: real_event): real_event =
+    LAMBDA (value: real): NOT A(value)
+
+  real_countable_union(events: real_event_sequence): real_event =
+    LAMBDA (value: real):
+      EXISTS (index: nat): events(index)(value)
+
+  pairwise_disjoint(events: event_sequence): bool =
+    FORALL (left_index, right_index: nat):
+      left_index /= right_index IMPLIES
+        FORALL (omega: sample_space):
+          NOT (events(left_index)(omega)
+            AND events(right_index)(omega))
+
+  limit_pairwise_disjoint(events: limit_event_sequence): bool =
+    FORALL (left_index, right_index: nat):
+      left_index /= right_index IMPLIES
+        FORALL (omega: limit_sample_space):
+          NOT (events(left_index)(omega)
+            AND events(right_index)(omega))
+
+  pairwise_disjoint_below(
+      events: event_sequence,
+      count: nat): bool =
+    FORALL (left_index, right_index: nat):
+      left_index < count
+        AND right_index < count
+        AND left_index /= right_index
+      IMPLIES
+        FORALL (omega: sample_space):
+          NOT (events(left_index)(omega)
+            AND events(right_index)(omega))
+
+  limit_pairwise_disjoint_below(
+      events: limit_event_sequence,
+      count: nat): bool =
+    FORALL (left_index, right_index: nat):
+      left_index < count
+        AND right_index < count
+        AND left_index /= right_index
+      IMPLIES
+        FORALL (omega: limit_sample_space):
+          NOT (events(left_index)(omega)
+            AND events(right_index)(omega))
+
+  distinct_below(indices: index_sequence, count: nat): bool =
+    FORALL (left_index, right_index: nat):
+      left_index < count
+        AND right_index < count
+        AND left_index /= right_index
+      IMPLIES
+        indices(left_index) /= indices(right_index)
+
+  is_sigma_algebra(Sigma: sigma_algebra): bool =
+    Sigma(full_event)
+      AND (FORALL (A: event):
+        Sigma(A) IMPLIES Sigma(event_complement(A)))
+      AND (FORALL (events: event_sequence):
+        (FORALL (index: nat): Sigma(events(index)))
+          IMPLIES Sigma(countable_union(events)))
+
+  is_limit_sigma_algebra(Sigma: limit_sigma_algebra): bool =
+    Sigma(limit_full_event)
+      AND (FORALL (A: limit_event):
+        Sigma(A) IMPLIES Sigma(limit_event_complement(A)))
+      AND (FORALL (events: limit_event_sequence):
+        (FORALL (index: nat): Sigma(events(index)))
+          IMPLIES Sigma(limit_countable_union(events)))
+
+  is_real_sigma_algebra(Sigma: real_sigma_algebra): bool =
+    Sigma(real_full_event)
+      AND (FORALL (A: real_event):
+        Sigma(A) IMPLIES Sigma(real_event_complement(A)))
+      AND (FORALL (events: real_event_sequence):
+        (FORALL (index: nat): Sigma(events(index)))
+          IMPLIES Sigma(real_countable_union(events)))
+
+  contains_real_lower_rays(Sigma: real_sigma_algebra): bool =
+    FORALL (bound: real):
+      Sigma(LAMBDA (value: real): value <= bound)
+
+  borel_event(A: real_event): bool =
+    FORALL (Sigma: real_sigma_algebra):
+      (is_real_sigma_algebra(Sigma)
+        AND contains_real_lower_rays(Sigma))
+      IMPLIES Sigma(A)
+
+  is_probability_measure(
+      M: probability_measure,
+      Sigma: sigma_algebra): bool =
+    is_sigma_algebra(Sigma)
+      AND M(empty_event) = 0
+      AND M(full_event) = 1
+      AND (FORALL (A: event):
+        Sigma(A) IMPLIES 0 <= M(A) AND M(A) <= 1)
+      AND (FORALL (events: event_sequence):
+        ((FORALL (index: nat): Sigma(events(index)))
+          AND pairwise_disjoint(events))
+        IMPLIES
+          converges_to(
+            LAMBDA (count: nat):
+              finite_sum(
+                LAMBDA (index: nat): M(events(index)),
+                count),
+            M(countable_union(events))))
+
+  is_limit_probability_measure(
+      M: limit_probability_measure,
+      Sigma: limit_sigma_algebra): bool =
+    is_limit_sigma_algebra(Sigma)
+      AND M(limit_empty_event) = 0
+      AND M(limit_full_event) = 1
+      AND (FORALL (A: limit_event):
+        Sigma(A) IMPLIES 0 <= M(A) AND M(A) <= 1)
+      AND (FORALL (events: limit_event_sequence):
+        ((FORALL (index: nat): Sigma(events(index)))
+          AND limit_pairwise_disjoint(events))
+        IMPLIES
+          converges_to(
+            LAMBDA (count: nat):
+              finite_sum(
+                LAMBDA (index: nat): M(events(index)),
+                count),
+            M(limit_countable_union(events))))
+
+  preimage_event(X: random_variable, A: real_event): event =
+    LAMBDA (omega: sample_space): A(X(omega))
+
+  limit_preimage_event(
+      X: limit_random_variable,
+      A: real_event): limit_event =
+    LAMBDA (omega: limit_sample_space): A(X(omega))
+
+  measurable_random_variable(
+      Sigma: sigma_algebra,
+      X: random_variable): bool =
+    FORALL (A: real_event):
+      borel_event(A) IMPLIES Sigma(preimage_event(X, A))
+
+  measurable_limit_random_variable(
+      Sigma: limit_sigma_algebra,
+      X: limit_random_variable): bool =
+    FORALL (A: real_event):
+      borel_event(A) IMPLIES Sigma(limit_preimage_event(X, A))
+
+  almost_everywhere_equal(
+      M: probability_measure,
+      Sigma: sigma_algebra,
+      X, Y: random_variable): bool =
+    EXISTS (null_set: event):
+      Sigma(null_set)
+        AND M(null_set) = 0
+        AND (FORALL (omega: sample_space):
+          NOT null_set(omega) IMPLIES X(omega) = Y(omega))
+
+  limit_almost_everywhere_equal(
+      M: limit_probability_measure,
+      Sigma: limit_sigma_algebra,
+      X, Y: limit_random_variable): bool =
+    EXISTS (null_set: limit_event):
+      Sigma(null_set)
+        AND M(null_set) = 0
+        AND (FORALL (omega: limit_sample_space):
+          NOT null_set(omega) IMPLIES X(omega) = Y(omega))
+
+  almost_everywhere_measurable(
+      M: probability_measure,
+      Sigma: sigma_algebra,
+      X: random_variable): bool =
+    EXISTS (version: random_variable):
+      measurable_random_variable(Sigma, version)
+        AND almost_everywhere_equal(M, Sigma, X, version)
+
+  limit_almost_everywhere_measurable(
+      M: limit_probability_measure,
+      Sigma: limit_sigma_algebra,
+      X: limit_random_variable): bool =
+    EXISTS (version: limit_random_variable):
+      measurable_limit_random_variable(Sigma, version)
+        AND limit_almost_everywhere_equal(M, Sigma, X, version)
+
+  measurable_version(
+      M: probability_measure,
+      Sigma: sigma_algebra,
+      X: random_variable): random_variable =
+    epsilon(
+      LAMBDA (version: random_variable):
+        measurable_random_variable(Sigma, version)
+          AND almost_everywhere_equal(M, Sigma, X, version))
+
+  limit_measurable_version(
+      M: limit_probability_measure,
+      Sigma: limit_sigma_algebra,
+      X: limit_random_variable): limit_random_variable =
+    epsilon(
+      LAMBDA (version: limit_random_variable):
+        measurable_limit_random_variable(Sigma, version)
+          AND limit_almost_everywhere_equal(M, Sigma, X, version))
+
+  simple_value(
+      coefficients: real_sequence,
+      pieces: event_sequence,
+      count: nat,
+      omega: sample_space): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      simple_value(coefficients, pieces, count - 1, omega)
+        + IF pieces(count - 1)(omega)
+            THEN coefficients(count - 1)
+          ELSE 0
+          ENDIF
+    ENDIF
+  MEASURE count
+
+  limit_simple_value(
+      coefficients: real_sequence,
+      pieces: limit_event_sequence,
+      count: nat,
+      omega: limit_sample_space): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      limit_simple_value(
+        coefficients, pieces, count - 1, omega)
+        + IF pieces(count - 1)(omega)
+            THEN coefficients(count - 1)
+          ELSE 0
+          ENDIF
+    ENDIF
+  MEASURE count
+
+  nonnegative_simple_minorant(
+      Sigma: sigma_algebra,
+      X: random_variable,
+      coefficients: real_sequence,
+      pieces: event_sequence,
+      count: nat): bool =
+    pairwise_disjoint_below(pieces, count)
+      AND (FORALL (index: nat):
+        index < count IMPLIES
+          coefficients(index) >= 0 AND Sigma(pieces(index)))
+      AND (FORALL (omega: sample_space):
+        0 <= simple_value(coefficients, pieces, count, omega)
+          AND simple_value(coefficients, pieces, count, omega)
+            <= X(omega))
+
+  limit_nonnegative_simple_minorant(
+      Sigma: limit_sigma_algebra,
+      X: limit_random_variable,
+      coefficients: real_sequence,
+      pieces: limit_event_sequence,
+      count: nat): bool =
+    limit_pairwise_disjoint_below(pieces, count)
+      AND (FORALL (index: nat):
+        index < count IMPLIES
+          coefficients(index) >= 0 AND Sigma(pieces(index)))
+      AND (FORALL (omega: limit_sample_space):
+        0 <= limit_simple_value(
+          coefficients, pieces, count, omega)
+          AND limit_simple_value(
+            coefficients, pieces, count, omega) <= X(omega))
+
+  simple_integral(
+      M: probability_measure,
+      coefficients: real_sequence,
+      pieces: event_sequence,
+      count: nat): real =
+    finite_sum(
+      LAMBDA (index: nat):
+        coefficients(index) * M(pieces(index)),
+      count)
+
+  limit_simple_integral(
+      M: limit_probability_measure,
+      coefficients: real_sequence,
+      pieces: limit_event_sequence,
+      count: nat): real =
+    finite_sum(
+      LAMBDA (index: nat):
+        coefficients(index) * M(pieces(index)),
+      count)
+
+  nonnegative_integral_upper_bound(
+      M: probability_measure,
+      Sigma: sigma_algebra,
+      X: random_variable,
+      upper: real): bool =
+    FORALL
+        (coefficients: real_sequence),
+        (pieces: event_sequence),
+        (count: nat):
+      nonnegative_simple_minorant(
+        Sigma, X, coefficients, pieces, count)
+      IMPLIES
+        simple_integral(M, coefficients, pieces, count) <= upper
+
+  limit_nonnegative_integral_upper_bound(
+      M: limit_probability_measure,
+      Sigma: limit_sigma_algebra,
+      X: limit_random_variable,
+      upper: real): bool =
+    FORALL
+        (coefficients: real_sequence),
+        (pieces: limit_event_sequence),
+        (count: nat):
+      limit_nonnegative_simple_minorant(
+        Sigma, X, coefficients, pieces, count)
+      IMPLIES
+        limit_simple_integral(
+          M, coefficients, pieces, count) <= upper
+
+  has_nonnegative_integral(
+      M: probability_measure,
+      Sigma: sigma_algebra,
+      X: random_variable,
+      value: real): bool =
+    (FORALL (omega: sample_space): X(omega) >= 0)
+      AND value >= 0
+      AND nonnegative_integral_upper_bound(M, Sigma, X, value)
+      AND (FORALL (upper: real):
+        nonnegative_integral_upper_bound(M, Sigma, X, upper)
+          IMPLIES value <= upper)
+
+  limit_has_nonnegative_integral(
+      M: limit_probability_measure,
+      Sigma: limit_sigma_algebra,
+      X: limit_random_variable,
+      value: real): bool =
+    (FORALL (omega: limit_sample_space): X(omega) >= 0)
+      AND value >= 0
+      AND limit_nonnegative_integral_upper_bound(
+        M, Sigma, X, value)
+      AND (FORALL (upper: real):
+        limit_nonnegative_integral_upper_bound(
+          M, Sigma, X, upper)
+        IMPLIES value <= upper)
+
+  positive_part(X: random_variable): random_variable =
+    LAMBDA (omega: sample_space):
+      IF X(omega) >= 0 THEN X(omega) ELSE 0 ENDIF
+
+  negative_part(X: random_variable): random_variable =
+    LAMBDA (omega: sample_space):
+      IF X(omega) <= 0 THEN -X(omega) ELSE 0 ENDIF
+
+  limit_positive_part(
+      X: limit_random_variable): limit_random_variable =
+    LAMBDA (omega: limit_sample_space):
+      IF X(omega) >= 0 THEN X(omega) ELSE 0 ENDIF
+
+  limit_negative_part(
+      X: limit_random_variable): limit_random_variable =
+    LAMBDA (omega: limit_sample_space):
+      IF X(omega) <= 0 THEN -X(omega) ELSE 0 ENDIF
+
+  has_expectation(
+      M: probability_measure,
+      Sigma: sigma_algebra,
+      X: random_variable,
+      value: real): bool =
+    almost_everywhere_measurable(M, Sigma, X)
+      AND LET version: random_variable =
+        measurable_version(M, Sigma, X)
+      IN
+        EXISTS (positive_integral, negative_integral: real):
+          has_nonnegative_integral(
+            M, Sigma, positive_part(version), positive_integral)
+          AND has_nonnegative_integral(
+            M, Sigma, negative_part(version), negative_integral)
+          AND value = positive_integral - negative_integral
+
+  limit_has_expectation(
+      M: limit_probability_measure,
+      Sigma: limit_sigma_algebra,
+      X: limit_random_variable,
+      value: real): bool =
+    limit_almost_everywhere_measurable(M, Sigma, X)
+      AND LET version: limit_random_variable =
+        limit_measurable_version(M, Sigma, X)
+      IN
+        EXISTS (positive_integral, negative_integral: real):
+          limit_has_nonnegative_integral(
+            M,
+            Sigma,
+            limit_positive_part(version),
+            positive_integral)
+          AND limit_has_nonnegative_integral(
+            M,
+            Sigma,
+            limit_negative_part(version),
+            negative_integral)
+          AND value = positive_integral - negative_integral
+
+  expectation(
+      M: probability_measure,
+      Sigma: sigma_algebra,
+      X: random_variable): real =
+    epsilon(
+      LAMBDA (value: real):
+        has_expectation(M, Sigma, X, value))
+
+  square_integrable(
+      M: probability_measure,
+      Sigma: sigma_algebra,
+      X: random_variable): bool =
+    almost_everywhere_measurable(M, Sigma, X)
+      AND EXISTS (second_moment: real):
+        has_nonnegative_integral(
+          M,
+          Sigma,
+          (LAMBDA (omega: sample_space):
+            measurable_version(M, Sigma, X)(omega) ^ 2),
+          second_moment)
+
+  variance(
+      M: probability_measure,
+      Sigma: sigma_algebra,
+      X: random_variable): real =
+    LET mean: real = expectation(M, Sigma, X) IN
+      epsilon(
+        LAMBDA (value: real):
+          has_nonnegative_integral(
+            M,
+            Sigma,
+            (LAMBDA (omega: sample_space):
+              (measurable_version(M, Sigma, X)(omega)
+                - mean) ^ 2),
+            value))
+
+  distribution_value(
+      M: probability_measure,
+      Sigma: sigma_algebra,
+      X: random_variable,
+      A: real_event): real =
+    M(preimage_event(measurable_version(M, Sigma, X), A))
+
+  identically_distributed(
+      M: probability_measure,
+      Sigma: sigma_algebra,
+      X, Y: random_variable): bool =
+    almost_everywhere_measurable(M, Sigma, X)
+      AND almost_everywhere_measurable(M, Sigma, Y)
+      AND (FORALL (A: real_event):
+        borel_event(A) IMPLIES
+          distribution_value(M, Sigma, X, A)
+            = distribution_value(M, Sigma, Y, A))
+
+  finite_preimage_intersection(
+      M: probability_measure,
+      Sigma: sigma_algebra,
+      X: random_variable_family,
+      indices: index_sequence,
+      sets: real_event_sequence,
+      count: nat): RECURSIVE event =
+    IF count = 0 THEN
+      full_event
+    ELSE
+      event_intersection(
+        finite_preimage_intersection(
+          M, Sigma, X, indices, sets, count - 1),
+        preimage_event(
+          measurable_version(
+            M, Sigma, X(indices(count - 1))),
+          sets(count - 1)))
+    ENDIF
+  MEASURE count
+
+  finite_probability_product(
+      M: probability_measure,
+      Sigma: sigma_algebra,
+      X: random_variable_family,
+      indices: index_sequence,
+      sets: real_event_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      1
+    ELSE
+      finite_probability_product(
+        M, Sigma, X, indices, sets, count - 1)
+        * distribution_value(
+            M,
+            Sigma,
+            X(indices(count - 1)),
+            sets(count - 1))
+    ENDIF
+  MEASURE count
+
+  independent_family(
+      M: probability_measure,
+      Sigma: sigma_algebra,
+      X: random_variable_family): bool =
+    (FORALL (index: nat):
+      almost_everywhere_measurable(M, Sigma, X(index)))
+      AND FORALL
+          (indices: index_sequence),
+          (sets: real_event_sequence),
+          (count: nat):
+        (distinct_below(indices, count)
+          AND (FORALL (position: nat):
+            position < count IMPLIES borel_event(sets(position))))
+        IMPLIES
+          M(finite_preimage_intersection(
+            M, Sigma, X, indices, sets, count))
+            = finite_probability_product(
+                M, Sigma, X, indices, sets, count)
+
+  partial_sum(
+      X: random_variable_family,
+      count: nat,
+      omega: sample_space): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      partial_sum(X, count - 1, omega)
+        + X(count - 1)(omega)
+    ENDIF
+  MEASURE count
+
+  natural_square_root(count: nat): real =
+    epsilon(
+      LAMBDA (root: real):
+        root >= 0 AND root * root = (count :: real))
+
+  inverse_natural_square_root(count: nat): real =
+    IF count = 0 THEN
+      0
+    ELSE
+      1 / natural_square_root(count)
+    ENDIF
+
+  normalized_centered_sum(
+      M: probability_measure,
+      Sigma: sigma_algebra,
+      X: random_variable_family,
+      count: nat): random_variable =
+    LET mean: real = expectation(M, Sigma, X(0)) IN
+      LAMBDA (omega: sample_space):
+        inverse_natural_square_root(count)
+          * (partial_sum(X, count, omega)
+              - (count :: real) * mean)
+
+  has_centered_gaussian_law(
+      M: limit_probability_measure,
+      Sigma: limit_sigma_algebra,
+      Y: limit_random_variable,
+      variance_value: real): bool =
+    limit_almost_everywhere_measurable(M, Sigma, Y)
+      AND LET nonnegative_variance: real =
+        IF variance_value >= 0 THEN variance_value ELSE 0 ENDIF
+      IN
+        FORALL (t: real):
+          EXISTS (real_part, imaginary_part: real):
+            limit_has_expectation(
+              M,
+              Sigma,
+              (LAMBDA (omega: limit_sample_space):
+                cosine(t * Y(omega))),
+              real_part)
+            AND limit_has_expectation(
+              M,
+              Sigma,
+              (LAMBDA (omega: limit_sample_space):
+                sine(t * Y(omega))),
+              imaginary_part)
+            AND real_part
+              = exponential(
+                  -(nonnegative_variance * t ^ 2) / 2)
+            AND imaginary_part = 0
+
+  tendsto_in_distribution(
+      M: probability_measure,
+      Sigma: sigma_algebra,
+      Z: random_variable_family,
+      M_limit: limit_probability_measure,
+      Sigma_limit: limit_sigma_algebra,
+      Y: limit_random_variable): bool =
+    (FORALL (index: nat):
+      almost_everywhere_measurable(M, Sigma, Z(index)))
+      AND limit_almost_everywhere_measurable(
+        M_limit, Sigma_limit, Y)
+      AND FORALL (t: real):
+        EXISTS
+            (real_parts, imaginary_parts: real_sequence),
+            (limit_real_part, limit_imaginary_part: real):
+          (FORALL (index: nat):
+            has_expectation(
+              M,
+              Sigma,
+              (LAMBDA (omega: sample_space):
+                cosine(t * Z(index)(omega))),
+              real_parts(index))
+            AND has_expectation(
+              M,
+              Sigma,
+              (LAMBDA (omega: sample_space):
+                sine(t * Z(index)(omega))),
+              imaginary_parts(index)))
+          AND limit_has_expectation(
+            M_limit,
+            Sigma_limit,
+            (LAMBDA (omega: limit_sample_space):
+              cosine(t * Y(omega))),
+            limit_real_part)
+          AND limit_has_expectation(
+            M_limit,
+            Sigma_limit,
+            (LAMBDA (omega: limit_sample_space):
+              sine(t * Y(omega))),
+            limit_imaginary_part)
+          AND converges_to(real_parts, limit_real_part)
+          AND converges_to(
+            imaginary_parts, limit_imaginary_part)
+
+  tendsto_to_centered_gaussian(
+      M: probability_measure,
+      Sigma: sigma_algebra,
+      Z: random_variable_family,
+      variance_value: real): bool =
+    (FORALL (index: nat):
+      almost_everywhere_measurable(M, Sigma, Z(index)))
+      AND LET nonnegative_variance: real =
+        IF variance_value >= 0 THEN variance_value ELSE 0 ENDIF
+      IN
+        FORALL (t: real):
+          EXISTS
+              (real_parts, imaginary_parts: real_sequence):
+            (FORALL (index: nat):
+              has_expectation(
+                M,
+                Sigma,
+                (LAMBDA (omega: sample_space):
+                  cosine(t * Z(index)(omega))),
+                real_parts(index))
+              AND has_expectation(
+                M,
+                Sigma,
+                (LAMBDA (omega: sample_space):
+                  sine(t * Z(index)(omega))),
+                imaginary_parts(index)))
+            AND converges_to(
+              real_parts,
+              exponential(
+                -(nonnegative_variance * t ^ 2) / 2))
+            AND converges_to(imaginary_parts, 0)
+
+  central_limit_theorem: bool =
+    FORALL
+        (M: probability_measure),
+        (Sigma: sigma_algebra),
+        (X: random_variable_family):
+      (is_probability_measure(M, Sigma)
+        AND square_integrable(M, Sigma, X(0))
+        AND independent_family(M, Sigma, X)
+        AND (FORALL (index: nat):
+          identically_distributed(
+            M, Sigma, X(index), X(0))))
+      IMPLIES
+        tendsto_to_centered_gaussian(
+          M,
+          Sigma,
+          (LAMBDA (count: nat):
+            normalized_centered_sum(M, Sigma, X, count)),
+          variance(M, Sigma, X(0)))
+END Q190391_central_limit_theorem

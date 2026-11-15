@@ -1,0 +1,1132 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/multiprecision/get_str_Get_str_wmpn_get_str_otherqtvc: the verification
+% condition for converting a positive multiprecision integer to digits in an
+% arbitrary base, including normalized division, zero padding, byte reversal,
+% pointer frames, and the final string-value contract. This file contains no
+% proof.
+
+get_str_Get_str_wmpn_get_str_otherqtvc[zone: TYPE+]: THEORY
+BEGIN
+
+  IMPORTING
+    bv[8], bv[32], bv[64],
+    bv_nat[8], bv_nat[32], bv_nat[64]
+
+  word8: TYPE = bvec[8]
+  word32: TYPE = bvec[32]
+  word64: TYPE = bvec[64]
+
+  ptr8: TYPE =
+    [# data_length8: nat,
+       cells8: [int -> word8],
+       offset8: int,
+       min8: int,
+       max8: int,
+       writable8: bool,
+       zone8: zone #]
+
+  ptr64: TYPE =
+    [# data_length64: nat,
+       cells64: [int -> word64],
+       offset64: int,
+       min64: int,
+       max64: int,
+       writable64: bool,
+       zone64: zone #]
+
+  base_info: TYPE =
+    [# info_base: int,
+       info_exp: word32,
+       info_bb: word64 #]
+
+  radix: int = 18446744073709551616
+  max_uint64: int = 18446744073709551615
+  max_int32: int = 2147483647
+
+  zero8: word8 = fill[8](FALSE)
+  zero32: word32 = fill[32](FALSE)
+  one32: word32 = nat2bv[32](1)
+  zero64: word64 = fill[64](FALSE)
+
+  unsigned8(value1: word8): int = bv2nat[8](value1)
+  unsigned32(value1: word32): int = bv2nat[32](value1)
+  unsigned64(value1: word64): int = bv2nat[64](value1)
+
+  signed32(value1: word32): int =
+    IF value1(31) THEN
+      bv2nat[32](value1) - 4294967296
+    ELSE
+      bv2nat[32](value1)
+    ENDIF
+
+  int_to_nat(value1: int): nat =
+    IF value1 < 0 THEN 0 ELSE value1 ENDIF
+
+  nat_power(base: int, exponent: nat): RECURSIVE int =
+    IF exponent = 0 THEN
+      1
+    ELSE
+      base * nat_power(base, exponent - 1)
+    ENDIF
+  MEASURE exponent
+
+  int_power(base, exponent: int): int =
+    nat_power(base, int_to_nat(exponent))
+
+  positive_div(numerator, denominator: int): int =
+    IF denominator <= 0 THEN
+      0
+    ELSE
+      floor((numerator :: real) / (denominator :: real))
+    ENDIF
+
+  int32_in_bounds(value1: int): bool =
+    -2147483648 <= value1 AND value1 <= max_int32
+
+  uint32_in_bounds(value1: int): bool =
+    0 <= value1 AND value1 <= 4294967295
+
+  valid8(p: ptr8, count: int): bool =
+    int32_in_bounds(count)
+      AND 0 <= count
+      AND 0 <= min8(p)
+      AND min8(p) <= offset8(p)
+      AND offset8(p) + count <= max8(p)
+      AND max8(p) <= data_length8(p)
+
+  valid64(p: ptr64, count: int): bool =
+    int32_in_bounds(count)
+      AND 0 <= count
+      AND 0 <= min64(p)
+      AND min64(p) <= offset64(p)
+      AND offset64(p) + count <= max64(p)
+      AND max64(p) <= data_length64(p)
+
+  access8(p: ptr8, index: int): bool =
+    min8(p) <= index AND index < max8(p)
+
+  access64(p: ptr64, index: int): bool =
+    min64(p) <= index AND index < max64(p)
+
+  same_shape8(newer, older: ptr8): bool =
+    data_length8(newer) = data_length8(older)
+      AND offset8(newer) = offset8(older)
+      AND min8(newer) = min8(older)
+      AND max8(newer) = max8(older)
+      AND writable8(newer) = writable8(older)
+      AND zone8(newer) = zone8(older)
+
+  same_shape64(newer, older: ptr64): bool =
+    data_length64(newer) = data_length64(older)
+      AND offset64(newer) = offset64(older)
+      AND min64(newer) = min64(older)
+      AND max64(newer) = max64(older)
+      AND writable64(newer) = writable64(older)
+      AND zone64(newer) = zone64(older)
+
+  shifted8(shifted, original: ptr8, count: int): bool =
+    offset8(shifted) = offset8(original) + count
+      AND data_length8(shifted) = data_length8(original)
+      AND cells8(shifted) = cells8(original)
+      AND min8(shifted) = min8(original)
+      AND max8(shifted) = max8(original)
+      AND zone8(shifted) = zone8(original)
+      AND writable8(shifted) = writable8(original)
+
+  updated8(
+      newer, older: ptr8,
+      index: int,
+      replacement: word8): bool =
+    cells8(newer) = cells8(older) WITH [(index) := replacement]
+      AND cells8(newer)(index) = replacement
+
+  value_from(
+      values: [int -> word64],
+      start: int,
+      count: nat): RECURSIVE int =
+    IF count = 0 THEN
+      0
+    ELSE
+      unsigned64(values(start))
+        + radix * value_from(values, start + 1, count - 1)
+    ENDIF
+  MEASURE count
+
+  value64(p: ptr64, count: int): int =
+    value_from(cells64(p), offset64(p), int_to_nat(count))
+
+  svalue_le_from(
+      base: int,
+      values: [int -> word8],
+      start: int,
+      count: nat): RECURSIVE int =
+    IF count = 0 THEN
+      0
+    ELSE
+      unsigned8(values(start))
+        + base * svalue_le_from(base, values, start + 1, count - 1)
+    ENDIF
+  MEASURE count
+
+  svalue_le_sub(
+      base: int,
+      values: [int -> word8],
+      lower, upper: int): int =
+    svalue_le_from(base, values, lower, int_to_nat(upper - lower))
+
+  svalue_le(base: int, p: ptr8, count: int): int =
+    svalue_le_sub(
+      base, cells8(p), offset8(p), offset8(p) + count)
+
+  svalue_from_high(
+      base: int,
+      values: [int -> word8],
+      lower: int,
+      count: nat): RECURSIVE int =
+    IF count = 0 THEN
+      0
+    ELSE
+      unsigned8(values(lower + count - 1))
+        + base * svalue_from_high(base, values, lower, count - 1)
+    ENDIF
+  MEASURE count
+
+  svalue_sub(
+      base: int,
+      values: [int -> word8],
+      lower, upper: int): int =
+    svalue_from_high(
+      base, values, lower, int_to_nat(upper - lower))
+
+  svalue(base: int, p: ptr8, count: int): int =
+    svalue_sub(base, cells8(p), offset8(p), offset8(p) + count)
+
+  in_base(
+      base: int,
+      values: [int -> word8],
+      lower, upper: int): bool =
+    FORALL (index: int):
+      lower <= index AND index < upper
+        IMPLIES
+          0 <= unsigned8(values(index))
+            AND unsigned8(values(index)) < base
+
+  frame8(newer, older: ptr8, count: int): bool =
+    FORALL (index: int):
+      index < offset8(newer) OR offset8(newer) + count <= index
+        IMPLIES cells8(newer)(index) = cells8(older)(index)
+
+  frame64(newer, older: ptr64, count: int): bool =
+    FORALL (index: int):
+      index < offset64(newer) OR offset64(newer) + count <= index
+        IMPLIES cells64(newer)(index) = cells64(older)(index)
+
+  map_eq64(
+      left, right: ptr64,
+      left_start, right_start, count: int): bool =
+    FORALL (index: int):
+      0 <= index AND index < count
+        IMPLIES
+          cells64(left)(left_start + index)
+            = cells64(right)(right_start + index)
+
+  info_ok(info: base_info): bool =
+    2 <= info_base(info)
+      AND info_base(info) <= 256
+      AND unsigned64(info_bb(info)) < radix
+      AND radix <= unsigned64(info_bb(info)) * info_base(info)
+      AND 7 <= unsigned32(info_exp(info))
+      AND unsigned32(info_exp(info)) <= 63
+      AND unsigned64(info_bb(info))
+        = int_power(info_base(info), unsigned32(info_exp(info)))
+
+  reciprocal(di, d1: word64): bool =
+    unsigned64(di)
+      = positive_div(radix * radix - 1, unsigned64(d1)) - radix
+
+  division(
+      quotient, dividend: ptr64,
+      count: word32,
+      divisor, remainder: word64): bool =
+    value64(dividend, signed32(count))
+      = value64(quotient, signed32(count)) * unsigned64(divisor)
+          + unsigned64(remainder)
+      AND unsigned64(remainder) < unsigned64(divisor)
+
+  allocated64(p: ptr64, count: int): bool =
+    data_length64(p) = count
+      AND offset64(p) = 0
+      AND min64(p) = 0
+      AND max64(p) = count
+      AND writable64(p) = TRUE
+
+  limb_post(
+      base: int,
+      before, after: ptr8,
+      capacity: int,
+      input: word64,
+      done: word32): bool =
+    svalue_le(base, after, unsigned32(done)) = unsigned64(input)
+      AND 0 <= unsigned32(done)
+      AND unsigned32(done) <= capacity
+      AND
+        (0 < unsigned32(done)
+          IMPLIES
+            0 < unsigned8(
+              cells8(after)(offset8(after) + unsigned32(done) - 1)))
+      AND frame8(after, before, unsigned32(done))
+      AND in_base(
+        base, cells8(after),
+        offset8(after), offset8(after) + unsigned32(done))
+
+  partial(
+      total, base: int,
+      original_sp: ptr8,
+      size: word32,
+      up: ptr64,
+      current_sp: ptr8,
+      sn: word32): bool =
+    svalue_le(base, current_sp, signed32(sn))
+        + int_power(base, signed32(sn)) * value64(up, 1)
+      = total
+      AND in_base(
+        base, cells8(current_sp),
+        offset8(current_sp), offset8(current_sp) + signed32(sn))
+      AND 0 <= signed32(sn)
+      AND signed32(sn) < signed32(size)
+      AND 0 < value64(up, 1)
+      AND frame8(current_sp, original_sp, signed32(size))
+
+  outer_inv(
+      total, base: int,
+      info: base_info,
+      un, size: word32,
+      original_sp: ptr8,
+      loop_index: int,
+      up: ptr64,
+      n: word32,
+      sp: ptr8,
+      sn: word32): bool =
+    svalue_le(base, sp, signed32(sn))
+        + int_power(base, signed32(sn)) * value64(up, signed32(n))
+      = total
+      AND 1 <= signed32(n)
+      AND signed32(n) <= signed32(un)
+      AND signed32(un) - signed32(n) <= loop_index
+      AND 0 <= signed32(sn)
+      AND signed32(sn) < signed32(size)
+      AND signed32(sn) = loop_index * unsigned32(info_exp(info))
+      AND in_base(
+        base, cells8(sp), offset8(sp), offset8(sp) + signed32(sn))
+      AND 0 < unsigned64(
+        cells64(up)(offset64(up) + signed32(n) - 1))
+      AND frame8(sp, original_sp, signed32(size))
+
+  padding_inv(
+      total, base: int,
+      info: base_info,
+      size: word32,
+      original_sp: ptr8,
+      up: ptr64,
+      n, initial_sn, done, current_sn: word32,
+      sp: ptr8): bool =
+    unsigned32(done) <= unsigned32(info_exp(info))
+      AND signed32(current_sn) = signed32(initial_sn) + unsigned32(done)
+      AND in_base(
+        base, cells8(sp), offset8(sp),
+        offset8(sp) + signed32(current_sn))
+      AND
+        svalue_le(base, sp, signed32(current_sn))
+          + int_power(
+              base,
+              signed32(current_sn) - unsigned32(done)
+                + unsigned32(info_exp(info)))
+              * value64(up, signed32(n))
+        = total
+      AND frame8(sp, original_sp, signed32(size))
+
+  reverse_inv(
+      base: int,
+      size: word32,
+      original_sp, reversal_original, current: ptr8,
+      total, index1: word32): bool =
+    0 <= 2 * signed32(index1) + 1
+      AND 2 * signed32(index1) + 1 <= signed32(total) + 1
+      AND
+        (FORALL (index2: int):
+          offset8(current) + signed32(index1) <= index2
+            AND index2
+              < offset8(current) + signed32(total) - signed32(index1)
+          IMPLIES
+            cells8(current)(index2) = cells8(reversal_original)(index2))
+      AND in_base(
+        base, cells8(current),
+        offset8(current), offset8(current) + signed32(total))
+      AND
+        svalue_sub(
+          base, cells8(current),
+          offset8(current), offset8(current) + signed32(index1))
+        = svalue_le_sub(
+          base, cells8(reversal_original),
+          offset8(current) + signed32(total) - signed32(index1),
+          offset8(current) + signed32(total))
+      AND
+        svalue_sub(
+          base, cells8(current),
+          offset8(current) + signed32(total) - signed32(index1),
+          offset8(current) + signed32(total))
+        = svalue_le_sub(
+          base, cells8(reversal_original),
+          offset8(current), offset8(current) + signed32(index1))
+      AND
+        svalue_le_sub(
+          base, cells8(current),
+          offset8(current) + signed32(index1),
+          offset8(current) + signed32(total) - signed32(index1))
+        = svalue_le_sub(
+          base, cells8(reversal_original),
+          offset8(current) + signed32(index1),
+          offset8(current) + signed32(total) - signed32(index1))
+      AND
+        (0 < signed32(index1)
+          IMPLIES 0 < unsigned8(cells8(current)(offset8(current))))
+      AND frame8(current, original_sp, signed32(size))
+
+  final_post(
+      base: int,
+      original_up: ptr64,
+      un: word32,
+      original_sp: ptr8,
+      size: word32,
+      current: ptr8,
+      result: word32): bool =
+    0 <= unsigned32(result)
+      AND unsigned32(result) < signed32(size)
+      AND svalue(base, current, unsigned32(result))
+        = value64(original_up, signed32(un))
+      AND in_base(
+        base, cells8(current),
+        offset8(current), offset8(current) + unsigned32(result))
+      AND 0 < unsigned8(cells8(current)(offset8(current)))
+      AND frame8(current, original_sp, signed32(size))
+
+  reverse_swap(
+      base: int,
+      original_sp: ptr8,
+      size: word32,
+      reversal_original: ptr8,
+      total: word32,
+      current: ptr8,
+      index1: word32): bool =
+    access8(current, offset8(current) + signed32(index1))
+      AND
+        (FORALL (saved: word8):
+          saved = cells8(current)(offset8(current) + signed32(index1))
+          IMPLIES
+            int32_in_bounds(signed32(total) - signed32(index1))
+              AND
+                (FORALL (from_end: word32):
+                  signed32(from_end) = signed32(total) - signed32(index1)
+                  IMPLIES
+                    int32_in_bounds(signed32(from_end) - 1)
+                      AND
+                        (FORALL (mirror: word32):
+                          signed32(mirror) = signed32(from_end) - 1
+                          IMPLIES
+                            access8(
+                              current,
+                              offset8(current) + signed32(mirror))
+                              AND
+                                (FORALL (other: word8):
+                                  other = cells8(current)(
+                                    offset8(current) + signed32(mirror))
+                                  IMPLIES
+                                    access8(
+                                      current,
+                                      offset8(current) + signed32(index1))
+                                      AND writable8(current) = TRUE
+                                      AND
+                                        (FORALL (after1: ptr8):
+                                          same_shape8(after1, current)
+                                            AND updated8(
+                                              after1, current,
+                                              offset8(after1)
+                                                + signed32(index1),
+                                              other)
+                                          IMPLIES
+                                            int32_in_bounds(
+                                              signed32(total)
+                                                - signed32(index1))
+                                              AND
+                                                (FORALL (from_end2: word32):
+                                                  signed32(from_end2)
+                                                    = signed32(total)
+                                                        - signed32(index1)
+                                                  IMPLIES
+                                                    int32_in_bounds(
+                                                      signed32(from_end2) - 1)
+                                                      AND
+                                                        (FORALL (
+                                                            mirror2: word32):
+                                                          signed32(mirror2)
+                                                            = signed32(from_end2)
+                                                                - 1
+                                                          IMPLIES
+                                                            access8(
+                                                              after1,
+                                                              offset8(after1)
+                                                                + signed32(
+                                                                    mirror2))
+                                                              AND
+                                                                writable8(
+                                                                  after1)
+                                                                  = TRUE
+                                                              AND
+                                                                (FORALL (
+                                                                    after2:
+                                                                      ptr8):
+                                                                  same_shape8(
+                                                                    after2,
+                                                                    after1)
+                                                                    AND
+                                                                      updated8(
+                                                                        after2,
+                                                                        after1,
+                                                                        offset8(
+                                                                          after2)
+                                                                          + signed32(
+                                                                              mirror2),
+                                                                        saved)
+                                                                  IMPLIES
+                                                                    int32_in_bounds(
+                                                                      signed32(
+                                                                        index1)
+                                                                        + 1)
+                                                                      AND
+                                                                        (FORALL (
+                                                                            next_index:
+                                                                              word32):
+                                                                          signed32(
+                                                                            next_index)
+                                                                            = signed32(
+                                                                                index1)
+                                                                                + 1
+                                                                          IMPLIES
+                                                                            0
+                                                                              <= signed32(
+                                                                                  total)
+                                                                                  - signed32(
+                                                                                      index1)
+                                                                              AND
+                                                                                signed32(
+                                                                                  total)
+                                                                                  - signed32(
+                                                                                      next_index)
+                                                                                  < signed32(
+                                                                                      total)
+                                                                                      - signed32(
+                                                                                          index1)
+                                                                              AND
+                                                                                reverse_inv(
+                                                                                  base,
+                                                                                  size,
+                                                                                  original_sp,
+                                                                                  reversal_original,
+                                                                                  after2,
+                                                                                  total,
+                                                                                  next_index))))))))))
+
+  reverse_done(
+      base: int,
+      original_up: ptr64,
+      un: word32,
+      original_sp: ptr8,
+      size: word32,
+      current: ptr8,
+      total: word32): bool =
+    0 <= signed32(total)
+      AND
+        (FORALL (result: word32):
+          unsigned32(result) = signed32(total)
+            IMPLIES
+              final_post(
+                base, original_up, un, original_sp, size, current, result))
+
+  reverse_step(
+      base: int,
+      original_up: ptr64,
+      un: word32,
+      original_sp: ptr8,
+      size: word32,
+      reversal_original: ptr8,
+      total: word32,
+      current: ptr8,
+      index1: word32): bool =
+    int32_in_bounds(2 * signed32(index1))
+      AND
+        (FORALL (twice: word32):
+          signed32(twice) = 2 * signed32(index1)
+          IMPLIES
+            int32_in_bounds(signed32(twice) + 1)
+              AND
+                (FORALL (test: word32):
+                  signed32(test) = signed32(twice) + 1
+                  IMPLIES
+                    IF signed32(test) < signed32(total) THEN
+                      reverse_swap(
+                        base, original_sp, size, reversal_original,
+                        total, current, index1)
+                    ELSE
+                      reverse_done(
+                        base, original_up, un, original_sp,
+                        size, current, total)
+                    ENDIF))
+
+  reverse_loop(
+      base: int,
+      original_up: ptr64,
+      un: word32,
+      original_sp: ptr8,
+      size: word32,
+      reversal_original: ptr8,
+      total: word32): bool =
+    reverse_inv(
+      base, size, original_sp, reversal_original,
+      reversal_original, total, zero32)
+      AND
+        (FORALL (index1: word32, current: ptr8):
+          same_shape8(current, reversal_original)
+            AND reverse_inv(
+              base, size, original_sp, reversal_original,
+              current, total, index1)
+          IMPLIES
+            reverse_step(
+              base, original_up, un, original_sp, size,
+              reversal_original, total, current, index1))
+
+  final_limb_return(
+      base: int,
+      original_up: ptr64,
+      un: word32,
+      original_sp: ptr8,
+      size: word32,
+      current_sp: ptr8,
+      sn: word32,
+      spn: ptr8,
+      capacity: word32,
+      last: word64): bool =
+    FORALL (after_local, returned: ptr8):
+      cells8(after_local) = cells8(returned)
+        AND same_shape8(after_local, spn)
+        AND same_shape8(returned, current_sp)
+      IMPLIES
+        (FORALL (done: word32):
+          limb_post(
+            base, spn, after_local, signed32(capacity), last, done)
+          IMPLIES
+            unsigned32(done) <= max_int32
+              AND
+                (FORALL (done_i: word32):
+                  signed32(done_i) = unsigned32(done)
+                  IMPLIES
+                    int32_in_bounds(signed32(sn) + signed32(done_i))
+                      AND
+                        (FORALL (total: word32):
+                          signed32(total)
+                            = signed32(sn) + signed32(done_i)
+                          IMPLIES
+                            reverse_loop(
+                              base, original_up, un, original_sp,
+                              size, returned, total))))
+
+  final_limb(
+      base: int,
+      original_up: ptr64,
+      un: word32,
+      info: base_info,
+      original_sp: ptr8,
+      size: word32,
+      shift, d1, di: word64,
+      current_up: ptr64,
+      current_sp: ptr8,
+      sn: word32): bool =
+    access64(current_up, offset64(current_up))
+      AND
+        (FORALL (last: word64):
+          last = cells64(current_up)(offset64(current_up))
+          IMPLIES
+            min8(current_sp) <= offset8(current_sp) + signed32(sn)
+              AND offset8(current_sp) + signed32(sn) <= max8(current_sp)
+              AND
+                (FORALL (spn: ptr8):
+                  shifted8(spn, current_sp, signed32(sn))
+                  IMPLIES
+                    int32_in_bounds(signed32(size) - 1)
+                      AND
+                        (FORALL (size1: word32):
+                          signed32(size1) = signed32(size) - 1
+                          IMPLIES
+                            int32_in_bounds(
+                              signed32(size1) - signed32(sn))
+                              AND
+                                (FORALL (capacity: word32):
+                                  signed32(capacity)
+                                    = signed32(size1) - signed32(sn)
+                                  IMPLIES
+                                    2 <= info_base(info)
+                                      AND info_base(info) <= 256
+                                      AND writable8(spn) = TRUE
+                                      AND radix / 2 <= unsigned64(d1)
+                                      AND 0 <= unsigned64(shift)
+                                      AND unsigned64(shift) <= 63
+                                      AND
+                                        info_base(info)
+                                          * int_power(
+                                              2, unsigned64(shift))
+                                        = unsigned64(d1)
+                                      AND reciprocal(di, d1)
+                                      AND valid8(
+                                        spn, signed32(capacity))
+                                      AND 0 < signed32(capacity)
+                                      AND unsigned64(last)
+                                        < int_power(
+                                            info_base(info),
+                                            signed32(capacity))
+                                      AND final_limb_return(
+                                        info_base(info), original_up, un,
+                                        original_sp, size, current_sp, sn,
+                                        spn, capacity, last)))))
+
+  final_cont(
+      total, base: int,
+      original_up: ptr64,
+      un: word32,
+      info: base_info,
+      original_sp: ptr8,
+      size: word32,
+      shift, d1, di: word64): bool =
+    FORALL (sn: word32, up: ptr64, sp: ptr8):
+      same_shape64(up, original_up)
+        AND same_shape8(sp, original_sp)
+        AND partial(total, base, original_sp, size, up, sp, sn)
+      IMPLIES
+        final_limb(
+          base, original_up, un, info, original_sp, size,
+          shift, d1, di, up, sp, sn)
+
+  padding_step(
+      total, base: int,
+      info: base_info,
+      original_sp: ptr8,
+      size, un: word32,
+      up: ptr64,
+      n, initial_sn, done: word32,
+      sp: ptr8,
+      current_sn: word32,
+      previous_up: ptr64,
+      previous_n: word32,
+      loop_index: int): bool =
+    IF unsigned32(done) < unsigned32(info_exp(info)) THEN
+      access8(sp, offset8(sp) + signed32(current_sn))
+        AND writable8(sp) = TRUE
+        AND
+          (FORALL (after: ptr8):
+            same_shape8(after, sp)
+              AND updated8(
+                after, sp, offset8(after) + signed32(current_sn), zero8)
+            IMPLIES
+              int32_in_bounds(signed32(current_sn) + 1)
+                AND
+                  (FORALL (next_sn: word32):
+                    signed32(next_sn) = signed32(current_sn) + 1
+                    IMPLIES
+                      uint32_in_bounds(unsigned32(done) + 1)
+                        AND
+                          (FORALL (next_done: word32):
+                            unsigned32(next_done) = unsigned32(done) + 1
+                            IMPLIES
+                              0 <= unsigned32(info_exp(info))
+                                  - unsigned32(done)
+                                AND
+                                  unsigned32(info_exp(info))
+                                      - unsigned32(next_done)
+                                    < unsigned32(info_exp(info))
+                                        - unsigned32(done)
+                                AND padding_inv(
+                                  total, base, info, size, original_sp,
+                                  up, n, initial_sn, next_done,
+                                  next_sn, after))))
+    ELSE
+      0 <= value64(previous_up, signed32(previous_n))
+        AND value64(up, signed32(n))
+          < value64(previous_up, signed32(previous_n))
+        AND outer_inv(
+          total, base, info, un, size, original_sp, loop_index + 1,
+          up, n, sp, current_sn)
+    ENDIF
+
+  after_limb_return(
+      total, base: int,
+      info: base_info,
+      original_sp, before_sp: ptr8,
+      size, un: word32,
+      up: ptr64,
+      n, initial_sn: word32,
+      input: word64,
+      previous_up: ptr64,
+      previous_n: word32,
+      loop_index: int,
+      spn: ptr8,
+      capacity: word32): bool =
+    FORALL (after_local, returned: ptr8):
+      cells8(after_local) = cells8(returned)
+        AND same_shape8(after_local, spn)
+        AND same_shape8(returned, before_sp)
+      IMPLIES
+        (FORALL (done: word32):
+          limb_post(
+            info_base(info), spn, after_local,
+            signed32(capacity), input, done)
+          IMPLIES
+            unsigned32(done) <= max_int32
+              AND
+                (FORALL (done_i: word32):
+                  signed32(done_i) = unsigned32(done)
+                  IMPLIES
+                    int32_in_bounds(
+                      signed32(initial_sn) + signed32(done_i))
+                      AND
+                        (FORALL (new_sn: word32):
+                          signed32(new_sn)
+                            = signed32(initial_sn) + signed32(done_i)
+                          IMPLIES
+                            padding_inv(
+                              total, base, info, size, original_sp,
+                              up, n, initial_sn, done, new_sn, returned)
+                              AND
+                                (FORALL (
+                                    loop_done, loop_sn: word32,
+                                    loop_sp: ptr8):
+                                  same_shape8(loop_sp, returned)
+                                    AND padding_inv(
+                                      total, base, info, size, original_sp,
+                                      up, n, initial_sn, loop_done,
+                                      loop_sn, loop_sp)
+                                  IMPLIES
+                                    padding_step(
+                                      total, base, info, original_sp,
+                                      size, un, up, n, initial_sn,
+                                      loop_done, loop_sp, loop_sn,
+                                      previous_up, previous_n,
+                                      loop_index)))))
+
+  after_limb(
+      total, base: int,
+      info: base_info,
+      original_sp, before_sp: ptr8,
+      size, un: word32,
+      shift, d1, di: word64,
+      up: ptr64,
+      n, initial_sn: word32,
+      input: word64,
+      previous_up: ptr64,
+      previous_n: word32,
+      loop_index: int,
+      spn: ptr8): bool =
+    unsigned32(info_exp(info)) <= max_int32
+      AND
+        (FORALL (signed_exp: word32):
+          signed32(signed_exp) = unsigned32(info_exp(info))
+          IMPLIES
+            int32_in_bounds(signed32(signed_exp) + 1)
+              AND
+                (FORALL (capacity: word32):
+                  signed32(capacity) = signed32(signed_exp) + 1
+                  IMPLIES
+                    2 <= info_base(info)
+                      AND info_base(info) <= 256
+                      AND writable8(spn) = TRUE
+                      AND radix / 2 <= unsigned64(d1)
+                      AND 0 <= unsigned64(shift)
+                      AND unsigned64(shift) <= 63
+                      AND
+                        info_base(info)
+                          * int_power(2, unsigned64(shift))
+                        = unsigned64(d1)
+                      AND reciprocal(di, d1)
+                      AND valid8(spn, signed32(capacity))
+                      AND 0 < signed32(capacity)
+                      AND unsigned64(input)
+                        < int_power(
+                            info_base(info), signed32(capacity))
+                      AND after_limb_return(
+                        total, base, info, original_sp, before_sp,
+                        size, un, up, n, initial_sn, input,
+                        previous_up, previous_n, loop_index,
+                        spn, capacity)))
+
+  outer_step(
+      total, base: int,
+      info: base_info,
+      original_sp: ptr8,
+      size: word32,
+      original_up: ptr64,
+      un: word32,
+      shift, d1, di: word64,
+      temporary, up: ptr64,
+      n: word32,
+      sp: ptr8,
+      sn: word32,
+      loop_index: int): bool =
+    IF 1 < signed32(n) THEN
+      valid64(up, signed32(n))
+        AND valid64(temporary, signed32(n))
+        AND writable64(temporary) = TRUE
+        AND 0 < signed32(n)
+        AND 0 < unsigned64(info_bb(info))
+        AND
+          (FORALL (after_div: ptr64):
+            same_shape64(after_div, temporary)
+            IMPLIES
+              (FORALL (remainder: word64):
+                division(after_div, up, n, info_bb(info), remainder)
+                IMPLIES
+                  valid64(after_div, signed32(n))
+                    AND valid64(up, signed32(n))
+                    AND writable64(up) = TRUE
+                    AND
+                      (FORALL (copied: ptr64):
+                        same_shape64(copied, up)
+                          AND map_eq64(
+                            copied, after_div,
+                            offset64(copied), offset64(after_div),
+                            signed32(n))
+                          AND frame64(copied, up, signed32(n))
+                        IMPLIES
+                          int32_in_bounds(signed32(n) - 1)
+                            AND
+                              (FORALL (n1: word32):
+                                signed32(n1) = signed32(n) - 1
+                                IMPLIES
+                                  access64(
+                                    copied,
+                                    offset64(copied) + signed32(n1))
+                                    AND
+                                      (FORALL (top: word64):
+                                        top = cells64(copied)(
+                                          offset64(copied) + signed32(n1))
+                                        IMPLIES
+                                          (FORALL (is_zero: bool):
+                                            (unsigned64(top) = 0
+                                              IMPLIES is_zero = TRUE)
+                                              AND
+                                                (is_zero = TRUE
+                                                  IMPLIES top = zero64)
+                                            IMPLIES
+                                              (FORALL (decrement: word32):
+                                                (IF is_zero THEN
+                                                  decrement = one32
+                                                ELSE
+                                                  decrement = zero32
+                                                ENDIF)
+                                                IMPLIES
+                                                  int32_in_bounds(
+                                                    signed32(n)
+                                                      - signed32(decrement))
+                                                    AND
+                                                      (FORALL (
+                                                          next_n: word32):
+                                                        signed32(next_n)
+                                                          = signed32(n)
+                                                              - signed32(
+                                                                  decrement)
+                                                        IMPLIES
+                                                          min8(sp)
+                                                              <= offset8(sp)
+                                                                  + signed32(
+                                                                      sn)
+                                                            AND
+                                                              offset8(sp)
+                                                                  + signed32(
+                                                                      sn)
+                                                                <= max8(sp)
+                                                            AND
+                                                              (FORALL (
+                                                                  spn:
+                                                                    ptr8):
+                                                                shifted8(
+                                                                  spn, sp,
+                                                                  signed32(sn))
+                                                                IMPLIES
+                                                                  after_limb(
+                                                                    total,
+                                                                    base,
+                                                                    info,
+                                                                    original_sp,
+                                                                    sp,
+                                                                    size,
+                                                                    un,
+                                                                    shift,
+                                                                    d1,
+                                                                    di,
+                                                                    copied,
+                                                                    next_n,
+                                                                    sn,
+                                                                    remainder,
+                                                                    up,
+                                                                    n,
+                                                                    loop_index,
+                                                                    spn))))))))))
+    ELSE
+      partial(total, base, original_sp, size, up, sp, sn)
+    ENDIF
+
+  partial_block(
+      total, base: int,
+      info: base_info,
+      original_up: ptr64,
+      un: word32,
+      original_sp: ptr8,
+      size: word32,
+      shift, d1, di: word64): bool =
+    IF 1 < signed32(un) THEN
+      0 <= signed32(un)
+        AND
+          (FORALL (count: word32):
+            unsigned32(count) = signed32(un)
+            IMPLIES
+              0 <= unsigned32(count)
+                AND
+                  (FORALL (temporary: ptr64):
+                    allocated64(temporary, unsigned32(count))
+                    IMPLIES
+                      outer_inv(
+                        total, base, info, un, size, original_sp, 0,
+                        original_up, un, original_sp, zero32)
+                        AND
+                          (FORALL (
+                              loop_index: int,
+                              loop_temporary, loop_up: ptr64,
+                              loop_n: word32,
+                              loop_sp: ptr8,
+                              loop_sn: word32):
+                            same_shape64(loop_temporary, temporary)
+                              AND same_shape64(loop_up, original_up)
+                              AND same_shape8(loop_sp, original_sp)
+                              AND outer_inv(
+                                total, base, info, un, size, original_sp,
+                                loop_index, loop_up, loop_n,
+                                loop_sp, loop_sn)
+                            IMPLIES
+                              outer_step(
+                                total, base, info, original_sp, size,
+                                original_up, un, shift, d1, di,
+                                loop_temporary, loop_up, loop_n,
+                                loop_sp, loop_sn, loop_index))))
+    ELSE
+      partial(
+        total, base, original_sp, size,
+        original_up, original_sp, zero32)
+    ENDIF
+
+  body(
+      total: int,
+      original_up: ptr64,
+      un: word32,
+      base: int,
+      info: base_info,
+      original_sp: ptr8,
+      size: word32,
+      shift, d1, di: word64): bool =
+    partial_block(
+      total, base, info, original_up, un, original_sp,
+      size, shift, d1, di)
+      AND final_cont(
+        total, base, original_up, un, info, original_sp,
+        size, shift, d1, di)
+
+  get_str_Get_str_wmpn_get_str_otherqtvc_statement: bool =
+    FORALL (
+        up: ptr64,
+        un, base: word32,
+        info: base_info,
+        sp: ptr8,
+        size: word32):
+      info_ok(info)
+        AND valid64(up, signed32(un))
+        AND 1 <= signed32(un)
+        AND info_base(info) = signed32(base)
+        AND writable64(up) = TRUE
+        AND writable8(sp) = TRUE
+        AND 0 < unsigned64(
+          cells64(up)(offset64(up) + signed32(un) - 1))
+        AND 0 < signed32(size)
+        AND valid8(sp, signed32(size))
+        AND value64(up, signed32(un))
+          < int_power(signed32(base), signed32(size) - 1)
+      IMPLIES
+        0 <= signed32(base)
+          AND
+            (FORALL (base_limb: word64):
+              unsigned64(base_limb) = signed32(base)
+              IMPLIES
+                0 < unsigned64(base_limb)
+                  AND
+                    (FORALL (count: word32):
+                      int_power(2, signed32(count))
+                          * unsigned64(base_limb)
+                          <= max_uint64
+                        AND max_uint64
+                          < 2 * int_power(2, signed32(count))
+                              * unsigned64(base_limb)
+                        AND 0 <= signed32(count)
+                        AND signed32(count) < 64
+                      IMPLIES
+                        0 <= signed32(count)
+                          AND
+                            (FORALL (shift: word64):
+                              unsigned64(shift) = signed32(count)
+                              IMPLIES
+                                0 <= signed32(base)
+                                  AND
+                                    (FORALL (base_limb2: word64):
+                                      unsigned64(base_limb2)
+                                        = signed32(base)
+                                      IMPLIES
+                                        0 <= unsigned64(shift)
+                                          AND unsigned64(shift) < 64
+                                          AND
+                                            int_power(
+                                              2, unsigned64(shift))
+                                                * unsigned64(base_limb2)
+                                              <= max_uint64
+                                          AND
+                                            (FORALL (d1: word64):
+                                              unsigned64(d1)
+                                                = int_power(
+                                                    2,
+                                                    unsigned64(shift))
+                                                    * unsigned64(
+                                                        base_limb2)
+                                              IMPLIES
+                                                radix / 2
+                                                    <= unsigned64(d1)
+                                                  AND
+                                                    (FORALL (di: word64):
+                                                      reciprocal(di, d1)
+                                                      IMPLIES
+                                                        body(
+                                                          value64(
+                                                            up,
+                                                            signed32(un)),
+                                                          up,
+                                                          un,
+                                                          signed32(base),
+                                                          info,
+                                                          sp,
+                                                          size,
+                                                          shift,
+                                                          d1,
+                                                          di)))))))
+
+END get_str_Get_str_wmpn_get_str_otherqtvc

@@ -1,0 +1,389 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/verifythis_2017_odd_even_sort_rearranging_Top_odd_even_sortqtvc: the
+% odd-even-sort verification condition, covering permutation, odd and even
+% adjacent-pair passes, sortedness, and entropy-based termination. This file
+% contains no proof.
+
+verifythis_2017_odd_even_sort_rearranging_Top_odd_even_sortqtvc: THEORY
+BEGIN
+
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  nth_default(values: list[int], index: nat): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          nth_default(tail, index - 1)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  list_set(
+      values: list[int],
+      index: nat,
+      value: int): RECURSIVE list[int] =
+    CASES values OF
+      null:
+        null,
+      cons(head, tail):
+        IF index = 0 THEN
+          cons(value, tail)
+        ELSE
+          cons(head, list_set(tail, index - 1, value))
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  occurrence_count(value: int, values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        (IF value = head THEN 1 ELSE 0 ENDIF)
+          + occurrence_count(value, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  list_permutation(left, right: list[int]): bool =
+    FORALL (value: int):
+      occurrence_count(value, left) = occurrence_count(value, right)
+
+  sorted_sub(values: list[int], lower, upper: int): bool =
+    FORALL (i1, i2: int):
+      (lower <= i1 AND i1 <= i2 AND i2 < upper)
+        IMPLIES
+          nth_default(values, int_to_nat(i1))
+            <= nth_default(values, int_to_nat(i2))
+
+  sorted(values: list[int]): bool =
+    sorted_sub(values, 0, length(values))
+
+  even(value: int): bool =
+    EXISTS (half: int):
+      value = 2 * half
+
+  odd(value: int): bool =
+    EXISTS (half: int):
+      value = 2 * half + 1
+
+  entropy_span(
+      values: list[int],
+      maximum, index: int,
+      count: nat): RECURSIVE int =
+    IF count = 0 THEN
+      0
+    ELSE
+      index
+        * (maximum
+           - nth_default(values, int_to_nat(index)))
+        + entropy_span(
+            values, maximum, index + 1, count - 1)
+    ENDIF
+  MEASURE count
+
+  entropy(values: list[int], maximum: int): int =
+    entropy_span(values, maximum, 0, length(values))
+
+  array_exchange(
+      before, after: list[int],
+      first_index, second_index: int): bool =
+    after =
+      list_set(
+        list_set(
+          before,
+          int_to_nat(first_index),
+          nth_default(before, int_to_nat(second_index))),
+        int_to_nat(second_index),
+        nth_default(before, int_to_nat(first_index)))
+
+  array_max_spec(
+      maximum_function: [list[int] -> int]): bool =
+    FORALL (values: list[int]), (index: int):
+      (0 <= index AND index < length(values))
+        IMPLIES
+          nth_default(values, int_to_nat(index))
+            <= maximum_function(values)
+
+  odd_prefix_ordered(values: list[int], upper: int): bool =
+    FORALL (j: int):
+      (0 <= j AND j < upper)
+        IMPLIES
+      odd(j)
+        IMPLIES
+          nth_default(values, int_to_nat(j))
+            <= nth_default(values, int_to_nat(j + 1))
+
+  odd_pass_ordered(values: list[int]): bool =
+    FORALL (j: int):
+      ((0 <= j AND j < length(values) - 1) AND odd(j))
+        IMPLIES
+          nth_default(values, int_to_nat(j))
+            <= nth_default(values, int_to_nat(j + 1))
+
+  even_prefix_ordered(values: list[int], upper: int): bool =
+    FORALL (j: int):
+      ((0 <= j AND j < upper) AND even(j))
+        IMPLIES
+          nth_default(values, int_to_nat(j))
+            <= nth_default(values, int_to_nat(j + 1))
+
+  odd_loop_invariant(
+      original, baseline, current: list[int],
+      maximum, index: int,
+      ok: bool): bool =
+    list_permutation(original, current)
+      AND (0 <= index AND index <= length(current))
+      AND odd(index)
+      AND
+    (ok = TRUE
+      IMPLIES entropy(current, maximum) = entropy(baseline, maximum))
+      AND
+    (ok = TRUE
+      IMPLIES odd_prefix_ordered(current, index))
+      AND
+    (ok /= TRUE
+      IMPLIES entropy(current, maximum) < entropy(baseline, maximum))
+
+  even_loop_invariant(
+      original, baseline, current: list[int],
+      maximum, index: int,
+      ok: bool): bool =
+    list_permutation(original, current)
+      AND (0 <= index AND index <= length(current))
+      AND even(index)
+      AND
+    (ok = TRUE
+      IMPLIES entropy(current, maximum) = entropy(baseline, maximum))
+      AND
+    (ok = TRUE
+      IMPLIES odd_pass_ordered(current))
+      AND
+    (ok = TRUE
+      IMPLIES even_prefix_ordered(current, index))
+      AND
+    (ok /= TRUE
+      IMPLIES entropy(current, maximum) < entropy(baseline, maximum))
+
+  variant_cost(ok: bool): int =
+    IF ok = TRUE THEN 0 ELSE 1 ENDIF
+
+  odd_swap_post(
+      original, baseline, before, after: list[int],
+      maximum, index: int): bool =
+    (0 <= length(before) - index
+      AND length(after) - (index + 2)
+            < length(before) - index)
+      AND
+    odd_loop_invariant(
+      original, baseline, after, maximum, index + 2, FALSE)
+
+  odd_no_swap_post(
+      original, baseline, current: list[int],
+      maximum, index: int,
+      ok: bool): bool =
+    (0 <= length(current) - index
+      AND length(current) - (index + 2)
+            < length(current) - index)
+      AND
+    odd_loop_invariant(
+      original, baseline, current, maximum, index + 2, ok)
+
+  even_swap_post(
+      original, baseline, before, after: list[int],
+      maximum, index: int): bool =
+    (0 <= length(before) - index
+      AND length(after) - (index + 2)
+            < length(before) - index)
+      AND
+    even_loop_invariant(
+      original, baseline, after, maximum, index + 2, FALSE)
+
+  even_no_swap_post(
+      original, baseline, current: list[int],
+      maximum, index: int,
+      ok: bool): bool =
+    (0 <= length(current) - index
+      AND length(current) - (index + 2)
+            < length(current) - index)
+      AND
+    even_loop_invariant(
+      original, baseline, current, maximum, index + 2, ok)
+
+  outer_loop_post(
+      original, baseline, current: list[int],
+      maximum: int,
+      old_ok, new_ok: bool): bool =
+    (0 <= entropy(baseline, maximum) + variant_cost(old_ok)
+      AND entropy(current, maximum) + variant_cost(new_ok)
+            < entropy(baseline, maximum) + variant_cost(old_ok))
+      AND list_permutation(original, current)
+      AND (new_ok = TRUE IMPLIES sorted(current))
+
+  even_iteration(
+      original, baseline, current: list[int],
+      maximum, index: int,
+      old_ok, ok: bool): bool =
+    IF index < length(current) - 1 THEN
+      LET next_index: int = index + 1
+      IN
+        (0 <= next_index AND next_index < length(current))
+          AND (0 <= index AND index < length(current))
+          AND
+        IF nth_default(current, int_to_nat(next_index))
+             < nth_default(current, int_to_nat(index))
+        THEN
+          LET swap_index: int = index + 1
+          IN
+            (nth_default(current, int_to_nat(swap_index))
+               < nth_default(current, int_to_nat(index))
+              AND 0 <= index
+              AND index < swap_index
+              AND swap_index < length(current))
+              AND
+            (FORALL (after: list[int]):
+              length(after) = length(current)
+                IMPLIES
+              (array_exchange(current, after, index, swap_index)
+                AND entropy(after, maximum) < entropy(current, maximum))
+                IMPLIES
+                  even_swap_post(
+                    original, baseline, current, after,
+                    maximum, index))
+        ELSE
+          even_no_swap_post(
+            original, baseline, current, maximum, index, ok)
+        ENDIF
+    ELSE
+      outer_loop_post(
+        original, baseline, current, maximum, old_ok, ok)
+    ENDIF
+
+  even_phase(
+      original, baseline, current: list[int],
+      maximum: int,
+      old_ok, initial_ok: bool): bool =
+    even_loop_invariant(
+      original, baseline, current, maximum, 0, initial_ok)
+      AND
+    (FORALL
+        (index: int),
+        (ok: bool),
+        (next: list[int]):
+      length(next) = length(current)
+        IMPLIES
+      even_loop_invariant(
+        original, baseline, next, maximum, index, ok)
+        IMPLIES
+          even_iteration(
+            original, baseline, next,
+            maximum, index, old_ok, ok))
+
+  odd_iteration(
+      original, baseline, current: list[int],
+      maximum, index: int,
+      old_ok, ok: bool): bool =
+    IF index < length(current) - 1 THEN
+      LET next_index: int = index + 1
+      IN
+        (0 <= next_index AND next_index < length(current))
+          AND (0 <= index AND index < length(current))
+          AND
+        IF nth_default(current, int_to_nat(next_index))
+             < nth_default(current, int_to_nat(index))
+        THEN
+          LET swap_index: int = index + 1
+          IN
+            (nth_default(current, int_to_nat(swap_index))
+               < nth_default(current, int_to_nat(index))
+              AND 0 <= index
+              AND index < swap_index
+              AND swap_index < length(current))
+              AND
+            (FORALL (after: list[int]):
+              length(after) = length(current)
+                IMPLIES
+              (array_exchange(current, after, index, swap_index)
+                AND entropy(after, maximum) < entropy(current, maximum))
+                IMPLIES
+                  odd_swap_post(
+                    original, baseline, current, after,
+                    maximum, index))
+        ELSE
+          odd_no_swap_post(
+            original, baseline, current, maximum, index, ok)
+        ENDIF
+    ELSE
+      even_phase(
+        original, baseline, current, maximum, old_ok, ok)
+    ENDIF
+
+  odd_initial(
+      original, baseline: list[int],
+      maximum: int): bool =
+    list_permutation(original, baseline)
+      AND (0 <= 1 AND 1 <= length(baseline))
+      AND odd(1)
+      AND odd_prefix_ordered(baseline, 1)
+      AND
+    (NOT TRUE
+      IMPLIES entropy(baseline, maximum) < entropy(baseline, maximum))
+
+  odd_phase(
+      original, baseline: list[int],
+      maximum: int,
+      old_ok: bool): bool =
+    odd_initial(original, baseline, maximum)
+      AND
+    (FORALL
+        (index: int),
+        (ok: bool),
+        (current: list[int]):
+      length(current) = length(baseline)
+        IMPLIES
+      odd_loop_invariant(
+        original, baseline, current, maximum, index, ok)
+        IMPLIES
+          odd_iteration(
+            original, baseline, current,
+            maximum, index, old_ok, ok))
+
+  outer_iteration(
+      original, current: list[int],
+      maximum: int,
+      ok: bool): bool =
+    IF ok /= TRUE THEN
+      odd_phase(original, current, maximum, ok)
+    ELSE
+      sorted(current) AND list_permutation(original, current)
+    ENDIF
+
+  odd_even_sort_vc: bool =
+    FORALL (maximum_function: [list[int] -> int]):
+      array_max_spec(maximum_function)
+        IMPLIES
+      (FORALL (a: list[int]):
+        0 < length(a)
+          IMPLIES
+        LET maximum: int = maximum_function(a)
+        IN
+          (FORALL (j: int):
+            (0 <= j AND j < length(a))
+              IMPLIES
+                nth_default(a, int_to_nat(j)) <= maximum)
+            IMPLIES
+              list_permutation(a, a)
+                AND
+              (FORALL (ok: bool), (a1: list[int]):
+                length(a1) = length(a)
+                  IMPLIES
+                (list_permutation(a, a1)
+                  AND (ok = TRUE IMPLIES sorted(a1)))
+                  IMPLIES
+                    outer_iteration(a, a1, maximum, ok)))
+
+END verifythis_2017_odd_even_sort_rearranging_Top_odd_even_sortqtvc

@@ -1,0 +1,90 @@
+% Statement-only formalization of PutnamBench artifact putnam_1985_a6:
+% the polynomial g(x) = 6x^2 + 5x + 1 has constant value one at zero and,
+% for every positive power, the same sum of squared coefficients as
+% f(x) = 3x^2 + 7x + 2. This file contains no proof.
+
+putnam_1985_a6: THEORY
+BEGIN
+  polynomial_value(
+      polynomial: list[real],
+      x: real): RECURSIVE real =
+    CASES polynomial OF
+      null: 0,
+      cons(coefficient, tail):
+        coefficient + x * polynomial_value(tail, x)
+    ENDCASES
+  MEASURE polynomial BY <<
+
+  polynomial_add(
+      left, right: list[real]): RECURSIVE list[real] =
+    CASES left OF
+      null: right,
+      cons(left_coefficient, left_tail):
+        CASES right OF
+          null: left,
+          cons(right_coefficient, right_tail):
+            cons(
+              left_coefficient + right_coefficient,
+              polynomial_add(left_tail, right_tail))
+        ENDCASES
+    ENDCASES
+  MEASURE left BY <<
+
+  polynomial_scale(
+      scalar: real,
+      polynomial: list[real]): RECURSIVE list[real] =
+    CASES polynomial OF
+      null: null,
+      cons(coefficient, tail):
+        cons(
+          scalar * coefficient,
+          polynomial_scale(scalar, tail))
+    ENDCASES
+  MEASURE polynomial BY <<
+
+  polynomial_multiply(
+      left, right: list[real]): RECURSIVE list[real] =
+    CASES left OF
+      null: null,
+      cons(coefficient, tail):
+        polynomial_add(
+          polynomial_scale(coefficient, right),
+          cons(0, polynomial_multiply(tail, right)))
+    ENDCASES
+  MEASURE left BY <<
+
+  polynomial_power(
+      polynomial: list[real],
+      exponent: nat): RECURSIVE list[real] =
+    IF exponent = 0 THEN
+      cons(1, null)
+    ELSE
+      polynomial_multiply(
+        polynomial,
+        polynomial_power(polynomial, exponent - 1))
+    ENDIF
+  MEASURE exponent
+
+  gamma(polynomial: list[real]): RECURSIVE real =
+    CASES polynomial OF
+      null: 0,
+      cons(coefficient, tail):
+        coefficient ^ 2 + gamma(tail)
+    ENDCASES
+  MEASURE polynomial BY <<
+
+  f: list[real] =
+    cons(2, cons(7, cons(3, null)))
+
+  putnam_1985_a6_solution: list[real] =
+    cons(1, cons(5, cons(6, null)))
+
+  putnam_1985_a6: bool =
+    polynomial_value(putnam_1985_a6_solution, 0) = 1
+      AND (FORALL (n: nat):
+        n >= 1 IMPLIES
+          gamma(polynomial_power(f, n))
+            = gamma(
+                polynomial_power(
+                  putnam_1985_a6_solution, n)))
+END putnam_1985_a6

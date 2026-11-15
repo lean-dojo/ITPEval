@@ -1,0 +1,69 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2005_a4:
+% an n-by-n real sign matrix with mutually orthogonal rows cannot contain an
+% all-one a-by-b submatrix unless a*b <= n. This file contains no proof.
+
+putnam_2005_a4[n: posnat]: THEORY
+BEGIN
+  coordinate: TYPE = below(n)
+  matrix: TYPE = [coordinate, coordinate -> real]
+  index_selection: TYPE = [nat -> coordinate]
+
+  real_sum(
+      values: [coordinate -> real],
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      real_sum(values, count - 1)
+        + IF count <= n THEN values(count - 1) ELSE 0 ENDIF
+    ENDIF
+  MEASURE count
+
+  row_inner_product(
+      H: matrix,
+      first_row, second_row: coordinate): real =
+    real_sum(
+      LAMBDA (column: coordinate):
+        H(first_row, column) * H(second_row, column),
+      n)
+
+  has_sign_entries(H: matrix): bool =
+    FORALL (row, column: coordinate):
+      H(row, column) = 1 OR H(row, column) = -1
+
+  has_orthogonal_rows(H: matrix): bool =
+    FORALL (first_row, second_row: coordinate):
+      first_row /= second_row IMPLIES
+        row_inner_product(H, first_row, second_row) = 0
+
+  injective_on(
+      count: nat,
+      selection: index_selection): bool =
+    FORALL (first_index, second_index: nat):
+      (first_index < count
+        AND second_index < count
+        AND selection(first_index) = selection(second_index))
+      IMPLIES first_index = second_index
+
+  has_all_one_submatrix(H: matrix, a, b: nat): bool =
+    EXISTS (row_selection, column_selection: index_selection):
+      injective_on(a, row_selection)
+        AND injective_on(b, column_selection)
+        AND (FORALL (row_index, column_index: nat):
+          (row_index < a AND column_index < b)
+          IMPLIES
+            H(
+              row_selection(row_index),
+              column_selection(column_index)) = 1)
+
+  putnam_2005_a4: bool =
+    FORALL (H: matrix), (a, b: nat):
+      (1 <= a
+        AND a <= n
+        AND 1 <= b
+        AND b <= n
+        AND has_sign_entries(H)
+        AND has_orthogonal_rows(H)
+        AND has_all_one_submatrix(H, a, b))
+      IMPLIES a * b <= n
+END putnam_2005_a4

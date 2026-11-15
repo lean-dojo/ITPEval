@@ -2,6 +2,7 @@
 set -euo pipefail
 
 itpeval_repo_root() {
+  # repo root is two levels up from this file: itpeval/bin/common.sh
   (cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 }
 
@@ -27,6 +28,32 @@ itpeval_prefix() {
 
 itpeval_prefix_bin() {
   echo "$(itpeval_prefix)/bin"
+}
+
+itpeval_realpath() {
+  # BSD/macOS realpath lacks GNU's -e flag. Python is already required by
+  # the harness; strict resolution preserves the missing-file check.
+  python3 -c 'import sys; from pathlib import Path; print(Path(sys.argv[1]).resolve(strict=True))' "$1"
+}
+
+itpeval_validate_statement_file() {
+  local prover="$1"
+  local file_path="$2"
+  local repo_root
+
+  if [[ ! -f "${file_path}" ]]; then
+    fail "missing statement source at ${file_path}"
+  fi
+  if ! grep -Fq -- "Statement-only formalization of" "${file_path}" \
+    && ! grep -Fqi -- ":itpeval-statement-checked" "${file_path}"; then
+    return 0
+  fi
+
+  repo_root="$(itpeval_repo_root)"
+  PYTHONPATH="${repo_root}${PYTHONPATH:+:${PYTHONPATH}}" \
+    python3 -m itpeval.validation \
+      --prover "${prover}" \
+      --file "${file_path}"
 }
 
 itpeval_manifest_path() {

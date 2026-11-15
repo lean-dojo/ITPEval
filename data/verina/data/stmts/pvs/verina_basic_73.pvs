@@ -1,0 +1,100 @@
+% Statement-only formalization of the VERINA corpus artifact verina_basic_73,
+% catalog title "Match": a deterministic scan of equal-length Unicode-scalar
+% strings accepts exactly when every pattern character is equal to the
+% corresponding input character or is the wildcard '?'. This file contains no proof.
+
+verina_basic_73: THEORY
+BEGIN
+
+  % String.toList observes a Lean string as its finite list of Unicode scalar
+  % characters, preserving the full extensional source string domain.
+  lean_char: TYPE =
+    {codepoint: nat |
+      codepoint < 1114112
+        AND (codepoint < 55296 OR codepoint >= 57344)}
+
+  lean_string: TYPE = list[lean_char]
+
+  lean_string_length(s: lean_string): RECURSIVE nat =
+    CASES s OF
+      null:
+        0,
+      cons(head, tail):
+        lean_string_length(tail) + 1
+    ENDCASES
+  MEASURE s BY <<
+
+  % Lean List.get! for characters returns NUL outside the list.
+  lean_char_list_get_bang(
+      index: nat,
+      values: list[lean_char]): RECURSIVE lean_char =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          lean_char_list_get_bang(index - 1, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  Match_precond(
+      s, p: lean_string): bool =
+    lean_string_length(s) = lean_string_length(p)
+
+  % Codepoint 63 is the Unicode scalar value of '?'.
+  % With public fuel length(s) + 1, the fuel-zero branch is unreachable:
+  % the source loop visits indices 0 through length(s), and only the first
+  % length(s) visits can recurse.
+  Match_loop(
+      s, p: lean_string,
+      i, fuel: nat): RECURSIVE bool =
+    IF fuel = 0 THEN
+      FALSE
+    ELSIF i < lean_string_length(s) THEN
+      IF lean_char_list_get_bang(i, s)
+            /= lean_char_list_get_bang(i, p)
+          AND lean_char_list_get_bang(i, p) /= 63 THEN
+        FALSE
+      ELSE
+        Match_loop(s, p, i + 1, fuel - 1)
+      ENDIF
+    ELSE
+      TRUE
+    ENDIF
+  MEASURE fuel
+
+  % The source precondition proof argument is computationally irrelevant.
+  % This call executes exactly the source's index-increasing local loop.
+  Match(
+      s, p: lean_string): bool =
+    Match_loop(
+      s,
+      p,
+      0,
+      lean_string_length(s) + 1)
+
+  Match_postcond(
+      s, p: lean_string,
+      result: bool): bool =
+    (result = TRUE)
+      IFF
+        (FORALL (n: nat):
+          n < lean_string_length(s)
+            IMPLIES
+              (lean_char_list_get_bang(n, s)
+                  = lean_char_list_get_bang(n, p)
+                OR lean_char_list_get_bang(n, p) = 63))
+
+  Match_spec_satisfied: bool =
+    FORALL (s, p: lean_string):
+      Match_precond(s, p)
+        IMPLIES
+          Match_postcond(
+            s,
+            p,
+            Match(s, p))
+
+END verina_basic_73

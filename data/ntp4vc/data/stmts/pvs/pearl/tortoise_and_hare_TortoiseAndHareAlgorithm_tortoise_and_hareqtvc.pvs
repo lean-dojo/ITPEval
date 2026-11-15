@@ -1,0 +1,267 @@
+% Statement-only formalization of NTP4VC corpus artifact
+% pearl/tortoise_and_hare_TortoiseAndHareAlgorithm_tortoise_and_hareqtvc:
+% the Floyd tortoise-and-hare cycle-detection verification condition over an
+% integer orbit, including both loop invariants and the final cycle result.
+% This file contains no proof.
+
+tortoise_and_hare_TortoiseAndHareAlgorithm_tortoise_and_hareqtvc: THEORY
+BEGIN
+
+  orbit_specification(
+      f: [int -> int],
+      m, x0: int,
+      orbit: [int -> int]): bool =
+    0 < m
+      AND
+    (FORALL (value: int):
+      0 <= value AND value < m
+        IMPLIES 0 <= f(value) AND f(value) < m)
+      AND 0 <= x0
+      AND x0 < m
+      AND orbit(0) = x0
+      AND
+    (FORALL (index: int):
+      0 <= index
+        IMPLIES orbit(index + 1) = f(orbit(index)))
+
+  distinct_before(orbit: [int -> int], bound: int): bool =
+    FORALL (i, j: int):
+      0 <= i AND i < j AND j < bound
+        IMPLIES orbit(i) /= orbit(j)
+
+  first_loop_history(orbit: [int -> int], n: int): bool =
+    FORALL (i: int):
+      1 <= i AND i < n
+        IMPLIES orbit(i) /= orbit(2 * i)
+
+  first_loop_invariant(
+      orbit: [int -> int],
+      mu, cycle_len, n: int): bool =
+    (1 <= n AND n <= mu + cycle_len)
+      AND first_loop_history(orbit, n)
+
+  first_loop_continue(
+      f: [int -> int],
+      orbit: [int -> int],
+      mu, cycle_len, n: int): bool =
+    NOT (mu + cycle_len < n + 1)
+      AND
+    (NOT (mu + cycle_len < n + 1)
+      IMPLIES
+        (0 <= mu + cycle_len - n
+          AND
+         mu + cycle_len - (n + 1)
+           < mu + cycle_len - n)
+          AND
+        (1 <= n + 1
+          AND n + 1 <= mu + cycle_len)
+          AND f(orbit(n)) = orbit(n + 1)
+          AND f(f(orbit(2 * n))) = orbit(2 * (n + 1))
+          AND first_loop_history(orbit, n + 1))
+
+  second_loop_initial(
+      orbit: [int -> int],
+      x0, mu, n: int): bool =
+    ((0 <= 0 AND 0 <= mu)
+      AND (x0 = orbit(0) AND orbit(n) = orbit(n + 0))
+      AND
+        (FORALL (j: int):
+          0 <= j AND j < 0
+            IMPLIES orbit(j) /= orbit(n + j))
+      AND
+        (FORALL (j: int):
+          0 < j AND j < 0
+            IMPLIES orbit(n + j) /= orbit(n)))
+
+  second_loop_history(
+      orbit: [int -> int],
+      n, i: int): bool =
+    FORALL (j: int):
+      0 <= j AND j < i
+        IMPLIES orbit(j) /= orbit(n + j)
+
+  pending_cycle_history(
+      orbit: [int -> int],
+      n, i: int): bool =
+    FORALL (j: int):
+      0 < j AND j < i
+        IMPLIES orbit(n + j) /= orbit(n)
+
+  cycle_state_condition(
+      orbit: [int -> int],
+      cycle_len, n, cycle_state, i: int): bool =
+    IF cycle_state = 0 THEN
+      pending_cycle_history(orbit, n, i)
+    ELSE
+      cycle_state = cycle_len
+    ENDIF
+
+  second_loop_invariant(
+      orbit: [int -> int],
+      mu, cycle_len, n, cycle_state, i: int): bool =
+    (0 <= i AND i <= mu)
+      AND second_loop_history(orbit, n, i)
+      AND
+        cycle_state_condition(
+          orbit, cycle_len, n, cycle_state, i)
+
+  advanced_second_loop_state(
+      f: [int -> int],
+      orbit: [int -> int],
+      mu, n, i: int,
+      final_condition: bool): bool =
+    (0 <= mu - i
+      AND mu - (i + 1) < mu - i)
+      AND
+    (0 <= i + 1 AND i + 1 <= mu)
+      AND
+    (f(orbit(i)) = orbit(i + 1)
+      AND
+     f(orbit(n + i)) = orbit(n + (i + 1)))
+      AND second_loop_history(orbit, n, i + 1)
+      AND final_condition
+
+  flag_binding(
+      orbit: [int -> int],
+      n, cycle_state, i: int,
+      flag: bool): bool =
+    IF cycle_state = 0 THEN
+      flag =
+        (IF 0 < i THEN
+           IF orbit(n + i) = orbit(n) THEN
+             TRUE
+           ELSE
+             FALSE
+           ENDIF
+         ELSE
+           FALSE
+         ENDIF)
+    ELSE
+      flag = FALSE
+    ENDIF
+
+  second_loop_continue(
+      f: [int -> int],
+      orbit: [int -> int],
+      mu, cycle_len, n, cycle_state, i: int): bool =
+    FORALL (flag: bool):
+      flag_binding(orbit, n, cycle_state, i, flag)
+        IMPLIES
+          IF flag = TRUE THEN
+            advanced_second_loop_state(
+              f,
+              orbit,
+              mu,
+              n,
+              i,
+              IF i = 0 THEN
+                pending_cycle_history(orbit, n, i + 1)
+              ELSE
+                i = cycle_len
+              ENDIF)
+          ELSE
+            advanced_second_loop_state(
+              f,
+              orbit,
+              mu,
+              n,
+              i,
+              IF cycle_state = 0 THEN
+                pending_cycle_history(orbit, n, i + 1)
+              ELSE
+                cycle_state = cycle_len
+              ENDIF)
+          ENDIF
+
+  cycle_result(
+      orbit: [int -> int],
+      m, i, cycle_length: int): bool =
+    ((0 <= i AND i < m)
+      AND
+     (1 <= cycle_length AND cycle_length <= m)
+      AND i + cycle_length <= m
+      AND orbit(i + cycle_length) = orbit(i))
+      AND distinct_before(orbit, i + cycle_length)
+
+  second_loop_step(
+      f: [int -> int],
+      orbit: [int -> int],
+      m, mu, cycle_len, n, cycle_state, i: int): bool =
+    IF orbit(i) /= orbit(n + i) THEN
+      second_loop_continue(
+        f, orbit, mu, cycle_len, n, cycle_state, i)
+    ELSE
+      FORALL (cycle_length: int):
+        (IF cycle_state = 0 THEN
+           cycle_length = n
+         ELSE
+           cycle_length = cycle_state
+         ENDIF)
+          IMPLIES cycle_result(orbit, m, i, cycle_length)
+    ENDIF
+
+  second_loop_package(
+      f: [int -> int],
+      orbit: [int -> int],
+      m, x0, mu, cycle_len, n: int): bool =
+    second_loop_initial(orbit, x0, mu, n)
+      AND
+    (FORALL (cycle_state, i: int):
+      second_loop_invariant(
+        orbit, mu, cycle_len, n, cycle_state, i)
+        IMPLIES
+          second_loop_step(
+            f,
+            orbit,
+            m,
+            mu,
+            cycle_len,
+            n,
+            cycle_state,
+            i))
+
+  first_loop_step(
+      f: [int -> int],
+      orbit: [int -> int],
+      m, x0, mu, cycle_len, n: int): bool =
+    IF orbit(n) /= orbit(2 * n) THEN
+      first_loop_continue(f, orbit, mu, cycle_len, n)
+    ELSE
+      second_loop_package(
+        f, orbit, m, x0, mu, cycle_len, n)
+    ENDIF
+
+  tortoise_and_hare_conclusion(
+      f: [int -> int],
+      orbit: [int -> int],
+      m, x0, mu, cycle_len: int): bool =
+    1 <= 1
+      AND 1 <= mu + cycle_len
+      AND f(x0) = orbit(1)
+      AND f(f(x0)) = orbit(2 * 1)
+      AND first_loop_history(orbit, 1)
+      AND
+    (FORALL (n: int):
+      first_loop_invariant(orbit, mu, cycle_len, n)
+        IMPLIES
+          first_loop_step(
+            f, orbit, m, x0, mu, cycle_len, n))
+
+  tortoise_and_hare_vc: bool =
+    FORALL
+        (f: [int -> int]),
+        (orbit: [int -> int]),
+        (m, x0, mu, cycle_len: int):
+      (orbit_specification(f, m, x0, orbit)
+        AND 0 <= mu
+        AND mu < m
+        AND 1 <= cycle_len
+        AND cycle_len <= m
+        AND mu + cycle_len <= m
+        AND orbit(mu + cycle_len) = orbit(mu)
+        AND distinct_before(orbit, mu + cycle_len))
+      IMPLIES
+        tortoise_and_hare_conclusion(
+          f, orbit, m, x0, mu, cycle_len)
+
+END tortoise_and_hare_TortoiseAndHareAlgorithm_tortoise_and_hareqtvc

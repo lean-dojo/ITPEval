@@ -1,0 +1,191 @@
+% Statement-only formalization of the Thousand Theorems artifact Q220680,
+% "Banach fixed-point theorem": a contraction on a complete extended metric space has a
+% fixed point approached by its iterates with the standard geometric error bound.
+% This file contains no proof.
+
+banach_fixed_point_theorem_Q220680[A: TYPE]: THEORY
+BEGIN
+  ennreal: TYPE =
+    [# infinite_flag: bool, finite_part: real #]
+
+  extended_distance: TYPE = [A, A -> ennreal]
+  self_map: TYPE = [A -> A]
+  point_sequence: TYPE = [nat -> A]
+
+  zero_ennreal: ennreal =
+    (# infinite_flag := FALSE, finite_part := 0 #)
+
+  infinite_ennreal: ennreal =
+    (# infinite_flag := TRUE, finite_part := 0 #)
+
+  finite_ennreal(value: real): ennreal =
+    (# infinite_flag := FALSE, finite_part := value #)
+
+  canonical_ennreal(value: ennreal): bool =
+    IF infinite_flag(value) THEN
+      finite_part(value) = 0
+    ELSE
+      finite_part(value) >= 0
+    ENDIF
+
+  ennreal_is_zero(value: ennreal): bool =
+    canonical_ennreal(value)
+      AND NOT infinite_flag(value)
+      AND finite_part(value) = 0
+
+  finite_distance(value: ennreal): bool =
+    canonical_ennreal(value)
+      AND NOT infinite_flag(value)
+
+  ennreal_le(left, right: ennreal): bool =
+    canonical_ennreal(left)
+      AND canonical_ennreal(right)
+      AND IF infinite_flag(right) THEN
+        TRUE
+      ELSIF infinite_flag(left) THEN
+        FALSE
+      ELSE
+        finite_part(left) <= finite_part(right)
+      ENDIF
+
+  ennreal_add(left, right: ennreal): ennreal =
+    IF infinite_flag(left) OR infinite_flag(right) THEN
+      infinite_ennreal
+    ELSE
+      finite_ennreal(
+        finite_part(left) + finite_part(right))
+    ENDIF
+
+  edist_lt_real(value: ennreal, bound: real): bool =
+    finite_distance(value)
+      AND finite_part(value) < bound
+
+  edist_le_real(value: ennreal, bound: real): bool =
+    finite_distance(value)
+      AND finite_part(value) <= bound
+
+  edist_le_scaled(
+      output_distance: ennreal,
+      scale: real,
+      input_distance: ennreal): bool =
+    canonical_ennreal(output_distance)
+      AND canonical_ennreal(input_distance)
+      AND IF infinite_flag(input_distance) THEN
+        IF scale = 0 THEN
+          ennreal_is_zero(output_distance)
+        ELSE
+          TRUE
+        ENDIF
+      ELSE
+        NOT infinite_flag(output_distance)
+          AND finite_part(output_distance)
+            <= scale * finite_part(input_distance)
+      ENDIF
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  emetric_space_laws(edist: extended_distance): bool =
+    (FORALL (x, y: A):
+      canonical_ennreal(edist(x, y)))
+      AND (FORALL (x: A):
+        ennreal_is_zero(edist(x, x)))
+      AND (FORALL (x, y: A):
+        edist(x, y) = edist(y, x))
+      AND (FORALL (x, y, z: A):
+        ennreal_le(
+          edist(x, z),
+          ennreal_add(edist(x, y), edist(y, z))))
+      AND (FORALL (x, y: A):
+        ennreal_is_zero(edist(x, y)) IFF x = y)
+
+  converges(
+      values: point_sequence,
+      limit_value: A,
+      edist: extended_distance): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            edist_lt_real(
+              edist(values(index), limit_value),
+              epsilon_value)
+
+  cauchy(
+      values: point_sequence,
+      edist: extended_distance): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (left_index, right_index: nat):
+          cutoff <= left_index AND cutoff <= right_index
+          IMPLIES
+            edist_lt_real(
+              edist(
+                values(left_index),
+                values(right_index)),
+              epsilon_value)
+
+  complete_space(edist: extended_distance): bool =
+    FORALL (values: point_sequence):
+      cauchy(values, edist) IMPLIES
+        EXISTS (limit_value: A):
+          converges(values, limit_value, edist)
+
+  contracting_with(
+      scale: real,
+      f: self_map,
+      edist: extended_distance): bool =
+    scale >= 0
+      AND scale < 1
+      AND FORALL (x, y: A):
+        edist_le_scaled(
+          edist(f(x), f(y)),
+          scale,
+          edist(x, y))
+
+  iterate(f: self_map, x: A, count: nat): RECURSIVE A =
+    IF count = 0 THEN
+      x
+    ELSE
+      f(iterate(f, x, count - 1))
+    ENDIF
+  MEASURE count
+
+  iterates(f: self_map, x: A): point_sequence =
+    LAMBDA (count: nat):
+      iterate(f, x, count)
+
+  geometric_bound(
+      initial_distance: ennreal,
+      scale: real,
+      count: nat): real =
+    safe_div(
+      finite_part(initial_distance) * scale ^ count,
+      1 - scale)
+
+  banach_fixed_point_theorem: bool =
+    FORALL
+        (edist: extended_distance),
+        (scale: real),
+        (f: self_map),
+        (x: A):
+      (emetric_space_laws(edist)
+        AND complete_space(edist)
+        AND contracting_with(scale, f, edist)
+        AND finite_distance(edist(x, f(x))))
+      IMPLIES
+        EXISTS (y: A):
+          f(y) = y
+            AND converges(iterates(f, x), y, edist)
+            AND FORALL (count: nat):
+              edist_le_real(
+                edist(iterate(f, x, count), y),
+                geometric_bound(
+                  edist(x, f(x)),
+                  scale,
+                  count))
+END banach_fixed_point_theorem_Q220680

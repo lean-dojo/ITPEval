@@ -1,0 +1,152 @@
+% Statement-only formalization of the Thousand Theorems corpus artifact Q752375,
+% "Extreme value theorem": a continuous function from a nonempty compact set
+% into a linearly ordered topological space with closed lower rays attains its
+% minimum on that set. This file contains no proof.
+
+Q752375_extreme_value_theorem[
+  alpha: TYPE,
+  beta: TYPE,
+  le_alpha: [alpha, alpha -> bool],
+  open_alpha: [[alpha -> bool] -> bool],
+  open_beta: [[beta -> bool] -> bool]
+]: THEORY
+BEGIN
+  alpha_set: TYPE = [alpha -> bool]
+  beta_set: TYPE = [beta -> bool]
+  alpha_set_family: TYPE = [alpha_set -> bool]
+  beta_set_family: TYPE = [beta_set -> bool]
+  beta_set_sequence: TYPE = [nat -> beta_set]
+  beta_alpha_function: TYPE = [beta -> alpha]
+
+  empty_alpha_set: alpha_set =
+    LAMBDA (x: alpha): FALSE
+
+  whole_alpha_set: alpha_set =
+    LAMBDA (x: alpha): TRUE
+
+  alpha_intersection(A, B: alpha_set): alpha_set =
+    LAMBDA (x: alpha): A(x) AND B(x)
+
+  alpha_union(F: alpha_set_family): alpha_set =
+    LAMBDA (x: alpha):
+      EXISTS (U: alpha_set):
+        F(U) AND U(x)
+
+  empty_beta_set: beta_set =
+    LAMBDA (x: beta): FALSE
+
+  whole_beta_set: beta_set =
+    LAMBDA (x: beta): TRUE
+
+  beta_intersection(A, B: beta_set): beta_set =
+    LAMBDA (x: beta): A(x) AND B(x)
+
+  beta_union(F: beta_set_family): beta_set =
+    LAMBDA (x: beta):
+      EXISTS (U: beta_set):
+        F(U) AND U(x)
+
+  alpha_topology_laws: bool =
+    open_alpha(empty_alpha_set)
+      AND open_alpha(whole_alpha_set)
+      AND (FORALL (A, B: alpha_set):
+        open_alpha(A) AND open_alpha(B)
+          IMPLIES open_alpha(alpha_intersection(A, B)))
+      AND (FORALL (F: alpha_set_family):
+        (FORALL (U: alpha_set):
+          F(U) IMPLIES open_alpha(U))
+          IMPLIES open_alpha(alpha_union(F)))
+
+  beta_topology_laws: bool =
+    open_beta(empty_beta_set)
+      AND open_beta(whole_beta_set)
+      AND (FORALL (A, B: beta_set):
+        open_beta(A) AND open_beta(B)
+          IMPLIES open_beta(beta_intersection(A, B)))
+      AND (FORALL (F: beta_set_family):
+        (FORALL (U: beta_set):
+          F(U) IMPLIES open_beta(U))
+          IMPLIES open_beta(beta_union(F)))
+
+  alpha_linear_order_laws: bool =
+    (FORALL (x: alpha):
+      le_alpha(x, x))
+      AND (FORALL (x, y, z: alpha):
+        le_alpha(x, y) AND le_alpha(y, z)
+          IMPLIES le_alpha(x, z))
+      AND (FORALL (x, y: alpha):
+        le_alpha(x, y) AND le_alpha(y, x)
+          IMPLIES x = y)
+      AND (FORALL (x, y: alpha):
+        le_alpha(x, y) OR le_alpha(y, x))
+
+  closed_lower_rays: bool =
+    FORALL (a: alpha):
+      open_alpha(
+        LAMBDA (x: alpha):
+          NOT le_alpha(x, a))
+
+  open_cover(C: beta_set_family, S: beta_set): bool =
+    (FORALL (U: beta_set):
+      C(U) IMPLIES open_beta(U))
+      AND (FORALL (x: beta):
+        S(x) IMPLIES
+          EXISTS (U: beta_set):
+            C(U) AND U(x))
+
+  finite_subcover(
+      C: beta_set_family,
+      S: beta_set): bool =
+    EXISTS
+        (count: nat),
+        (chosen: beta_set_sequence):
+      (FORALL (index: nat):
+        index < count IMPLIES C(chosen(index)))
+        AND (FORALL (x: beta):
+          S(x) IMPLIES
+            EXISTS (index: nat):
+              index < count AND chosen(index)(x))
+
+  compact_set(S: beta_set): bool =
+    FORALL (C: beta_set_family):
+      open_cover(C, S) IMPLIES finite_subcover(C, S)
+
+  nonempty_set(S: beta_set): bool =
+    EXISTS (x: beta):
+      S(x)
+
+  continuous_on(
+      f: beta_alpha_function,
+      S: beta_set): bool =
+    FORALL (V: alpha_set):
+      open_alpha(V) IMPLIES
+        EXISTS (U: beta_set):
+          open_beta(U)
+            AND FORALL (x: beta):
+              S(x) IMPLIES (U(x) IFF V(f(x)))
+
+  is_min_on(
+      f: beta_alpha_function,
+      S: beta_set,
+      x: beta): bool =
+    FORALL (y: beta):
+      S(y) IMPLIES le_alpha(f(x), f(y))
+
+  structure_laws: bool =
+    alpha_linear_order_laws
+      AND alpha_topology_laws
+      AND beta_topology_laws
+      AND closed_lower_rays
+
+  exists_isMinOn_Q752375: bool =
+    structure_laws IMPLIES
+      FORALL
+          (S: beta_set),
+          (f: beta_alpha_function):
+        (compact_set(S)
+          AND nonempty_set(S)
+          AND continuous_on(f, S))
+        IMPLIES
+          EXISTS (x: beta):
+            S(x) AND is_min_on(f, S, x)
+END Q752375_extreme_value_theorem

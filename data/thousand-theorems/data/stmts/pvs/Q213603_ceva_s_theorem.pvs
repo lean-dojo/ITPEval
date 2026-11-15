@@ -1,0 +1,142 @@
+% Statement-only formalization of the Thousand Theorems corpus artifact Q213603
+% (thousand-theorems__pvs__Q213603), "Ceva's theorem": in a triangle over an
+% arbitrary normed field, three side points whose cevians share a point have
+% cyclic product of the corresponding distance ratios equal to one. This file
+% contains no proof.
+
+Q213603_ceva_s_theorem[
+  K: TYPE+,
+  V: TYPE+,
+  P: TYPE+,
+  kzero: K,
+  kone: K,
+  kadd: [K, K -> K],
+  kmul: [K, K -> K],
+  kneg: [K -> K],
+  kinv: [K -> K],
+  knorm: [K -> real],
+  vzero: V,
+  vadd: [V, V -> V],
+  vneg: [V -> V],
+  smul: [K, V -> V],
+  vnorm: [V -> real],
+  point_vadd: [V, P -> P],
+  vsub: [P, P -> V]
+]: THEORY
+BEGIN
+  normed_field_laws: bool =
+    kzero /= kone
+      AND (FORALL (a, b, c: K):
+        kadd(kadd(a, b), c) = kadd(a, kadd(b, c)))
+      AND (FORALL (a, b: K):
+        kadd(a, b) = kadd(b, a))
+      AND (FORALL (a: K):
+        kadd(a, kzero) = a)
+      AND (FORALL (a: K):
+        kadd(a, kneg(a)) = kzero)
+      AND (FORALL (a, b, c: K):
+        kmul(kmul(a, b), c) = kmul(a, kmul(b, c)))
+      AND (FORALL (a, b: K):
+        kmul(a, b) = kmul(b, a))
+      AND (FORALL (a: K):
+        kmul(a, kone) = a)
+      AND (FORALL (a, b, c: K):
+        kmul(a, kadd(b, c)) =
+          kadd(kmul(a, b), kmul(a, c)))
+      AND kinv(kzero) = kzero
+      AND (FORALL (a: K):
+        a /= kzero IMPLIES kmul(a, kinv(a)) = kone)
+      AND (FORALL (a: K):
+        0 <= knorm(a))
+      AND (FORALL (a: K):
+        knorm(a) = 0 IFF a = kzero)
+      AND (FORALL (a, b: K):
+        knorm(kadd(a, b)) <= knorm(a) + knorm(b))
+      AND (FORALL (a, b: K):
+        knorm(kmul(a, b)) = knorm(a) * knorm(b))
+
+  normed_vector_space_laws: bool =
+    (FORALL (u, v, w: V):
+      vadd(vadd(u, v), w) = vadd(u, vadd(v, w)))
+      AND (FORALL (u, v: V):
+        vadd(u, v) = vadd(v, u))
+      AND (FORALL (u: V):
+        vadd(u, vzero) = u)
+      AND (FORALL (u: V):
+        vadd(u, vneg(u)) = vzero)
+      AND (FORALL (a: K), (u, v: V):
+        smul(a, vadd(u, v)) =
+          vadd(smul(a, u), smul(a, v)))
+      AND (FORALL (a, b: K), (u: V):
+        smul(kadd(a, b), u) =
+          vadd(smul(a, u), smul(b, u)))
+      AND (FORALL (a, b: K), (u: V):
+        smul(kmul(a, b), u) = smul(a, smul(b, u)))
+      AND (FORALL (u: V):
+        smul(kone, u) = u)
+      AND (FORALL (u: V):
+        smul(kzero, u) = vzero)
+      AND (FORALL (a: K):
+        smul(a, vzero) = vzero)
+      AND (FORALL (u: V):
+        vneg(u) = smul(kneg(kone), u))
+      AND (FORALL (u: V):
+        0 <= vnorm(u))
+      AND (FORALL (u: V):
+        vnorm(u) = 0 IFF u = vzero)
+      AND (FORALL (u, v: V):
+        vnorm(vadd(u, v)) <= vnorm(u) + vnorm(v))
+      AND (FORALL (a: K), (u: V):
+        vnorm(smul(a, u)) = knorm(a) * vnorm(u))
+
+  metric_affine_torsor_laws: bool =
+    (FORALL (p: P):
+      point_vadd(vzero, p) = p)
+      AND (FORALL (u, v: V), (p: P):
+        point_vadd(vadd(u, v), p) =
+          point_vadd(u, point_vadd(v, p)))
+      AND (FORALL (p, q: P):
+        point_vadd(vsub(p, q), q) = p)
+      AND (FORALL (u: V), (p: P):
+        vsub(point_vadd(u, p), p) = u)
+      AND (FORALL (p, q: P):
+        vnorm(vsub(p, q)) = 0 IFF p = q)
+
+  source_context: bool =
+    normed_field_laws
+      AND normed_vector_space_laws
+      AND metric_affine_torsor_laws
+
+  distance(p, q: P): real =
+    vnorm(vsub(p, q))
+
+  on_line(x, a, b: P): bool =
+    EXISTS (r: K):
+      x = point_vadd(smul(r, vsub(b, a)), a)
+
+  triangle_points_affinely_independent(t0, t1, t2: P): bool =
+    FORALL (a, b: K):
+      vadd(
+        smul(a, vsub(t1, t0)),
+        smul(b, vsub(t2, t0))) = vzero
+      IMPLIES a = kzero AND b = kzero
+
+  ceva_statement: bool =
+    source_context IMPLIES
+      (FORALL (t0, t1, t2, p0, p1, p2, common: P):
+        (triangle_points_affinely_independent(t0, t1, t2)
+          AND p0 /= t2
+          AND p1 /= t0
+          AND p2 /= t1
+          AND on_line(p0, t1, t2)
+          AND on_line(p1, t2, t0)
+          AND on_line(p2, t0, t1)
+          AND on_line(common, t0, p0)
+          AND on_line(common, t1, p1)
+          AND on_line(common, t2, p2))
+        IMPLIES
+          (distance(t1, p0) / distance(p0, t2))
+            * (distance(t2, p1) / distance(p1, t0))
+            * (distance(t0, p2) / distance(p2, t1))
+          = 1)
+END Q213603_ceva_s_theorem

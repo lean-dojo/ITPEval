@@ -1,0 +1,398 @@
+:: Statement-only formalization of the NTP4VC corpus artifact
+:: pearl/linear_probing_LinearProbing_resizeqtvc: the linear-probing resize
+:: verification condition rehashes every occupied bucket into a table of
+:: twice the length while preserving the abstract view, locations, probe
+:: invariants, and table-state invariant. This file contains no proof.
+
+environ
+  vocabularies TARSKI, XBOOLE_0, SUBSET_1, RELAT_1, FUNCT_1,
+    FUNCT_2, FUNCT_4, FUNCT_7, FUNCOP_1, PARTFUN1, ZFMISC_1,
+    NUMBERS, XREAL_0, CARD_1, XXREAL_0, ARYTM_1, ARYTM_3,
+    REAL_1, INT_1, NAT_1, VALUED_0, VALUED_1, ORDINAL1,
+    ORDINAL4, FINSEQ_1, FINSEQ_2, FINSET_1, MARGREL1,
+    XBOOLEAN, MCART_1;
+  notations TARSKI, XBOOLE_0, SUBSET_1, ZFMISC_1, XTUPLE_0,
+    MCART_1, RELAT_1, FUNCT_1, RELSET_1, PARTFUN1, FUNCT_2,
+    FUNCT_4, FUNCOP_1, FUNCT_7, ORDINAL1, CARD_1, NUMBERS,
+    XCMPLX_0, XREAL_0, REAL_1, INT_1, NAT_1, XXREAL_0,
+    FINSEQ_1, FINSEQ_2, FINSET_1, MARGREL1, XBOOLEAN;
+  constructors FUNCT_1, RELSET_1, PARTFUN1, FUNCT_2, FUNCT_4,
+    FUNCT_7, FUNCOP_1, CARD_1, REAL_1, INT_1, XXREAL_0,
+    ZFMISC_1, MCART_1, NAT_1, FINSEQ_1, FINSEQ_2, FINSET_1,
+    MARGREL1;
+  registrations XBOOLE_0, SUBSET_1, RELAT_1, FUNCT_1, RELSET_1,
+    FUNCT_2, FUNCT_4, FUNCT_7, FUNCOP_1, NUMBERS, CARD_1,
+    XXREAL_0, MEMBERED, VALUED_0, VALUED_1, XCMPLX_0,
+    XREAL_0, ORDINAL1, INT_1, NAT_1, FINSEQ_1, FINSEQ_2,
+    FINSET_1, MARGREL1, XBOOLEAN;
+  requirements REAL, NUMERALS, SUBSET, BOOLE, ARITHM;
+
+begin
+
+::$P-
+theorem
+  for K,KM,T being non empty set,
+      keym1 being Function of K,KM,
+      Eq,Neq being Relation of K,K,
+      hash being Function of K,INT,
+      dummy,defaultKey being Element of K,
+      bucket being Function of [:K,INT:],INT,
+      Between being Subset of [:INT,[:INT,INT:]:],
+      nthElem being Function of [:K*,INT:],K,
+      Numof being Function of [:[:K*,INT:],INT:],INT,
+      Valid being Subset of
+        [:K*,[:Funcs(KM,BOOLEAN),Funcs(KM,INT):]:],
+      size being Function of T,INT,
+      data being Function of T,K*,
+      view being Function of T,Funcs(KM,BOOLEAN),
+      loc being Function of T,Funcs(KM,INT),
+      setList being Function of [:[:K*,INT:],K:],K*,
+      zeroLoc being Function of KM,INT,
+      h being Element of T
+  st
+    (for a,b being Element of K holds
+       ([a,b] in Eq iff keym1.a = keym1.b)) &
+    (for a,b being Element of K holds
+       ([a,b] in Neq iff not [a,b] in Eq)) &
+    (for a,b being Element of K holds
+       ([a,b] in Neq iff keym1.a <> keym1.b)) &
+    (for k being Element of K holds 0 <= hash.k) &
+    (for a,b being Element of K st [a,b] in Eq
+       holds hash.a = hash.b) &
+    (for n being Integer, k being Element of K st 0 < n
+       holds
+         ex hk,b being Integer st
+           hk = hash.k & b = bucket.[k,n] &
+           b = hk mod n & 0 <= b & b < n) &
+    (for l,j,r being Integer holds
+       ([l,[j,r]] in Between iff
+         (l <= j & j < r) or
+         (r < l & l <= j) or
+         (j < r & r < l))) &
+    (for a being FinSequence of K, i being Integer holds
+       (len a = 0 implies nthElem.[a,i] = defaultKey) &
+       (i < 0 implies nthElem.[a,i] = defaultKey) &
+       (0 <= i & i < len a implies nthElem.[a,i] = a.(i+1)) &
+       (len a <= i implies nthElem.[a,i] = defaultKey)) &
+    (for a being FinSequence of K, l,u being Integer holds
+       (u <= l implies Numof.[[a,l],u] = 0) &
+       (l < u & [nthElem.[a,u-1],dummy] in Eq implies
+          ex c,d being Integer st
+            c = Numof.[[a,l],u] &
+            d = Numof.[[a,l],u-1] & c = 1 + d) &
+       (l < u & not [nthElem.[a,u-1],dummy] in Eq implies
+          Numof.[[a,l],u] = Numof.[[a,l],u-1])) &
+    (for a being FinSequence of K,
+         v being Function of KM,BOOLEAN,
+         p being Function of KM,INT
+     holds
+       ([a,[v,p]] in Valid iff
+         not v.(keym1.dummy) = TRUE &
+         (for i being Integer st 0 <= i & i < len a
+          holds
+            [nthElem.[a,i],dummy] in Neq implies
+              v.(keym1.(nthElem.[a,i])) = TRUE &
+              p.(keym1.(nthElem.[a,i])) = i) &
+         (for x being Element of K st v.(keym1.x) = TRUE
+          holds
+            0 <= p.(keym1.x) & p.(keym1.x) < len a &
+            [nthElem.[a,p.(keym1.x)],x] in Eq &
+            (for j being Integer st
+               0 <= j & j < len a &
+               [bucket.[x,len a],[j,p.(keym1.x)]] in Between
+             holds
+               [nthElem.[a,j],x] in Neq &
+               [nthElem.[a,j],dummy] in Neq)))) &
+    (for self being Element of T holds
+       ex s,n,c being Integer st
+         s = size.self & n = len (data.self) &
+         c = Numof.[[data.self,0],len (data.self)] &
+         0 <= s & s < n & s + c = n &
+         [data.self,[view.self,loc.self]] in Valid) &
+    (for a,b being Element of T st
+       size.a = size.b & data.a = data.b &
+       view.a = view.b & loc.a = loc.b
+     holds a = b) &
+    (for a being FinSequence of K, i being Integer,
+         x being Element of K st 0 <= i & i < len a
+     holds
+       len (setList.[[a,i],x]) = len a &
+       (for q being Integer st 0 <= q & q < len a
+        holds
+          (q = i implies nthElem.[setList.[[a,i],x],q] = x) &
+          (q <> i implies
+             nthElem.[setList.[[a,i],x],q] =
+               nthElem.[a,q]))) &
+    (for z being Element of KM holds zeroLoc.z = 0)
+  holds
+    for dataH being FinSequence of K,
+        viewH being Function of KM,BOOLEAN,
+        locH being Function of KM,INT,
+        s,n,n2,o2 being Integer st
+      dataH = data.h & viewH = view.h & locH = loc.h &
+      s = size.h & n = len dataH & n2 = 2 * n & o2 = n - 1
+    holds
+      0 <= n2 &
+      (for a being FinSequence of K st
+         (for i being Integer st 0 <= i & i < n2
+          holds nthElem.[a,i] = dummy) &
+         len a = n2
+       holds
+         ((0 <= o2 + 1 implies
+             for c0 being Integer st
+               c0 = Numof.[[dataH,0],0]
+             holds
+             (Numof.[[a,0],n2] = c0 + n2 - 0 &
+              (for j being Integer st 0 <= j & j < n2
+               holds
+                 [nthElem.[a,j],dummy] in Neq implies
+                   viewH.(keym1.(nthElem.[a,j])) = TRUE &
+                   zeroLoc.(keym1.(nthElem.[a,j])) = j) &
+              (for x being Element of K st
+                 viewH.(keym1.x) = TRUE
+               holds
+                 (locH.(keym1.x) < 0 implies
+                    0 <= zeroLoc.(keym1.x) &
+                    zeroLoc.(keym1.x) < n2 &
+                    [nthElem.[a,zeroLoc.(keym1.x)],x] in Eq &
+                    (for k being Integer st
+                       0 <= k & k < n2 &
+                       [bucket.[x,n2],
+                         [k,zeroLoc.(keym1.x)]] in Between
+                     holds
+                       [nthElem.[a,k],x] in Neq &
+                       [nthElem.[a,k],dummy] in Neq)) &
+                 (not locH.(keym1.x) < 0 implies
+                    for j2 being Integer st 0 <= j2 & j2 < n2
+                    holds [nthElem.[a,j2],x] in Neq)) &
+              (for l being Function of KM,INT,
+                   a1 being FinSequence of K st len a1 = len a
+               holds
+                 (for i,ci being Integer st
+                    ci = Numof.[[dataH,0],i] &
+                    0 <= i & i <= o2 &
+                    Numof.[[a1,0],n2] =
+                      ci + n2 - i &
+                    (for j being Integer st 0 <= j & j < n2
+                     holds
+                       [nthElem.[a1,j],dummy] in Neq implies
+                         viewH.(keym1.(nthElem.[a1,j])) =
+                           TRUE &
+                         l.(keym1.(nthElem.[a1,j])) = j) &
+                    (for x being Element of K st
+                       viewH.(keym1.x) = TRUE
+                     holds
+                       (locH.(keym1.x) < i implies
+                          0 <= l.(keym1.x) &
+                          l.(keym1.x) < n2 &
+                          [nthElem.[a1,l.(keym1.x)],x] in Eq &
+                          (for k being Integer st
+                             0 <= k & k < n2 &
+                             [bucket.[x,n2],
+                               [k,l.(keym1.x)]] in Between
+                           holds
+                             [nthElem.[a1,k],x] in Neq &
+                             [nthElem.[a1,k],dummy] in Neq)) &
+                       (not locH.(keym1.x) < i implies
+                          for j2 being Integer st
+                            0 <= j2 & j2 < n2
+                          holds [nthElem.[a1,j2],x] in Neq))
+                  holds
+                    0 <= i & i < len dataH &
+                    (for x being Element of K st
+                       x = nthElem.[dataH,i]
+                     holds
+                       (([x,dummy] in Neq iff
+                          keym1.x <> keym1.dummy)
+                        implies
+                          (([x,dummy] in Neq implies
+                              for c1 being Integer st
+                                c1 = Numof.[[a1,0],len a1]
+                              holds
+                              [x,dummy] in Neq &
+                              0 < len a1 &
+                              0 < c1 &
+                              (for j being Integer st
+                                 0 <= j & j < len a1 &
+                                 ([nthElem.[a1,j],dummy] in Eq or
+                                  [nthElem.[a1,j],x] in Eq) &
+                                 (for j1 being Integer st
+                                    0 <= j1 & j1 < len a1 &
+                                    [bucket.[x,len a1],
+                                      [j1,j]] in Between
+                                  holds
+                                    [nthElem.[a1,j1],x] in Neq &
+                                    [nthElem.[a1,j1],dummy] in Neq)
+                               holds
+                                 0 <= j & j < len a1 &
+                                 (len (setList.[[a1,j],x]) =
+                                    len a1
+                                  implies
+                                   ((for q being Integer holds
+                                       (q = j implies
+                                          nthElem.[
+                                            setList.[[a1,j],x],q]
+                                            = x) &
+                                       (q <> j implies
+                                          nthElem.[
+                                            setList.[[a1,j],x],q]
+                                            = nthElem.[a1,q]))
+                                    implies
+                                      for lU being
+                                            Function of KM,INT,
+                                          ci1 being Integer st
+                                        lU = l+*(keym1.x,j) &
+                                        ci1 =
+                                          Numof.[[dataH,0],i+1]
+                                      holds
+                                      Numof.[[
+                                        setList.[[a1,j],x],0],n2]
+                                        = ci1 + n2 - (i+1) &
+                                      (for j1 being Integer st
+                                         0 <= j1 & j1 < n2
+                                       holds
+                                         [nthElem.[
+                                           setList.[[a1,j],x],j1],
+                                           dummy] in Neq
+                                         implies
+                                           viewH.(keym1.(
+                                             nthElem.[
+                                               setList.[[a1,j],x],
+                                               j1])) = TRUE &
+                                           lU.(
+                                             keym1.(nthElem.[
+                                               setList.[[a1,j],x],
+                                               j1])) = j1) &
+                                      (for x1 being Element of K st
+                                         viewH.(keym1.x1) = TRUE
+                                       holds
+                                         (locH.(keym1.x1) < i+1
+                                          implies
+                                            0 <= lU.(keym1.x1) &
+                                            lU.(keym1.x1) < n2 &
+                                            [nthElem.[
+                                              setList.[[a1,j],x],
+                                              lU.(keym1.x1)],x1] in Eq &
+                                            (for k being Integer st
+                                               0 <= k & k < n2 &
+                                               [bucket.[x1,n2],
+                                                 [k,lU.(keym1.x1)]]
+                                                  in Between
+                                             holds
+                                               [nthElem.[
+                                                 setList.[[a1,j],x],
+                                                 k],x1] in Neq &
+                                               [nthElem.[
+                                                 setList.[[a1,j],x],
+                                                 k],dummy] in Neq)) &
+                                         (not
+                                            locH.(keym1.x1) < i+1
+                                          implies
+                                            for j2 being Integer st
+                                              0 <= j2 & j2 < n2
+                                            holds
+                                              [nthElem.[
+                                                setList.[[a1,j],x],
+                                                j2],x1] in Neq)))))) &
+                            (not [x,dummy] in Neq implies
+                              for ci1 being Integer st
+                                ci1 = Numof.[[dataH,0],i+1]
+                              holds
+                              Numof.[[a1,0],n2] =
+                                ci1 + n2 - (i+1) &
+                              (for j being Integer st
+                                 0 <= j & j < n2
+                               holds
+                                 [nthElem.[a1,j],dummy] in Neq
+                                 implies
+                                   viewH.(keym1.(
+                                     nthElem.[a1,j])) = TRUE &
+                                   l.(keym1.(nthElem.[a1,j])) = j) &
+                              (for x1 being Element of K st
+                                 viewH.(keym1.x1) = TRUE
+                               holds
+                                 (locH.(keym1.x1) < i+1
+                                  implies
+                                    0 <= l.(keym1.x1) &
+                                    l.(keym1.x1) < n2 &
+                                    [nthElem.[a1,l.(keym1.x1)],x1]
+                                      in Eq &
+                                    (for k being Integer st
+                                       0 <= k & k < n2 &
+                                       [bucket.[x1,n2],
+                                         [k,l.(keym1.x1)]] in Between
+                                     holds
+                                       [nthElem.[a1,k],x1] in Neq &
+                                       [nthElem.[a1,k],dummy] in Neq)) &
+                                 (not
+                                    locH.(keym1.x1) < i+1
+                                  implies
+                                    for j2 being Integer st
+                                      0 <= j2 & j2 < n2
+                                    holds
+                                      [nthElem.[a1,j2],x1]
+                                        in Neq))))))) &
+                 (for cEnd being Integer st
+                    cEnd = Numof.[[dataH,0],o2+1]
+                  holds
+                 ((Numof.[[a1,0],n2] =
+                     cEnd + n2 - (o2+1) &
+                   (for j being Integer st 0 <= j & j < n2
+                    holds
+                      [nthElem.[a1,j],dummy] in Neq implies
+                        viewH.(keym1.(nthElem.[a1,j])) =
+                          TRUE &
+                        l.(keym1.(nthElem.[a1,j])) = j) &
+                   (for x being Element of K st
+                      viewH.(keym1.x) = TRUE
+                    holds
+                      (locH.(keym1.x) < o2+1 implies
+                         0 <= l.(keym1.x) &
+                         l.(keym1.x) < n2 &
+                         [nthElem.[a1,l.(keym1.x)],x] in Eq &
+                         (for k being Integer st
+                            0 <= k & k < n2 &
+                            [bucket.[x,n2],
+                              [k,l.(keym1.x)]] in Between
+                          holds
+                            [nthElem.[a1,k],x] in Neq &
+                            [nthElem.[a1,k],dummy] in Neq)) &
+                       (not locH.(keym1.x) < o2+1 implies
+                          for j2 being Integer st
+                            0 <= j2 & j2 < n2
+                          holds [nthElem.[a1,j2],x] in Neq)))
+                  implies
+                    for h1 being Element of T,
+                        cState being Integer st
+                      cState = Numof.[[a1,0],len a1]
+                    holds
+                      (0 <= s &
+                       s < len a1 &
+                       s + cState = len a1 &
+                       [a1,[viewH,l]] in Valid) &
+                      ((l = loc.h1 &
+                        viewH = view.h1 &
+                        a1 = data.h1 &
+                        s = size.h1)
+                       implies
+                         len (data.h1) =
+                           2 * len dataH))))) &
+          (o2 + 1 < 0 implies
+             for h1 being Element of T,
+                 cState being Integer st
+               cState = Numof.[[a,0],len a]
+             holds
+               (0 <= s &
+                s < len a &
+                s + cState = len a &
+                [a,[viewH,zeroLoc]] in Valid) &
+               ((zeroLoc = loc.h1 &
+                 viewH = view.h1 &
+                 a = data.h1 &
+                 s = size.h1)
+                implies
+                  len (data.h1) =
+                    2 * len dataH)))))
+proof
+end;
+::$P+

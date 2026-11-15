@@ -1,0 +1,113 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1978_b3:
+% the largest real roots of the recursively defined real polynomials form a
+% strictly increasing sequence tending to zero. This file contains no proof.
+
+putnam_1978_b3: THEORY
+BEGIN
+  coefficient_sequence: TYPE = [nat -> real]
+  polynomial_sequence: TYPE = [nat -> coefficient_sequence]
+  real_sequence: TYPE = [nat -> real]
+
+  finite_polynomial_support(
+      coefficients: coefficient_sequence): bool =
+    EXISTS (degree: nat):
+      FORALL (index: nat):
+        degree < index IMPLIES coefficients(index) = 0
+
+  polynomial_value(
+      coefficients: coefficient_sequence,
+      x: real,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        polynomial_value(coefficients, x, count - 1)
+          + coefficients(index) * x ^ index
+    ENDIF
+  MEASURE count
+
+  evaluates_to(
+      coefficients: coefficient_sequence,
+      x, value: real): bool =
+    EXISTS (degree: nat):
+      (FORALL (index: nat):
+        degree < index IMPLIES coefficients(index) = 0)
+      AND value =
+        polynomial_value(coefficients, x, degree + 1)
+
+  is_polynomial_sequence(P: polynomial_sequence): bool =
+    FORALL (n: nat):
+      1 <= n IMPLIES finite_polynomial_support(P(n))
+
+  has_initial_polynomials(P: polynomial_sequence): bool =
+    (FORALL (degree: nat):
+      P(1)(degree) =
+        (IF degree = 0 OR degree = 1 THEN 1 ELSE 0 ENDIF))
+    AND
+    (FORALL (degree: nat):
+      P(2)(degree) =
+        (IF degree = 0 THEN
+           1
+         ELSIF degree = 1 THEN
+           2
+         ELSE
+           0
+         ENDIF))
+
+  satisfies_recurrence(P: polynomial_sequence): bool =
+    (FORALL (n: nat):
+      1 <= n IMPLIES
+        FORALL (degree: nat):
+          P(2 * n + 1)(degree) =
+            P(2 * n)(degree)
+              + (IF degree = 0 THEN
+                   0
+                 ELSE
+                   ((n + 1) :: real)
+                     * P(2 * n - 1)(degree - 1)
+                 ENDIF))
+    AND
+    (FORALL (n: nat):
+      1 <= n IMPLIES
+        FORALL (degree: nat):
+          P(2 * n + 2)(degree) =
+            P(2 * n + 1)(degree)
+              + (IF degree = 0 THEN
+                   0
+                 ELSE
+                   ((n + 1) :: real)
+                     * P(2 * n)(degree - 1)
+                 ENDIF))
+
+  gives_largest_real_roots(
+      P: polynomial_sequence,
+      a: real_sequence): bool =
+    FORALL (n: nat):
+      1 <= n IMPLIES
+        (evaluates_to(P(n), a(n), 0)
+          AND FORALL (x: real):
+            evaluates_to(P(n), x, 0) IMPLIES x <= a(n))
+
+  strictly_increasing_from_one(a: real_sequence): bool =
+    FORALL (i, j: nat):
+      (1 <= i AND i < j) IMPLIES a(i) < a(j)
+
+  tends_to_zero(a: real_sequence): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (n: nat):
+          cutoff <= n IMPLIES abs(a(n)) < epsilon_value
+
+  putnam_1978_b3: bool =
+    FORALL
+        (P: polynomial_sequence),
+        (a: real_sequence):
+      (is_polynomial_sequence(P)
+        AND has_initial_polynomials(P)
+        AND satisfies_recurrence(P)
+        AND gives_largest_real_roots(P, a))
+      IMPLIES
+        (strictly_increasing_from_one(a)
+          AND tends_to_zero(a))
+END putnam_1978_b3

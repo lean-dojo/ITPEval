@@ -1,0 +1,791 @@
+:: Statement-only formalization of the NTP4VC corpus artifact
+:: pearl/multiprecision/get_str_Get_str_wmpn_get_str_bitsqtvc: the
+:: multiprecision conversion loop computes base-2^bits output bytes while
+:: preserving pointer bounds, numeric value, and untouched memory. This file
+:: contains no proof.
+environ
+  vocabularies TARSKI, XBOOLE_0, SUBSET_1, RELAT_1, FUNCT_1,
+    FUNCT_2, FUNCT_4, FUNCT_7, FUNCOP_1, PARTFUN1, ZFMISC_1,
+    NUMBERS, XREAL_0, CARD_1, XXREAL_0, ARYTM_1, ARYTM_3,
+    REAL_1, INT_1, INT_2, NAT_1, VALUED_0, VALUED_1, ORDINAL1,
+    ORDINAL4,
+    FINSEQ_1, FINSEQ_2, MARGREL1, XBOOLEAN, MCART_1, NEWTON, BINOP_1;
+  notations TARSKI, XBOOLE_0, SUBSET_1, ZFMISC_1, XTUPLE_0,
+    MCART_1, RELAT_1, FUNCT_1, RELSET_1, PARTFUN1, FUNCT_2,
+    FUNCT_4, FUNCOP_1, FUNCT_7, ORDINAL1, CARD_1, NUMBERS,
+    XCMPLX_0, XREAL_0, REAL_1, INT_1, INT_2, NAT_1, NAT_D, NEWTON,
+    XXREAL_0, FINSEQ_1, FINSEQ_2, MARGREL1, XBOOLEAN, BINOP_1;
+  constructors FUNCT_1, RELSET_1, PARTFUN1, FUNCT_2, FUNCT_4,
+    FUNCT_7, FUNCOP_1, CARD_1, REAL_1, INT_1, INT_2, XXREAL_0,
+    ZFMISC_1, MCART_1, NAT_1, NAT_D, NEWTON, FINSEQ_1,
+    FINSEQ_2, MARGREL1, BINOP_1;
+  registrations XBOOLE_0, SUBSET_1, RELAT_1, FUNCT_1, RELSET_1,
+    FUNCT_2, FUNCT_4, FUNCT_7, FUNCOP_1, NUMBERS, CARD_1,
+    XXREAL_0, MEMBERED, VALUED_0, VALUED_1, XCMPLX_0,
+    XREAL_0, ORDINAL1, INT_1, INT_2, NAT_1, FINSEQ_1, FINSEQ_2,
+    MARGREL1, NEWTON;
+  requirements REAL, NUMERALS, SUBSET, BOOLE, ARITHM;
+begin
+::$P-
+theorem
+  for P64,P8,Z being non empty set,
+      S32 being Function of NAT,INT,
+      Pow2N being Function of NAT,NAT,
+      Pow2,PowR being Function of INT,INT,
+      Pelt64 being Function of [:P64,INT:],NAT,
+      Pelt8 being Function of [:P8,INT:],NAT,
+      Len64 being Function of P64,NAT,
+      Len8 being Function of P8,NAT,
+      Offset64,Min64,Max64 being Function of P64,INT,
+      Offset8,Min8,Max8 being Function of P8,INT,
+      Writable8 being Function of P8,BOOLEAN,
+      Zone8 being Function of P8,Z,
+      Valid64 being Subset of [:P64,INT:],
+      Valid8 being Subset of [:P8,INT:],
+      ValueSub being Function of [:P64,[:INT,INT:]:],INT,
+      Value being Function of [:P64,INT:],INT,
+      ValueB being Function of [:P64,INT:],INT,
+      SValueSub being
+        Function of [:INT,[:P8,[:INT,INT:]:]:],INT,
+      SValue being Function of [:INT,[:P8,INT:]:],INT,
+      InBase being Subset of [:INT,[:P8,[:INT,INT:]:]:],
+      Update8 being Subset of [:P8,[:P8,[:INT,NAT:]:]:],
+      LoopStep being set,
+      un,bits,ub being Nat,
+      up being Element of P64,
+      sp being Element of P8
+  st
+    un < Pow2N.32 &
+    bits < Pow2N.32 &
+    ub < Pow2N.32 &
+    (for w being Nat st w < Pow2N.32 holds
+      (w < Pow2N.31 implies S32.w = w) &
+      (Pow2N.31 <= w implies S32.w = w - Pow2N.32)) &
+    (for n being Nat holds Pow2N.n = 2 |^ n) &
+    (for e being Element of INT st 0 <= e holds
+      ex n being Nat st
+        n = e &
+        Pow2.e = 2 |^ n &
+        PowR.e = Pow2.(64*e)) &
+    (for p being Element of P64, k being Element of INT holds
+      (Pelt64.(p,k)) < Pow2N.64) &
+    (for p being Element of P8, k being Element of INT holds
+      (Pelt8.(p,k)) < Pow2N.8) &
+    (for p being Element of P64, sz being Element of INT holds
+      ([p,sz] in Valid64 iff
+        -Pow2N.31 <= sz & sz <= 2147483647 &
+        0 <= sz &
+        0 <= Min64.p & Min64.p <= Offset64.p &
+        Offset64.p + sz <= Max64.p &
+        Max64.p <= Len64.p)) &
+    (for p being Element of P8, sz being Element of INT holds
+      ([p,sz] in Valid8 iff
+        -Pow2N.31 <= sz & sz <= 2147483647 &
+        0 <= sz &
+        0 <= Min8.p & Min8.p <= Offset8.p &
+        Offset8.p + sz <= Max8.p &
+        Max8.p <= Len8.p)) &
+    (for p being Element of P64, n,m being Element of INT holds
+      (n < m implies
+        ValueSub.(p,[n,m]) =
+          Pelt64.(p,n) +
+          In(Pow2N.64,INT) *
+            ValueSub.(p,In([In(n+1,INT),m],[:INT,INT:]))) &
+      (not n < m implies ValueSub.(p,[n,m]) = 0)) &
+    (for p being Element of P64, sz being Element of INT holds
+      Value.(p,sz) =
+        ValueSub.(p,[Offset64.p,Offset64.p+sz])) &
+    (for p being Element of P64, nbits being Element of INT holds
+      (nbits < 0 implies ValueB.(p,nbits) = 0) &
+      (0 <= nbits implies
+        ex q being Element of INT st
+          q = nbits div 64 &
+          ValueB.(p,nbits) =
+            Value.(p,q) +
+            PowR.q *
+              (In(Pelt64.(p,In(Offset64.p+q,INT)),INT) mod
+                Pow2.(In(nbits-64*q,INT))))) &
+    (for base being Element of INT, p being Element of P8,
+         n,m being Element of INT holds
+      (n < m implies
+        SValueSub.(base,[p,[n,m]]) =
+          Pelt8.(p,In(m-1,INT)) +
+          base *
+            SValueSub.(base,
+              In([p,[n,In(m-1,INT)]],[:P8,[:INT,INT:]:]))) &
+      (not n < m implies SValueSub.(base,[p,[n,m]]) = 0)) &
+    (for base being Element of INT, p being Element of P8,
+         sz being Element of INT holds
+      SValue.(base,[p,sz]) =
+        SValueSub.(base,[p,[Offset8.p,Offset8.p+sz]])) &
+    (for base being Element of INT, p being Element of P8,
+         n,m being Element of INT holds
+      ([base,[p,[n,m]]] in InBase iff
+        for k being Element of INT st n <= k & k < m holds
+          0 <= (Pelt8.(p,k)) &
+          (Pelt8.(p,k)) < base)) &
+    (for p2,p1 being Element of P8, k being Element of INT,
+         v being Nat holds
+      ([p2,[p1,[k,v]]] in Update8 iff
+        for q being Element of INT holds
+          (q = k implies Pelt8.(p2,q) = v) &
+          (q <> k implies Pelt8.(p2,q) = Pelt8.(p1,q)))) &
+    (for b,sn,shift,j,i being Nat, sp1 being Element of P8 holds
+      ([b,[sn,[shift,[j,[i,sp1]]]]] in LoopStep iff
+                                              ((0 < S32.j implies
+                                                -Pow2N.31 <= S32.j-1 &
+                                                S32.j-1 <= 2147483647 &
+                                                (for o10 being Nat st
+                                                   o10 < Pow2N.32 &
+                                                   S32.o10 = S32.j-1
+                                                 holds
+                                                   Min64.up <=
+                                                     Offset64.up+S32.i &
+                                                   Offset64.up+S32.i <
+                                                     Max64.up &
+                                                   0 <= shift &
+                                                   shift < 64 &
+                                                   (for o11 being Nat st
+                                                      o11 < Pow2N.64 &
+                                                      o11 =
+                                                        Pelt64.(up,
+                                                          In(Offset64.up+
+                                                            S32.i,INT))
+                                                        div Pow2N.shift
+                                                    holds
+                                                      Pow2N.shift <> 0 &
+                                                      (for o12 being Nat
+                                                       st
+                                                         o12 < Pow2N.64 &
+                                                         o12 = bits
+                                                       holds
+                                                         0 <= shift+o12 &
+                                                         shift+o12 <=
+Pow2N.64-1 &
+                                                         (for o13 being Nat
+                                                          st
+                                                            o13 <
+                                                              Pow2N.64 &
+                                                            o13 =
+                                                              shift+o12
+                                                          holds
+                                                            ((64 <= o13
+                                                              implies
+                                                              -Pow2N.31 <=
+                                                                S32.i+1 &
+                                                              S32.i+1 <=
+                                                                2147483647 &
+                                                              (for o14
+                                                                 being Nat
+                                                               st
+                                                                 o14 <
+                                                                   (2 |^ 
+32) &
+                                                                 S32.o14 =
+                                                                   S32.i+1
+                                                               holds
+                                                                 ((S32.o14 <
+                                                                   S32.un
+                                                                   implies
+                                                                   0 <=
+                                                                     o13-64 
+&
+                                                                   o13-64 <=
+Pow2N.64-1 &
+                                                                   (for o15
+                                                                      being 
+Nat
+                                                                    st
+                                                                      o15 <
+                                                                        (2 
+|^ 64) &
+                                                                      o15 =
+o13-64
+                                                                    holds
+Min64.up <=
+Offset64.up+
+S32.o14 &
+Offset64.up+
+S32.o14 <
+Max64.up &
+                                                                      (for 
+o16
+being Nat
+                                                                       st
+o16 <
+Pow2N.64 &
+o16 =
+bits
+                                                                       holds
+                                                                         0 
+<=
+o16-o15 &
+o16-o15 <=
+Pow2N.64-1 &
+(for o17
+being Nat
+                                                                          st
+o17 <
+  Pow2N.64 &
+o17 =
+  o16-o15
+holds
+0 <= o17 &
+o17 < 64 &
+(for high
+   being Nat
+ st
+   high <
+     Pow2N.64 &
+   high =
+     (Pelt64.(up,In(Offset64.up+S32.o14,INT)) * Pow2N.o17) mod Pow2N.64
+ holds
+   0 <=
+     o11+high &
+   o11+high <=
+     Pow2N.64-1 &
+   (for o18
+      being Nat
+    st
+      o18 <
+        Pow2N.64 &
+      o18 =
+        o11+high
+    holds
+      b <> 0 &
+      0 <=
+        o18 mod b &
+      o18 mod b <=
+        Pow2N.64-1 &
+      (for sj
+         being Nat
+       st
+         sj <
+           Pow2N.64 &
+         sj =
+           o18 mod b
+       holds
+         0 <= sj &
+         sj <= 255 &
+         (for o19
+            being Nat
+          st
+            o19 <
+              Pow2N.8 &
+            o19 = sj
+          holds
+            Min8.sp1 <=
+              Offset8.sp1+
+              S32.o10 &
+            Offset8.sp1+
+              S32.o10 <
+              Max8.sp1 &
+            Writable8.sp1 =
+              TRUE &
+            (for sp2
+               being Element of P8
+             st
+               Len8.sp2 =
+                 Len8.sp1 &
+               Offset8.sp2 =
+                 Offset8.sp1 &
+               Min8.sp2 =
+                 Min8.sp1 &
+               Max8.sp2 =
+                 Max8.sp1 &
+               Writable8.sp2 =
+                 Writable8.sp1 &
+               Zone8.sp2 =
+                 Zone8.sp1 &
+               [sp2,[sp1,
+                 [Offset8.sp2+S32.o10,o19]]] in Update8 &
+               Pelt8.(sp2,Offset8.sp2+S32.o10) = o19
+             holds
+               S32.o10 <
+                 S32.j &
+               0 <=
+                 S32.o14 &
+               S32.o14 <=
+                 S32.un &
+               0 <=
+                 S32.o10 &
+               S32.o10 <=
+                 S32.sn &
+               (S32.sn-S32.o10)*
+                 bits =
+                 (S32.sn-S32.j)*
+                   bits+
+                 bits &
+               (0 < S32.o10
+                 implies
+                 (S32.sn-S32.j)*
+                   bits+
+                   bits =
+                   64*S32.o14+
+                   o15) &
+               ((0 <= o15 &
+                 o15 < 64) or
+                 o14 = un) &
+               [b,[sp2,
+                 [Offset8.sp2+
+                   S32.o10,
+                  Offset8.sp2+
+                   S32.sn]]]
+                 in InBase &
+               ((SValueSub.(b,
+                   [sp2,
+                    [Offset8.sp2+
+                       S32.o10,
+                     Offset8.sp2+
+                       S32.sn]]) =
+                   ValueB.(up,
+                     (S32.sn-S32.j)*
+                       bits+
+                     bits) &
+                  (S32.sn-S32.j)*
+                    bits+
+                    bits <=
+                    64*S32.un) or
+                 (S32.o10 = 0 &
+                  SValue.(b,
+                    [sp2,S32.sn]) =
+                    Value.(up,
+                      S32.un))) &
+               (for k being Element of INT st
+                  k < Offset8.sp2 or
+                  Offset8.sp2+
+                    S32.sn <= k
+                holds
+                  Pelt8.(sp2,k) =
+                    Pelt8.(sp,k))))))))))) &
+                                                                 (not 
+S32.o14 <
+                                                                   S32.un
+                                                                   implies
+                                                                   b <> 0 &
+                                                                   0 <= o11 
+mod b &
+                                                                   o11 mod 
+b <=
+Pow2N.64-1 &
+                                                                   (for sj
+                                                                      being 
+Nat
+                                                                    st
+                                                                      sj <
+                                                                        (2 
+|^ 64) &
+                                                                      sj =
+                                                                        o11 
+mod b
+                                                                    holds
+                                                                      0 <= 
+sj &
+                                                                      sj <= 
+255 &
+                                                                      (for 
+o15
+being Nat
+                                                                       st
+o15 <
+Pow2N.8 &
+o15 = sj
+                                                                       holds
+Min8.sp1 <=
+Offset8.sp1+
+S32.o10 &
+Offset8.sp1+
+S32.o10 <
+Max8.sp1 &
+Writable8.sp1 =
+TRUE &
+(for sp2
+being Element of P8
+                                                                          st
+Len8.sp2 =
+  Len8.sp1 &
+Offset8.sp2 =
+  Offset8.sp1 &
+Min8.sp2 =
+  Min8.sp1 &
+Max8.sp2 =
+  Max8.sp1 &
+Writable8.sp2 =
+  Writable8.sp1 &
+Zone8.sp2 =
+  Zone8.sp1 &
+[sp2,[sp1,
+  [Offset8.sp2+S32.o10,o15]]] in Update8 &
+Pelt8.(sp2,Offset8.sp2+S32.o10) = o15
+holds
+S32.o10 <
+  S32.j &
+0 <= S32.o14 &
+S32.o14 <=
+  S32.un &
+0 <= S32.o10 &
+S32.o10 <=
+  S32.sn &
+(S32.sn-S32.o10)*
+  bits =
+  (S32.sn-S32.j)*
+    bits+
+  bits &
+(0 < S32.o10
+  implies
+  (S32.sn-S32.j)*
+    bits+
+    bits =
+    64*S32.o14+
+    o13) &
+((0 <= o13 &
+  o13 < 64) or
+  o14 = un) &
+[b,[sp2,
+  [Offset8.sp2+
+    S32.o10,
+   Offset8.sp2+
+    S32.sn]]]
+  in InBase &
+((SValueSub.(b,
+    [sp2,
+     [Offset8.sp2+
+        S32.o10,
+      Offset8.sp2+
+        S32.sn]]) =
+    ValueB.(up,
+      (S32.sn-S32.j)*
+        bits+
+      bits) &
+   (S32.sn-S32.j)*
+     bits+
+     bits <=
+     64*S32.un) or
+  (S32.o10 = 0 &
+   SValue.(b,
+     [sp2,S32.sn]) =
+     Value.(up,
+       S32.un))) &
+(for k being Element of INT st
+   k < Offset8.sp2 or
+   Offset8.sp2+
+     S32.sn <= k
+ holds
+   Pelt8.(sp2,k) =
+     Pelt8.(sp,k)))))))) &
+                                                            (not 64 <= o13
+                                                              implies
+                                                              b <> 0 &
+                                                              0 <= o11 mod 
+b &
+                                                              o11 mod b <=
+Pow2N.64-1 &
+                                                              (for sj
+                                                                 being Nat
+                                                               st
+                                                                 sj <
+                                                                   (2 |^ 
+64) &
+                                                                 sj = o11 
+mod b
+                                                               holds
+                                                                 0 <= sj &
+                                                                 sj <= 255 &
+                                                                 (for o14
+                                                                    being 
+Nat
+                                                                  st
+                                                                    o14 <
+                                                                      (2 |^ 
+8) &
+                                                                    o14 = sj
+                                                                  holds
+Min8.sp1 <=
+Offset8.sp1+
+S32.o10 &
+Offset8.sp1+
+S32.o10 <
+Max8.sp1 &
+Writable8.sp1 =
+                                                                      TRUE &
+                                                                    (for sp2
+being Element of P8
+                                                                     st
+Len8.sp2 =
+Len8.sp1 &
+Offset8.sp2 =
+Offset8.sp1 &
+Min8.sp2 =
+Min8.sp1 &
+Max8.sp2 =
+Max8.sp1 &
+Writable8.sp2 =
+Writable8.sp1 &
+Zone8.sp2 =
+Zone8.sp1 &
+[sp2,[sp1,
+[Offset8.sp2+S32.o10,o14]]] in Update8 &
+Pelt8.(sp2,Offset8.sp2+S32.o10) = o14
+                                                                     holds
+S32.o10 <
+S32.j &
+                                                                       0 <= 
+S32.i &
+S32.i <=
+S32.un &
+                                                                       0 <= 
+S32.o10 &
+S32.o10 <=
+S32.sn &
+(S32.sn-S32.o10)*
+bits =
+(S32.sn-S32.j)*
+bits+
+bits &
+                                                                       (0 < 
+S32.o10
+implies
+(S32.sn-S32.j)*
+bits+
+bits =
+64*S32.i+
+o13) &
+                                                                       ((0 
+<= o13 &
+o13 < 64) or
+                                                                         i 
+= un) &
+[b,[sp2,
+[Offset8.sp2+
+S32.o10,
+Offset8.sp2+
+S32.sn]]]
+                                                                         in 
+InBase &
+((SValueSub.(b,
+[sp2,
+[Offset8.sp2+
+   S32.o10,
+ Offset8.sp2+
+   S32.sn]]) =
+ValueB.(up,
+ (S32.sn-S32.j)*
+   bits+
+ bits) &
+(S32.sn-S32.j)*
+bits+
+bits <=
+64*S32.un) or
+(S32.o10 = 0 &
+SValue.(b,
+[sp2,S32.sn]) =
+Value.(up,
+  S32.un))) &
+                                                                       (for 
+k being Element of INT st
+                                                                          k 
+< Offset8.sp2 or
+Offset8.sp2+
+S32.sn <= k
+holds
+Pelt8.(sp2,k) =
+Pelt8.(sp,k))))))))))) &
+                                               (not 0 < S32.j implies
+                                                 0 <= S32.sn &
+                                                 (for result being Nat st
+                                                    result < Pow2N.32 &
+                                                    result = S32.sn
+                                                  holds
+                                                    [Pow2N.bits,[sp1,
+                                                      [Offset8.sp1,
+                                                       Offset8.sp1+result]]]
+                                                      in InBase &
+                                                    SValue.(Pow2N.bits,
+                                                      [sp1,result]) =
+                                                      Value.(up,S32.un) &
+                                                    0 < result &
+                                                    result <=
+                                                      (S32.ub+bits-1)
+                                                        div bits &
+                                                    0 <
+                                                      (Pelt8.(sp1,
+                                                        Offset8.sp1)) &
+                                                    (for j1
+                                                       being Element of INT 
+st
+                                                         j1 <
+                                                           Offset8.sp1 or
+                                                         Offset8.sp1+
+                                                           (S32.ub+bits-1)
+                                                             div bits <= j1
+                                                     holds
+                                                       Pelt8.(sp1,j1) =
+Pelt8.(sp,j1))))))))) &
+    1 <= S32.un &
+    [up,S32.un] in Valid64 &
+    1 <= bits &
+    bits <= 8 &
+    [sp,(S32.ub + bits - 1) div bits] in Valid8 &
+    0 <= S32.ub &
+    (Value.(up,S32.un)) < Pow2.(S32.ub) &
+    0 < Pelt64.(up,In(Offset64.up + S32.un - 1,INT)) &
+    64 * S32.un + 7 <= 2147483647 &
+    Writable8.sp = TRUE
+  holds
+    -Pow2N.31 <= S32.un - 1 &
+    S32.un - 1 <= 2147483647 &
+    (for o1 being Nat st
+       o1 < Pow2N.32 &
+       S32.o1 = S32.un - 1
+     holds
+       Min64.up <= Offset64.up + S32.o1 &
+       Offset64.up + S32.o1 < Max64.up &
+       0 < Pelt64.(up,In(Offset64.up + S32.o1,INT)) &
+       (for sb being Nat st
+          sb < Pow2N.64 &
+          1 <= sb & sb <= 64 &
+          Pow2N.(In(sb-1,NAT)) <=
+            Pelt64.(up,In(Offset64.up + S32.o1,INT)) &
+          Pelt64.(up,In(Offset64.up + S32.o1,INT)) < Pow2N.sb
+        holds
+          bits <= 2147483647 &
+          (for o2 being Nat st
+             o2 < Pow2N.32 & S32.o2 = bits
+           holds
+             sb <= 2147483647 &
+             (for o3 being Nat st
+                o3 < Pow2N.32 & S32.o3 = sb
+              holds
+                -Pow2N.31 <= S32.un - 1 &
+                S32.un - 1 <= 2147483647 &
+                (for o4 being Nat st
+                   o4 < Pow2N.32 &
+                   S32.o4 = S32.un - 1
+                 holds
+                   -Pow2N.31 <= 64 * S32.o4 &
+                   64 * S32.o4 <= 2147483647 &
+                   (for o5 being Nat st
+                      o5 < Pow2N.32 &
+                      S32.o5 = 64 * S32.o4
+                    holds
+                      -Pow2N.31 <= S32.o5 + S32.o3 &
+                      S32.o5 + S32.o3 <= 2147483647 &
+                      (for o6 being Nat st
+                         o6 < Pow2N.32 &
+                         S32.o6 = S32.o5 + S32.o3
+                       holds
+                         -Pow2N.31 <= S32.o6 + S32.o2 &
+                         S32.o6 + S32.o2 <= 2147483647 &
+                         (for o7 being Nat st
+                            o7 < Pow2N.32 &
+                            S32.o7 = S32.o6 + S32.o2
+                          holds
+                            -Pow2N.31 <= S32.o7 - 1 &
+                            S32.o7 - 1 <= 2147483647 &
+                            (for e being Nat st
+                               e < Pow2N.32 &
+                               S32.e = S32.o7 - 1
+                             holds
+                               bits <= 2147483647 &
+                               (for o8 being Nat st
+                                  o8 < Pow2N.32 &
+                                  S32.o8 = bits
+                                holds
+                                  S32.o8 <> 0 &
+                                  -Pow2N.31 <=
+                                    S32.e div S32.o8 &
+                                  S32.e div S32.o8 <=
+                                    2147483647 &
+                                  (for sn being Nat st
+                                     sn < Pow2N.32 &
+                                     S32.sn =
+                                       S32.e div S32.o8
+                                   holds
+                                     (for o9 being Nat st
+                                        o9 < Pow2N.64 &
+                                        o9 = bits
+                                      holds
+                                        0 <= o9 & o9 < 64 &
+                                        Pow2N.o9 <=
+                                          Pow2N.64-1 &
+                                        (for b being Nat st
+                                           b < Pow2N.64 &
+                                           b = Pow2N.o9
+                                         holds
+                                           (0 <= 0 &
+                                            0 <= S32.un) &
+                                           (0 <= S32.sn &
+                                            S32.sn <= S32.sn) &
+                                           (S32.sn-S32.sn)*bits =
+                                             0 &
+                                           (0 < S32.sn implies
+                                             0 = 64*0+0) &
+                                           ((0 <= 0 & 0 < 64) or
+                                             un = 0) &
+                                           [b,[sp,
+                                             [Offset8.sp+S32.sn,
+                                              Offset8.sp+S32.sn]]]
+                                             in InBase &
+                                           ((SValueSub.(b,[sp,
+                                               [Offset8.sp+S32.sn,
+                                                Offset8.sp+S32.sn]]) =
+                                               ValueB.(up,0) &
+                                              0 <= 64*S32.un) or
+                                             (S32.sn = 0 &
+                                              SValue.(b,[sp,S32.sn]) =
+                                                Value.(up,S32.un))) &
+                                           (for shift being Nat,
+                                                j being Nat,
+                                                i being Nat,
+                                                sp1 being Element of P8
+                                            st
+                                              shift < Pow2N.64 &
+                                              j < Pow2N.32 &
+                                              i < Pow2N.32 &
+                                              Len8.sp1 = Len8.sp &
+                                              Offset8.sp1 =
+                                                Offset8.sp &
+                                              Min8.sp1 = Min8.sp &
+                                              Max8.sp1 = Max8.sp &
+                                              Writable8.sp1 =
+                                                Writable8.sp &
+                                              Zone8.sp1 = Zone8.sp
+                                            holds
+                                              0 <= S32.i &
+                                              S32.i <= S32.un &
+                                              0 <= S32.j &
+                                              S32.j <= S32.sn &
+                                              (0 < S32.j implies
+                                                (S32.sn-S32.j)*bits =
+                                                  64*S32.i+shift) &
+                                              ((0 <= shift &
+                                                shift < 64) or
+                                                i = un) &
+                                              [b,[sp1,
+                                                [Offset8.sp1+S32.j,
+                                                 Offset8.sp1+S32.sn]]]
+                                                in InBase &
+                                              ((SValueSub.(b,[sp1,
+                                                  [Offset8.sp1+S32.j,
+                                                   Offset8.sp1+S32.sn]]) =
+                                                  ValueB.(up,
+                                                    (S32.sn-S32.j)*
+                                                      bits) &
+                                                 (S32.sn-S32.j)*bits <=
+                                                   64*S32.un) or
+                                                (S32.j = 0 &
+                                                 SValue.(b,
+                                                   [sp1,S32.sn]) =
+                                                   Value.(up,S32.un))) &
+                                              (for k being Element of INT st
+                                                 k < Offset8.sp1 or
+                                                 Offset8.sp1+S32.sn <= k
+                                               holds
+                                                 Pelt8.(sp1,k) =
+                                                   Pelt8.(sp,k))
+                                              implies
+                                              [b,[sn,[shift,[j,[i,sp1]]]]] 
+in LoopStep))))))))))))))
+proof
+end;
+::$P+

@@ -1,0 +1,73 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2016_a1:
+% the least positive derivative order for which every integer-coefficient
+% polynomial has value divisible by 2016 at every integer input is 8. This
+% file contains no proof.
+
+putnam_2016_a1: THEORY
+BEGIN
+  integer_polynomial: TYPE = list[int]
+
+  polynomial_value(
+      polynomial: integer_polynomial,
+      x: int): RECURSIVE int =
+    CASES polynomial OF
+      null: 0,
+      cons(coefficient, tail):
+        coefficient + x * polynomial_value(tail, x)
+    ENDCASES
+  MEASURE polynomial BY <<
+
+  derivative_from(
+      polynomial: integer_polynomial,
+      degree: nat): RECURSIVE integer_polynomial =
+    CASES polynomial OF
+      null: null,
+      cons(coefficient, tail):
+        cons(
+          (degree :: int) * coefficient,
+          derivative_from(tail, degree + 1))
+    ENDCASES
+  MEASURE polynomial BY <<
+
+  derivative(
+      polynomial: integer_polynomial): integer_polynomial =
+    CASES polynomial OF
+      null: null,
+      cons(constant_coefficient, tail):
+        derivative_from(tail, 1)
+    ENDCASES
+
+  iterated_derivative(
+      polynomial: integer_polynomial,
+      order: nat): RECURSIVE integer_polynomial =
+    IF order = 0 THEN
+      polynomial
+    ELSE
+      iterated_derivative(
+        derivative(polynomial),
+        order - 1)
+    ENDIF
+  MEASURE order
+
+  divisible_by_2016(value: int): bool =
+    EXISTS (quotient: int):
+      value = 2016 * quotient
+
+  good_order(order: nat): bool =
+    order > 0
+      AND FORALL
+          (polynomial: integer_polynomial),
+          (k: int):
+        divisible_by_2016(
+          polynomial_value(
+            iterated_derivative(polynomial, order),
+            k))
+
+  putnam_2016_a1_solution: nat = 8
+
+  putnam_2016_a1: bool =
+    good_order(putnam_2016_a1_solution)
+      AND FORALL (order: nat):
+        good_order(order)
+          IMPLIES putnam_2016_a1_solution <= order
+END putnam_2016_a1

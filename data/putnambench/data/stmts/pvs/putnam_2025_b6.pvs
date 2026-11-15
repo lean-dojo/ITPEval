@@ -1,0 +1,100 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2025_b6:
+% the greatest real exponent admitting a positive-integer-valued function
+% with the specified iterated-growth inequality is 1/4. This file contains
+% no proof.
+
+putnam_2025_b6: THEORY
+BEGIN
+  natural_function: TYPE = [nat -> nat]
+  real_sequence: TYPE = [nat -> real]
+  real_set: TYPE = [real -> bool]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  nat_factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * nat_factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  exponential_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        exponential_partial(x, count - 1)
+          + safe_div(
+              x ^ index,
+              nat_factorial(index) :: real)
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  real_exponential(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat):
+            exponential_partial(x, count),
+          value))
+
+  natural_log(x: real): real =
+    IF x > 0 THEN
+      epsilon(
+        LAMBDA (value: real):
+          real_exponential(value) = x)
+    ELSE
+      0
+    ENDIF
+
+  real_power(base, exponent: real): real =
+    IF base > 0 THEN
+      real_exponential(exponent * natural_log(base))
+    ELSIF base = 0 AND exponent = 0 THEN
+      1
+    ELSE
+      0
+    ENDIF
+
+  positive_on_positive_inputs(g: natural_function): bool =
+    FORALL (n: nat):
+      0 < n IMPLIES 0 < g(n)
+
+  admissible_exponent(r: real): bool =
+    EXISTS (g: natural_function):
+      positive_on_positive_inputs(g)
+        AND FORALL (n: nat):
+          0 < n IMPLIES
+            real_power(g(g(n)) :: real, r)
+              <= (g(n + 1) :: real) - (g(n) :: real)
+
+  admissible_exponents: real_set =
+    LAMBDA (r: real):
+      admissible_exponent(r)
+
+  is_greatest(values: real_set, greatest_value: real): bool =
+    values(greatest_value)
+      AND FORALL (value: real):
+        values(value) IMPLIES value <= greatest_value
+
+  putnam_2025_b6_solution: real =
+    safe_div(1, 4)
+
+  putnam_2025_b6: bool =
+    is_greatest(
+      admissible_exponents,
+      putnam_2025_b6_solution)
+END putnam_2025_b6

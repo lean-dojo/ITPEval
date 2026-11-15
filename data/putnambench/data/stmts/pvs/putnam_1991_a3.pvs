@@ -1,0 +1,78 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1991_a3:
+% the classification of real polynomials whose distinct ordered roots have
+% derivative zeros at every consecutive-root midpoint. This file contains no proof.
+
+putnam_1991_a3: THEORY
+BEGIN
+  real_sequence: TYPE = [nat -> real]
+
+  polynomial_coefficient(
+      polynomial: list[real],
+      degree: nat): RECURSIVE real =
+    CASES polynomial OF
+      null: 0,
+      cons(coefficient, tail):
+        IF degree = 0 THEN
+          coefficient
+        ELSE
+          polynomial_coefficient(tail, degree - 1)
+        ENDIF
+    ENDCASES
+  MEASURE polynomial BY <<
+
+  polynomial_value(
+      polynomial: list[real],
+      x: real): RECURSIVE real =
+    CASES polynomial OF
+      null: 0,
+      cons(coefficient, tail):
+        coefficient + x * polynomial_value(tail, x)
+    ENDCASES
+  MEASURE polynomial BY <<
+
+  polynomial_derivative_value(
+      polynomial: list[real],
+      x: real): RECURSIVE real =
+    CASES polynomial OF
+      null: 0,
+      cons(coefficient, tail):
+        polynomial_value(tail, x)
+          + x * polynomial_derivative_value(tail, x)
+    ENDCASES
+  MEASURE polynomial BY <<
+
+  polynomial_degree(polynomial: list[real], degree: nat): bool =
+    polynomial_coefficient(polynomial, degree) /= 0
+      AND FORALL (higher_degree: nat):
+        higher_degree > degree IMPLIES
+          polynomial_coefficient(polynomial, higher_degree) = 0
+
+  putnam_1991_a3_solution(polynomial: list[real]): bool =
+    polynomial_degree(polynomial, 2)
+      AND EXISTS (r1, r2: real):
+        r1 /= r2
+          AND polynomial_value(polynomial, r1) = 0
+          AND polynomial_value(polynomial, r2) = 0
+
+  has_required_roots(
+      polynomial: list[real],
+      n: nat): bool =
+    EXISTS (r: real_sequence):
+      (FORALL (i: nat):
+        i < n - 1 IMPLIES r(i) < r(i + 1))
+        AND (FORALL (i: nat):
+          i < n IMPLIES polynomial_value(polynomial, r(i)) = 0)
+        AND (FORALL (i: nat):
+          i < n - 1 IMPLIES
+            polynomial_derivative_value(
+              polynomial,
+              (r(i) + r(i + 1)) / 2) = 0)
+
+  putnam_1991_a3: bool =
+    FORALL (polynomial: list[real]), (n: nat):
+      (polynomial_degree(polynomial, n)
+        AND n >= 2)
+      IMPLIES
+        (putnam_1991_a3_solution(polynomial)
+          IFF has_required_roots(polynomial, n))
+END putnam_1991_a3

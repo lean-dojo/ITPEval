@@ -1,0 +1,167 @@
+% Statement-only formalization of the Thousand Theorems corpus artifact Q2093886
+% (thousand-theorems__pvs__Q2093886), "Primitive element theorem": every
+% finite-dimensional separable field extension is generated over its base field
+% by one element. This file contains no proof.
+
+primitive_element_theorem_Q2093886[
+  F, E: TYPE+,
+  zeroF, oneF: F,
+  addF, mulF: [F, F -> F],
+  negF, invF: [F -> F],
+  zeroE, oneE: E,
+  addE, mulE: [E, E -> E],
+  negE, invE: [E -> E],
+  algebra_map: [F -> E]
+]: THEORY
+BEGIN
+  field_laws_F: bool =
+    (FORALL (x, y: F): addF(x, y) = addF(y, x))
+      AND (FORALL (x, y, z: F):
+        addF(addF(x, y), z) = addF(x, addF(y, z)))
+      AND (FORALL (x: F): addF(x, zeroF) = x)
+      AND (FORALL (x: F): addF(x, negF(x)) = zeroF)
+      AND (FORALL (x, y: F): mulF(x, y) = mulF(y, x))
+      AND (FORALL (x, y, z: F):
+        mulF(mulF(x, y), z) = mulF(x, mulF(y, z)))
+      AND (FORALL (x: F): mulF(x, oneF) = x)
+      AND (FORALL (x, y, z: F):
+        mulF(x, addF(y, z)) =
+          addF(mulF(x, y), mulF(x, z)))
+      AND NOT (zeroF = oneF)
+      AND invF(zeroF) = zeroF
+      AND (FORALL (x: F):
+        NOT (x = zeroF) IMPLIES mulF(x, invF(x)) = oneF)
+
+  field_laws_E: bool =
+    (FORALL (x, y: E): addE(x, y) = addE(y, x))
+      AND (FORALL (x, y, z: E):
+        addE(addE(x, y), z) = addE(x, addE(y, z)))
+      AND (FORALL (x: E): addE(x, zeroE) = x)
+      AND (FORALL (x: E): addE(x, negE(x)) = zeroE)
+      AND (FORALL (x, y: E): mulE(x, y) = mulE(y, x))
+      AND (FORALL (x, y, z: E):
+        mulE(mulE(x, y), z) = mulE(x, mulE(y, z)))
+      AND (FORALL (x: E): mulE(x, oneE) = x)
+      AND (FORALL (x, y, z: E):
+        mulE(x, addE(y, z)) =
+          addE(mulE(x, y), mulE(x, z)))
+      AND NOT (zeroE = oneE)
+      AND invE(zeroE) = zeroE
+      AND (FORALL (x: E):
+        NOT (x = zeroE) IMPLIES mulE(x, invE(x)) = oneE)
+
+  algebra_embedding_laws: bool =
+    algebra_map(zeroF) = zeroE
+      AND algebra_map(oneF) = oneE
+      AND (FORALL (x, y: F):
+        algebra_map(addF(x, y)) =
+          addE(algebra_map(x), algebra_map(y)))
+      AND (FORALL (x, y: F):
+        algebra_map(mulF(x, y)) =
+          mulE(algebra_map(x), algebra_map(y)))
+      AND (FORALL (x, y: F):
+        algebra_map(x) = algebra_map(y) IMPLIES x = y)
+
+  same_length(coefficients: list[F], basis: list[E]): RECURSIVE bool =
+    CASES basis OF
+      null:
+        CASES coefficients OF
+          null: TRUE,
+          cons(coefficient, coefficient_tail): FALSE
+        ENDCASES,
+      cons(vector, vector_tail):
+        CASES coefficients OF
+          null: FALSE,
+          cons(coefficient, coefficient_tail):
+            same_length(coefficient_tail, vector_tail)
+        ENDCASES
+    ENDCASES
+  MEASURE basis BY <<
+
+  linear_combination(
+      coefficients: list[F],
+      basis: list[E]): RECURSIVE E =
+    CASES basis OF
+      null: zeroE,
+      cons(vector, vector_tail):
+        CASES coefficients OF
+          null: zeroE,
+          cons(coefficient, coefficient_tail):
+            addE(
+              mulE(algebra_map(coefficient), vector),
+              linear_combination(coefficient_tail, vector_tail))
+        ENDCASES
+    ENDCASES
+  MEASURE basis BY <<
+
+  finite_dimensional_extension: bool =
+    EXISTS (basis: list[E]):
+      FORALL (x: E):
+        EXISTS (coefficients: list[F]):
+          same_length(coefficients, basis)
+            AND linear_combination(coefficients, basis) = x
+
+  polynomial_value(
+      coefficients: list[F],
+      x: E): RECURSIVE E =
+    CASES coefficients OF
+      null: zeroE,
+      cons(coefficient, tail):
+        addE(
+          algebra_map(coefficient),
+          mulE(x, polynomial_value(tail, x)))
+    ENDCASES
+  MEASURE coefficients BY <<
+
+  polynomial_derivative_value(
+      coefficients: list[F],
+      x: E): RECURSIVE E =
+    CASES coefficients OF
+      null: zeroE,
+      cons(coefficient, tail):
+        addE(
+          polynomial_value(tail, x),
+          mulE(x, polynomial_derivative_value(tail, x)))
+    ENDCASES
+  MEASURE coefficients BY <<
+
+  separable_extension: bool =
+    FORALL (x: E):
+      EXISTS (polynomial: list[F]):
+        polynomial_value(polynomial, x) = zeroE
+          AND NOT (
+            polynomial_derivative_value(polynomial, x) = zeroE)
+
+  is_intermediate_field(subfield: [E -> bool]): bool =
+    subfield(zeroE)
+      AND subfield(oneE)
+      AND (FORALL (x, y: E):
+        subfield(x) AND subfield(y) IMPLIES
+          subfield(addE(x, y)))
+      AND (FORALL (x: E):
+        subfield(x) IMPLIES subfield(negE(x)))
+      AND (FORALL (x, y: E):
+        subfield(x) AND subfield(y) IMPLIES
+          subfield(mulE(x, y)))
+      AND (FORALL (x: E):
+        subfield(x) IMPLIES subfield(invE(x)))
+      AND (FORALL (a: F):
+        subfield(algebra_map(a)))
+
+  is_primitive_element(alpha: E): bool =
+    FORALL (subfield: [E -> bool]):
+      is_intermediate_field(subfield)
+        AND subfield(alpha)
+      IMPLIES
+        (FORALL (x: E): subfield(x))
+
+  primitive_element_theorem: bool =
+    (field_laws_F
+      AND field_laws_E
+      AND algebra_embedding_laws
+      AND finite_dimensional_extension
+      AND separable_extension)
+    IMPLIES
+      (EXISTS (alpha: E):
+        is_primitive_element(alpha))
+END primitive_element_theorem_Q2093886

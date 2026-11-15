@@ -1,0 +1,72 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/power_FastExponentiation_fast_exp_2qtvc: the accumulator-based fast
+% exponentiation verification condition for recursive-call descent and
+% preservation of the integer-power result over nonnegative exponents.
+% This file contains no proof.
+
+power_FastExponentiation_fast_exp_2qtvc: THEORY
+BEGIN
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  nat_power(base: int, exponent: nat): RECURSIVE int =
+    IF exponent = 0 THEN
+      1
+    ELSE
+      base * nat_power(base, exponent - 1)
+    ENDIF
+  MEASURE exponent
+
+  int_power(base, exponent: int): int =
+    nat_power(base, int_to_nat(exponent))
+
+  trunc_div(numerator, denominator: int): int =
+    IF denominator = 0 THEN
+      0
+    ELSIF numerator * denominator >= 0 THEN
+      floor((numerator :: real) / (denominator :: real))
+    ELSE
+      -floor(-((numerator :: real) / (denominator :: real)))
+    ENDIF
+
+  trunc_mod(numerator, denominator: int): int =
+    numerator - denominator * trunc_div(numerator, denominator)
+
+  recursive_descent(n: int): bool =
+    n /= 0 IMPLIES
+      2 /= 0
+        AND
+          IF trunc_mod(n, 2) = 0 THEN
+            2 /= 0
+              AND
+                LET next_exponent: int = trunc_div(n, 2)
+                IN
+                  (0 <= n AND next_exponent < n)
+                    AND 0 <= next_exponent
+          ELSE
+            LET next_exponent: int = n - 1
+            IN
+              (0 <= n AND next_exponent < n)
+                AND 0 <= next_exponent
+          ENDIF
+
+  result_premise(n, acc, x, result: int): bool =
+    IF n = 0 THEN
+      result = acc
+    ELSIF trunc_mod(n, 2) = 0 THEN
+      result =
+        int_power(x * x, trunc_div(n, 2)) * acc
+    ELSE
+      result =
+        int_power(x, n - 1) * (x * acc)
+    ENDIF
+
+  fast_exp_2_vc: bool =
+    FORALL (n, acc, x: int):
+      0 <= n IMPLIES
+        recursive_descent(n)
+          AND
+            (FORALL (result: int):
+              result_premise(n, acc, x, result)
+                IMPLIES result = int_power(x, n) * acc)
+END power_FastExponentiation_fast_exp_2qtvc

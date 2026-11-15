@@ -1,0 +1,81 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1981_b5:
+% the exponential of the infinite series formed from binary one-counts is
+% rational, matching the cataloged answer True. This file contains no proof.
+
+putnam_1981_b5: THEORY
+BEGIN
+  real_sequence: TYPE = [nat -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  bit_count_below(n, count: nat): RECURSIVE nat =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        bit_count_below(n, count - 1)
+          + IF mod(ndiv(n, 2 ^ index), 2) = 1 THEN
+              1
+            ELSE
+              0
+            ENDIF
+    ENDIF
+  MEASURE count
+
+  binary_ones(n: nat): nat =
+    bit_count_below(n, n + 1)
+
+  partial_sum(values: real_sequence, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      partial_sum(values, count - 1) + values(count - 1)
+    ENDIF
+  MEASURE count
+
+  series_sums_to(values: real_sequence, total: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (count: nat):
+          cutoff <= count IMPLIES
+            abs(partial_sum(values, count) - total) < epsilon_value
+
+  binary_series_terms: real_sequence =
+    LAMBDA (index: nat):
+      safe_div(
+        binary_ones(index + 1) :: real,
+        ((index + 1) :: real) * ((index + 2) :: real))
+
+  nat_factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * nat_factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  exponential_terms(x: real): real_sequence =
+    LAMBDA (index: nat):
+      safe_div(
+        x ^ index,
+        nat_factorial(index) :: real)
+
+  exponential_value(x, value: real): bool =
+    series_sums_to(exponential_terms(x), value)
+
+  putnam_1981_b5_solution: bool = TRUE
+
+  putnam_1981_b5: bool =
+    (EXISTS
+        (series_total, exponential_total: real),
+        (q: rat):
+      series_sums_to(binary_series_terms, series_total)
+        AND exponential_value(series_total, exponential_total)
+        AND exponential_total = (q :: real))
+      IFF putnam_1981_b5_solution
+END putnam_1981_b5

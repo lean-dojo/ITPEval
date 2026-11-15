@@ -1,0 +1,102 @@
+% Statement-only formalization of PutnamBench artifact putnam_1967_b1:
+% three alternating-side midpoints of a cyclic hexagon satisfying the stated
+% chord and ordering hypotheses form an equilateral triangle. This file
+% contains no proof.
+
+putnam_1967_b1: THEORY
+BEGIN
+  point: TYPE = [# x_coord: real, y_coord: real #]
+  point_set: TYPE = [point -> bool]
+  vertex_index: TYPE = below(6)
+  vertices: TYPE = [vertex_index -> point]
+
+  squared_distance(P, Q: point): real =
+    (x_coord(Q) - x_coord(P)) ^ 2
+      + (y_coord(Q) - y_coord(P)) ^ 2
+
+  distance(P, Q: point): real =
+    epsilon(
+      LAMBDA (length: real):
+        0 <= length
+          AND length * length = squared_distance(P, Q))
+
+  midpoint(P, Q: point): point =
+    (# x_coord := (x_coord(P) + x_coord(Q)) / 2,
+       y_coord := (y_coord(P) + y_coord(Q)) / 2 #)
+
+  affine_combination(t: real, P, Q: point): point =
+    (# x_coord := (1 - t) * x_coord(P) + t * x_coord(Q),
+       y_coord := (1 - t) * y_coord(P) + t * y_coord(Q) #)
+
+  closed_segment(P, Q: point): point_set =
+    LAMBDA (X: point):
+      EXISTS (t: real):
+        0 <= t AND t <= 1
+          AND X = affine_combination(t, P, Q)
+
+  point_subset(A, B: point_set): bool =
+    FORALL (P: point):
+      A(P) IMPLIES B(P)
+
+  convex(A: point_set): bool =
+    FORALL (P, Q: point), (t: real):
+      A(P) AND A(Q) AND 0 <= t AND t <= 1
+        IMPLIES A(affine_combination(t, P, Q))
+
+  convex_hull(A: point_set): point_set =
+    LAMBDA (P: point):
+      FORALL (C: point_set):
+        convex(C) AND point_subset(A, C) IMPLIES C(P)
+
+  euclidean_interior(A: point_set): point_set =
+    LAMBDA (P: point):
+      EXISTS (radius: real):
+        0 < radius
+          AND FORALL (Q: point):
+            squared_distance(P, Q) < radius ^ 2
+              IMPLIES A(Q)
+
+  vertex_set(L: vertices): point_set =
+    LAMBDA (P: point):
+      EXISTS (i: vertex_index):
+        P = L(i)
+
+  sets_intersect(A, B: point_set): bool =
+    EXISTS (P: point):
+      A(P) AND B(P)
+
+  cyclic_successor(i, j: vertex_index): bool =
+    (i = 0 AND j = 1)
+      OR (i = 1 AND j = 2)
+      OR (i = 2 AND j = 3)
+      OR (i = 3 AND j = 4)
+      OR (i = 4 AND j = 5)
+      OR (i = 5 AND j = 0)
+
+  putnam_1967_b1: bool =
+    FORALL (r: real), (L: vertices), (P, Q, R: point):
+      (P = midpoint(L(1), L(2))
+        AND Q = midpoint(L(3), L(4))
+        AND R = midpoint(L(5), L(0))
+        AND r > 0
+        AND (EXISTS (O: point):
+          FORALL (i: vertex_index):
+            distance(O, L(i)) = r)
+        AND (FORALL (i, j: vertex_index):
+          i /= j
+            IMPLIES
+              cyclic_successor(i, j)
+                OR cyclic_successor(j, i)
+                OR sets_intersect(
+                  closed_segment(L(i), L(j)),
+                  euclidean_interior(convex_hull(vertex_set(L)))))
+        AND distance(L(0), L(1)) = r
+        AND distance(L(2), L(3)) = r
+        AND distance(L(4), L(5)) = r
+        AND L(1) /= L(2)
+        AND L(3) /= L(4)
+        AND L(5) /= L(0))
+      IMPLIES
+        distance(P, Q) = distance(R, P)
+          AND distance(Q, R) = distance(P, Q)
+END putnam_1967_b1

@@ -1,0 +1,133 @@
+% Statement-only formalization of the VERINA corpus artifact
+% verina_advanced_12, "firstDuplicate": scanning an integer list from left to
+% right to return the value whose duplicate occurrence is encountered first,
+% or no value when the list has no duplicates. This file contains no proof.
+
+verina_advanced_12: THEORY
+BEGIN
+
+  int_option: DATATYPE
+  BEGIN
+    NoneInt: NoneInt?
+    SomeInt(option_value: int): SomeInt?
+  END int_option
+
+  firstDuplicate_precond(lst: list[int]): bool =
+    TRUE
+
+  int_member(value: int, values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        FALSE,
+      cons(head, tail):
+        head = value OR int_member(value, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  firstDuplicate_helper(
+      seen, remaining: list[int]): RECURSIVE int_option =
+    CASES remaining OF
+      null:
+        NoneInt,
+      cons(head, tail):
+        IF int_member(head, seen) THEN
+          SomeInt(head)
+        ELSE
+          firstDuplicate_helper(cons(head, seen), tail)
+        ENDIF
+    ENDCASES
+  MEASURE remaining BY <<
+
+  firstDuplicate(lst: list[int]): int_option =
+    firstDuplicate_helper(null, lst)
+
+  occurrence_count(value: int, values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        (IF head = value THEN 1 ELSE 0 ENDIF)
+          + occurrence_count(value, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  index_of(value: int, values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF head = value THEN
+          0
+        ELSE
+          1 + index_of(value, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  list_drop(count: nat, values: list[int]): RECURSIVE list[int] =
+    IF count = 0 THEN
+      values
+    ELSE
+      CASES values OF
+        null:
+          null,
+        cons(head, tail):
+          list_drop(count - 1, tail)
+      ENDCASES
+    ENDIF
+  MEASURE count
+
+  secondOccIdx(lst: list[int], value: int): nat =
+    LET first: nat = index_of(value, lst)
+    IN
+      first + 1 + index_of(value, list_drop(first + 1, lst))
+
+  no_duplicates(values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        NOT int_member(head, tail)
+          AND no_duplicates(tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  all_second_occurrences_not_earlier(
+      original, remaining: list[int],
+      result_value: int): RECURSIVE bool =
+    CASES remaining OF
+      null:
+        TRUE,
+      cons(head, tail):
+        (occurrence_count(head, original) = 1
+          OR secondOccIdx(original, result_value)
+               <= secondOccIdx(original, head))
+          AND all_second_occurrences_not_earlier(
+            original,
+            tail,
+            result_value)
+    ENDCASES
+  MEASURE remaining BY <<
+
+  firstDuplicate_postcond(
+      lst: list[int],
+      result: int_option): bool =
+    CASES result OF
+      NoneInt:
+        no_duplicates(lst),
+      SomeInt(value):
+        occurrence_count(value, lst) > 1
+          AND all_second_occurrences_not_earlier(
+            lst,
+            lst,
+            value)
+    ENDCASES
+
+  firstDuplicate_spec_satisfied: bool =
+    FORALL (lst: list[int]):
+      firstDuplicate_precond(lst) IMPLIES
+        firstDuplicate_postcond(
+          lst,
+          firstDuplicate(lst))
+
+END verina_advanced_12

@@ -1,0 +1,88 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% frama_c/klibc_string/memchr_Why3_ide_VCmemchr_loop_inv_5_preserved_goal6:
+% preservation of the memchr loop invariant stating that an earlier byte does
+% not equal the searched signed-byte value. This file contains no proof.
+
+memchr_Why3_ide_VCmemchr_loop_inv_5_preserved_goal6: THEORY
+BEGIN
+  addr: TYPE = [# base: int, offset: int #]
+  integer_memory: TYPE = [addr -> int]
+  allocation_table: TYPE = [int -> int]
+  address_relation: TYPE = [addr, addr -> bool]
+  integer_conversion: TYPE = [int -> int]
+
+  shift(p: addr, k: int): addr =
+    (# base := base(p), offset := offset(p) + k #)
+
+  valid_rw(malloc: allocation_table, p: addr, size: int): bool =
+    0 < size IMPLIES
+      0 < base(p)
+        AND 0 <= offset(p)
+        AND offset(p) + size <= malloc(base(p))
+
+  is_uint32(value: int): bool =
+    0 <= value AND value < 4294967296
+
+  is_sint32(value: int): bool =
+    -2147483648 <= value AND value < 2147483648
+
+  is_sint8(value: int): bool =
+    -128 <= value AND value < 128
+
+  address_order_axiom(addr_le: address_relation): bool =
+    FORALL (p, q: addr):
+      base(p) = base(q) IMPLIES
+        (addr_le(p, q) IFF offset(p) <= offset(q))
+
+  sint8_conversion_axiom(to_sint8: integer_conversion): bool =
+    FORALL (value: int):
+      is_sint8(value) IMPLIES to_sint8(value) = value
+
+  uint32_conversion_axiom(to_uint32: integer_conversion): bool =
+    FORALL (value: int):
+      is_uint32(value) IMPLIES to_uint32(value) = value
+
+  goal6: bool =
+    FORALL
+      (region: [int -> int]),
+      (linked: [allocation_table -> bool]),
+      (sconst: [integer_memory -> bool]),
+      (addr_le: address_relation),
+      (to_sint8, to_uint32: integer_conversion),
+      (a: addr),
+      (i_1, i: int),
+      (t_1: integer_memory),
+      (i_3, i_2: int),
+      (t: allocation_table):
+      address_order_axiom(addr_le) IMPLIES
+      sint8_conversion_axiom(to_sint8) IMPLIES
+      uint32_conversion_axiom(to_uint32) IMPLIES
+      LET a_1: addr = shift(a, i_1 - i),
+          x: int = t_1(a_1),
+          x_1: int = to_sint8(i_3)
+      IN
+        i /= 0 IMPLIES
+        x /= x_1 IMPLIES
+        0 < i_1 IMPLIES
+        0 <= i IMPLIES
+        i <= i_1 IMPLIES
+        0 <= i_2 IMPLIES
+        region(base(a)) <= 0 IMPLIES
+        i_2 + to_uint32(i - 1) < i_1 IMPLIES
+        -128 <= i_3 IMPLIES
+        i_3 <= 127 IMPLIES
+        linked(t) IMPLIES
+        sconst(t_1) IMPLIES
+        is_uint32(i) IMPLIES
+        is_uint32(i_1) IMPLIES
+        is_sint32(i_3) IMPLIES
+        valid_rw(t, shift(a, 0), i_1) IMPLIES
+        addr_le(a, a_1) IMPLIES
+        addr_le(a_1, shift(a, i_1)) IMPLIES
+        is_sint8(x) IMPLIES
+        (FORALL (i_4: int):
+          0 <= i_4 IMPLIES
+          i_4 + i < i_1 IMPLIES
+          t_1(shift(a, i_4)) /= x_1) IMPLIES
+        t_1(shift(a, i_2)) /= x_1
+END memchr_Why3_ide_VCmemchr_loop_inv_5_preserved_goal6

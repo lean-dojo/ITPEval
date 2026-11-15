@@ -1,0 +1,111 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1977_b6:
+% a finite subgroup satisfying (x*a)^3 = 1 yields at most 3*h^2 distinct
+% nonempty products x_1*a*...*x_n*a. This file contains no proof.
+
+putnam_1977_b6[
+  Element: TYPE+,
+  multiply: [Element, Element -> Element],
+  inverse: [Element -> Element],
+  one: Element
+]: THEORY
+BEGIN
+  IMPORTING finite_sets[Element]
+
+  element_set: TYPE = [Element -> bool]
+  element_sequence: TYPE = [nat -> Element]
+
+  group_laws: bool =
+    (FORALL (x, y, z: Element):
+      multiply(multiply(x, y), z)
+        = multiply(x, multiply(y, z)))
+      AND (FORALL (x: Element):
+        multiply(one, x) = x
+          AND multiply(x, one) = x)
+      AND (FORALL (x: Element):
+        multiply(inverse(x), x) = one
+          AND multiply(x, inverse(x)) = one)
+
+  is_subgroup(H: finite_set[Element]): bool =
+    H(one)
+      AND (FORALL (x, y: Element):
+        H(x) AND H(y) IMPLIES H(multiply(x, y)))
+      AND (FORALL (x: Element):
+        H(x) IMPLIES H(inverse(x)))
+
+  group_power(base: Element, exponent: nat): RECURSIVE Element =
+    IF exponent = 0 THEN
+      one
+    ELSE
+      multiply(
+        group_power(base, exponent - 1),
+        base)
+    ENDIF
+  MEASURE exponent
+
+  factor_product(
+      xs: element_sequence,
+      a: Element,
+      length: nat): RECURSIVE Element =
+    IF length = 0 THEN
+      one
+    ELSE
+      multiply(
+        factor_product(xs, a, length - 1),
+        multiply(xs(length - 1), a))
+    ENDIF
+  MEASURE length
+
+  product_set(
+      H: finite_set[Element],
+      a: Element): element_set =
+    LAMBDA (g: Element):
+      EXISTS (length: posnat), (xs: element_sequence):
+        (FORALL (index: nat):
+          index < length IMPLIES H(xs(index)))
+          AND g = factor_product(xs, a, length)
+
+  injective_below(
+      enumeration: element_sequence,
+      bound: nat): bool =
+    FORALL (i, j: nat):
+      i < bound
+        AND j < bound
+        AND enumeration(i) = enumeration(j)
+      IMPLIES i = j
+
+  enumerates_exactly(
+      enumeration: element_sequence,
+      set_value: element_set,
+      bound: nat): bool =
+    FORALL (g: Element):
+      set_value(g)
+        IFF
+          EXISTS (index: nat):
+            index < bound
+              AND enumeration(index) = g
+
+  has_cardinality_at_most(
+      set_value: element_set,
+      bound: nat): bool =
+    EXISTS (cardinality: nat), (enumeration: element_sequence):
+      cardinality <= bound
+        AND injective_below(enumeration, cardinality)
+        AND enumerates_exactly(
+          enumeration, set_value, cardinality)
+
+  putnam_1977_b6: bool =
+    group_laws IMPLIES
+      FORALL (H: finite_set[Element]),
+             (h: nat),
+             (a: Element),
+             (P: element_set):
+        (is_subgroup(H)
+          AND h = card(H)
+          AND (FORALL (x: Element):
+            H(x) IMPLIES
+              group_power(multiply(x, a), 3) = one)
+          AND (FORALL (g: Element):
+            P(g) IFF product_set(H, a)(g)))
+        IMPLIES
+          has_cardinality_at_most(P, 3 * h ^ 2)
+END putnam_1977_b6

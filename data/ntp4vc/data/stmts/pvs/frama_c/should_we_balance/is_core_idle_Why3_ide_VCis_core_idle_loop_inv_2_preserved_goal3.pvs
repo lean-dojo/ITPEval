@@ -1,0 +1,289 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% frama_c/should_we_balance/is_core_idle_Why3_ide_VCis_core_idle_loop_inv_2_preserved_goal3:
+% preservation of the is_core_idle loop invariant, concluding that the
+% selected CPU is non-idle under the source bounds, memory-validity, framing,
+% linkedness, search, and separation assumptions. This file contains no proof.
+
+is_core_idle_Why3_ide_VCis_core_idle_loop_inv_2_preserved_goal3: THEORY
+BEGIN
+  addr: TYPE = [# base: int, offset: int #]
+  pointer_memory: TYPE = [addr -> addr]
+  integer_memory: TYPE = [addr -> int]
+  allocation_table: TYPE = [int -> int]
+  integer_conversion: TYPE = [int -> int]
+
+  shift(p: addr, k: int): addr =
+    (# base := base(p), offset := offset(p) + k #)
+
+  separated(p: addr, p_size: int, q: addr, q_size: int): bool =
+    p_size <= 0
+      OR q_size <= 0
+      OR base(p) /= base(q)
+      OR offset(q) + q_size <= offset(p)
+      OR offset(p) + p_size <= offset(q)
+
+  valid_rw(malloc: allocation_table, p: addr, size: int): bool =
+    0 < size IMPLIES
+      0 < base(p)
+        AND 0 <= offset(p)
+        AND offset(p) + size <= malloc(base(p))
+
+  valid_rd(malloc: allocation_table, p: addr, size: int): bool =
+    0 < size IMPLIES
+      base(p) /= 0
+        AND 0 <= offset(p)
+        AND offset(p) + size <= malloc(base(p))
+
+  framed(region: [int -> int], memory: pointer_memory): bool =
+    FORALL (p: addr): region(base(memory(p))) <= 0
+
+  is_uint8(value: int): bool =
+    0 <= value AND value < 256
+
+  is_uint32(value: int): bool =
+    0 <= value AND value < 4294967296
+
+  is_sint32(value: int): bool =
+    -2147483648 <= value AND value < 2147483648
+
+  uint32_conversion_axioms(to_uint32: integer_conversion): bool =
+    (FORALL (value: int): is_uint32(to_uint32(value)))
+      AND
+    (FORALL (value: int):
+      is_uint32(value) IMPLIES to_uint32(value) = value)
+
+  size_axiom(l_size: int): bool =
+    0 < l_size AND l_size <= 2147483647
+
+  scheduler_axioms(
+      l_size: int,
+      l_idle_cpu: [int -> int],
+      l_cpu_smt_mask: [int -> addr]): bool =
+    (FORALL (cpu: int):
+      is_uint8(l_idle_cpu(cpu)))
+      AND
+    (FORALL
+      (i: int),
+      (integer_mem: integer_memory),
+      (pointer_mem: pointer_memory):
+      0 <= i IMPLIES
+      i < l_size IMPLIES
+      integer_mem(
+        shift(
+          pointer_mem(shift(l_cpu_smt_mask(i), 0)),
+          i)) /= 0)
+      AND
+    (FORALL
+      (integer_mem: integer_memory),
+      (pointer_mem: pointer_memory),
+      (j, i: int):
+      integer_mem(
+        shift(
+          pointer_mem(shift(l_cpu_smt_mask(j), 0)),
+          i)) /= 0
+      IMPLIES 0 <= i
+      IMPLIES i < l_size
+      IMPLIES 0 <= j
+      IMPLIES j < l_size
+      IMPLIES
+        integer_mem(
+          shift(
+            pointer_mem(shift(l_cpu_smt_mask(i), 0)),
+            j)) /= 0)
+      AND
+    (FORALL
+      (pointer_mem: pointer_memory),
+      (i: int),
+      (integer_mem: integer_memory),
+      (j, k: int):
+      integer_mem(
+        shift(
+          pointer_mem(shift(l_cpu_smt_mask(i), 0)),
+          j)) /= 0
+      IMPLIES
+        integer_mem(
+          shift(
+            pointer_mem(shift(l_cpu_smt_mask(j), 0)),
+            k)) /= 0
+      IMPLIES 0 <= i
+      IMPLIES i < l_size
+      IMPLIES 0 <= j
+      IMPLIES j < l_size
+      IMPLIES 0 <= k
+      IMPLIES k < l_size
+      IMPLIES
+        integer_mem(
+          shift(
+            pointer_mem(shift(l_cpu_smt_mask(i), 0)),
+            k)) /= 0)
+
+  goal3: bool =
+    FORALL
+      (region: [int -> int]),
+      (linked: [allocation_table -> bool]),
+      (to_uint32: integer_conversion),
+      (l_size: int),
+      (l_idle_cpu: [int -> int]),
+      (l_sched_group_cpus: [addr -> addr]),
+      (l_sched_group_mask: [addr -> addr]),
+      (l_group_balance_mask: [addr -> addr]),
+      (l_cpu_smt_mask: [int -> addr]),
+      (i_5: int),
+      (t_2: pointer_memory),
+      (t_1: integer_memory),
+      (i_4, i_2, i_3, i, i_1: int),
+      (a: addr),
+      (t: allocation_table):
+      size_axiom(l_size) IMPLIES
+      scheduler_axioms(
+        l_size,
+        l_idle_cpu,
+        l_cpu_smt_mask) IMPLIES
+      uint32_conversion_axioms(to_uint32) IMPLIES
+      LET a_1: addr = shift(l_cpu_smt_mask(i_5), 0),
+          a_2: addr = t_2(a_1),
+          x: int = t_1(shift(a_2, i_4)),
+          x_1: int = to_uint32(i_2)
+      IN
+        l_idle_cpu(i_5) /= 0 IMPLIES
+        t_1(shift(a_2, i_3)) /= 0 IMPLIES
+        0 <= i IMPLIES
+        i < l_size IMPLIES
+        i_3 <= i_1 IMPLIES
+        0 <= i_2 IMPLIES
+        0 <= i_3 IMPLIES
+        0 <= i_5 IMPLIES
+        i_5 < l_size IMPLIES
+        i_2 <= l_size IMPLIES
+        to_uint32(i_4) < l_size IMPLIES
+        region(base(a)) <= 0 IMPLIES
+        framed(region, t_2) IMPLIES
+        linked(t) IMPLIES
+        is_uint32(i) IMPLIES
+        is_sint32(i_1) IMPLIES
+        is_sint32(i_2) IMPLIES
+        is_sint32(i_4) IMPLIES
+        is_sint32(i_5) IMPLIES
+        is_sint32(1 + i_1) IMPLIES
+        valid_rd(t, a_1, 1) IMPLIES
+        is_uint8(x) IMPLIES
+        valid_rd(t, shift(a_2, 0), l_size) IMPLIES
+        (IF i_5 = i_4 THEN
+          i_5 = i_1
+            AND i_5 <= 2147483646
+        ELSE
+          i_4 = i_1
+            AND l_idle_cpu(i_4) /= 0
+            AND 0 <= i_4
+            AND i_4 < l_size
+            AND i_4 <= 2147483646
+        ENDIF) IMPLIES
+        ((FORALL (i_6: int):
+          i_6 < l_size IMPLIES
+          x_1 <= i_6 IMPLIES
+          t_1(shift(a_2, i_6)) = 0)
+          IMPLIES l_size = i_4) IMPLIES
+        ((EXISTS (i_6: int):
+          t_1(shift(a_2, i_6)) /= 0
+            AND i_6 < l_size
+            AND x_1 <= i_6)
+          IMPLIES x /= 0) IMPLIES
+        ((EXISTS (i_6: int):
+          t_1(shift(a_2, i_6)) /= 0
+            AND i_6 < l_size
+            AND x_1 <= i_6)
+          IMPLIES i_4 < l_size) IMPLIES
+        ((EXISTS (i_6: int):
+          t_1(shift(a_2, i_6)) /= 0
+            AND i_6 < l_size
+            AND x_1 <= i_6)
+          IMPLIES
+            i_4 < l_size
+              AND x_1 <= i_4) IMPLIES
+        ((EXISTS (i_6: int):
+          t_1(shift(a_2, i_6)) /= 0
+            AND i_6 < l_size
+            AND x_1 <= i_6)
+          IMPLIES
+            (FORALL (i_6: int):
+              i_6 < i_4 IMPLIES
+              x_1 <= i_6 IMPLIES
+              t_1(shift(a_2, i_6)) = 0)) IMPLIES
+        (FORALL (i_6: int):
+          t_1(shift(a_2, i_6)) /= 0 IMPLIES
+          0 <= i_6 IMPLIES
+          i_6 < i_2 IMPLIES
+          l_idle_cpu(i_6) /= 0) IMPLIES
+        (FORALL (i_6: int):
+          LET a_3: addr = shift(a, i_6) IN
+            0 <= i_6 IMPLIES
+            i_6 < l_size IMPLIES
+            valid_rd(t, a_3, 1)
+              AND valid_rw(
+                t,
+                shift(t_2(shift(a_3, 0)), 0),
+                l_size)) IMPLIES
+        (FORALL (a_3: addr):
+          LET a_4: addr = l_sched_group_cpus(a_3),
+              a_5: addr = shift(t_2(shift(a_4, 0)), 0)
+          IN
+            valid_rd(t, a_4, 1)
+              AND valid_rd(t, a_5, l_size)
+              AND
+            (FORALL (i_6: int):
+              0 <= i_6 IMPLIES
+              i_6 < l_size IMPLIES
+              separated(
+                a_5,
+                l_size,
+                shift(t_2(shift(shift(a, i_6), 0)), 0),
+                l_size))) IMPLIES
+        (FORALL (a_3: addr):
+          LET a_4: addr = l_sched_group_mask(a_3),
+              a_5: addr = shift(t_2(shift(a_4, 0)), 0)
+          IN
+            valid_rd(t, a_4, 1)
+              AND valid_rd(t, a_5, l_size)
+              AND
+            (FORALL (i_6: int):
+              0 <= i_6 IMPLIES
+              i_6 < l_size IMPLIES
+              separated(
+                a_5,
+                l_size,
+                shift(t_2(shift(shift(a, i_6), 0)), 0),
+                l_size))) IMPLIES
+        (FORALL (a_3: addr):
+          LET a_4: addr = l_group_balance_mask(a_3),
+              a_5: addr = shift(t_2(shift(a_4, 0)), 0)
+          IN
+            valid_rd(t, a_4, 1)
+              AND valid_rd(t, a_5, l_size)
+              AND
+            (FORALL (i_6: int):
+              0 <= i_6 IMPLIES
+              i_6 < l_size IMPLIES
+              separated(
+                a_5,
+                l_size,
+                shift(t_2(shift(shift(a, i_6), 0)), 0),
+                l_size))) IMPLIES
+        (FORALL (i_6: int):
+          LET a_3: addr = l_cpu_smt_mask(i_6),
+              a_4: addr = shift(t_2(shift(a_3, 0)), 0)
+          IN
+            0 <= i_6 IMPLIES
+            i_6 < l_size IMPLIES
+            valid_rd(t, a_3, 1)
+              AND valid_rd(t, a_4, l_size)
+              AND
+            (FORALL (i_7: int):
+              0 <= i_7 IMPLIES
+              i_7 < l_size IMPLIES
+              separated(
+                a_4,
+                l_size,
+                shift(t_2(shift(shift(a, i_7), 0)), 0),
+                l_size))) IMPLIES
+        l_idle_cpu(i_3) /= 0
+END is_core_idle_Why3_ide_VCis_core_idle_loop_inv_2_preserved_goal3

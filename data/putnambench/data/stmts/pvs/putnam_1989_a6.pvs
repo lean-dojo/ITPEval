@@ -1,0 +1,166 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1989_a6:
+% the binary zero-block formal power series over a field with two elements
+% satisfies alpha^3 + X*alpha + 1 = 0. This file contains no proof.
+
+putnam_1989_a6[
+  FieldElement: TYPE+,
+  zero_F, one_F: FieldElement,
+  add_F, multiply_F:
+    [FieldElement, FieldElement -> FieldElement],
+  negate_F, inverse_F: [FieldElement -> FieldElement]
+]: THEORY
+BEGIN
+  field_sequence: TYPE = [nat -> FieldElement]
+  formal_power_series: TYPE = [nat -> FieldElement]
+
+  field_axioms: bool =
+    zero_F /= one_F
+      AND (FORALL (x, y: FieldElement):
+        add_F(x, y) = add_F(y, x))
+      AND (FORALL (x, y, z: FieldElement):
+        add_F(add_F(x, y), z) = add_F(x, add_F(y, z)))
+      AND (FORALL (x: FieldElement):
+        add_F(x, zero_F) = x)
+      AND (FORALL (x: FieldElement):
+        add_F(x, negate_F(x)) = zero_F)
+      AND (FORALL (x, y: FieldElement):
+        multiply_F(x, y) = multiply_F(y, x))
+      AND (FORALL (x, y, z: FieldElement):
+        multiply_F(multiply_F(x, y), z)
+          = multiply_F(x, multiply_F(y, z)))
+      AND (FORALL (x: FieldElement):
+        multiply_F(x, one_F) = x)
+      AND (FORALL (x, y, z: FieldElement):
+        multiply_F(x, add_F(y, z))
+          = add_F(multiply_F(x, y), multiply_F(x, z)))
+      AND (FORALL (x: FieldElement):
+        x /= zero_F IMPLIES
+          multiply_F(x, inverse_F(x)) = one_F)
+
+  injective_below(
+      enumeration: field_sequence,
+      cardinality: nat): bool =
+    FORALL (i, j: nat):
+      (i < cardinality
+        AND j < cardinality
+        AND enumeration(i) = enumeration(j))
+      IMPLIES i = j
+
+  enumerates_carrier(
+      enumeration: field_sequence,
+      cardinality: nat): bool =
+    FORALL (x: FieldElement):
+      EXISTS (i: nat):
+        i < cardinality AND enumeration(i) = x
+
+  carrier_has_cardinality(cardinality: nat): bool =
+    EXISTS (enumeration: field_sequence):
+      injective_below(enumeration, cardinality)
+        AND enumerates_carrier(enumeration, cardinality)
+
+  binary_length_is(n, digit_count: nat): bool =
+    (n = 0 AND digit_count = 0)
+      OR (n > 0
+        AND digit_count > 0
+        AND 2 ^ (digit_count - 1) <= n
+        AND n < 2 ^ digit_count)
+
+  padded_bit_is_one(
+      n, digit_count, position: nat): bool =
+    position = 0
+      OR position = digit_count + 1
+      OR (position > 0
+        AND position <= digit_count
+        AND mod(
+          ndiv(n, 2 ^ (position - 1)),
+          2) = 1)
+
+  every_zero_block_has_even_length(n: nat): bool =
+    EXISTS (digit_count: nat):
+      binary_length_is(n, digit_count)
+        AND FORALL (i, j: nat):
+          (i < digit_count + 2
+            AND j < digit_count + 2
+            AND i < j
+            AND padded_bit_is_one(n, digit_count, i)
+            AND padded_bit_is_one(n, digit_count, j)
+            AND (FORALL (k: nat):
+              i < k AND k < j IMPLIES
+                NOT padded_bit_is_one(
+                  n, digit_count, k)))
+          IMPLIES mod(j - i - 1, 2) = 0
+
+  is_binary_zero_block_series(
+      alpha: formal_power_series): bool =
+    FORALL (n: nat):
+      alpha(n) =
+        IF every_zero_block_has_even_length(n) THEN
+          one_F
+        ELSE
+          zero_F
+        ENDIF
+
+  finite_field_sum(
+      values: field_sequence,
+      count: nat): RECURSIVE FieldElement =
+    IF count = 0 THEN
+      zero_F
+    ELSE
+      add_F(
+        finite_field_sum(values, count - 1),
+        values(count - 1))
+    ENDIF
+  MEASURE count
+
+  series_add(
+      left, right: formal_power_series):
+      formal_power_series =
+    LAMBDA (n: nat):
+      add_F(left(n), right(n))
+
+  series_multiply(
+      left, right: formal_power_series):
+      formal_power_series =
+    LAMBDA (n: nat):
+      finite_field_sum(
+        LAMBDA (k: nat):
+          IF k <= n THEN
+            multiply_F(left(k), right(n - k))
+          ELSE
+            zero_F
+          ENDIF,
+        n + 1)
+
+  zero_series: formal_power_series =
+    LAMBDA (n: nat): zero_F
+
+  one_series: formal_power_series =
+    LAMBDA (n: nat):
+      IF n = 0 THEN one_F ELSE zero_F ENDIF
+
+  X_series: formal_power_series =
+    LAMBDA (n: nat):
+      IF n = 1 THEN one_F ELSE zero_F ENDIF
+
+  series_equal(
+      left, right: formal_power_series): bool =
+    FORALL (n: nat): left(n) = right(n)
+
+  target_equation(alpha: formal_power_series): bool =
+    series_equal(
+      series_add(
+        series_add(
+          series_multiply(
+            series_multiply(alpha, alpha),
+            alpha),
+          series_multiply(X_series, alpha)),
+        one_series),
+      zero_series)
+
+  putnam_1989_a6: bool =
+    (field_axioms AND carrier_has_cardinality(2))
+      IMPLIES
+        FORALL (alpha: formal_power_series):
+          is_binary_zero_block_series(alpha)
+            IMPLIES target_equation(alpha)
+END putnam_1989_a6

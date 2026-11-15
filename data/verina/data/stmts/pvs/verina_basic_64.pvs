@@ -1,0 +1,251 @@
+% Statement-only formalization of the VERINA corpus artifact verina_basic_64
+% (verina__pvs__verina_basic_64), catalog title "insert": inserting a bounded
+% prefix of one character array at a specified position in a bounded prefix of
+% another, with the exact three-fold executable program and its size and
+% indexwise correctness contract. This file contains no proof.
+
+verina_basic_64: THEORY
+BEGIN
+
+  % Lean Char values are Unicode scalar values.
+  lean_char: TYPE =
+    {codepoint: nat |
+      codepoint < 1114112
+        AND (codepoint < 55296 OR codepoint >= 57344)}
+
+  lean_null_char: lean_char = 0
+  lean_space: lean_char = 32
+
+  % Finite PVS lists preserve exactly the contents and order of Lean arrays.
+  lean_char_list_length(
+      values: list[lean_char]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        lean_char_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  % Lean Array.get! on character arrays returns the inhabited null character
+  % outside the array. Every source-program access is in bounds under the
+  % precondition, but the total behavior is retained.
+  lean_char_list_get_bang(
+      index: nat,
+      values: list[lean_char]): RECURSIVE lean_char =
+    CASES values OF
+      null:
+        lean_null_char,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          lean_char_list_get_bang(index - 1, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  % Lean Array.set! replaces an in-bounds entry and leaves an out-of-bounds
+  % array unchanged.
+  lean_char_list_set_bang(
+      index: nat,
+      new_value: lean_char,
+      values: list[lean_char]): RECURSIVE list[lean_char] =
+    CASES values OF
+      null:
+        null[lean_char],
+      cons(head, tail):
+        IF index = 0 THEN
+          cons(new_value, tail)
+        ELSE
+          cons(
+            head,
+            lean_char_list_set_bang(
+              index - 1,
+              new_value,
+              tail))
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  % This is Array.mkArray for character arrays.
+  lean_char_mk_array(
+      count: nat,
+      value: lean_char): RECURSIVE list[lean_char] =
+    IF count = 0 THEN
+      null[lean_char]
+    ELSE
+      cons(
+        value,
+        lean_char_mk_array(count - 1, value))
+    ENDIF
+  MEASURE count
+
+  % Lean natural-number subtraction is truncated at zero.
+  nat_subtract(first, second: nat): nat =
+    IF first >= second THEN first - second ELSE 0 ENDIF
+
+  insert_precond(
+      oline: list[lean_char],
+      l: nat,
+      nl: list[lean_char],
+      p, atPos: nat): bool =
+    l <= lean_char_list_length(oline)
+      AND p <= lean_char_list_length(nl)
+      AND atPos <= l
+
+  % Each pass below is the source Array.foldl over Array.range, processing the
+  % generated indices in increasing order with the same conditional updates.
+  insert_first_pass(
+      oline: list[lean_char],
+      atPos: nat,
+      result: list[lean_char],
+      index, remaining: nat): RECURSIVE list[lean_char] =
+    IF remaining = 0 THEN
+      result
+    ELSE
+      LET updated: list[lean_char] =
+            IF index < atPos THEN
+              lean_char_list_set_bang(
+                index,
+                lean_char_list_get_bang(index, oline),
+                result)
+            ELSE
+              result
+            ENDIF
+      IN
+        insert_first_pass(
+          oline,
+          atPos,
+          updated,
+          index + 1,
+          remaining - 1)
+    ENDIF
+  MEASURE remaining
+
+  insert_second_pass(
+      nl: list[lean_char],
+      atPos: nat,
+      result: list[lean_char],
+      index, remaining: nat): RECURSIVE list[lean_char] =
+    IF remaining = 0 THEN
+      result
+    ELSE
+      LET updated: list[lean_char] =
+            lean_char_list_set_bang(
+              atPos + index,
+              lean_char_list_get_bang(index, nl),
+              result)
+      IN
+        insert_second_pass(
+          nl,
+          atPos,
+          updated,
+          index + 1,
+          remaining - 1)
+    ENDIF
+  MEASURE remaining
+
+  insert_third_pass(
+      oline: list[lean_char],
+      p, atPos: nat,
+      result: list[lean_char],
+      index, remaining: nat): RECURSIVE list[lean_char] =
+    IF remaining = 0 THEN
+      result
+    ELSE
+      LET updated: list[lean_char] =
+            IF index >= atPos THEN
+              lean_char_list_set_bang(
+                index + p,
+                lean_char_list_get_bang(index, oline),
+                result)
+            ELSE
+              result
+            ENDIF
+      IN
+        insert_third_pass(
+          oline,
+          p,
+          atPos,
+          updated,
+          index + 1,
+          remaining - 1)
+    ENDIF
+  MEASURE remaining
+
+  % The source precondition proof argument is computationally irrelevant.
+  insert(
+      oline: list[lean_char],
+      l: nat,
+      nl: list[lean_char],
+      p, atPos: nat): list[lean_char] =
+    LET initial: list[lean_char] =
+          lean_char_mk_array(l + p, lean_space),
+        after_first: list[lean_char] =
+          insert_first_pass(
+            oline,
+            atPos,
+            initial,
+            0,
+            l),
+        after_second: list[lean_char] =
+          insert_second_pass(
+            nl,
+            atPos,
+            after_first,
+            0,
+            p)
+    IN
+      insert_third_pass(
+        oline,
+        p,
+        atPos,
+        after_second,
+        0,
+        l)
+
+  % The source proof argument to the postcondition is logically irrelevant.
+  insert_postcond(
+      oline: list[lean_char],
+      l: nat,
+      nl: list[lean_char],
+      p, atPos: nat,
+      result: list[lean_char]): bool =
+    lean_char_list_length(result) = l + p
+      AND
+        (FORALL (i: nat):
+          i < p
+            IMPLIES
+              lean_char_list_get_bang(atPos + i, result)
+                = lean_char_list_get_bang(i, nl))
+      AND
+        (FORALL (i: nat):
+          i < atPos
+            IMPLIES
+              lean_char_list_get_bang(i, result)
+                = lean_char_list_get_bang(i, oline))
+      AND
+        (FORALL (i: nat):
+          i < nat_subtract(l, atPos)
+            IMPLIES
+              lean_char_list_get_bang(atPos + p + i, result)
+                = lean_char_list_get_bang(atPos + i, oline))
+
+  insert_spec_satisfied: bool =
+    FORALL (
+        oline: list[lean_char],
+        l: nat,
+        nl: list[lean_char],
+        p, atPos: nat):
+      insert_precond(oline, l, nl, p, atPos)
+        IMPLIES
+          insert_postcond(
+            oline,
+            l,
+            nl,
+            p,
+            atPos,
+            insert(oline, l, nl, p, atPos))
+
+END verina_basic_64

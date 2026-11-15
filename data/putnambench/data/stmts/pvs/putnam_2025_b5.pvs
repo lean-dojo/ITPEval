@@ -1,0 +1,63 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2025_b5
+% (putnambench__pvs__putnam_2025_b5): a lower bound for the number of descents
+% among consecutive canonical multiplicative inverses modulo a prime greater
+% than 3. This file contains no proof.
+
+putnam_2025_b5: THEORY
+BEGIN
+  nat_divides(divisor: posnat, value: nat): bool =
+    EXISTS (quotient: nat):
+      value = divisor * quotient
+
+  prime_nat(value: nat): bool =
+    value >= 2
+      AND FORALL (divisor: posnat):
+        nat_divides(divisor, value)
+          IMPLIES divisor = 1 OR divisor = value
+
+  nat_subtract(minuend, subtrahend: nat): nat =
+    IF subtrahend <= minuend THEN minuend - subtrahend ELSE 0 ENDIF
+
+  nat_congruent(left, right, modulus: nat): bool =
+    EXISTS (offset: int):
+      (left :: int) - (right :: int) = (modulus :: int) * offset
+
+  has_modular_inverse(p, k: nat): bool =
+    EXISTS (value: nat):
+      value < p
+        AND nat_congruent(k * value, 1, p)
+
+  modular_inverse(p, k: nat): nat =
+    IF has_modular_inverse(p, k) THEN
+      epsilon(
+        LAMBDA (value: nat):
+          value < p
+            AND nat_congruent(k * value, 1, p))
+    ELSE
+      0
+    ENDIF
+
+  count_true(
+      property: [nat -> bool],
+      count: nat): RECURSIVE nat =
+    IF count = 0 THEN
+      0
+    ELSE
+      count_true(property, count - 1)
+        + IF property(count - 1) THEN 1 ELSE 0 ENDIF
+    ENDIF
+  MEASURE count
+
+  descent_count(p: nat): nat =
+    count_true(
+      LAMBDA (offset: nat):
+        modular_inverse(p, offset + 2)
+          < modular_inverse(p, offset + 1),
+      nat_subtract(p, 2))
+
+  putnam_2025_b5: bool =
+    FORALL (p: nat):
+      (prime_nat(p) AND p > 3)
+        IMPLIES
+          (p :: rat) / 4 - 1 < (descent_count(p) :: rat)
+END putnam_2025_b5

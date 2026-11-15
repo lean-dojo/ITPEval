@@ -1,0 +1,162 @@
+% Statement-only formalization of the Thousand Theorems corpus artifact Q9993851
+% (thousand-theorems__pvs__Q9993851), "Lax–Milgram theorem": a coercive bounded
+% bilinear form on an arbitrary real Hilbert space induces a continuous linear
+% equivalence characterized by the inner product. This file contains no proof.
+
+lax_milgram_theorem_Q9993851[
+  E: TYPE+,
+  zeroE: E,
+  addE: [E, E -> E],
+  negE: [E -> E],
+  smulE: [real, E -> E],
+  normE: [E -> real],
+  innerE: [E, E -> real],
+  B: [E, E -> real]
+]: THEORY
+BEGIN
+  e_sequence: TYPE = [nat -> E]
+  linear_map: TYPE = [E -> E]
+
+  subE(x, y: E): E =
+    addE(x, negE(y))
+
+  additive_group_laws: bool =
+    (FORALL (x, y: E):
+      addE(x, y) = addE(y, x))
+      AND (FORALL (x, y, z: E):
+        addE(addE(x, y), z) = addE(x, addE(y, z)))
+      AND (FORALL (x: E):
+        addE(x, zeroE) = x)
+      AND (FORALL (x: E):
+        addE(x, negE(x)) = zeroE)
+
+  real_module_laws: bool =
+    (FORALL (a: real), (x, y: E):
+      smulE(a, addE(x, y)) =
+        addE(smulE(a, x), smulE(a, y)))
+      AND (FORALL (a, b: real), (x: E):
+        smulE(a + b, x) =
+          addE(smulE(a, x), smulE(b, x)))
+      AND (FORALL (a, b: real), (x: E):
+        smulE(a * b, x) = smulE(a, smulE(b, x)))
+      AND (FORALL (x: E):
+        smulE(1, x) = x)
+      AND (FORALL (x: E):
+        smulE(0, x) = zeroE)
+      AND (FORALL (a: real):
+        smulE(a, zeroE) = zeroE)
+
+  norm_laws: bool =
+    (FORALL (x: E):
+      0 <= normE(x))
+      AND (FORALL (x: E):
+        normE(x) = 0 IFF x = zeroE)
+      AND (FORALL (x: E):
+        normE(negE(x)) = normE(x))
+      AND (FORALL (x, y: E):
+        normE(addE(x, y)) <= normE(x) + normE(y))
+      AND (FORALL (a: real), (x: E):
+        normE(smulE(a, x)) = abs(a) * normE(x))
+
+  inner_product_laws: bool =
+    (FORALL (x, y, z: E):
+      innerE(addE(x, y), z) =
+        innerE(x, z) + innerE(y, z))
+      AND (FORALL (a: real), (x, y: E):
+        innerE(smulE(a, x), y) = a * innerE(x, y))
+      AND (FORALL (x, y: E):
+        innerE(x, y) = innerE(y, x))
+      AND (FORALL (x: E):
+        0 <= innerE(x, x))
+      AND (FORALL (x: E):
+        innerE(x, x) = 0 IFF x = zeroE)
+      AND (FORALL (x: E):
+        normE(x) ^ 2 = innerE(x, x))
+
+  converges(values: e_sequence, limit: E): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            normE(subE(values(index), limit)) < epsilon_value
+
+  cauchy(values: e_sequence): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (left_index, right_index: nat):
+          cutoff <= left_index AND cutoff <= right_index
+          IMPLIES
+            normE(
+              subE(
+                values(left_index),
+                values(right_index))) < epsilon_value
+
+  complete_space: bool =
+    FORALL (values: e_sequence):
+      cauchy(values) IMPLIES
+        EXISTS (limit: E):
+          converges(values, limit)
+
+  real_hilbert_space: bool =
+    additive_group_laws
+      AND real_module_laws
+      AND norm_laws
+      AND inner_product_laws
+      AND complete_space
+
+  real_linear(T: linear_map): bool =
+    (FORALL (x, y: E):
+      T(addE(x, y)) = addE(T(x), T(y)))
+      AND (FORALL (a: real), (x: E):
+        T(smulE(a, x)) = smulE(a, T(x)))
+
+  continuous_linear(T: linear_map): bool =
+    real_linear(T)
+      AND EXISTS (bound: real):
+        0 <= bound
+          AND FORALL (x: E):
+            normE(T(x)) <= bound * normE(x)
+
+  continuous_linear_equivalence(
+      T, inverseT: linear_map): bool =
+    continuous_linear(T)
+      AND continuous_linear(inverseT)
+      AND (FORALL (x: E):
+        inverseT(T(x)) = x)
+      AND (FORALL (x: E):
+        T(inverseT(x)) = x)
+
+  bilinear(form: [E, E -> real]): bool =
+    (FORALL (x, y, z: E):
+      form(addE(x, y), z) = form(x, z) + form(y, z))
+      AND (FORALL (a: real), (x, y: E):
+        form(smulE(a, x), y) = a * form(x, y))
+      AND (FORALL (x, y, z: E):
+        form(x, addE(y, z)) = form(x, y) + form(x, z))
+      AND (FORALL (a: real), (x, y: E):
+        form(x, smulE(a, y)) = a * form(x, y))
+
+  bounded_bilinear(form: [E, E -> real]): bool =
+    bilinear(form)
+      AND EXISTS (bound: real):
+        0 <= bound
+          AND FORALL (x, y: E):
+            abs(form(x, y)) <=
+              bound * normE(x) * normE(y)
+
+  coercive(form: [E, E -> real]): bool =
+    EXISTS (constant: real):
+      0 < constant
+        AND FORALL (x: E):
+          constant * normE(x) * normE(x) <= form(x, x)
+
+  lax_milgram_theorem: bool =
+    (real_hilbert_space
+      AND bounded_bilinear(B)
+      AND coercive(B))
+    IMPLIES
+      EXISTS (T, inverseT: linear_map):
+        continuous_linear_equivalence(T, inverseT)
+          AND FORALL (v, w: E):
+            innerE(T(v), w) = B(v, w)
+END lax_milgram_theorem_Q9993851

@@ -1,12 +1,33 @@
 from __future__ import annotations
 
+import hashlib
 import json
 
-from eval.pipeline.config import STMTS_JSON, PROOFS_JSON
+from eval.pipeline.config import EXTENDED_STMTS_MANIFEST, PROOFS_JSON, PROVERS
+
+
+def load_statement_records(*, sources: list[str] | None = None) -> list[dict]:
+    """Read the checksum-verified statement shards for all ten provers."""
+    manifest = json.loads(EXTENDED_STMTS_MANIFEST.read_text(encoding="utf-8"))
+    if manifest.get("schema_version") != "itpeval-extended-statements-v1":
+        raise ValueError("unsupported extended statement manifest")
+    records = []
+    for source, entry in manifest["datasets"].items():
+        if sources and source not in sources:
+            continue
+        path = EXTENDED_STMTS_MANIFEST.parent / entry["file"]
+        payload = path.read_bytes()
+        if hashlib.sha256(payload).hexdigest() != entry["sha256"]:
+            raise ValueError(f"statement shard checksum mismatch: {source}")
+        shard = json.loads(payload)
+        if len(shard) != entry["records"] or any(r["source"] != source for r in shard):
+            raise ValueError(f"statement shard inventory mismatch: {source}")
+        records.extend(shard)
+    return records
 
 
 def load_pairs(
-    mode: str = "proofs",
+    mode: str = "stmts",
     *,
     sources: list[str] | None = None,
     tiers: list[str] | None = None,
@@ -19,8 +40,12 @@ def load_pairs(
     Returns list of dicts with keys: theorem_id, title, source, tier,
     src_prover, tgt_prover, src_content.
     """
-    json_path = STMTS_JSON if mode == "stmts" else PROOFS_JSON
-    records = json.loads(json_path.read_text())
+    if mode not in {"stmts", "proofs"}:
+        raise ValueError(f"unknown translation mode: {mode!r}")
+    if mode == "proofs":
+        records = json.loads(PROOFS_JSON.read_text(encoding="utf-8"))
+    else:
+        records = load_statement_records(sources=sources)
 
     if sources:
         records = [r for r in records if r["source"] in sources]
@@ -28,7 +53,7 @@ def load_pairs(
         records = [r for r in records if r["tier"] in tiers]
     if theorem_ids:
         records = [r for r in records if r["theorem_id"] in theorem_ids]
-    if subset:
+    if subset is not None:
         records = [r for r in records if (r["source"], int(r["theorem_id"])) in subset]
 
     # Pair records only within the same theorem/source group
@@ -41,6 +66,12 @@ def load_pairs(
     pairs = []
     for recs in by_theorem.values():
         prover_map = {r["prover"]: r for r in recs}
+        if len(prover_map) != len(recs):
+            raise ValueError("duplicate prover representation for one item")
+        if not set(prover_map) <= set(PROVERS):
+            raise ValueError("unknown prover in benchmark input")
+        if mode == "stmts" and set(prover_map) != set(PROVERS):
+            raise ValueError("statement item is not ten-way aligned")
         # For each theorem with n provers, emit all n * (n - 1) directed pairs
         for src_prover, src_rec in prover_map.items():
             for tgt_prover in prover_map:
@@ -53,5 +84,9 @@ def load_pairs(
                         "src_prover":  src_prover,
                         "tgt_prover":  tgt_prover,
                         "src_content": src_rec["content"],
+                        "corpus": "extended" if mode == "stmts" else "proofs",
+                        "source_sha256": src_rec.get("sha256") or hashlib.sha256(
+                            src_rec["content"].encode("utf-8")
+                        ).hexdigest(),
                     })
     return pairs

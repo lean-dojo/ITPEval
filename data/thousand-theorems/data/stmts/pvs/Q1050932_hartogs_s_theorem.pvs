@@ -1,0 +1,346 @@
+% Statement-only formalization of the Thousand Theorems corpus artifact Q1050932,
+% "Hartogs's theorem": a separately analytic function from an open subset of
+% the complex plane squared into a separable complex Banach space is jointly
+% analytic. This file contains no proof.
+
+Q1050932_hartogs_s_theorem[
+  E: TYPE+,
+  zeroE: E,
+  addE: [E, E -> E],
+  negE: [E -> E],
+  cscaleE: [real, real, E -> E],
+  normE: [E -> real]
+]: THEORY
+BEGIN
+  complex: TYPE =
+    [# real_part: real, imag_part: real #]
+
+  complex_pair: TYPE =
+    [# first_component: complex,
+       second_component: complex #]
+
+  complex_function: TYPE = [complex -> E]
+  pair_function: TYPE = [complex_pair -> E]
+  pair_set: TYPE = [complex_pair -> bool]
+  e_set: TYPE = [E -> bool]
+  e_set_sequence: TYPE = [nat -> e_set]
+  e_sequence: TYPE = [nat -> E]
+  pair_linear_candidate: TYPE = [complex_pair -> E]
+
+  complex_zero: complex =
+    (# real_part := 0, imag_part := 0 #)
+
+  complex_one: complex =
+    (# real_part := 1, imag_part := 0 #)
+
+  complex_add(a, b: complex): complex =
+    (# real_part := real_part(a) + real_part(b),
+       imag_part := imag_part(a) + imag_part(b) #)
+
+  complex_neg(a: complex): complex =
+    (# real_part := -real_part(a),
+       imag_part := -imag_part(a) #)
+
+  complex_sub(a, b: complex): complex =
+    complex_add(a, complex_neg(b))
+
+  complex_mul(a, b: complex): complex =
+    (# real_part :=
+         real_part(a) * real_part(b)
+           - imag_part(a) * imag_part(b),
+       imag_part :=
+         real_part(a) * imag_part(b)
+           + imag_part(a) * real_part(b) #)
+
+  complex_norm_squared(a: complex): real =
+    real_part(a) * real_part(a)
+      + imag_part(a) * imag_part(a)
+
+  complex_pair_of(z0, z1: complex): complex_pair =
+    (# first_component := z0,
+       second_component := z1 #)
+
+  complex_pair_zero: complex_pair =
+    complex_pair_of(complex_zero, complex_zero)
+
+  complex_pair_add(x, y: complex_pair): complex_pair =
+    complex_pair_of(
+      complex_add(
+        first_component(x),
+        first_component(y)),
+      complex_add(
+        second_component(x),
+        second_component(y)))
+
+  complex_pair_smul(
+      a: complex,
+      x: complex_pair): complex_pair =
+    complex_pair_of(
+      complex_mul(a, first_component(x)),
+      complex_mul(a, second_component(x)))
+
+  real_max(x, y: real): real =
+    IF x >= y THEN x ELSE y ENDIF
+
+  pair_norm_squared(x: complex_pair): real =
+    real_max(
+      complex_norm_squared(first_component(x)),
+      complex_norm_squared(second_component(x)))
+
+  pair_distance_squared(
+      x, y: complex_pair): real =
+    pair_norm_squared(
+      complex_pair_of(
+        complex_sub(
+          first_component(x),
+          first_component(y)),
+        complex_sub(
+          second_component(x),
+          second_component(y))))
+
+  smulE(a: complex, x: E): E =
+    cscaleE(real_part(a), imag_part(a), x)
+
+  subE(x, y: E): E =
+    addE(x, negE(y))
+
+  normed_complex_vector_space_E: bool =
+    (FORALL (x, y: E):
+      addE(x, y) = addE(y, x))
+      AND (FORALL (x, y, z: E):
+        addE(addE(x, y), z) =
+          addE(x, addE(y, z)))
+      AND (FORALL (x: E):
+        addE(x, zeroE) = x)
+      AND (FORALL (x: E):
+        addE(x, negE(x)) = zeroE)
+      AND normE(zeroE) = 0
+      AND (FORALL (x: E):
+        0 <= normE(x))
+      AND (FORALL (x: E):
+        normE(x) = 0 IFF x = zeroE)
+      AND (FORALL (x: E):
+        normE(negE(x)) = normE(x))
+      AND (FORALL (x, y: E):
+        normE(addE(x, y)) <=
+          normE(x) + normE(y))
+      AND (FORALL (a: complex), (x, y: E):
+        smulE(a, addE(x, y)) =
+          addE(smulE(a, x), smulE(a, y)))
+      AND (FORALL (a, b: complex), (x: E):
+        smulE(complex_add(a, b), x) =
+          addE(smulE(a, x), smulE(b, x)))
+      AND (FORALL (a, b: complex), (x: E):
+        smulE(complex_mul(a, b), x) =
+          smulE(a, smulE(b, x)))
+      AND (FORALL (x: E):
+        smulE(complex_one, x) = x)
+      AND (FORALL (x: E):
+        smulE(complex_zero, x) = zeroE)
+      AND (FORALL (a: complex):
+        smulE(a, zeroE) = zeroE)
+      AND (FORALL (a: complex), (x: E):
+        normE(smulE(a, x)) * normE(smulE(a, x))
+          =
+        complex_norm_squared(a) * normE(x) * normE(x))
+
+  cauchy_E(values: e_sequence): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (left_index, right_index: nat):
+          (cutoff <= left_index
+            AND cutoff <= right_index)
+          IMPLIES
+            normE(
+              subE(
+                values(left_index),
+                values(right_index)))
+              < epsilon_value
+
+  converges_E(
+      values: e_sequence,
+      limit_value: E): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            normE(
+              subE(values(index), limit_value))
+              < epsilon_value
+
+  complete_E: bool =
+    FORALL (values: e_sequence):
+      cauchy_E(values) IMPLIES
+        EXISTS (limit_value: E):
+          converges_E(values, limit_value)
+
+  subset_E(A, B: e_set): bool =
+    FORALL (x: E):
+      A(x) IMPLIES B(x)
+
+  open_E(U: e_set): bool =
+    FORALL (x: E):
+      U(x) IMPLIES
+        EXISTS (radius: posreal):
+          FORALL (y: E):
+            normE(subE(y, x)) < radius
+              IMPLIES U(y)
+
+  second_countable_E: bool =
+    EXISTS (basis: e_set_sequence):
+      (FORALL (index: nat):
+        open_E(basis(index)))
+        AND (FORALL (U: e_set), (x: E):
+          (open_E(U) AND U(x))
+          IMPLIES
+            EXISTS (index: nat):
+              basis(index)(x)
+                AND subset_E(basis(index), U))
+
+  open_pair_set(s: pair_set): bool =
+    FORALL (x: complex_pair):
+      s(x) IMPLIES
+        EXISTS (radius: posreal):
+          FORALL (y: complex_pair):
+            pair_distance_squared(y, x)
+                < radius * radius
+              IMPLIES s(y)
+
+  bounded_complex_linear_pair_map(
+      derivative: pair_linear_candidate): bool =
+    (FORALL (x, y: complex_pair):
+      derivative(complex_pair_add(x, y)) =
+        addE(derivative(x), derivative(y)))
+      AND (FORALL (a: complex), (x: complex_pair):
+        derivative(complex_pair_smul(a, x)) =
+          smulE(a, derivative(x)))
+      AND EXISTS (bound: real):
+        0 <= bound
+          AND FORALL (x: complex_pair):
+            normE(derivative(x))
+                * normE(derivative(x))
+              <= bound * bound * pair_norm_squared(x)
+
+  has_complex_derivative_at(
+      f: complex_function,
+      derivative: E,
+      point: complex): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (radius: posreal):
+        FORALL (increment: complex):
+          complex_norm_squared(increment)
+              < radius * radius
+            IMPLIES
+              normE(
+                subE(
+                  subE(
+                    f(complex_add(point, increment)),
+                    f(point)),
+                  smulE(increment, derivative)))
+                *
+              normE(
+                subE(
+                  subE(
+                    f(complex_add(point, increment)),
+                    f(point)),
+                  smulE(increment, derivative)))
+              <= epsilon_value * epsilon_value
+                   * complex_norm_squared(increment)
+
+  complex_differentiable_at(
+      f: complex_function,
+      point: complex): bool =
+    EXISTS (derivative: E):
+      has_complex_derivative_at(
+        f, derivative, point)
+
+  has_complex_frechet_derivative_at(
+      f: pair_function,
+      derivative: pair_linear_candidate,
+      point: complex_pair): bool =
+    bounded_complex_linear_pair_map(derivative)
+      AND FORALL (epsilon_value: posreal):
+        EXISTS (radius: posreal):
+          FORALL (increment: complex_pair):
+            pair_norm_squared(increment)
+                < radius * radius
+              IMPLIES
+                normE(
+                  subE(
+                    subE(
+                      f(complex_pair_add(
+                        point, increment)),
+                      f(point)),
+                    derivative(increment)))
+                  *
+                normE(
+                  subE(
+                    subE(
+                      f(complex_pair_add(
+                        point, increment)),
+                      f(point)),
+                    derivative(increment)))
+                <= epsilon_value * epsilon_value
+                     * pair_norm_squared(increment)
+
+  complex_frechet_differentiable_at(
+      f: pair_function,
+      point: complex_pair): bool =
+    EXISTS (derivative: pair_linear_candidate):
+      has_complex_frechet_derivative_at(
+        f, derivative, point)
+
+  analytic_at_complex(
+      f: complex_function,
+      point: complex): bool =
+    EXISTS (radius: posreal):
+      FORALL (nearby: complex):
+        complex_norm_squared(
+          complex_sub(nearby, point))
+            < radius * radius
+          IMPLIES
+            complex_differentiable_at(f, nearby)
+
+  analytic_at_pair(
+      f: pair_function,
+      point: complex_pair): bool =
+    EXISTS (radius: posreal):
+      FORALL (nearby: complex_pair):
+        pair_distance_squared(nearby, point)
+            < radius * radius
+          IMPLIES
+            complex_frechet_differentiable_at(
+              f, nearby)
+
+  analytic_on_neighborhood_pair(
+      f: pair_function,
+      s: pair_set): bool =
+    FORALL (point: complex_pair):
+      s(point) IMPLIES analytic_at_pair(f, point)
+
+  hartogs_s_theorem: bool =
+    (normed_complex_vector_space_E
+      AND complete_E
+      AND second_countable_E)
+    IMPLIES
+      FORALL
+          (f: pair_function),
+          (s: pair_set):
+        (open_pair_set(s)
+          AND (FORALL (c0, c1: complex):
+            s(complex_pair_of(c0, c1))
+              IMPLIES
+                analytic_at_complex(
+                  LAMBDA (z0: complex):
+                    f(complex_pair_of(z0, c1)),
+                  c0))
+          AND (FORALL (c0, c1: complex):
+            s(complex_pair_of(c0, c1))
+              IMPLIES
+                analytic_at_complex(
+                  LAMBDA (z1: complex):
+                    f(complex_pair_of(c0, z1)),
+                  c1)))
+        IMPLIES
+          analytic_on_neighborhood_pair(f, s)
+END Q1050932_hartogs_s_theorem

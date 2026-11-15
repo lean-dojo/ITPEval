@@ -1,0 +1,147 @@
+% Statement-only formalization of the VERINA corpus artifact verina_basic_84
+% (verina__pvs__verina_basic_84), catalog title "replace": the exact
+% left-to-right array scan replaces every integer above a threshold with -1
+% and satisfies the size and pointwise replacement contract. This file contains no proof.
+
+verina_basic_84: THEORY
+BEGIN
+
+  % Finite PVS lists preserve exactly the contents and order of Lean arrays.
+  int_list_length(
+      values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        int_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  % Lean Array.get! on integer arrays returns zero outside the array.
+  int_list_get_bang(
+      index: nat,
+      values: list[int]): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          int_list_get_bang(index - 1, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  % Lean Array.set! replaces an in-bounds entry and leaves an out-of-bounds
+  % array unchanged.
+  int_list_set_bang(
+      index: nat,
+      new_value: int,
+      values: list[int]): RECURSIVE list[int] =
+    CASES values OF
+      null:
+        null[int],
+      cons(head, tail):
+        IF index = 0 THEN
+          cons(new_value, tail)
+        ELSE
+          cons(
+            head,
+            int_list_set_bang(
+              index - 1,
+              new_value,
+              tail))
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  % Lean natural-number subtraction is truncated at zero.
+  nat_subtract(first, second: nat): nat =
+    IF first >= second THEN first - second ELSE 0 ENDIF
+
+  replace_precond(
+      arr: list[int],
+      k: int): bool =
+    TRUE
+
+  replace_loop_steps(
+      old_arr: list[int],
+      k: int,
+      i, fuel: nat,
+      acc: list[int]): RECURSIVE list[int] =
+    IF fuel = 0 THEN
+      acc
+    ELSIF i < int_list_length(old_arr) THEN
+      IF int_list_get_bang(i, old_arr) > k THEN
+        replace_loop_steps(
+          old_arr,
+          k,
+          i + 1,
+          fuel - 1,
+          int_list_set_bang(i, -1, acc))
+      ELSE
+        replace_loop_steps(
+          old_arr,
+          k,
+          i + 1,
+          fuel - 1,
+          acc)
+      ENDIF
+    ELSE
+      acc
+    ENDIF
+  MEASURE fuel
+
+  % The distance to the old-array boundary plus one covers every source
+  % recursive update and its final bounds check, so the fuel fallback is
+  % unreachable in this exact rendering of replace_loop.
+  replace_loop(
+      old_arr: list[int],
+      k: int,
+      i: nat,
+      acc: list[int]): list[int] =
+    replace_loop_steps(
+      old_arr,
+      k,
+      i,
+      nat_subtract(int_list_length(old_arr), i) + 1,
+      acc)
+
+  % The source precondition proof argument is computationally irrelevant.
+  replace(
+      arr: list[int],
+      k: int): list[int] =
+    replace_loop(arr, k, 0, arr)
+
+  % The source proof argument to the postcondition is logically irrelevant.
+  replace_postcond(
+      arr: list[int],
+      k: int,
+      result: list[int]): bool =
+    int_list_length(result) = int_list_length(arr)
+      AND
+        (FORALL (i: nat):
+          i < int_list_length(arr)
+            IMPLIES
+              (int_list_get_bang(i, arr) > k
+                IMPLIES int_list_get_bang(i, result) = -1))
+      AND
+        (FORALL (i: nat):
+          i < int_list_length(arr)
+            IMPLIES
+              (int_list_get_bang(i, arr) <= k
+                IMPLIES
+                  int_list_get_bang(i, result)
+                    = int_list_get_bang(i, arr)))
+
+  replace_spec_satisfied: bool =
+    FORALL (arr: list[int], k: int):
+      replace_precond(arr, k)
+        IMPLIES
+          replace_postcond(
+            arr,
+            k,
+            replace(arr, k))
+
+END verina_basic_84

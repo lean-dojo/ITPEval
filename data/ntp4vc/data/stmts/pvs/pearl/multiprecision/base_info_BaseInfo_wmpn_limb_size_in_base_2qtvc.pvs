@@ -1,0 +1,82 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/multiprecision/base_info_BaseInfo_wmpn_limb_size_in_base_2qtvc: the
+% verification condition that a positive 64-bit limb has a bit length from
+% 1 through 64 characterized by consecutive powers of two. This file contains
+% no proof.
+
+base_info_BaseInfo_wmpn_limb_size_in_base_2qtvc: THEORY
+BEGIN
+
+  IMPORTING
+    bv[32], bv[64],
+    bv_nat[32], bv_nat[64]
+
+  word32: TYPE = bvec[32]
+  word64: TYPE = bvec[64]
+
+  max_uint64: int = 18446744073709551615
+
+  unsigned64(value: word64): int =
+    bv2nat[64](value)
+
+  signed32(value: word32): int =
+    IF value(31) THEN
+      bv2nat[32](value) - 4294967296
+    ELSE
+      bv2nat[32](value)
+    ENDIF
+
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  nat_power(base: int, exponent: nat): RECURSIVE int =
+    IF exponent = 0 THEN
+      1
+    ELSE
+      base * nat_power(base, exponent - 1)
+    ENDIF
+  MEASURE exponent
+
+  int_power(base, exponent: int): int =
+    nat_power(base, int_to_nat(exponent))
+
+  uint64_in_bounds(value: int): bool =
+    0 <= value AND value <= max_uint64
+
+  wmpn_limb_size_in_base_2_vc: bool =
+    FORALL (u: word64):
+      0 < unsigned64(u)
+        IMPLIES
+      0 < unsigned64(u)
+        AND
+          (FORALL (o1: word32):
+            (int_power(2, signed32(o1)) * unsigned64(u)
+                 <= max_uint64
+              AND
+                max_uint64
+                  < 2 * int_power(2, signed32(o1)) * unsigned64(u)
+              AND 0 <= signed32(o1)
+              AND signed32(o1) < 64)
+              IMPLIES
+                0 <= signed32(o1)
+                  AND
+                    (FORALL (shift: word64):
+                      unsigned64(shift) = signed32(o1)
+                        IMPLIES
+                          uint64_in_bounds(64 - unsigned64(shift))
+                            AND
+                              (FORALL (r: word64):
+                                unsigned64(r)
+                                    = 64 - unsigned64(shift)
+                                  IMPLIES
+                                    (1 <= unsigned64(r)
+                                      AND unsigned64(r) <= 64)
+                                      AND
+                                        int_power(
+                                          2, unsigned64(r) - 1)
+                                          <= unsigned64(u)
+                                      AND
+                                        unsigned64(u)
+                                          < int_power(2, unsigned64(r)))))
+
+END base_info_BaseInfo_wmpn_limb_size_in_base_2qtvc

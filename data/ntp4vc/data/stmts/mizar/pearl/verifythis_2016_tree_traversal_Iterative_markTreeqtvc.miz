@@ -1,0 +1,579 @@
+:: Statement-only formalization of the NTP4VC corpus artifact
+:: pearl/verifythis_2016_tree_traversal_Iterative_markTreeqtvc: the iterative
+:: binary-tree traversal verification condition maintains its simulated call
+:: stack while marking every node and restoring the original pointer shape.
+:: This file contains no proof.
+
+environ
+  vocabularies TARSKI, XBOOLE_0, SUBSET_1, RELAT_1, FUNCT_1,
+    FUNCT_2, FUNCT_4, FUNCT_7, FUNCOP_1, PARTFUN1, ZFMISC_1, NUMBERS,
+    XREAL_0, CARD_1, XXREAL_0, ARYTM_1, ARYTM_3, REAL_1,
+    INT_1, NAT_1, VALUED_0, VALUED_1, ORDINAL1, ORDINAL4,
+    FINSEQ_1, FINSEQ_2, MARGREL1, XBOOLEAN, MCART_1;
+  notations TARSKI, XBOOLE_0, SUBSET_1, ZFMISC_1, XTUPLE_0,
+    MCART_1, RELAT_1, FUNCT_1, RELSET_1, PARTFUN1, FUNCT_2,
+    FUNCT_4, FUNCT_7, FUNCOP_1, ORDINAL1, CARD_1, NUMBERS, XCMPLX_0,
+    XREAL_0, REAL_1, INT_1, NAT_1, XXREAL_0, FINSEQ_1,
+    FINSEQ_2, MARGREL1, XBOOLEAN;
+  constructors FUNCT_1, RELSET_1, PARTFUN1, FUNCT_2, FUNCT_4,
+    FUNCT_7, FUNCOP_1, CARD_1, REAL_1, INT_1, XXREAL_0, ZFMISC_1,
+    MCART_1, NAT_1, FINSEQ_1, FINSEQ_2, MARGREL1;
+  registrations XBOOLE_0, SUBSET_1, RELAT_1, FUNCT_1, RELSET_1,
+    FUNCT_2, FUNCT_4, FUNCT_7, FUNCOP_1, NUMBERS, CARD_1, XXREAL_0,
+    MEMBERED, VALUED_0, VALUED_1, XCMPLX_0, XREAL_0,
+    ORDINAL1, INT_1, NAT_1, FINSEQ_1, FINSEQ_2, MARGREL1,
+    XBOOLEAN;
+  requirements REAL, NUMERALS, SUBSET, BOOLE, ARITHM;
+
+begin
+
+::$P-
+theorem
+  for L,K,Phase,Tree,Memory,Snap,Frame,Stack,Option being non empty set,
+      Keys being Function of 3,K,
+      Phases being Function of 4,Phase,
+      null being Element of L,
+      emptyT being Element of Tree,
+      node being Function of [:Tree,[:L,Tree:]:],Tree,
+      Size being Function of Tree,INT,
+      Footprint being Function of Tree,bool L,
+      Accessor being Function of Memory,Funcs(K,Funcs(L,L)),
+      PtrField being
+        Function of [:Funcs(K,Funcs(L,L)),K:],Funcs(L,L),
+      PtrVal being
+        Function of [:Funcs(K,Funcs(L,L)),[:K,L:]:],L,
+      Mark being Function of Memory,Funcs(L,BOOLEAN),
+      IsTree being
+        Subset of
+          [:Funcs(K,Funcs(L,L)),[:Tree,[:L,L:]:]:],
+      Ext being
+        Subset of
+          [:bool L,
+            [:Funcs(K,Funcs(L,L)),Funcs(K,Funcs(L,L)):]:],
+      Unchanged being
+        Subset of
+          [:Funcs(K,Funcs(L,L)),Funcs(K,Funcs(L,L)):],
+      WasMarked being
+        Subset of
+          [:Tree,[:Funcs(L,BOOLEAN),Funcs(L,BOOLEAN):]:],
+      NextPhase being Function of Phase,Phase,
+      Rotated being
+        Subset of
+          [:Funcs(K,Funcs(L,L)),
+            [:Funcs(K,Funcs(L,L)),[:Phase,L:]:]:],
+      SnapView being Function of
+        Snap,[:Funcs(K,Funcs(L,L)),[:L,L:]:],
+      Marks being Function of Snap,Funcs(L,BOOLEAN),
+      Memo being Function of [:Frame,5:],Snap,
+      FrameData being Function of
+        Frame,[:Tree,[:Tree,[:L,[:Tree,L:]:]:]:],
+      FrameMemo being Function of [:Frame,INT:],Snap,
+      BlocRel being
+        Subset of
+          [:Funcs(K,Funcs(L,L)),[:Phase,[:Snap,Snap:]:]:],
+      RecRel being Subset of [:Tree,[:Snap,Snap:]:],
+      bottom,done being Element of Stack,
+      running being Function of [:Stack,[:INT,Frame:]:],Stack,
+      noneO being Element of Option,
+      some being Function of Tree,Option,
+      IsStack being
+        Subset of
+          [:Tree,[:Snap,[:Snap,[:Stack,Option:]:]:]:],
+      StackSize being Function of Stack,INT,
+      memo being Element of Memory,
+      t being Element of Tree,
+      root being Element of L
+  st
+    Keys.0 <> Keys.1 & Keys.0 <> Keys.2 & Keys.1 <> Keys.2 &
+    (for k being Element of K holds
+       k = Keys.0 or k = Keys.1 or k = Keys.2) &
+
+    Phases.0 <> Phases.1 & Phases.0 <> Phases.2 & Phases.0 <> Phases.3 &
+    Phases.1 <> Phases.2 & Phases.1 <> Phases.3 & Phases.2 <> Phases.3 &
+    (for ph being Element of Phase holds
+       ph = Phases.0 or ph = Phases.1 or ph = Phases.2 or ph = Phases.3) &
+
+    (for l,r,l1,r1 being Element of Tree,
+         x,x1 being Element of L
+       st node.[l,[x,r]] = node.[l1,[x1,r1]]
+     holds l = l1 & x = x1 & r = r1) &
+    (for l,r being Element of Tree, x being Element of L
+     holds node.[l,[x,r]] <> emptyT) &
+    (for u being Element of Tree holds
+       u = emptyT or
+       ex l,r being Element of Tree, x being Element of L st
+         u = node.[l,[x,r]]) &
+    (for X being Subset of Tree st
+       emptyT in X &
+       (for l,r being Element of Tree, x being Element of L st
+          l in X & r in X
+        holds node.[l,[x,r]] in X)
+     holds X = Tree) &
+
+    Size.emptyT = 0 &
+    (for l,r being Element of Tree, x being Element of L holds
+       Size.(node.[l,[x,r]]) = 1 + Size.l + Size.r) &
+    Footprint.emptyT = {} &
+    (for l,r being Element of Tree, x being Element of L holds
+       Footprint.(node.[l,[x,r]]) =
+         {x} \/ (Footprint.l \/ Footprint.r)) &
+
+    (for pm being Function of K,Funcs(L,L),
+         k being Element of K
+     holds PtrField.[pm,k] = pm.k) &
+    (for pm being Function of K,Funcs(L,L),
+         k being Element of K, x being Element of L
+     holds PtrVal.[pm,[k,x]] = (pm.k).x) &
+
+    (for pm being Function of K,Funcs(L,L),
+         c,p being Element of L
+     holds
+       ([pm,[emptyT,[c,p]]] in IsTree iff c = null)) &
+    (for pm being Function of K,Funcs(L,L),
+         l,r being Element of Tree,
+         m,c,p being Element of L
+     holds
+       ([pm,[node.[l,[m,r]],[c,p]]] in IsTree iff
+         c <> null & c = m & PtrVal.[pm,[Keys.0,c]] = p &
+         (PtrVal.[pm,[Keys.1,c]] = null iff
+          PtrVal.[pm,[Keys.2,c]] = null) &
+         [pm,[l,[PtrVal.[pm,[Keys.1,c]],c]]] in IsTree &
+         [pm,[r,[PtrVal.[pm,[Keys.2,c]],c]]] in IsTree)) &
+
+    (for S being Subset of L,
+         pm1,pm2 being Function of K,Funcs(L,L)
+     holds
+       ([S,[pm1,pm2]] in Ext iff
+         for k being Element of K, x being Element of L st x in S
+         holds PtrVal.[pm1,[k,x]] = PtrVal.[pm2,[k,x]])) &
+    (for pm1,pm2 being Function of K,Funcs(L,L)
+     holds
+       ([pm1,pm2] in Unchanged iff
+         for k being Element of K, x being Element of L
+         holds PtrVal.[pm1,[k,x]] = PtrVal.[pm2,[k,x]])) &
+    (for tr being Element of Tree,
+         mk1,mk2 being Function of L,BOOLEAN
+     holds
+       ([tr,[mk1,mk2]] in WasMarked iff
+         (for x being Element of L st x in Footprint.tr
+          holds mk2.x = TRUE) &
+         (for x being Element of L st not x in Footprint.tr
+          holds mk2.x = mk1.x))) &
+
+    NextPhase.(Phases.0) = Phases.1 &
+    NextPhase.(Phases.1) = Phases.2 &
+    NextPhase.(Phases.2) = Phases.0 &
+    NextPhase.(Phases.3) = Phases.3 &
+    (for pm1,pm2 being Function of K,Funcs(L,L),
+         ph being Element of Phase, c being Element of L
+     holds
+       ([pm1,[pm2,[ph,c]]] in Rotated iff
+         (for k being Element of K, x being Element of L st x <> c
+          holds PtrVal.[pm1,[k,x]] = PtrVal.[pm2,[k,x]]) &
+         (ph <> Phases.3 implies c <> null) &
+         ((ph = Phases.0 & [pm1,pm2] in Unchanged) or
+          (ph = Phases.1 &
+            PtrVal.[pm2,[Keys.1,c]] = PtrVal.[pm1,[Keys.2,c]] &
+            PtrVal.[pm2,[Keys.2,c]] = PtrVal.[pm1,[Keys.0,c]] &
+            PtrVal.[pm2,[Keys.0,c]] = PtrVal.[pm1,[Keys.1,c]]) or
+          (ph = Phases.2 &
+            PtrVal.[pm1,[Keys.1,c]] = PtrVal.[pm2,[Keys.2,c]] &
+            PtrVal.[pm1,[Keys.2,c]] = PtrVal.[pm2,[Keys.0,c]] &
+            PtrVal.[pm1,[Keys.0,c]] = PtrVal.[pm2,[Keys.1,c]]) or
+          (ph = Phases.3 & c = null)))) &
+
+    (for pm being Function of K,Funcs(L,L),
+         c,p being Element of L,
+         mk being Function of L,BOOLEAN
+     holds
+       ex s being Element of Snap st
+         (SnapView.s)`1 = pm & ((SnapView.s)`2)`1 = c &
+         ((SnapView.s)`2)`2 = p & Marks.s = mk) &
+    (for s1,s2 being Element of Snap st
+       (SnapView.s1)`1 = (SnapView.s2)`1 &
+       ((SnapView.s1)`2)`1 = ((SnapView.s2)`2)`1 &
+       ((SnapView.s1)`2)`2 =
+         ((SnapView.s2)`2)`2 &
+       Marks.s1 =
+         Marks.s2
+     holds s1 = s2) &
+
+    (for s0,s1,s2,s3,s4 being Element of Snap,
+         tr,tl,trr being Element of Tree,
+         pl,pr being Element of L
+     holds
+       ex f being Element of Frame st
+         Memo.[f,0] = s0 & (FrameData.f)`1 = tr &
+         ((FrameData.f)`2)`1 = tl &
+         (((FrameData.f)`2)`2)`1 = pl &
+         ((((FrameData.f)`2)`2)`2)`1 = trr &
+         ((((FrameData.f)`2)`2)`2)`2 = pr &
+         Memo.[f,1] = s1 & Memo.[f,2] = s2 &
+         Memo.[f,3] = s3 & Memo.[f,4] = s4) &
+    (for f,g being Element of Frame st
+       Memo.[f,0] = Memo.[g,0] & (FrameData.f)`1 = (FrameData.g)`1 &
+       ((FrameData.f)`2)`1 = ((FrameData.g)`2)`1 &
+       (((FrameData.f)`2)`2)`1 =
+         (((FrameData.g)`2)`2)`1 &
+       ((((FrameData.f)`2)`2)`2)`1 =
+         ((((FrameData.g)`2)`2)`2)`1 &
+       ((((FrameData.f)`2)`2)`2)`2 =
+         ((((FrameData.g)`2)`2)`2)`2 &
+       Memo.[f,1] = Memo.[g,1] & Memo.[f,2] = Memo.[g,2] &
+       Memo.[f,3] = Memo.[g,3] & Memo.[f,4] = Memo.[g,4]
+     holds f = g) &
+
+    (for f being Element of Frame, pc being Integer holds
+       (pc <= 0 implies FrameMemo.[f,pc] = Memo.[f,0]) &
+       (0 < pc & pc <= 1 implies FrameMemo.[f,pc] = Memo.[f,1]) &
+       (1 < pc & pc <= 2 implies FrameMemo.[f,pc] = Memo.[f,2]) &
+       (2 < pc & pc <= 3 implies FrameMemo.[f,pc] = Memo.[f,3]) &
+       (3 < pc implies FrameMemo.[f,pc] = Memo.[f,4])) &
+
+    (for pm0 being Function of K,Funcs(L,L),
+         ph being Element of Phase,
+         s1,s2 being Element of Snap
+     holds
+       ([pm0,[ph,[s1,s2]]] in BlocRel iff
+         ((SnapView.s2)`2)`2 = ((SnapView.s1)`2)`1 &
+         ((SnapView.s2)`2)`1 =
+           PtrVal.[(SnapView.s2)`1,[Keys.0,((SnapView.s2)`2)`2]] &
+         (Marks.s2).(((SnapView.s2)`2)`2) = TRUE &
+         (for x being Element of L st x <> ((SnapView.s2)`2)`2
+          holds (Marks.s2).x = (Marks.s1).x) &
+         (((PtrVal.[(SnapView.s1)`1,[Keys.1,((SnapView.s1)`2)`1]] = null &
+            null = PtrVal.[(SnapView.s1)`1,[Keys.2,((SnapView.s1)`2)`1]] &
+            (SnapView.s2)`1 = (SnapView.s1)`1) or
+           ((not
+                (PtrVal.[(SnapView.s1)`1,
+                   [Keys.1,((SnapView.s1)`2)`1]] = null &
+                 null = PtrVal.[(SnapView.s1)`1,
+                   [Keys.2,((SnapView.s1)`2)`1]]) &
+            [pm0,[(SnapView.s2)`1,
+              [NextPhase.ph,((SnapView.s2)`2)`2]]] in Rotated)))))) &
+
+    (for tr being Element of Tree, s1,s2 being Element of Snap
+     holds
+       ([tr,[s1,s2]] in RecRel iff
+         [(SnapView.s1)`1,(SnapView.s2)`1] in Unchanged &
+         ((SnapView.s2)`2)`1 = ((SnapView.s1)`2)`2 &
+         ((SnapView.s2)`2)`2 = ((SnapView.s1)`2)`1 &
+         [tr,
+           [Marks.s1,
+             Marks.s2]] in WasMarked)) &
+
+    bottom <> done &
+    (for s being Element of Stack, pc being Integer,
+         f being Element of Frame
+     holds running.[s,[pc,f]] <> bottom &
+           running.[s,[pc,f]] <> done) &
+    (for s,s1 being Element of Stack,
+         pc,pc1 being Integer,
+         f,f1 being Element of Frame st
+       running.[s,[pc,f]] = running.[s1,[pc1,f1]]
+     holds s = s1 & pc = pc1 & f = f1) &
+    (for q being Element of Stack holds
+       q = bottom or q = done or
+       ex s being Element of Stack, pc being Integer,
+          f being Element of Frame st q = running.[s,[pc,f]]) &
+    (for X being Subset of Stack st
+       bottom in X & done in X &
+       (for s being Element of Stack, pc being Integer,
+            f being Element of Frame st s in X
+        holds running.[s,[pc,f]] in X)
+     holds X = Stack) &
+
+    (for tr being Element of Tree holds some.tr <> noneO) &
+    (for tr,u being Element of Tree st some.tr = some.u
+     holds tr = u) &
+    (for o being Element of Option holds
+       o = noneO or ex tr being Element of Tree st o = some.tr) &
+
+    (for tr being Element of Tree,
+         stop,scur being Element of Snap,
+         calls being Element of Option
+     holds
+       ([tr,[stop,[scur,[bottom,calls]]]] in IsStack iff
+         stop = scur & calls = some.tr)) &
+    (for tr being Element of Tree,
+         stop,scur being Element of Snap,
+         s being Element of Stack,
+         pc being Integer,
+         f being Element of Frame,
+         calls being Element of Option
+     holds
+       ([tr,[stop,[scur,[running.[s,[pc,f]],calls]]]] in IsStack iff
+         0 <= pc & pc <= 4 &
+         [tr,[stop,[Memo.[f,0],[s,some.((FrameData.f)`1)]]]]
+           in IsStack &
+         ((SnapView.(Memo.[f,0]))`2)`1 <> null &
+         [(SnapView.(Memo.[f,0]))`1,
+           [(FrameData.f)`1,
+             [((SnapView.(Memo.[f,0]))`2)`1,
+               ((SnapView.(Memo.[f,0]))`2)`2]]] in IsTree &
+         (FrameData.f)`1 =
+           node.[((FrameData.f)`2)`1,
+             [((SnapView.(Memo.[f,0]))`2)`1,
+               ((((FrameData.f)`2)`2)`2)`1]] &
+         (((FrameData.f)`2)`2)`1 =
+           PtrVal.[(SnapView.(Memo.[f,0]))`1,
+             [Keys.1,((SnapView.(Memo.[f,0]))`2)`1]] &
+         ((((FrameData.f)`2)`2)`2)`2 =
+           PtrVal.[(SnapView.(Memo.[f,0]))`1,
+             [Keys.2,((SnapView.(Memo.[f,0]))`2)`1]] &
+         (1 <= pc implies
+           [(SnapView.(Memo.[f,0]))`1,
+             [Phases.0,[Memo.[f,0],Memo.[f,1]]]] in BlocRel &
+           (((FrameData.f)`2)`2)`1 <> null &
+           ((((FrameData.f)`2)`2)`2)`2 <> null) &
+         (2 <= pc implies
+           [((FrameData.f)`2)`1,
+             [Memo.[f,1],Memo.[f,2]]] in RecRel) &
+         (3 <= pc implies
+           [(SnapView.(Memo.[f,0]))`1,
+             [Phases.1,[Memo.[f,2],Memo.[f,3]]]] in BlocRel) &
+         (4 <= pc implies
+           [((((FrameData.f)`2)`2)`2)`1,
+             [Memo.[f,3],Memo.[f,4]]] in RecRel) &
+         FrameMemo.[f,pc] = scur &
+         ((calls = noneO & pc <> 1 & pc <> 3) or
+          (ex u being Element of Tree st calls = some.u &
+            ((pc = 1 & u = ((FrameData.f)`2)`1) or
+             (pc <> 1 & pc = 3 & u = ((((FrameData.f)`2)`2)`2)`1)))))) &
+    (for tr being Element of Tree,
+         stop,scur being Element of Snap,
+         calls being Element of Option
+     holds
+       ([tr,[stop,[scur,[done,calls]]]] in IsStack iff
+         [tr,[stop,scur]] in RecRel & calls = noneO)) &
+
+    StackSize.bottom = 1 &
+    StackSize.done = 0 &
+    (for s being Element of Stack, pc being Integer,
+         f being Element of Frame,
+         tl,tr being Element of Tree st
+       tl = ((FrameData.f)`2)`1 & tr = ((((FrameData.f)`2)`2)`2)`1
+     holds
+       (pc = 0 implies
+         StackSize.(running.[s,[pc,f]]) =
+           StackSize.s + (100-pc) +
+             100*(Size.tl + Size.tr)) &
+       (pc <> 0 & pc <= 2 implies
+         StackSize.(running.[s,[pc,f]]) =
+           StackSize.s + (100-pc) + 100*Size.tr) &
+       (pc <> 0 & 2 < pc implies
+         StackSize.(running.[s,[pc,f]]) =
+           StackSize.s + (100-pc))) &
+
+    [Accessor.memo,[t,[root,null]]] in IsTree &
+    root <> null
+  holds
+    for stop being Element of Snap st
+      (SnapView.stop)`1 = Accessor.memo &
+      ((SnapView.stop)`2)`1 = root &
+      ((SnapView.stop)`2)`2 = null &
+      Marks.stop = Mark.memo
+    holds
+      ([t,[stop,[stop,[bottom,some.t]]]] in IsStack &
+       [(SnapView.stop)`1,
+         [t,[((SnapView.stop)`2)`1,((SnapView.stop)`2)`2]]] in IsTree &
+       ((SnapView.stop)`2)`1 <> null) &
+      (for stk being Element of Stack st
+        [t,[stop,[stop,[stk,noneO]]]] in IsStack &
+        StackSize.stk <= StackSize.bottom + 100*Size.t
+       holds
+        (root <> null &
+         (SnapView.stop)`1 = Accessor.memo &
+         ((SnapView.stop)`2)`1 = root &
+         ((SnapView.stop)`2)`2 = null &
+         Marks.stop = Mark.memo &
+         [t,[stop,[stop,[stk,noneO]]]] in IsStack) &
+        (for entered being Element of BOOLEAN,
+             st1 being Element of Stack,
+             scur being Element of Snap,
+             memo5 being Element of Memory st
+           (((SnapView.scur)`2)`1 = null implies entered = TRUE) &
+           (SnapView.scur)`1 = Accessor.memo5 &
+           Marks.scur = Mark.memo5 &
+           [t,[stop,[scur,[st1,noneO]]]] in IsStack
+         holds
+           (for result being Element of BOOLEAN st
+              ((entered = TRUE &
+                ((SnapView.scur)`2)`1 = null & result = TRUE) or
+               (entered = TRUE &
+                ((SnapView.scur)`2)`1 <> null & result = FALSE) or
+               (entered <> TRUE & result = FALSE))
+            holds
+              (result = TRUE iff ((SnapView.scur)`2)`1 = null)) &
+           ((((SnapView.scur)`2)`1 <> null &
+             (for memo6 being Element of Memory st
+                Accessor.memo6 = Accessor.memo5 &
+                Mark.memo6 =
+                  (Mark.memo5)+*(((SnapView.scur)`2)`1,TRUE)
+              holds
+                ((SnapView.scur)`2)`1 <> null &
+                (for o2 being Element of L st
+                   o2 = PtrVal.[Accessor.memo6,
+                     [Keys.1,((SnapView.scur)`2)`1]]
+                 holds
+                   (o2 = null implies ((SnapView.scur)`2)`1 <> null) &
+                   (for o3 being Element of BOOLEAN st
+                      ((o2 = null &
+                        PtrVal.[Accessor.memo6,
+                          [Keys.2,((SnapView.scur)`2)`1]] =
+                          null &
+                        o3 = TRUE) or
+                       (o2 = null &
+                        PtrVal.[Accessor.memo6,
+                          [Keys.2,((SnapView.scur)`2)`1]] <>
+                          null &
+                        o3 = FALSE) or
+                       (o2 <> null & o3 = FALSE))
+                    holds
+                      ((o3 = TRUE &
+                        ((SnapView.scur)`2)`1 <> null &
+                        (for o4 being Element of Snap st
+                           (SnapView.o4)`1 = Accessor.memo6 &
+                           ((SnapView.o4)`2)`1 =
+                             PtrVal.[Accessor.memo6,
+                               [Keys.0,((SnapView.scur)`2)`1]] &
+                           ((SnapView.o4)`2)`2 = ((SnapView.scur)`2)`1 &
+                           Marks.o4 = Mark.memo6
+                         holds
+                           ([t,[stop,[scur,[st1,noneO]]]]
+                              in IsStack &
+                            (ex s0 being Element of Stack,
+                                pc being Integer,
+                                f being Element of Frame st
+                              st1 = running.[s0,[pc,f]] &
+                              ((pc = 0 &
+                                [(SnapView.(Memo.[f,0]))`1,
+                                  [Phases.0,[scur,o4]]] in BlocRel) or
+                               (pc <> 0 & pc = 2 &
+                                [(SnapView.(Memo.[f,0]))`1,
+                                  [Phases.1,[scur,o4]]] in BlocRel) or
+                               (pc <> 0 & pc <> 2 &
+                                [(SnapView.(Memo.[f,0]))`1,
+                                  [Phases.2,[scur,o4]]] in BlocRel)))) &
+                           (for st2 being Element of Stack st
+                              [t,[stop,[o4,[st2,noneO]]]]
+                                in IsStack &
+                              StackSize.st2 < StackSize.st1
+                            holds
+                              0 <= StackSize.st1 &
+                              StackSize.st2 < StackSize.st1 &
+                              ((PtrVal.[Accessor.memo6,
+                                  [Keys.0,((SnapView.scur)`2)`1]] = null)
+                                implies 1 = 1) &
+                              (SnapView.o4)`1 = Accessor.memo6 &
+                              ((SnapView.o4)`2)`1 =
+                                PtrVal.[Accessor.memo6,
+                                  [Keys.0,((SnapView.scur)`2)`1]] &
+                              ((SnapView.o4)`2)`2 =
+                                ((SnapView.scur)`2)`1 &
+                              Marks.o4 = Mark.memo6 &
+                              [t,[stop,[o4,[st2,noneO]]]]
+                                in IsStack))) or
+                       (o3 <> TRUE &
+                        ((SnapView.scur)`2)`1 <> null &
+                        ((SnapView.scur)`2)`1 <> null &
+                        ((SnapView.scur)`2)`1 <> null &
+                        (for memo7 being Element of Memory st
+                           Mark.memo7 = Mark.memo6 &
+                           Accessor.memo7 =
+                             (Accessor.memo6)+*(
+                               Keys.1,
+                               PtrField.[Accessor.memo6,Keys.1]+*(
+                                 ((SnapView.scur)`2)`1,
+                                 PtrVal.[Accessor.memo6,
+                                   [Keys.2,((SnapView.scur)`2)`1]]))
+                         holds
+                           ((SnapView.scur)`2)`1 <> null &
+                           ((SnapView.scur)`2)`1 <> null &
+                           (for memo8 being Element of Memory st
+                              Mark.memo8 = Mark.memo7 &
+                              Accessor.memo8 =
+                                (Accessor.memo7)+*(
+                                  Keys.2,
+                                  PtrField.[Accessor.memo7,Keys.2]+*(
+                                    ((SnapView.scur)`2)`1,
+                                    PtrVal.[Accessor.memo7,
+                                      [Keys.0,((SnapView.scur)`2)`1]]))
+                            holds
+                              ((SnapView.scur)`2)`1 <> null &
+                              (for memo9 being Element of Memory st
+                                 Mark.memo9 = Mark.memo8 &
+                                 Accessor.memo9 =
+                                   (Accessor.memo8)+*(
+                                     Keys.0,
+                                     PtrField.[Accessor.memo8,Keys.0]+*(
+                                       ((SnapView.scur)`2)`1,
+                                       PtrVal.[Accessor.memo6,
+                                         [Keys.1,((SnapView.scur)`2)`1]]))
+                               holds
+                                 (for o7 being Element of Snap st
+                                    (SnapView.o7)`1 = Accessor.memo9 &
+                                    ((SnapView.o7)`2)`1 =
+                                      PtrVal.[Accessor.memo6,
+                                        [Keys.1,((SnapView.scur)`2)`1]] &
+                                    ((SnapView.o7)`2)`2 =
+                                      ((SnapView.scur)`2)`1 &
+                                    Marks.o7 =
+                                      Mark.memo9
+                                  holds
+                                    ([t,[stop,[scur,[st1,noneO]]]]
+                                       in IsStack &
+                                     (ex s0 being Element of Stack,
+                                         pc being Integer,
+                                         f being Element of Frame st
+                                       st1 = running.[s0,[pc,f]] &
+                                       ((pc = 0 &
+                                         [(SnapView.(Memo.[f,0]))`1,
+                                           [Phases.0,[scur,o7]]]
+                                             in BlocRel) or
+                                        (pc <> 0 & pc = 2 &
+                                         [(SnapView.(Memo.[f,0]))`1,
+                                           [Phases.1,[scur,o7]]]
+                                             in BlocRel) or
+                                        (pc <> 0 & pc <> 2 &
+                                         [(SnapView.(Memo.[f,0]))`1,
+                                           [Phases.2,[scur,o7]]]
+                                             in BlocRel)))) &
+                                    (for st2 being Element of Stack st
+                                       [t,[stop,[o7,[st2,noneO]]]]
+                                         in IsStack &
+                                       StackSize.st2 < StackSize.st1
+                                     holds
+                                       0 <= StackSize.st1 &
+                                       StackSize.st2 < StackSize.st1 &
+                                       ((PtrVal.[Accessor.memo6,
+                                           [Keys.1,
+                                             ((SnapView.scur)`2)`1]] =
+                                             null)
+                                         implies 1 = 1) &
+                                       (SnapView.o7)`1 =
+                                         Accessor.memo9 &
+                                       ((SnapView.o7)`2)`1 =
+                                         PtrVal.[Accessor.memo6,
+                                           [Keys.1,((SnapView.scur)`2)`1]] &
+                                       ((SnapView.o7)`2)`2 =
+                                         ((SnapView.scur)`2)`1 &
+                                       Marks.o7 =
+                                         Mark.memo9 &
+                                       [t,[stop,[o7,[st2,noneO]]]]
+                                         in IsStack))))))))))) or
+            (((SnapView.scur)`2)`1 = null &
+             st1 = done &
+             (st1 = done implies
+               ([Footprint.t,
+                  [(SnapView.stop)`1,Accessor.memo5]] in Ext &
+                [(SnapView.stop)`1,[t,[root,null]]] in IsTree) &
+               ([Accessor.memo5,[t,[root,null]]] in IsTree implies
+                 [Accessor.memo5,[t,[root,null]]] in IsTree &
+                 [Accessor.memo,Accessor.memo5] in Unchanged &
+                 [t,
+                   [Mark.memo,
+                     Mark.memo5]] in WasMarked))))))
+proof
+end;
+::$P+

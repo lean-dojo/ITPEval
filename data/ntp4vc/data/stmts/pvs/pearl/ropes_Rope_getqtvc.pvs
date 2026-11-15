@@ -1,0 +1,261 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/ropes_Rope_getqtvc: the rope character-access verification condition,
+% establishing recursive branch bounds and agreement with the indexed
+% character of the modeled string. This file contains no proof.
+
+ropes_Rope_getqtvc[Char, CharString: TYPE+]: THEORY
+BEGIN
+
+  string_length_function: TYPE = [CharString -> int]
+  string_index_function: TYPE = [CharString, int -> Char]
+  string_app_function: TYPE = [CharString, CharString -> CharString]
+  string_sub_function: TYPE = [CharString, int, int -> CharString]
+
+  rope: DATATYPE
+  BEGIN
+    RopeEmp: RopeEmp?
+    RopeStr(
+        leaf_string: CharString,
+        leaf_offset: int,
+        leaf_length: int): RopeStr?
+    RopeApp(
+        app_left: rope,
+        app_right: rope,
+        stored_length: int): RopeApp?
+  END rope
+
+  rope_length(r: rope): int =
+    CASES r OF
+      RopeEmp:
+        0,
+      RopeStr(leaf, offset, len):
+        len,
+      RopeApp(left, right, len):
+        len
+    ENDCASES
+
+  strings_equal(
+      string_length: string_length_function,
+      string_index: string_index_function,
+      left, right: CharString): bool =
+    string_length(left) = string_length(right)
+      AND
+        (FORALL (index: int):
+          0 <= index
+            AND index < string_length(left)
+            IMPLIES string_index(left, index) = string_index(right, index))
+
+  rope_invariant(
+      r: rope,
+      string_length: string_length_function): RECURSIVE bool =
+    CASES r OF
+      RopeEmp:
+        TRUE,
+      RopeStr(leaf, offset, len):
+        0 < len
+          AND 0 <= offset
+          AND offset < string_length(leaf)
+          AND offset + len <= string_length(leaf),
+      RopeApp(left, right, len):
+        0 < rope_length(left)
+          AND rope_invariant(left, string_length)
+          AND 0 < rope_length(right)
+          AND rope_invariant(right, string_length)
+          AND len = rope_length(left) + rope_length(right)
+    ENDCASES
+  MEASURE r BY <<
+
+  rope_string(
+      r: rope,
+      empty_string: CharString,
+      string_app: string_app_function,
+      string_sub: string_sub_function): RECURSIVE CharString =
+    CASES r OF
+      RopeEmp:
+        empty_string,
+      RopeStr(leaf, offset, len):
+        string_sub(leaf, offset, len),
+      RopeApp(left, right, len):
+        string_app(
+          rope_string(left, empty_string, string_app, string_sub),
+          rope_string(right, empty_string, string_app, string_sub))
+    ENDCASES
+  MEASURE r BY <<
+
+  immediate_child(r, child: rope): bool =
+    CASES r OF
+      RopeEmp:
+        FALSE,
+      RopeStr(leaf, offset, len):
+        FALSE,
+      RopeApp(left, right, len):
+        left = child OR right = child
+    ENDCASES
+
+  branch_obligation(
+      r: rope,
+      i: int,
+      string_length: string_length_function): bool =
+    CASES r OF
+      RopeEmp:
+        FALSE,
+      RopeStr(leaf, offset, len):
+        LET selected_offset: int = offset + i
+        IN
+          0 <= selected_offset
+            AND selected_offset < string_length(leaf),
+      RopeApp(left, right, len):
+        LET left_length: int = rope_length(left)
+        IN
+          IF i < left_length THEN
+            immediate_child(RopeApp(left, right, len), left)
+              AND rope_invariant(left, string_length)
+              AND 0 <= i
+              AND i < rope_length(left)
+          ELSE
+            LET selected_offset: int = i - left_length
+            IN
+              immediate_child(RopeApp(left, right, len), right)
+                AND rope_invariant(right, string_length)
+                AND 0 <= selected_offset
+                AND selected_offset < rope_length(right)
+          ENDIF
+    ENDCASES
+
+  result_premise(
+      r: rope,
+      i: int,
+      result: Char,
+      string_index: string_index_function,
+      empty_string: CharString,
+      string_app: string_app_function,
+      string_sub: string_sub_function): bool =
+    CASES r OF
+      RopeEmp:
+        FALSE,
+      RopeStr(leaf, offset, len):
+        result = string_index(leaf, offset + i),
+      RopeApp(left, right, len):
+        LET left_length: int = rope_length(left)
+        IN
+          IF i < left_length THEN
+            result =
+              string_index(
+                rope_string(
+                  left,
+                  empty_string,
+                  string_app,
+                  string_sub),
+                i)
+          ELSE
+            result =
+              string_index(
+                rope_string(
+                  right,
+                  empty_string,
+                  string_app,
+                  string_sub),
+                i - left_length)
+          ENDIF
+    ENDCASES
+
+  string_context(
+      string_length: string_length_function,
+      string_index: string_index_function,
+      empty_string: CharString,
+      string_app: string_app_function,
+      string_sub: string_sub_function): bool =
+    (FORALL (value: CharString):
+      0 <= string_length(value))
+      AND string_length(empty_string) = 0
+      AND
+        (FORALL (left, right: CharString):
+          strings_equal(
+            string_length,
+            string_index,
+            left,
+            right)
+            IMPLIES left = right)
+      AND
+        (FORALL (left, right: CharString):
+          string_length(string_app(left, right))
+            = string_length(left) + string_length(right))
+      AND
+        (FORALL (left, right: CharString), (index: int):
+          0 <= index
+            AND index < string_length(left)
+            IMPLIES
+              string_index(string_app(left, right), index)
+                = string_index(left, index))
+      AND
+        (FORALL (left, right: CharString), (index: int):
+          string_length(left) <= index
+            AND index < string_length(left) + string_length(right)
+            IMPLIES
+              string_index(string_app(left, right), index)
+                = string_index(
+                    right,
+                    index - string_length(left)))
+      AND
+        (FORALL (value: CharString), (offset, len: int):
+          0 <= len
+            AND 0 <= offset
+            AND offset <= string_length(value)
+            AND offset + len <= string_length(value)
+            IMPLIES
+              string_length(string_sub(value, offset, len)) = len)
+      AND
+        (FORALL (value: CharString), (offset, len, index: int):
+          0 <= len
+            AND 0 <= offset
+            AND offset <= string_length(value)
+            AND offset + len <= string_length(value)
+            AND 0 <= index
+            AND index < len
+            IMPLIES
+              string_index(string_sub(value, offset, len), index)
+                = string_index(value, offset + index))
+
+  get_vc: bool =
+    FORALL
+      (string_length: string_length_function),
+      (string_index: string_index_function),
+      (empty_string: CharString),
+      (string_app: string_app_function),
+      (string_sub: string_sub_function):
+      string_context(
+        string_length,
+        string_index,
+        empty_string,
+        string_app,
+        string_sub)
+        IMPLIES
+          (FORALL (r: rope), (i: int):
+            rope_invariant(r, string_length)
+              IMPLIES
+                0 <= i
+                  IMPLIES
+                    i < rope_length(r)
+                      IMPLIES
+                        branch_obligation(r, i, string_length)
+                          AND
+                            (FORALL (result: Char):
+                              result_premise(
+                                r,
+                                i,
+                                result,
+                                string_index,
+                                empty_string,
+                                string_app,
+                                string_sub)
+                                IMPLIES
+                                  result =
+                                    string_index(
+                                      rope_string(
+                                        r,
+                                        empty_string,
+                                        string_app,
+                                        string_sub),
+                                      i)))
+
+END ropes_Rope_getqtvc

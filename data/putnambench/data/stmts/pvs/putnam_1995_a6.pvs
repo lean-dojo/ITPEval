@@ -1,0 +1,82 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1995_a6:
+% for some n at least 1995, the number of 3-by-n matrices whose columns are
+% permutations of 1, 2, 3 and whose row sums are consecutive is at least four
+% times the number whose three row sums are equal. This file contains no proof.
+
+putnam_1995_a6: THEORY
+BEGIN
+  matrix_code_count(n: nat): nat =
+    6 ^ n
+
+  column_digit(matrix_code, column: nat): nat =
+    mod(ndiv(matrix_code, 6 ^ column), 6)
+
+  matrix_entry(
+      matrix_code, row, column: nat): int =
+    LET digit: nat = column_digit(matrix_code, column) IN
+      IF digit = 0 THEN
+        IF row = 0 THEN 1 ELSIF row = 1 THEN 2 ELSE 3 ENDIF
+      ELSIF digit = 1 THEN
+        IF row = 0 THEN 1 ELSIF row = 1 THEN 3 ELSE 2 ENDIF
+      ELSIF digit = 2 THEN
+        IF row = 0 THEN 2 ELSIF row = 1 THEN 1 ELSE 3 ENDIF
+      ELSIF digit = 3 THEN
+        IF row = 0 THEN 2 ELSIF row = 1 THEN 3 ELSE 1 ENDIF
+      ELSIF digit = 4 THEN
+        IF row = 0 THEN 3 ELSIF row = 1 THEN 1 ELSE 2 ENDIF
+      ELSE
+        IF row = 0 THEN 3 ELSIF row = 1 THEN 2 ELSE 1 ENDIF
+      ENDIF
+
+  row_sum(
+      matrix_code, row, column_count: nat): RECURSIVE int =
+    IF column_count = 0 THEN
+      0
+    ELSE
+      row_sum(matrix_code, row, column_count - 1)
+        + matrix_entry(matrix_code, row, column_count - 1)
+    ENDIF
+  MEASURE column_count
+
+  consecutive_row_sums(n, matrix_code: nat): bool =
+    EXISTS (a: int):
+      FORALL (value: int):
+        (value = row_sum(matrix_code, 0, n)
+          OR value = row_sum(matrix_code, 1, n)
+          OR value = row_sum(matrix_code, 2, n))
+        IFF
+          (value = a OR value = a + 1 OR value = a + 2)
+
+  equal_row_sums(n, matrix_code: nat): bool =
+    row_sum(matrix_code, 0, n) = row_sum(matrix_code, 1, n)
+      AND row_sum(matrix_code, 1, n) = row_sum(matrix_code, 2, n)
+
+  count_below(
+      limit: nat,
+      property: [nat -> bool]): RECURSIVE nat =
+    IF limit = 0 THEN
+      0
+    ELSE
+      count_below(limit - 1, property)
+        + IF property(limit - 1) THEN 1 ELSE 0 ENDIF
+    ENDIF
+  MEASURE limit
+
+  consecutive_matrix_count(n: nat): nat =
+    count_below(
+      matrix_code_count(n),
+      LAMBDA (matrix_code: nat):
+        consecutive_row_sums(n, matrix_code))
+
+  equal_matrix_count(n: nat): nat =
+    count_below(
+      matrix_code_count(n),
+      LAMBDA (matrix_code: nat):
+        equal_row_sums(n, matrix_code))
+
+  putnam_1995_a6: bool =
+    EXISTS (n: nat):
+      n >= 1995
+        AND consecutive_matrix_count(n)
+          >= 4 * equal_matrix_count(n)
+END putnam_1995_a6

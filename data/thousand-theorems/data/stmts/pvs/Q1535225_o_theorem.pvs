@@ -1,0 +1,434 @@
+% Statement-only formalization of the Thousand Theorems artifact Q1535225,
+% "Łoś' theorem": a first-order sentence holds in an ultraproduct if and only
+% if it holds in an ultrafilter-large set of factor structures. This file contains no proof.
+
+first_order_syntax_Q1535225[Symbol: TYPE]: DATATYPE
+BEGIN
+  variable_node(variable_index: nat): variable_node?
+  application_node(
+      application_symbol: Symbol,
+      application_arguments: first_order_syntax_Q1535225): application_node?
+  argument_nil: argument_nil?
+  argument_cons(
+      argument_head: first_order_syntax_Q1535225,
+      argument_tail: first_order_syntax_Q1535225): argument_cons?
+  equality_node(
+      equality_left: first_order_syntax_Q1535225,
+      equality_right: first_order_syntax_Q1535225): equality_node?
+  relation_node(
+      relation_symbol: Symbol,
+      relation_arguments: first_order_syntax_Q1535225): relation_node?
+  false_node: false_node?
+  implication_node(
+      implication_left: first_order_syntax_Q1535225,
+      implication_right: first_order_syntax_Q1535225): implication_node?
+  universal_node(
+      universal_body: first_order_syntax_Q1535225): universal_node?
+END first_order_syntax_Q1535225
+
+los_theorem_Q1535225[
+  A: TYPE+,
+  D: TYPE+,
+  Symbol: TYPE,
+  symbol_is_function: [Symbol -> bool],
+  symbol_arity: [Symbol -> nat],
+  carrier: [A, D -> bool],
+  function_interpretation: [A, Symbol, [nat -> D] -> D],
+  relation_interpretation: [A, Symbol, [nat -> D] -> bool],
+  large: [[A -> bool] -> bool]
+]: THEORY
+BEGIN
+  IMPORTING first_order_syntax_Q1535225[Symbol]
+
+  syntax: TYPE = first_order_syntax_Q1535225[Symbol]
+  point_set: TYPE = [A -> bool]
+  factor_assignment: TYPE = [nat -> D]
+  representative: TYPE = [A -> D]
+  product_assignment: TYPE = [nat -> representative]
+
+  argument_length(node: syntax): RECURSIVE nat =
+    CASES node OF
+      variable_node(index): 0,
+      application_node(symbol, arguments): 0,
+      argument_nil: 0,
+      argument_cons(head, tail): 1 + argument_length(tail),
+      equality_node(left, right): 0,
+      relation_node(symbol, arguments): 0,
+      false_node: 0,
+      implication_node(left, right): 0,
+      universal_node(body): 0
+    ENDCASES
+  MEASURE node BY <<
+
+  % Kinds 0, 1, and 2 respectively denote terms, argument lists, and formulas.
+  % The depth is the number of enclosing de Bruijn binders.
+  well_formed(node: syntax, kind: nat, depth: nat): RECURSIVE bool =
+    CASES node OF
+      variable_node(index):
+        kind = 0 AND index < depth,
+      application_node(symbol, arguments):
+        kind = 0
+          AND symbol_is_function(symbol)
+          AND argument_length(arguments) = symbol_arity(symbol)
+          AND well_formed(arguments, 1, depth),
+      argument_nil:
+        kind = 1,
+      argument_cons(head, tail):
+        kind = 1
+          AND well_formed(head, 0, depth)
+          AND well_formed(tail, 1, depth),
+      equality_node(left, right):
+        kind = 2
+          AND well_formed(left, 0, depth)
+          AND well_formed(right, 0, depth),
+      relation_node(symbol, arguments):
+        kind = 2
+          AND NOT symbol_is_function(symbol)
+          AND argument_length(arguments) = symbol_arity(symbol)
+          AND well_formed(arguments, 1, depth),
+      false_node:
+        kind = 2,
+      implication_node(left, right):
+        kind = 2
+          AND well_formed(left, 2, depth)
+          AND well_formed(right, 2, depth),
+      universal_node(body):
+        kind = 2
+          AND well_formed(body, 2, depth + 1)
+    ENDCASES
+  MEASURE node BY <<
+
+  sentence: TYPE = {phi: syntax | well_formed(phi, 2, 0)}
+
+  syntax_size(node: syntax): RECURSIVE nat =
+    CASES node OF
+      variable_node(index): 1,
+      application_node(symbol, arguments):
+        1 + syntax_size(arguments),
+      argument_nil: 1,
+      argument_cons(head, tail):
+        1 + syntax_size(head) + syntax_size(tail),
+      equality_node(left, right):
+        1 + syntax_size(left) + syntax_size(right),
+      relation_node(symbol, arguments):
+        1 + syntax_size(arguments),
+      false_node: 1,
+      implication_node(left, right):
+        1 + syntax_size(left) + syntax_size(right),
+      universal_node(body):
+        1 + syntax_size(body)
+    ENDCASES
+  MEASURE node BY <<
+
+  default_element: D =
+    epsilon(LAMBDA (value: D): TRUE)
+
+  canonical_tuple(
+      values: [nat -> D],
+      arity: nat): [nat -> D] =
+    LAMBDA (index: nat):
+      IF index < arity THEN values(index) ELSE default_element ENDIF
+
+  tuple_in_carrier(
+      a: A,
+      values: [nat -> D],
+      arity: nat): bool =
+    FORALL (index: nat):
+      index < arity IMPLIES carrier(a, values(index))
+
+  family_of_nonempty_structures: bool =
+    (FORALL (a: A):
+      EXISTS (value: D): carrier(a, value))
+      AND
+    (FORALL (a: A), (symbol: Symbol), (values: [nat -> D]):
+      (symbol_is_function(symbol)
+        AND tuple_in_carrier(a, values, symbol_arity(symbol)))
+      IMPLIES
+        carrier(
+          a,
+          function_interpretation(
+            a,
+            symbol,
+            canonical_tuple(values, symbol_arity(symbol)))))
+
+  subset(left, right: point_set): bool =
+    FORALL (a: A): left(a) IMPLIES right(a)
+
+  intersect(left, right: point_set): point_set =
+    LAMBDA (a: A): left(a) AND right(a)
+
+  complement(value: point_set): point_set =
+    LAMBDA (a: A): NOT value(a)
+
+  full_set: point_set =
+    LAMBDA (a: A): TRUE
+
+  empty_set: point_set =
+    LAMBDA (a: A): FALSE
+
+  ultrafilter_laws: bool =
+    large(full_set)
+      AND NOT large(empty_set)
+      AND
+    (FORALL (left, right: point_set):
+      (large(left) AND subset(left, right)) IMPLIES large(right))
+      AND
+    (FORALL (left, right: point_set):
+      (large(left) AND large(right))
+        IMPLIES large(intersect(left, right)))
+      AND
+    (FORALL (value: point_set):
+      large(value) OR large(complement(value)))
+
+  evaluate_factor_fuel(
+      node: syntax,
+      a: A,
+      assignment: factor_assignment,
+      fuel: nat,
+      position: nat): RECURSIVE D =
+    IF fuel = 0 THEN
+      default_element
+    ELSE
+      CASES node OF
+        variable_node(index):
+          assignment(index),
+        application_node(symbol, arguments):
+          function_interpretation(
+            a,
+            symbol,
+            canonical_tuple(
+              LAMBDA (index: nat):
+                evaluate_factor_fuel(
+                  arguments, a, assignment, fuel - 1, index),
+              symbol_arity(symbol))),
+        argument_cons(head, tail):
+          IF position = 0 THEN
+            evaluate_factor_fuel(head, a, assignment, fuel - 1, 0)
+          ELSE
+            evaluate_factor_fuel(
+              tail, a, assignment, fuel - 1, position - 1)
+          ENDIF,
+        argument_nil:
+          default_element,
+        equality_node(left, right):
+          default_element,
+        relation_node(symbol, arguments):
+          default_element,
+        false_node:
+          default_element,
+        implication_node(left, right):
+          default_element,
+        universal_node(body):
+          default_element
+      ENDCASES
+    ENDIF
+  MEASURE fuel
+
+  evaluate_factor(
+      node: syntax,
+      a: A,
+      assignment: factor_assignment): D =
+    evaluate_factor_fuel(
+      node, a, assignment, syntax_size(node) + 1, 0)
+
+  holds_factor_fuel(
+      phi: syntax,
+      a: A,
+      assignment: factor_assignment,
+      fuel: nat): RECURSIVE bool =
+    IF fuel = 0 THEN
+      FALSE
+    ELSE
+      CASES phi OF
+        equality_node(left, right):
+          evaluate_factor(left, a, assignment)
+            = evaluate_factor(right, a, assignment),
+        relation_node(symbol, arguments):
+          relation_interpretation(
+            a,
+            symbol,
+            canonical_tuple(
+              LAMBDA (index: nat):
+                evaluate_factor_fuel(
+                  arguments,
+                  a,
+                  assignment,
+                  syntax_size(arguments) + 1,
+                  index),
+              symbol_arity(symbol))),
+        false_node:
+          FALSE,
+        implication_node(left, right):
+          holds_factor_fuel(left, a, assignment, fuel - 1)
+            IMPLIES
+          holds_factor_fuel(right, a, assignment, fuel - 1),
+        universal_node(body):
+          FORALL (value: D):
+            carrier(a, value)
+              IMPLIES
+                holds_factor_fuel(
+                  body,
+                  a,
+                  LAMBDA (index: nat):
+                    IF index = 0 THEN
+                      value
+                    ELSE
+                      assignment(index - 1)
+                    ENDIF,
+                  fuel - 1),
+        variable_node(index):
+          FALSE,
+        application_node(symbol, arguments):
+          FALSE,
+        argument_nil:
+          FALSE,
+        argument_cons(head, tail):
+          FALSE
+      ENDCASES
+    ENDIF
+  MEASURE fuel
+
+  default_factor_assignment: factor_assignment =
+    LAMBDA (index: nat): default_element
+
+  models_factor(a: A, phi: sentence): bool =
+    holds_factor_fuel(
+      phi,
+      a,
+      default_factor_assignment,
+      syntax_size(phi) + 1)
+
+  is_representative(value: representative): bool =
+    FORALL (a: A): carrier(a, value(a))
+
+  equivalent(left, right: representative): bool =
+    large(LAMBDA (a: A): left(a) = right(a))
+
+  evaluate_product_fuel(
+      node: syntax,
+      assignment: product_assignment,
+      fuel: nat,
+      position: nat): RECURSIVE representative =
+    IF fuel = 0 THEN
+      LAMBDA (a: A): default_element
+    ELSE
+      CASES node OF
+        variable_node(index):
+          assignment(index),
+        application_node(symbol, arguments):
+          LAMBDA (a: A):
+            function_interpretation(
+              a,
+              symbol,
+              canonical_tuple(
+                LAMBDA (index: nat):
+                  evaluate_product_fuel(
+                    arguments,
+                    assignment,
+                    fuel - 1,
+                    index)(a),
+                symbol_arity(symbol))),
+        argument_cons(head, tail):
+          IF position = 0 THEN
+            evaluate_product_fuel(head, assignment, fuel - 1, 0)
+          ELSE
+            evaluate_product_fuel(
+              tail, assignment, fuel - 1, position - 1)
+          ENDIF,
+        argument_nil:
+          LAMBDA (a: A): default_element,
+        equality_node(left, right):
+          LAMBDA (a: A): default_element,
+        relation_node(symbol, arguments):
+          LAMBDA (a: A): default_element,
+        false_node:
+          LAMBDA (a: A): default_element,
+        implication_node(left, right):
+          LAMBDA (a: A): default_element,
+        universal_node(body):
+          LAMBDA (a: A): default_element
+      ENDCASES
+    ENDIF
+  MEASURE fuel
+
+  evaluate_product(
+      node: syntax,
+      assignment: product_assignment): representative =
+    evaluate_product_fuel(
+      node, assignment, syntax_size(node) + 1, 0)
+
+  holds_product_fuel(
+      phi: syntax,
+      assignment: product_assignment,
+      fuel: nat): RECURSIVE bool =
+    IF fuel = 0 THEN
+      FALSE
+    ELSE
+      CASES phi OF
+        equality_node(left, right):
+          equivalent(
+            evaluate_product(left, assignment),
+            evaluate_product(right, assignment)),
+        relation_node(symbol, arguments):
+          large(
+            LAMBDA (a: A):
+              relation_interpretation(
+                a,
+                symbol,
+                canonical_tuple(
+                  LAMBDA (index: nat):
+                    evaluate_product_fuel(
+                      arguments,
+                      assignment,
+                      syntax_size(arguments) + 1,
+                      index)(a),
+                  symbol_arity(symbol)))),
+        false_node:
+          FALSE,
+        implication_node(left, right):
+          holds_product_fuel(left, assignment, fuel - 1)
+            IMPLIES
+          holds_product_fuel(right, assignment, fuel - 1),
+        universal_node(body):
+          FORALL (value: representative):
+            is_representative(value)
+              IMPLIES
+                holds_product_fuel(
+                  body,
+                  LAMBDA (index: nat):
+                    IF index = 0 THEN
+                      value
+                    ELSE
+                      assignment(index - 1)
+                    ENDIF,
+                  fuel - 1),
+        variable_node(index):
+          FALSE,
+        application_node(symbol, arguments):
+          FALSE,
+        argument_nil:
+          FALSE,
+        argument_cons(head, tail):
+          FALSE
+      ENDCASES
+    ENDIF
+  MEASURE fuel
+
+  default_product_assignment: product_assignment =
+    LAMBDA (index: nat):
+      LAMBDA (a: A): default_element
+
+  models_ultraproduct(phi: sentence): bool =
+    holds_product_fuel(
+      phi,
+      default_product_assignment,
+      syntax_size(phi) + 1)
+
+  los_theorem: bool =
+    (ultrafilter_laws AND family_of_nonempty_structures)
+      IMPLIES
+        FORALL (phi: sentence):
+          models_ultraproduct(phi)
+            IFF
+          large(LAMBDA (a: A): models_factor(a, phi))
+END los_theorem_Q1535225

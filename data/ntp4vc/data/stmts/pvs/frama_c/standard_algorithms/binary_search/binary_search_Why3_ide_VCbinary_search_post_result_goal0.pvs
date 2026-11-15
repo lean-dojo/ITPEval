@@ -1,0 +1,95 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% frama_c/standard_algorithms/binary_search/binary_search_Why3_ide_VCbinary_search_post_result_goal0:
+% a binary-search verification condition equating target occurrence in the
+% sorted search range with a nonzero result flag under the source bounds,
+% branch condition, and memory-validity assumptions. This file contains no proof.
+
+binary_search_Why3_ide_VCbinary_search_post_result_goal0: THEORY
+BEGIN
+  addr: TYPE = [# base: int, offset: int #]
+  integer_memory: TYPE = [addr -> int]
+  allocation_table: TYPE = [int -> int]
+
+  shift(p: addr, k: int): addr =
+    (# base := base(p), offset := offset(p) + k #)
+
+  valid_rd(m: allocation_table, p: addr, n: int): bool =
+    0 < n IMPLIES
+      base(p) /= 0
+        AND 0 <= offset(p)
+        AND offset(p) + n <= m(base(p))
+
+  is_uint32(x: int): bool =
+    0 <= x AND x < 4294967296
+
+  is_sint32(x: int): bool =
+    -2147483648 <= x AND x < 2147483648
+
+  p_sorted(
+      mint_0: integer_memory,
+      a: addr,
+      m, n: int): bool =
+    FORALL (i_1, i: int):
+      i < n IMPLIES
+      m <= i_1 IMPLIES
+      i_1 < i IMPLIES
+      mint_0(shift(a, i_1)) <= mint_0(shift(a, i))
+
+  p_lowerbound(
+      mint_0: integer_memory,
+      a: addr,
+      m, n, v: int): bool =
+    FORALL (j: int):
+      m <= j IMPLIES
+      j < n IMPLIES
+      v <= mint_0(shift(a, j))
+
+  p_strictupperbound(
+      mint_0: integer_memory,
+      a: addr,
+      m, n, v: int): bool =
+    FORALL (j: int):
+      m <= j IMPLIES
+      j < n IMPLIES
+      mint_0(shift(a, j)) < v
+
+  goal0: bool =
+    FORALL
+      (region: [int -> int]),
+      (linked: [allocation_table -> bool]),
+      (a: addr),
+      (i_2: int),
+      (t_1: integer_memory),
+      (i_1: int),
+      (t: allocation_table),
+      (i, i_3: int):
+      LET a_1: addr = shift(a, i_2),
+          x: int = t_1(a_1)
+      IN
+        i_2 <= i_1 IMPLIES
+        0 <= i_2 IMPLIES
+        region(base(a)) <= 0 IMPLIES
+        linked(t) IMPLIES
+        is_uint32(i_1) IMPLIES
+        is_uint32(i_2) IMPLIES
+        is_sint32(i) IMPLIES
+        is_sint32(i_3) IMPLIES
+        p_sorted(t_1, a, 0, i_1) IMPLIES
+        is_sint32(x) IMPLIES
+        p_lowerbound(t_1, a, i_2, i_1, i) IMPLIES
+        p_strictupperbound(t_1, a, 0, i_2, i) IMPLIES
+        valid_rd(t, shift(a, 0), i_1) IMPLIES
+        (IF i_2 < i_1
+         THEN
+           valid_rd(t, a_1, 1)
+             AND (IF x <= i THEN i_3 = 1 ELSE i_3 = 0 ENDIF)
+         ELSE
+           i_3 = 0
+         ENDIF) IMPLIES
+        (EXISTS (i_4: int):
+          t_1(shift(a, i_4)) = i
+            AND 0 <= i_4
+            AND i_4 < i_1)
+        <=>
+        i_3 /= 0
+END binary_search_Why3_ide_VCbinary_search_post_result_goal0

@@ -1,0 +1,169 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/search_Dfs_dfsqtvc: the depth-first-search verification condition for
+% bounded successful paths, recursive outcomes, and the child-scan invariant.
+% This file contains no proof.
+
+search_Dfs_dfsqtvc[
+  state: TYPE+,
+  state_default: state,
+  moves: [state -> list[state]],
+  success: [state -> bool]
+]: THEORY
+BEGIN
+
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  nth_state(values: list[state], index: int): RECURSIVE state =
+    CASES values OF
+      null:
+        state_default,
+      cons(head, tail):
+        IF int_to_nat(index) = 0 THEN
+          head
+        ELSE
+          nth_state(tail, int_to_nat(index) - 1)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  path(source, destination: state, path_length: int): INDUCTIVE bool =
+    (source = destination AND path_length = 0)
+      OR
+    (EXISTS (index: int):
+      0 <= index
+        AND index < length(moves(source))
+        AND destination = nth_state(moves(source), index)
+        AND path_length = 1)
+      OR
+    (EXISTS
+        (middle: state),
+        (first_length, second_length: int):
+      path(source, middle, first_length)
+        AND path(middle, destination, second_length)
+        AND path_length = first_length + second_length)
+
+  outcome: DATATYPE
+  BEGIN
+    NoSolution: NoSolution?
+    Solution(solution_state: state, solution_length: int): Solution?
+  END outcome
+
+  no_solution_within(source: state, bound: int): bool =
+    FORALL (destination: state), (path_length: int):
+      (0 <= path_length AND path_length <= bound)
+        IMPLIES
+          success(destination)
+            IMPLIES NOT path(source, destination, path_length)
+
+  child_scan_invariant(
+      children: list[state],
+      upper, remaining: int): bool =
+    FORALL
+        (child_index: int),
+        (destination: state),
+        (path_length: int):
+      (0 <= child_index AND child_index < upper)
+        IMPLIES
+          path(
+            nth_state(children, child_index),
+            destination,
+            path_length)
+            IMPLIES
+              success(destination)
+                IMPLIES
+                  NOT (0 <= path_length
+                    AND path_length < remaining)
+
+  recursive_result(
+      source: state,
+      bound: int,
+      result: outcome): bool =
+    CASES result OF
+      NoSolution:
+        no_solution_within(source, bound),
+      Solution(destination, path_length):
+        path(source, destination, path_length)
+          AND success(destination)
+          AND 0 <= path_length
+          AND path_length <= bound
+    ENDCASES
+
+  parent_result(
+      parent: state,
+      children: list[state],
+      child_index, remaining: int,
+      result: outcome): bool =
+    CASES result OF
+      Solution(destination, path_length):
+        LET parent_length: int = path_length + 1
+        IN
+          path(parent, destination, parent_length)
+            AND success(destination)
+            AND 0 <= parent_length
+            AND parent_length <= remaining,
+      NoSolution:
+        child_scan_invariant(
+          children, child_index + 1, remaining)
+    ENDCASES
+
+  child_iteration_step(
+      p, m: int,
+      parent: state,
+      children: list[state],
+      child_index: int): bool =
+    LET next_depth: int = p + 1,
+        child: state = nth_state(children, child_index)
+    IN
+      ((0 <= m - p AND m - next_depth < m - p)
+        AND 0 <= next_depth
+        AND next_depth <= m + 1)
+        AND
+      (FORALL (result: outcome):
+        recursive_result(child, m - next_depth, result)
+          IMPLIES
+            parent_result(
+              parent, children, child_index, m - p, result))
+
+  dfs_vc: bool =
+    FORALL (p, m: int), (source: state):
+      0 <= p IMPLIES
+      p <= m + 1 IMPLIES
+      IF m < p THEN
+        no_solution_within(source, m - p)
+      ELSE
+        IF success(source) THEN
+          path(source, source, 0)
+            AND success(source)
+            AND 0 <= 0
+            AND 0 <= m - p
+        ELSE
+          LET children: list[state] = moves(source),
+              last_index: int = length(children) - 1
+          IN
+            ((0 <= last_index + 1)
+              IMPLIES
+                (child_scan_invariant(children, 0, m - p)
+                  AND
+                (FORALL (child_index: int):
+                  ((0 <= child_index
+                    AND child_index <= last_index)
+                    AND
+                   child_scan_invariant(
+                     children, child_index, m - p))
+                    IMPLIES
+                      child_iteration_step(
+                        p, m, source, children, child_index))))
+              AND
+            (child_scan_invariant(
+              children, last_index + 1, m - p)
+              IMPLIES
+                no_solution_within(source, m - p))
+              AND
+            ((last_index + 1 < 0)
+              IMPLIES
+                no_solution_within(source, m - p))
+        ENDIF
+      ENDIF
+
+END search_Dfs_dfsqtvc

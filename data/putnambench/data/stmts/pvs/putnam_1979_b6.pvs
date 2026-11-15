@@ -1,0 +1,61 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1979_b6:
+% the absolute real part of the principal square root of a finite sum of
+% complex squares is bounded by the sum of the absolute real parts.
+% This file contains no proof.
+
+putnam_1979_b6: THEORY
+BEGIN
+  complex: TYPE = [# real_part: real, imag_part: real #]
+  complex_sequence: TYPE = [nat -> complex]
+
+  complex_zero: complex =
+    (# real_part := 0, imag_part := 0 #)
+
+  complex_add(z, w: complex): complex =
+    (# real_part := real_part(z) + real_part(w),
+       imag_part := imag_part(z) + imag_part(w) #)
+
+  complex_mul(z, w: complex): complex =
+    (# real_part := real_part(z) * real_part(w)
+                       - imag_part(z) * imag_part(w),
+       imag_part := real_part(z) * imag_part(w)
+                       + imag_part(z) * real_part(w) #)
+
+  principal_square_root_value(value, root: complex): bool =
+    complex_mul(root, root) = value
+      AND real_part(root) >= 0
+      AND (real_part(root) > 0 OR imag_part(root) >= 0)
+
+  principal_square_root(value: complex): complex =
+    epsilon(
+      LAMBDA (root: complex):
+        principal_square_root_value(value, root))
+
+  square_sum(
+      values: complex_sequence,
+      count: nat): RECURSIVE complex =
+    IF count = 0 THEN
+      complex_zero
+    ELSE
+      complex_add(
+        square_sum(values, count - 1),
+        complex_mul(values(count - 1), values(count - 1)))
+    ENDIF
+  MEASURE count
+
+  absolute_real_part_sum(
+      values: complex_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      absolute_real_part_sum(values, count - 1)
+        + abs(real_part(values(count - 1)))
+    ENDIF
+  MEASURE count
+
+  putnam_1979_b6: bool =
+    FORALL (n: nat), (z: complex_sequence):
+      abs(real_part(principal_square_root(square_sum(z, n))))
+        <= absolute_real_part_sum(z, n)
+END putnam_1979_b6

@@ -1,0 +1,223 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/verifythis_2015_dancing_links_DancingLinks_removeqtvc: the dancing-links
+% removal verification condition, relating two pointer-array updates to removal
+% from a valid circular list. This file contains no proof.
+
+verifythis_2015_dancing_links_DancingLinks_removeqtvc[
+  DLL: TYPE+,
+  prev_array: [DLL -> list[int]],
+  next_array: [DLL -> list[int]],
+  node_count: [DLL -> int]
+]: THEORY
+BEGIN
+
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  nth_int(values: list[int], index: int): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF int_to_nat(index) = 0 THEN
+          head
+        ELSE
+          nth_int(tail, int_to_nat(index) - 1)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  list_set(
+      values: list[int],
+      index: nat,
+      value: int): RECURSIVE list[int] =
+    CASES values OF
+      null:
+        null[int],
+      cons(head, tail):
+        IF index = 0 THEN
+          cons(value, tail)
+        ELSE
+          cons(head, list_set(tail, index - 1, value))
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  set_function_equal(
+      values: list[int],
+      index, value: int): bool =
+    FORALL (argument: int):
+      0 <= argument IMPLIES
+        nth_int(
+          list_set(values, int_to_nat(index), value),
+          argument)
+        =
+        IF argument = index THEN
+          value
+        ELSE
+          nth_int(values, argument)
+        ENDIF
+
+  in_range(values: list[int], index: int): bool =
+    0 <= index AND index < (length(values) :: int)
+
+  model_laws: bool =
+    (FORALL (self: DLL):
+      length(prev_array(self)) = length(next_array(self))
+        AND (length(next_array(self)) :: int) = node_count(self))
+      AND
+    (FORALL (left, right: DLL):
+      (prev_array(left) = prev_array(right)
+        AND next_array(left) = next_array(right)
+        AND node_count(left) = node_count(right))
+      IMPLIES left = right)
+
+  valid_in(l: DLL, i: int): bool =
+    (0 <= i AND i < node_count(l))
+      AND
+    (0 <= nth_int(prev_array(l), i)
+      AND nth_int(prev_array(l), i) < node_count(l))
+      AND
+    (0 <= nth_int(next_array(l), i)
+      AND nth_int(next_array(l), i) < node_count(l))
+      AND
+    nth_int(next_array(l), nth_int(prev_array(l), i)) = i
+      AND
+    nth_int(prev_array(l), nth_int(next_array(l), i)) = i
+
+  valid_out(l: DLL, i: int): bool =
+    (0 <= i AND i < node_count(l))
+      AND
+    (0 <= nth_int(prev_array(l), i)
+      AND nth_int(prev_array(l), i) < node_count(l))
+      AND
+    (0 <= nth_int(next_array(l), i)
+      AND nth_int(next_array(l), i) < node_count(l))
+      AND
+    nth_int(next_array(l), nth_int(prev_array(l), i))
+      = nth_int(next_array(l), i)
+      AND
+    nth_int(prev_array(l), nth_int(next_array(l), i))
+      = nth_int(prev_array(l), i)
+
+  is_list(l: DLL, values: list[int]): bool =
+    FORALL (k: int):
+      (0 <= k AND k < (length(values) :: int))
+        IMPLIES
+          (0 <= nth_int(values, k)
+            AND nth_int(values, k) < node_count(l))
+          AND
+          nth_int(prev_array(l), nth_int(values, k))
+            =
+          nth_int(
+            values,
+            IF k = 0 THEN
+              (length(values) :: int) - 1
+            ELSE
+              k - 1
+            ENDIF)
+          AND
+          nth_int(next_array(l), nth_int(values, k))
+            =
+          nth_int(
+            values,
+            IF k = (length(values) :: int) - 1 THEN
+              0
+            ELSE
+              k + 1
+            ENDIF)
+          AND
+          (FORALL (k_prime: int):
+            (0 <= k_prime
+              AND k_prime < (length(values) :: int))
+              IMPLIES
+                k /= k_prime
+                  IMPLIES
+                    nth_int(values, k) /= nth_int(values, k_prime))
+
+  all_result_records(
+      l: DLL,
+      i: int,
+      values, updated_prev: list[int],
+      previous_index, next_index: int): bool =
+    LET updated_next: list[int] =
+      list_set(
+        next_array(l),
+        int_to_nat(previous_index),
+        next_index)
+    IN
+      FORALL (l1: DLL):
+        length(updated_next) = length(next_array(l))
+          IMPLIES
+            length(updated_next) = length(next_array(l))
+              IMPLIES
+                set_function_equal(
+                  next_array(l),
+                  previous_index,
+                  next_index)
+                  IMPLIES
+                    (length(updated_prev) = length(updated_next)
+                      AND
+                     (length(updated_next) :: int) = node_count(l))
+                    AND
+                    ((node_count(l) = node_count(l1)
+                      AND updated_next = next_array(l1)
+                      AND updated_prev = prev_array(l1))
+                      IMPLIES
+                        valid_out(l1, i)
+                          AND is_list(l1, values))
+
+  remove_conclusion(
+      l: DLL,
+      i: int,
+      values: list[int]): bool =
+    LET o1: list[int] = prev_array(l)
+    IN
+      in_range(o1, i)
+        AND
+      (LET o2: int = nth_int(o1, i),
+           o3: list[int] = next_array(l)
+       IN
+         in_range(o3, i)
+           AND
+         (LET o4: int = nth_int(o3, i),
+              o5: list[int] = prev_array(l),
+              updated_prev: list[int] =
+                list_set(o5, int_to_nat(o4), o2)
+          IN
+            in_range(o5, o4)
+              AND
+            (length(updated_prev) = length(o5)
+              IMPLIES
+                length(updated_prev) = length(prev_array(l))
+                  IMPLIES
+                    set_function_equal(o5, o4, o2)
+                      IMPLIES
+                        in_range(next_array(l), i)
+                          AND
+                        (LET o6: int = nth_int(next_array(l), i)
+                         IN
+                           in_range(updated_prev, i)
+                             AND
+                           (LET o7: int = nth_int(updated_prev, i)
+                            IN
+                              in_range(next_array(l), o7)
+                                AND
+                              all_result_records(
+                                l,
+                                i,
+                                values,
+                                updated_prev,
+                                o7,
+                                o6))))))
+
+  remove_vc: bool =
+    model_laws
+      IMPLIES
+        FORALL (l: DLL), (i: int), (values: list[int]):
+          valid_in(l, i)
+            IMPLIES
+              is_list(l, cons(i, values))
+                IMPLIES remove_conclusion(l, i, values)
+
+END verifythis_2015_dancing_links_DancingLinks_removeqtvc

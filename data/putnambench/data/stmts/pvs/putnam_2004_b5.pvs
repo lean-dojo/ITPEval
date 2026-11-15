@@ -1,0 +1,112 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2004_b5:
+% the left-hand limit at one of a real infinite product with factors
+% ((1 + x^(n+1)) / (1 + x^n))^(x^n) is 2 / exp(1). This file contains no proof.
+
+putnam_2004_b5: THEORY
+BEGIN
+  real_sequence: TYPE = [nat -> real]
+  real_function: TYPE = [real -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  nat_factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * nat_factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  exponential_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        exponential_partial(x, count - 1)
+          + safe_div(
+              x ^ index,
+              nat_factorial(index) :: real)
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  real_exponential(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat):
+            exponential_partial(x, count),
+          value))
+
+  natural_log(x: real): real =
+    IF x > 0 THEN
+      epsilon(
+        LAMBDA (value: real):
+          real_exponential(value) = x)
+    ELSE
+      0
+    ENDIF
+
+  real_power(base, exponent: real): real =
+    IF base > 0 THEN
+      real_exponential(exponent * natural_log(base))
+    ELSIF base = 0 AND exponent = 0 THEN
+      1
+    ELSE
+      0
+    ENDIF
+
+  product_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      1
+    ELSE
+      LET index: nat = count - 1 IN
+        product_partial(x, count - 1)
+          * real_power(
+              safe_div(
+                1 + x ^ (index + 1),
+                1 + x ^ index),
+              x ^ index)
+    ENDIF
+  MEASURE count
+
+  infinite_product_value(x, value: real): bool =
+    converges_to(
+      LAMBDA (count: nat):
+        product_partial(x, count),
+      value)
+
+  left_tends_to_at(
+      f: real_function,
+      limit, point: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (delta: posreal):
+        FORALL (x: real):
+          (0 < point - x AND point - x < delta)
+            IMPLIES abs(f(x) - limit) < epsilon_value
+
+  putnam_2004_b5_solution: real =
+    safe_div(2, real_exponential(1))
+
+  putnam_2004_b5: bool =
+    FORALL (xprod: real_function):
+      (FORALL (x: real):
+        (0 < x AND x < 1)
+          IMPLIES infinite_product_value(x, xprod(x)))
+      IMPLIES
+        left_tends_to_at(
+          xprod,
+          putnam_2004_b5_solution,
+          1)
+END putnam_2004_b5

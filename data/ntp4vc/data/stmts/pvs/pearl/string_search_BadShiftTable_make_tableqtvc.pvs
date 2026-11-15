@@ -1,0 +1,310 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/string_search_BadShiftTable_make_tableqtvc: the verification condition
+% for constructing a byte-pattern bad-shift table while preserving finite-map
+% loop invariants, signed 63-bit bounds, and the final shift invariant.
+% This file contains no proof.
+
+string_search_BadShiftTable_make_tableqtvc[
+  t: TYPE+
+]: THEORY
+BEGIN
+
+  IMPORTING bv[8], bv_nat[8], bv[63], bv_nat[63]
+
+  byte: TYPE = bvec[8]
+  word63: TYPE = bvec[63]
+
+  word_option: DATATYPE
+  BEGIN
+    NoWord: NoWord?
+    SomeWord(word_value: word63): SomeWord?
+  END word_option
+
+  fmap: TYPE = [byte -> word_option]
+
+  zero_byte: byte =
+    LAMBDA (index: below(8)): FALSE
+
+  zero_word63: word63 =
+    LAMBDA (index: below(63)): FALSE
+
+  signed63(value: word63): int =
+    IF value(62) THEN
+      bv2nat[63](value) - 9223372036854775808
+    ELSE
+      bv2nat[63](value)
+    ENDIF
+
+  int63_min: int = -4611686018427387904
+  int63_max: int = 4611686018427387903
+
+  int63_in_bounds(value: int): bool =
+    int63_min <= value AND value <= int63_max
+
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  nth_byte_nat(
+      pattern: list[byte],
+      index: nat): RECURSIVE byte =
+    CASES pattern OF
+      null:
+        zero_byte,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          nth_byte_nat(tail, index - 1)
+        ENDIF
+    ENDCASES
+  MEASURE pattern BY <<
+
+  nth_byte(pattern: list[byte], index: int): byte =
+    nth_byte_nat(pattern, int_to_nat(index))
+
+  empty_map: fmap =
+    LAMBDA (character: byte): NoWord
+
+  map_member(character: byte, mapping: fmap): bool =
+    SomeWord?(mapping(character))
+
+  map_lookup(mapping: fmap, character: byte): word63 =
+    CASES mapping(character) OF
+      NoWord:
+        zero_word63,
+      SomeWord(value):
+        value
+    ENDCASES
+
+  map_insert(
+      character: byte,
+      value: word63,
+      mapping: fmap): fmap =
+    mapping WITH [(character) := SomeWord(value)]
+
+  prefix_present(
+      pattern: list[byte],
+      mapping: fmap,
+      upper: int): bool =
+    FORALL (index: int):
+      (0 <= index AND index < upper)
+        IMPLIES map_member(nth_byte(pattern, index), mapping)
+
+  shift_bounds(
+      pattern_length: int,
+      mapping: fmap): bool =
+    FORALL (character: byte):
+      map_member(character, mapping)
+        IMPLIES
+          1 <= signed63(map_lookup(mapping, character))
+            AND
+          signed63(map_lookup(mapping, character))
+            <= pattern_length + 1
+
+  no_recent_occurrence(
+      pattern: list[byte],
+      pattern_length: int,
+      mapping: fmap,
+      upper: int): bool =
+    FORALL (character: byte):
+      map_member(character, mapping)
+        IMPLIES
+          (FORALL (index: int):
+            (pattern_length
+               - signed63(map_lookup(mapping, character))
+               < index
+             AND index < upper)
+              IMPLIES
+                NOT nth_byte(pattern, index) = character)
+
+  loop_properties(
+      pattern: list[byte],
+      pattern_length: int,
+      mapping: fmap,
+      upper: int): bool =
+    prefix_present(pattern, mapping, upper)
+      AND shift_bounds(pattern_length, mapping)
+      AND no_recent_occurrence(
+            pattern, pattern_length, mapping, upper)
+
+  loop_state(
+      pattern: list[byte],
+      pattern_length: int,
+      upper_word: word63,
+      mapping: fmap,
+      index: int): bool =
+    (0 <= index AND index <= signed63(upper_word))
+      AND
+    loop_properties(pattern, pattern_length, mapping, index)
+
+  final_no_occurrence(
+      pattern: list[byte],
+      mapping: fmap): bool =
+    FORALL (character: byte):
+      map_member(character, mapping)
+        IMPLIES
+          (FORALL (shift: int):
+            (1 <= shift
+             AND shift < signed63(map_lookup(mapping, character)))
+              IMPLIES
+                NOT nth_byte(
+                      pattern,
+                      length(pattern) - shift)
+                    = character)
+
+  final_invariant(
+      pattern: list[byte],
+      mapping: fmap): bool =
+    prefix_present(pattern, mapping, length(pattern))
+      AND shift_bounds(length(pattern), mapping)
+      AND final_no_occurrence(pattern, mapping)
+
+  updated_tables_preserve(
+      to_fmap: [t -> fmap],
+      pattern: list[byte],
+      pattern_length: int,
+      mapping: fmap,
+      index: int,
+      value: word63): bool =
+    FORALL (updated_table: t):
+      to_fmap(updated_table)
+        = map_insert(
+            nth_byte(pattern, index),
+            value,
+            mapping)
+        IMPLIES
+          loop_properties(
+            pattern,
+            pattern_length,
+            to_fmap(updated_table),
+            index + 1)
+
+  iteration_result(
+      to_fmap: [t -> fmap],
+      pattern: list[byte],
+      pattern_length: int,
+      mapping: fmap,
+      index: int): bool =
+    FORALL (value: word63):
+      signed63(value) = pattern_length - index
+        IMPLIES
+          (0 <= index AND index < length(pattern))
+            AND
+          updated_tables_preserve(
+            to_fmap,
+            pattern,
+            pattern_length,
+            mapping,
+            index,
+            value)
+
+  iteration_obligation(
+      to_fmap: [t -> fmap],
+      pattern: list[byte],
+      pattern_length: int,
+      upper_word: word63,
+      mapping: fmap): bool =
+    FORALL (index_word: word63):
+      LET index: int = signed63(index_word)
+      IN
+        loop_state(
+          pattern,
+          pattern_length,
+          upper_word,
+          mapping,
+          index)
+          IMPLIES
+            int63_in_bounds(pattern_length - index)
+              AND
+            iteration_result(
+              to_fmap,
+              pattern,
+              pattern_length,
+              mapping,
+              index)
+
+  table_package(
+      to_fmap: [t -> fmap],
+      pattern: list[byte],
+      pattern_length: int,
+      upper_word: word63,
+      table_value: t): bool =
+    iteration_obligation(
+      to_fmap,
+      pattern,
+      pattern_length,
+      upper_word,
+      to_fmap(table_value))
+      AND
+    (loop_properties(
+       pattern,
+       pattern_length,
+       to_fmap(table_value),
+       signed63(upper_word) + 1)
+       IMPLIES
+         final_invariant(pattern, to_fmap(table_value)))
+
+  positive_case(
+      to_fmap: [t -> fmap],
+      pattern: list[byte],
+      pattern_length: int,
+      initial_table: t,
+      upper_word: word63): bool =
+    loop_properties(
+      pattern,
+      pattern_length,
+      to_fmap(initial_table),
+      0)
+      AND
+    (FORALL (table_value: t):
+      table_package(
+        to_fmap,
+        pattern,
+        pattern_length,
+        upper_word,
+        table_value))
+
+  upper_word_obligation(
+      to_fmap: [t -> fmap],
+      pattern: list[byte],
+      pattern_length: int,
+      initial_table: t,
+      upper_word: word63): bool =
+    signed63(upper_word) = pattern_length - 1
+      IMPLIES
+        ((0 <= signed63(upper_word) + 1)
+          IMPLIES
+            positive_case(
+              to_fmap,
+              pattern,
+              pattern_length,
+              initial_table,
+              upper_word))
+        AND
+        ((signed63(upper_word) + 1 < 0)
+          IMPLIES
+            final_invariant(
+              pattern,
+              to_fmap(initial_table)))
+
+  make_table_vc: bool =
+    FORALL
+      (to_fmap: [t -> fmap]),
+      (m: word63),
+      (pattern: list[byte]),
+      (initial_table: t):
+        (signed63(m) = length(pattern)
+          AND 0 <= length(pattern)
+          AND to_fmap(initial_table) = empty_map)
+          IMPLIES
+            int63_in_bounds(signed63(m) - 1)
+              AND
+            (FORALL (upper_word: word63):
+              upper_word_obligation(
+                to_fmap,
+                pattern,
+                signed63(m),
+                initial_table,
+                upper_word))
+
+END string_search_BadShiftTable_make_tableqtvc

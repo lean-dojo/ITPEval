@@ -1,0 +1,116 @@
+(** {1 Dijkstra's "Dutch national flag"}
+
+  Variant with number of occurrences instead of predicate [permut]
+
+*)
+
+module Flag
+
+  use int.Int
+  use map.Map
+  use ref.Ref
+
+  type color = Blue | White | Red
+
+  let eq_color (c1 c2 :color) : bool
+    ensures { result <-> c1 = c2 }
+  = match c1,c2 with
+    | Blue,Blue | Red,Red | White,White -> True
+    | _,_ -> False
+    end
+
+  predicate monochrome (a: map int color) (i: int) (j: int) (c: color) =
+    forall k: int. i <= k < j -> a[k]=c
+
+  let rec function nb_occ (a: map int color) (i: int) (j: int) (c: color) : int
+    variant { j - i }
+  = if i >= j then 0 else
+    if eq_color a[j-1] c then 1 + nb_occ a i (j-1) c else nb_occ a i (j-1) c
+
+  let ghost nb_occ_split (a: map int color) (i j k: int) (c: color) : unit
+    requires { i <= j <= k }
+    ensures { nb_occ a i k c = nb_occ a i j c + nb_occ a j k c }
+  = ()
+
+  let ghost nb_occ_ext (a1 a2: map int color) (i j: int) (c: color) : unit
+    requires { forall k: int. i <= k < j -> a1[k] = a2[k] }
+    ensures { nb_occ a1 i j c = nb_occ a2 i j c }
+  = ()
+
+  let ghost nb_occ_store_outside_up (a: map int color) (i j k: int) (c: color) : unit
+    requires { i <= j <= k }
+    ensures { nb_occ (set a k c) i j c = nb_occ a i j c }
+  = ()
+
+  let ghost nb_occ_store_outside_down (a: map int color) (i j k: int) (c: color) : unit
+    requires { k < i <= j }
+    ensures { nb_occ (set a k c) i j c = nb_occ a i j c }
+  = ()
+
+  let ghost nb_occ_store_eq_eq (a: map int color) (i j k: int) (c: color) : unit
+    requires { i <= k < j }
+    requires { a[k] = c }
+    ensures { nb_occ (set a k c) i j c = nb_occ a i j c }
+  = ()
+
+  let ghost nb_occ_store_eq_neq (a: map int color) (i j k: int) (c: color) : unit
+    requires { i <= k < j }
+    requires { a[k] <> c }
+    ensures  { nb_occ (set a k c) i j c = nb_occ a i j c + 1 }
+  = ()
+
+  let ghost nb_occ_store_neq_eq
+    (a: map int color) (i j k: int) (c c': color) : unit
+    requires { i <= k < j } requires { c <> c' } requires { a[k] = c }
+    ensures  { nb_occ (set a k c') i j c = nb_occ a i j c - 1 }
+  = ()
+
+  let ghost nb_occ_store_neq_neq
+    (a: map int color) (i j k: int) (c c': color) : unit
+    requires { i <= k < j } requires { c <> c' } requires { a[k] <> c }
+    ensures  { nb_occ (set a k c') i j c = nb_occ a i j c }
+  = ()
+
+  use array.Array
+
+ let swap (a:array color) (i: int) (j: int) : unit
+   requires { 0 <= i < a.length }
+   requires { 0 <= j < a.length }
+   ensures { a[i] = old a[j] }
+   ensures { a[j] = old a[i] }
+   ensures { forall k: int. k <> i /\ k <> j -> a[k] = old a[k] }
+   ensures { forall k1 k2: int, c: color. k1 <= i < k2 /\ k1 <= j < k2 ->
+        nb_occ a.elts k1 k2 c = nb_occ (old a.elts) k1 k2 c }
+ = let ai = a[i] in
+   let aj = a[j] in
+   a[i] <- aj;
+   a[j] <- ai
+
+
+ let dutch_flag (a:array color)
+    ensures { (exists b: int. exists r: int.
+        monochrome a.elts 0 b Blue /\
+        monochrome a.elts b r White /\
+        monochrome a.elts r a.length Red) }
+    ensures { forall c: color.
+        nb_occ a.elts 0 a.length c = nb_occ (old a.elts) 0 a.length c }
+= let b = ref 0 in
+  let i = ref 0 in
+  let r = ref a.length in
+  while !i < !r do
+    invariant { 0 <= !b <= !i <= !r <= a.length }
+    invariant { monochrome a.elts 0 !b Blue }
+    invariant { monochrome a.elts !b !i White }
+    invariant { monochrome a.elts !r a.length  Red }
+    invariant {
+      forall c: color.
+        nb_occ a.elts 0 a.length c = nb_occ (old a.elts) 0 a.length c }
+    variant { !r - !i }
+    match a[!i] with
+    | Blue -> swap a !b !i; b := !b + 1; i := !i + 1
+    | White -> i := !i + 1
+    | Red -> r := !r - 1; swap a !r !i
+    end
+  done
+
+end

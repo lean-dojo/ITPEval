@@ -1,0 +1,524 @@
+% Statement-only formalization of the Thousand Theorems corpus artifact Q132427,
+% "Rademacher's theorem": a Lipschitz map on a measurable subset of a finite-dimensional
+% real normed vector space is differentiable within that set almost everywhere for the
+% restricted additive Haar measure. This file contains no proof.
+
+rademacher_s_theorem_Q132427[
+  E: TYPE+,
+  zeroE: E,
+  addE: [E, E -> E],
+  negE: [E -> E],
+  smulE: [real, E -> E],
+  normE: [E -> real],
+  F: TYPE+,
+  zeroF: F,
+  addF: [F, F -> F],
+  negF: [F -> F],
+  smulF: [real, F -> F],
+  normF: [F -> real]
+]: THEORY
+BEGIN
+  e_vector: TYPE = [nat -> real]
+  e_event: TYPE = [E -> bool]
+  e_event_sequence: TYPE = [nat -> e_event]
+  e_event_family: TYPE = [e_event -> bool]
+  sigma_algebra: TYPE = [e_event -> bool]
+
+  measure_value: TYPE =
+    [# infinite_flag: bool, finite_part: real #]
+  measure_value_sequence: TYPE = [nat -> measure_value]
+  measure_map: TYPE = [e_event -> measure_value]
+
+  e_function: TYPE = [E -> F]
+  linear_candidate: TYPE = [E -> F]
+  coordinate_map_e: TYPE = [E -> e_vector]
+  coordinate_map_f: TYPE = [F -> e_vector]
+  reconstruction_map_e: TYPE = [e_vector -> E]
+  reconstruction_map_f: TYPE = [e_vector -> F]
+  real_sequence: TYPE = [nat -> real]
+
+  subE(x, y: E): E =
+    addE(x, negE(y))
+
+  subF(x, y: F): F =
+    addF(x, negF(y))
+
+  coordinate_zero: e_vector =
+    LAMBDA (index: nat): 0
+
+  coordinate_add(left, right: e_vector): e_vector =
+    LAMBDA (index: nat):
+      left(index) + right(index)
+
+  coordinate_scale(
+      scalar: real,
+      value: e_vector): e_vector =
+    LAMBDA (index: nat):
+      scalar * value(index)
+
+  supported(
+      value: e_vector,
+      dimension: nat): bool =
+    FORALL (index: nat):
+      dimension <= index IMPLIES value(index) = 0
+
+  normed_real_vector_space_e: bool =
+    (FORALL (x, y: E):
+      addE(x, y) = addE(y, x))
+      AND (FORALL (x, y, z: E):
+        addE(addE(x, y), z) =
+          addE(x, addE(y, z)))
+      AND (FORALL (x: E):
+        addE(x, zeroE) = x)
+      AND (FORALL (x: E):
+        addE(x, negE(x)) = zeroE)
+      AND (FORALL (a: real), (x, y: E):
+        smulE(a, addE(x, y)) =
+          addE(smulE(a, x), smulE(a, y)))
+      AND (FORALL (a, b: real), (x: E):
+        smulE(a + b, x) =
+          addE(smulE(a, x), smulE(b, x)))
+      AND (FORALL (a, b: real), (x: E):
+        smulE(a * b, x) =
+          smulE(a, smulE(b, x)))
+      AND (FORALL (x: E):
+        smulE(1, x) = x)
+      AND (FORALL (x: E):
+        normE(x) >= 0)
+      AND (FORALL (x: E):
+        normE(x) = 0 IFF x = zeroE)
+      AND (FORALL (a: real), (x: E):
+        normE(smulE(a, x)) =
+          abs(a) * normE(x))
+      AND (FORALL (x, y: E):
+        normE(addE(x, y)) <=
+          normE(x) + normE(y))
+
+  normed_real_vector_space_f: bool =
+    (FORALL (x, y: F):
+      addF(x, y) = addF(y, x))
+      AND (FORALL (x, y, z: F):
+        addF(addF(x, y), z) =
+          addF(x, addF(y, z)))
+      AND (FORALL (x: F):
+        addF(x, zeroF) = x)
+      AND (FORALL (x: F):
+        addF(x, negF(x)) = zeroF)
+      AND (FORALL (a: real), (x, y: F):
+        smulF(a, addF(x, y)) =
+          addF(smulF(a, x), smulF(a, y)))
+      AND (FORALL (a, b: real), (x: F):
+        smulF(a + b, x) =
+          addF(smulF(a, x), smulF(b, x)))
+      AND (FORALL (a, b: real), (x: F):
+        smulF(a * b, x) =
+          smulF(a, smulF(b, x)))
+      AND (FORALL (x: F):
+        smulF(1, x) = x)
+      AND (FORALL (x: F):
+        normF(x) >= 0)
+      AND (FORALL (x: F):
+        normF(x) = 0 IFF x = zeroF)
+      AND (FORALL (a: real), (x: F):
+        normF(smulF(a, x)) =
+          abs(a) * normF(x))
+      AND (FORALL (x, y: F):
+        normF(addF(x, y)) <=
+          normF(x) + normF(y))
+
+  finite_dimensional_e: bool =
+    EXISTS
+        (dimension: nat),
+        (coordinates: coordinate_map_e),
+        (reconstruct: reconstruction_map_e):
+      (FORALL (x: E):
+        supported(coordinates(x), dimension))
+        AND (FORALL (x, y: E):
+          coordinates(addE(x, y)) =
+            coordinate_add(
+              coordinates(x), coordinates(y)))
+        AND (FORALL (a: real), (x: E):
+          coordinates(smulE(a, x)) =
+            coordinate_scale(a, coordinates(x)))
+        AND (FORALL (x: E):
+          reconstruct(coordinates(x)) = x)
+        AND (FORALL (value: e_vector):
+          supported(value, dimension) IMPLIES
+            coordinates(reconstruct(value)) = value)
+
+  finite_dimensional_f: bool =
+    EXISTS
+        (dimension: nat),
+        (coordinates: coordinate_map_f),
+        (reconstruct: reconstruction_map_f):
+      (FORALL (x: F):
+        supported(coordinates(x), dimension))
+        AND (FORALL (x, y: F):
+          coordinates(addF(x, y)) =
+            coordinate_add(
+              coordinates(x), coordinates(y)))
+        AND (FORALL (a: real), (x: F):
+          coordinates(smulF(a, x)) =
+            coordinate_scale(a, coordinates(x)))
+        AND (FORALL (x: F):
+          reconstruct(coordinates(x)) = x)
+        AND (FORALL (value: e_vector):
+          supported(value, dimension) IMPLIES
+            coordinates(reconstruct(value)) = value)
+
+  empty_event: e_event =
+    LAMBDA (x: E): FALSE
+
+  full_event: e_event =
+    LAMBDA (x: E): TRUE
+
+  event_complement(A: e_event): e_event =
+    LAMBDA (x: E): NOT A(x)
+
+  event_intersection(A, B: e_event): e_event =
+    LAMBDA (x: E): A(x) AND B(x)
+
+  event_difference(A, B: e_event): e_event =
+    LAMBDA (x: E): A(x) AND NOT B(x)
+
+  event_subset(A, B: e_event): bool =
+    FORALL (x: E):
+      A(x) IMPLIES B(x)
+
+  countable_union(events: e_event_sequence): e_event =
+    LAMBDA (x: E):
+      EXISTS (index: nat): events(index)(x)
+
+  pairwise_disjoint(events: e_event_sequence): bool =
+    FORALL (left_index, right_index: nat):
+      left_index /= right_index IMPLIES
+        FORALL (x: E):
+          NOT (events(left_index)(x)
+            AND events(right_index)(x))
+
+  open_set(A: e_event): bool =
+    FORALL (x: E):
+      A(x) IMPLIES
+        EXISTS (radius: posreal):
+          FORALL (y: E):
+            normE(subE(y, x)) < radius
+              IMPLIES A(y)
+
+  is_sigma_algebra(Sigma: sigma_algebra): bool =
+    Sigma(full_event)
+      AND (FORALL (A: e_event):
+        Sigma(A) IMPLIES Sigma(event_complement(A)))
+      AND (FORALL (events: e_event_sequence):
+        (FORALL (index: nat): Sigma(events(index)))
+          IMPLIES Sigma(countable_union(events)))
+
+  generated_borel_sigma(Sigma: sigma_algebra): bool =
+    is_sigma_algebra(Sigma)
+      AND (FORALL (A: e_event):
+        open_set(A) IMPLIES Sigma(A))
+      AND (FORALL (Other: sigma_algebra):
+        (is_sigma_algebra(Other)
+          AND (FORALL (A: e_event):
+            open_set(A) IMPLIES Other(A)))
+        IMPLIES
+          FORALL (A: e_event):
+            Sigma(A) IMPLIES Other(A))
+
+  finite_real_sum(
+      values: real_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      finite_real_sum(values, count - 1)
+        + values(count - 1)
+    ENDIF
+  MEASURE count
+
+  converges_to_real(
+      values: real_sequence,
+      limit: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(values(index) - limit) < epsilon_value
+
+  zero_measure_value: measure_value =
+    (# infinite_flag := FALSE, finite_part := 0 #)
+
+  infinite_measure_value: measure_value =
+    (# infinite_flag := TRUE, finite_part := 0 #)
+
+  finite_measure_value(value: real): measure_value =
+    (# infinite_flag := FALSE, finite_part := value #)
+
+  canonical_measure_value(value: measure_value): bool =
+    IF infinite_flag(value) THEN
+      finite_part(value) = 0
+    ELSE
+      finite_part(value) >= 0
+    ENDIF
+
+  measure_value_is_zero(value: measure_value): bool =
+    NOT infinite_flag(value)
+      AND finite_part(value) = 0
+
+  measure_value_is_finite(value: measure_value): bool =
+    canonical_measure_value(value)
+      AND NOT infinite_flag(value)
+
+  measure_value_is_positive(value: measure_value): bool =
+    canonical_measure_value(value)
+      AND (infinite_flag(value) OR finite_part(value) > 0)
+
+  measure_value_le(
+      left, right: measure_value): bool =
+    canonical_measure_value(left)
+      AND canonical_measure_value(right)
+      AND IF infinite_flag(right) THEN
+        TRUE
+      ELSIF infinite_flag(left) THEN
+        FALSE
+      ELSE
+        finite_part(left) <= finite_part(right)
+      ENDIF
+
+  measure_value_add(
+      left, right: measure_value): measure_value =
+    IF infinite_flag(left) OR infinite_flag(right) THEN
+      infinite_measure_value
+    ELSE
+      finite_measure_value(
+        finite_part(left) + finite_part(right))
+    ENDIF
+
+  unbounded_above(values: real_sequence): bool =
+    FORALL (bound: real):
+      EXISTS (index: nat):
+        bound < values(index)
+
+  partial_measure_sum(
+      values: measure_value_sequence,
+      count: nat): real =
+    finite_real_sum(
+      LAMBDA (index: nat):
+        finite_part(values(index)),
+      count)
+
+  extended_nonnegative_sum(
+      values: measure_value_sequence,
+      total: measure_value): bool =
+    canonical_measure_value(total)
+      AND (FORALL (index: nat):
+        canonical_measure_value(values(index)))
+      AND IF infinite_flag(total) THEN
+        (EXISTS (index: nat):
+          infinite_flag(values(index)))
+          OR ((FORALL (index: nat):
+                NOT infinite_flag(values(index)))
+            AND unbounded_above(
+              LAMBDA (count: nat):
+                partial_measure_sum(values, count)))
+      ELSE
+        (FORALL (index: nat):
+          NOT infinite_flag(values(index)))
+          AND converges_to_real(
+            LAMBDA (count: nat):
+              partial_measure_sum(values, count),
+            finite_part(total))
+      ENDIF
+
+  countably_subadditive(M: measure_map): bool =
+    FORALL
+        (events: e_event_sequence),
+        (total: measure_value):
+      extended_nonnegative_sum(
+        LAMBDA (index: nat): M(events(index)),
+        total)
+      IMPLIES
+        measure_value_le(M(countable_union(events)), total)
+
+  countably_additive_on_sigma(
+      M: measure_map,
+      Sigma: sigma_algebra): bool =
+    FORALL
+        (events: e_event_sequence),
+        (total: measure_value):
+      (FORALL (index: nat): Sigma(events(index)))
+        AND pairwise_disjoint(events)
+        AND extended_nonnegative_sum(
+          LAMBDA (index: nat): M(events(index)),
+          total)
+      IMPLIES
+        M(countable_union(events)) = total
+
+  monotone_measure(M: measure_map): bool =
+    FORALL (A, B: e_event):
+      event_subset(A, B) IMPLIES
+        measure_value_le(M(A), M(B))
+
+  caratheodory_measurable(
+      M: measure_map,
+      A: e_event): bool =
+    FORALL (B: e_event):
+      M(B)
+        = measure_value_add(
+            M(event_intersection(B, A)),
+            M(event_difference(B, A)))
+
+  is_measure(
+      M: measure_map,
+      Sigma: sigma_algebra): bool =
+    is_sigma_algebra(Sigma)
+      AND (FORALL (A: e_event):
+        canonical_measure_value(M(A)))
+      AND measure_value_is_zero(M(empty_event))
+      AND monotone_measure(M)
+      AND countably_subadditive(M)
+      AND countably_additive_on_sigma(M, Sigma)
+      AND (FORALL (A: e_event):
+        Sigma(A) IMPLIES
+          caratheodory_measurable(M, A))
+
+  open_cover(
+      cover: e_event_family,
+      K: e_event): bool =
+    (FORALL (A: e_event):
+      cover(A) IMPLIES open_set(A))
+      AND (FORALL (x: E):
+        K(x) IMPLIES
+          EXISTS (A: e_event):
+            cover(A) AND A(x))
+
+  compact_set(K: e_event): bool =
+    FORALL (cover: e_event_family):
+      open_cover(cover, K) IMPLIES
+        EXISTS
+            (count: nat),
+            (chosen: e_event_sequence):
+          (FORALL (index: nat):
+            index < count IMPLIES cover(chosen(index)))
+            AND (FORALL (x: E):
+              K(x) IMPLIES
+                EXISTS (index: nat):
+                  index < count AND chosen(index)(x))
+
+  translated_event(A: e_event, shift: E): e_event =
+    LAMBDA (x: E):
+      A(subE(x, shift))
+
+  is_additive_haar_measure(
+      M: measure_map,
+      Sigma: sigma_algebra): bool =
+    is_measure(M, Sigma)
+      AND (FORALL (A: e_event), (shift: E):
+        M(translated_event(A, shift)) = M(A))
+      AND (FORALL (K: e_event):
+        compact_set(K) IMPLIES
+          measure_value_is_finite(M(K)))
+      AND (FORALL (A: e_event):
+        (open_set(A)
+          AND EXISTS (x: E): A(x))
+        IMPLIES measure_value_is_positive(M(A)))
+
+  null_event(
+      M: measure_map,
+      Sigma: sigma_algebra,
+      A: e_event): bool =
+    EXISTS (measurable_cover: e_event):
+      Sigma(measurable_cover)
+        AND event_subset(A, measurable_cover)
+        AND measure_value_is_zero(M(measurable_cover))
+
+  almost_everywhere_restrict(
+      M: measure_map,
+      Sigma: sigma_algebra,
+      source_set: e_event,
+      property_value: [E -> bool]): bool =
+    null_event(
+      M,
+      Sigma,
+      LAMBDA (x: E):
+        source_set(x) AND NOT property_value(x))
+
+  lipschitz_on_with(
+      constant: real,
+      function_value: e_function,
+      source_set: e_event): bool =
+    constant >= 0
+      AND FORALL (x, y: E):
+        (source_set(x) AND source_set(y))
+          IMPLIES
+            normF(subF(
+              function_value(x), function_value(y)))
+              <= constant * normE(subE(x, y))
+
+  continuous_linear_map(L: linear_candidate): bool =
+    (FORALL (x, y: E):
+      L(addE(x, y)) = addF(L(x), L(y)))
+      AND (FORALL (a: real), (x: E):
+        L(smulE(a, x)) = smulF(a, L(x)))
+      AND EXISTS (bound: real):
+        bound >= 0
+          AND FORALL (x: E):
+            normF(L(x)) <= bound * normE(x)
+
+  has_frechet_derivative_within_at(
+      function_value: e_function,
+      derivative: linear_candidate,
+      source_set: e_event,
+      point: E): bool =
+    continuous_linear_map(derivative)
+      AND FORALL (epsilon_value: posreal):
+        EXISTS (radius: posreal):
+          FORALL (nearby: E):
+            (source_set(nearby)
+              AND normE(subE(nearby, point)) < radius)
+            IMPLIES
+              normF(
+                subF(
+                  subF(
+                    function_value(nearby),
+                    function_value(point)),
+                  derivative(subE(nearby, point))))
+                <= epsilon_value
+                  * normE(subE(nearby, point))
+
+  differentiable_within_at(
+      function_value: e_function,
+      source_set: e_event,
+      point: E): bool =
+    EXISTS (derivative: linear_candidate):
+      has_frechet_derivative_within_at(
+        function_value,
+        derivative,
+        source_set,
+        point)
+
+  rademacher_s_theorem: bool =
+    (normed_real_vector_space_e
+      AND normed_real_vector_space_f
+      AND finite_dimensional_e
+      AND finite_dimensional_f)
+    IMPLIES
+      FORALL
+          (M: measure_map),
+          (Sigma: sigma_algebra),
+          (constant: real),
+          (function_value: e_function),
+          (source_set: e_event):
+        (generated_borel_sigma(Sigma)
+          AND is_additive_haar_measure(M, Sigma)
+          AND Sigma(source_set)
+          AND lipschitz_on_with(
+            constant, function_value, source_set))
+        IMPLIES
+          almost_everywhere_restrict(
+            M,
+            Sigma,
+            source_set,
+            LAMBDA (x: E):
+              differentiable_within_at(
+                function_value, source_set, x))
+END rademacher_s_theorem_Q132427

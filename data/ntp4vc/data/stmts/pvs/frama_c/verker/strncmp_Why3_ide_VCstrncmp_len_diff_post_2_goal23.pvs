@@ -1,0 +1,225 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% frama_c/verker/strncmp_Why3_ide_VCstrncmp_len_diff_post_2_goal23:
+% a strncmp length-difference verification condition concluding that the
+% comparison result is positive. This file contains no proof.
+
+strncmp_Why3_ide_VCstrncmp_len_diff_post_2_goal23: THEORY
+BEGIN
+  addr: TYPE = [# base: int, offset: int #]
+  allocation_table: TYPE = [int -> int]
+  integer_memory: TYPE = [addr -> int]
+  integer_conversion: TYPE = [int -> int]
+  address_relation: TYPE = [addr, addr -> bool]
+  string_length_function: TYPE = [integer_memory, addr -> int]
+  bounded_string_length_function: TYPE =
+    [integer_memory, addr, int -> int]
+
+  shift(p: addr, k: int): addr =
+    (# base := base(p), offset := offset(p) + k #)
+
+  is_uint8(value: int): bool =
+    0 <= value AND value < 256
+
+  is_sint8(value: int): bool =
+    -128 <= value AND value < 128
+
+  is_sint32(value: int): bool =
+    -2147483648 <= value AND value < 2147483648
+
+  is_uint64(value: int): bool =
+    0 <= value AND value < 18446744073709551616
+
+  valid_rw(
+      malloc_0: allocation_table,
+      p: addr,
+      size: int): bool =
+    0 < size IMPLIES
+      0 < base(p)
+        AND 0 <= offset(p)
+        AND offset(p) + size <= malloc_0(base(p))
+
+  p_valid_str(
+      malloc_0: allocation_table,
+      mchar_0: integer_memory,
+      s: addr): bool =
+    EXISTS (terminator: int):
+      mchar_0(shift(s, terminator)) = 0
+        AND is_uint64(terminator)
+        AND valid_rw(malloc_0, shift(s, 0), 1 + terminator)
+        AND (FORALL (j: int):
+          j <= terminator IMPLIES
+            is_sint8(mchar_0(shift(s, j))))
+
+  p_valid_strn(
+      malloc_0: allocation_table,
+      mchar_0: integer_memory,
+      s: addr,
+      count: int): bool =
+    LET start: addr = shift(s, 0)
+    IN
+      valid_rw(malloc_0, start, 1 + count)
+        OR
+          ((EXISTS (terminator: int):
+            mchar_0(shift(s, terminator)) = 0
+              AND terminator < count
+              AND is_uint64(terminator)
+              AND valid_rw(
+                malloc_0, start, 1 + terminator))
+            AND (FORALL (j: int):
+              j <= count IMPLIES
+                is_sint8(mchar_0(shift(s, j)))))
+
+  address_order_law(addr_le: address_relation): bool =
+    FORALL (p, q: addr):
+      base(p) = base(q) IMPLIES
+        (addr_le(p, q) IFF offset(p) <= offset(q))
+
+  uint8_conversion_laws(to_uint8: integer_conversion): bool =
+    (FORALL (value: int):
+      is_uint8(to_uint8(value)))
+      AND
+    (FORALL (value: int):
+      is_uint8(value) IMPLIES to_uint8(value) = value)
+      AND
+    (FORALL (value: int):
+      to_uint8(to_uint8(value)) = to_uint8(value))
+
+  strlen_laws(
+      to_uint64: integer_conversion,
+      l_strlen: string_length_function): bool =
+    (FORALL (mchar_0: integer_memory), (s: addr):
+      IF mchar_0(shift(s, 0)) = 0
+      THEN l_strlen(mchar_0, s) = 0
+      ELSE
+        to_uint64(1 + l_strlen(mchar_0, shift(s, 1))) =
+          l_strlen(mchar_0, s)
+      ENDIF)
+      AND
+    (FORALL (mchar_0: integer_memory), (s: addr):
+      is_uint64(l_strlen(mchar_0, s)))
+
+  strnlen_laws(
+      to_uint64: integer_conversion,
+      l_strnlen: bounded_string_length_function): bool =
+    (FORALL
+        (mchar_0: integer_memory),
+        (s: addr),
+        (count: int):
+      IF count = 0 OR mchar_0(shift(s, 0)) = 0
+      THEN l_strnlen(mchar_0, s, count) = 0
+      ELSE
+        to_uint64(
+          1 + l_strnlen(
+            mchar_0,
+            shift(s, 1),
+            to_uint64(count - 1))) =
+          l_strnlen(mchar_0, s, count)
+      ENDIF)
+      AND
+    (FORALL
+        (mchar_0: integer_memory),
+        (s: addr),
+        (count: int):
+      is_uint64(l_strnlen(mchar_0, s, count)))
+
+  uint64_conversion_laws(to_uint64: integer_conversion): bool =
+    (FORALL (value: int):
+      is_uint64(to_uint64(value)))
+      AND
+    (FORALL (value: int):
+      is_uint64(value) IMPLIES to_uint64(value) = value)
+      AND
+    (FORALL (value: int):
+      to_uint64(to_uint64(value)) = to_uint64(value))
+
+  goal23: bool =
+    FORALL
+      (region: [int -> int]),
+      (linked: [allocation_table -> bool]),
+      (sconst: [integer_memory -> bool]),
+      (addr_le: address_relation),
+      (to_uint8, to_uint64: integer_conversion),
+      (l_strlen: string_length_function),
+      (l_strnlen: bounded_string_length_function),
+      (a_1, a_2, a, a_3: addr),
+      (i_1: int),
+      (t_1: integer_memory),
+      (t: allocation_table),
+      (i_2, i_3, i: int):
+      address_order_law(addr_le) IMPLIES
+      uint8_conversion_laws(to_uint8) IMPLIES
+      uint64_conversion_laws(to_uint64) IMPLIES
+      strlen_laws(to_uint64, l_strlen) IMPLIES
+      strnlen_laws(to_uint64, l_strnlen) IMPLIES
+      LET x: int = offset(a_1),
+          x_1: int = offset(a_2),
+          x_2: int = offset(a),
+          x_3: int = offset(a_3),
+          x_4: int = i_1 + x - x_2,
+          x_5: int = l_strnlen(t_1, a_1, i_1),
+          x_6: int = x + x_5,
+          x_7: int = l_strnlen(t_1, a_3, i_1),
+          x_8: int = i_1 + x
+      IN
+        x + x_1 = x_2 + x_3 IMPLIES
+        x_2 + l_strnlen(t_1, a, x_4) = x_6 IMPLIES
+        x_1 + l_strnlen(t_1, a_2, x_4) = x_3 + x_7 IMPLIES
+        0 < i_1 IMPLIES
+        x <= x_2 IMPLIES
+        region(base(a_1)) <= 0 IMPLIES
+        region(base(a_3)) <= 0 IMPLIES
+        x_5 < x_7 IMPLIES
+        x_2 <= x_8 IMPLIES
+        linked(t) IMPLIES
+        sconst(t_1) IMPLIES
+        is_uint8(i_2) IMPLIES
+        is_uint8(i_3) IMPLIES
+        is_sint32(i) IMPLIES
+        is_uint64(i_1) IMPLIES
+        addr_le(a_1, a) IMPLIES
+        addr_le(a_3, a_2) IMPLIES
+        p_valid_strn(t, t_1, a_1, i_1) IMPLIES
+        p_valid_strn(t, t_1, a_3, i_1) IMPLIES
+        is_uint64(x_4) IMPLIES
+        addr_le(a, shift(a_1, x_5)) IMPLIES
+        addr_le(a_2, shift(a_3, x_7)) IMPLIES
+        p_valid_strn(t, t_1, a, x_4) IMPLIES
+        p_valid_strn(t, t_1, a_2, x_4) IMPLIES
+        (IF x_8 = x_2
+         THEN i = 0
+         ELSE
+           to_uint8(t_1(a)) = i_2
+             AND to_uint8(t_1(a_2)) = i_3
+             AND
+               (IF i_3 = i_2
+                THEN i = 0 AND i_3 = 0
+                ELSE IF i_3 < i_2 THEN i = -1 ELSE i = 1 ENDIF
+                ENDIF)
+             AND
+               (i_2 = 0 IMPLIES
+                 x_5 = l_strlen(t_1, a_1)
+                   AND x_6 = x_2
+                   AND p_valid_str(t, t_1, a_1))
+             AND
+               (i_3 = 0 IMPLIES
+                 x_7 = l_strlen(t_1, a_3)
+                   AND x + x_7 = x_2
+                   AND p_valid_str(t, t_1, a_3))
+         ENDIF) IMPLIES
+        (FORALL (i_4: int):
+          0 <= i_4 IMPLIES
+          i_4 < x_7 IMPLIES
+          t_1(shift(a_3, i_4)) = t_1(shift(a_1, i_4))) IMPLIES
+        (FORALL (i_4: int):
+          0 <= i_4 IMPLIES
+          i_4 + x < x_2 IMPLIES
+          t_1(shift(a_3, i_4)) = t_1(shift(a_1, i_4))) IMPLIES
+        (FORALL (i_4: int):
+          LET x_9: int = t_1(shift(a_3, i_4)),
+              x_10: int = t_1(shift(a_1, i_4))
+          IN
+            0 <= i_4 IMPLIES
+            i_4 < x_7 IMPLIES
+            (to_uint8(x_9) = to_uint8(x_10) IFF x_9 = x_10)) IMPLIES
+        i = 1
+END strncmp_Why3_ide_VCstrncmp_len_diff_post_2_goal23

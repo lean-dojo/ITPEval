@@ -1,0 +1,17 @@
+import Mathlib
+
+open Nat Topology Filter
+
+/--
+Show that if $\lambda > \frac{1}{2}$ there does not exist a real-valued function $u$ such that for all $x$ in the closed interval $0 \leq x \leq 1$, $u(x)=1+\lambda\int_x^1 u(y)u(y-x)\,dy$.
+-/
+theorem putnam_1967_a4
+(lambda : ℝ)
+(hlambda : lambda > 1 / 2)
+: ¬∃ u : ℝ → ℝ,
+    MeasureTheory.IntegrableOn u (Set.Icc 0 1) ∧
+    (∀ x ∈ Set.Icc (0 : ℝ) 1,
+      MeasureTheory.IntegrableOn (fun y ↦ u y * u (y - x)) (Set.Ioo x 1)) ∧
+    ∀ x ∈ Set.Icc 0 1,
+      u x = 1 + lambda * (∫ y in Set.Ioo x 1, u y * u (y - x)) :=
+sorry

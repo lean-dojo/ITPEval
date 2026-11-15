@@ -1,0 +1,86 @@
+% Statement-only formalization of the VERINA corpus artifact verina_basic_15,
+% catalog title "containsConsecutiveNumbers": deciding whether a finite integer
+% array has adjacent values whose second value is one greater than the first.
+% This file contains no proof.
+
+verina_basic_15: THEORY
+BEGIN
+
+  % Finite PVS lists preserve the exact contents and order of Lean arrays.
+  int_list_length(values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        int_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  % Lean's Array.get! on integer arrays returns zero outside the array.
+  int_list_get_bang(
+      index: nat,
+      values: list[int]): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          int_list_get_bang(index - 1, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  % Lean natural-number subtraction is truncated at zero.
+  nat_subtract(first, second: nat): nat =
+    IF first >= second THEN first - second ELSE 0 ENDIF
+
+  containsConsecutiveNumbers_precond(
+      a: list[int]): bool =
+    TRUE
+
+  adjacent_consecutive_scan(
+      values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        FALSE,
+      cons(first, remaining):
+        CASES remaining OF
+          null:
+            FALSE,
+          cons(second, rest):
+            first + 1 = second
+              OR adjacent_consecutive_scan(remaining)
+        ENDCASES
+    ENDCASES
+  MEASURE values BY <<
+
+  % This is the exact proof-erased mapIdx/any computation, expressed as a
+  % structurally recursive scan of the same adjacent pairs.
+  containsConsecutiveNumbers(
+      a: list[int]): bool =
+    IF int_list_length(a) <= 1 THEN
+      FALSE
+    ELSE
+      adjacent_consecutive_scan(a)
+    ENDIF
+
+  containsConsecutiveNumbers_postcond(
+      a: list[int],
+      result: bool): bool =
+    (EXISTS (i: nat):
+      i < nat_subtract(int_list_length(a), 1)
+        AND int_list_get_bang(i, a) + 1
+              = int_list_get_bang(i + 1, a))
+      IFF result
+
+  containsConsecutiveNumbers_spec_satisfied: bool =
+    FORALL (a: list[int]):
+      containsConsecutiveNumbers_precond(a)
+        IMPLIES
+          containsConsecutiveNumbers_postcond(
+            a,
+            containsConsecutiveNumbers(a))
+
+END verina_basic_15

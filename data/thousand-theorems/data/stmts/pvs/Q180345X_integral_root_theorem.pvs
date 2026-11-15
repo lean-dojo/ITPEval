@@ -1,0 +1,190 @@
+% Statement-only formalization of the Thousand Theorems corpus artifact Q180345X,
+% "Integral root theorem": every root in the fraction field of a monic polynomial
+% over a unique factorization domain lies in the image of that domain. This file
+% contains no proof.
+
+Q180345X_integral_root_theorem[
+  A, K, Poly: TYPE+,
+  zero_A, one_A: A,
+  neg_A: [A -> A],
+  add_A, mul_A: [A, A -> A],
+  zero_K, one_K: K,
+  neg_K: [K -> K],
+  add_K, mul_K: [K, K -> K],
+  inv_K: [K -> K],
+  algebra_map: [A -> K],
+  coefficient: [Poly, nat -> A],
+  degree: [Poly -> nat]
+]: THEORY
+BEGIN
+
+  divides_A(divisor, value: A): bool =
+    EXISTS (quotient: A): value = mul_A(divisor, quotient)
+
+  unit_A(value: A): bool =
+    EXISTS (inverse: A): mul_A(value, inverse) = one_A
+
+  associated_A(left, right: A): bool =
+    EXISTS (unit: A):
+      unit_A(unit) AND left = mul_A(unit, right)
+
+  irreducible_A(value: A): bool =
+    NOT value = zero_A
+      AND NOT unit_A(value)
+      AND (FORALL (left, right: A):
+        value = mul_A(left, right)
+          IMPLIES unit_A(left) OR unit_A(right))
+
+  prime_A(value: A): bool =
+    irreducible_A(value)
+      AND (FORALL (left, right: A):
+        divides_A(value, mul_A(left, right))
+          IMPLIES divides_A(value, left) OR divides_A(value, right))
+
+  product_A(factors: list[A]): RECURSIVE A =
+    CASES factors OF
+      null: one_A,
+      cons(head, tail): mul_A(head, product_A(tail))
+    ENDCASES
+  MEASURE factors BY <<
+
+  all_irreducible_A(factors: list[A]): RECURSIVE bool =
+    CASES factors OF
+      null: TRUE,
+      cons(head, tail):
+        irreducible_A(head) AND all_irreducible_A(tail)
+    ENDCASES
+  MEASURE factors BY <<
+
+  commutative_integral_domain_laws: bool =
+    NOT one_A = zero_A
+      AND (FORALL (a, b: A): add_A(a, b) = add_A(b, a))
+      AND (FORALL (a, b, c: A):
+        add_A(add_A(a, b), c) = add_A(a, add_A(b, c)))
+      AND (FORALL (a: A): add_A(a, zero_A) = a)
+      AND (FORALL (a: A): add_A(a, neg_A(a)) = zero_A)
+      AND (FORALL (a, b: A): mul_A(a, b) = mul_A(b, a))
+      AND (FORALL (a, b, c: A):
+        mul_A(mul_A(a, b), c) = mul_A(a, mul_A(b, c)))
+      AND (FORALL (a: A): mul_A(a, one_A) = a)
+      AND (FORALL (a, b, c: A):
+        mul_A(a, add_A(b, c))
+          = add_A(mul_A(a, b), mul_A(a, c)))
+      AND (FORALL (a, b: A):
+        mul_A(a, b) = zero_A
+          IMPLIES a = zero_A OR b = zero_A)
+
+  unique_factorization_domain_laws: bool =
+    commutative_integral_domain_laws
+      AND (FORALL (value: A):
+        NOT value = zero_A IMPLIES
+          EXISTS (factors: list[A]):
+            all_irreducible_A(factors)
+              AND associated_A(value, product_A(factors)))
+      AND (FORALL (value: A):
+        irreducible_A(value) IMPLIES prime_A(value))
+
+  field_laws: bool =
+    NOT one_K = zero_K
+      AND (FORALL (x, y: K): add_K(x, y) = add_K(y, x))
+      AND (FORALL (x, y, z: K):
+        add_K(add_K(x, y), z) = add_K(x, add_K(y, z)))
+      AND (FORALL (x: K): add_K(x, zero_K) = x)
+      AND (FORALL (x: K): add_K(x, neg_K(x)) = zero_K)
+      AND (FORALL (x, y: K): mul_K(x, y) = mul_K(y, x))
+      AND (FORALL (x, y, z: K):
+        mul_K(mul_K(x, y), z) = mul_K(x, mul_K(y, z)))
+      AND (FORALL (x: K): mul_K(x, one_K) = x)
+      AND (FORALL (x, y, z: K):
+        mul_K(x, add_K(y, z))
+          = add_K(mul_K(x, y), mul_K(x, z)))
+      AND inv_K(zero_K) = zero_K
+      AND (FORALL (x: K):
+        NOT x = zero_K IMPLIES mul_K(x, inv_K(x)) = one_K)
+
+  algebra_map_laws: bool =
+    algebra_map(zero_A) = zero_K
+      AND algebra_map(one_A) = one_K
+      AND (FORALL (a, b: A):
+        algebra_map(add_A(a, b))
+          = add_K(algebra_map(a), algebra_map(b)))
+      AND (FORALL (a, b: A):
+        algebra_map(mul_A(a, b))
+          = mul_K(algebra_map(a), algebra_map(b)))
+      AND (FORALL (a, b: A):
+        algebra_map(a) = algebra_map(b) IMPLIES a = b)
+
+  fraction_field_laws: bool =
+    field_laws
+      AND algebra_map_laws
+      AND (FORALL (x: K):
+        EXISTS (num, den: A):
+          NOT den = zero_A
+            AND mul_K(x, algebra_map(den)) = algebra_map(num))
+
+  finitely_supported(f: [nat -> A]): bool =
+    EXISTS (bound: nat):
+      FORALL (index: nat):
+        index > bound IMPLIES f(index) = zero_A
+
+  power_K(x: K, exponent: nat): RECURSIVE K =
+    IF exponent = 0 THEN
+      one_K
+    ELSE
+      mul_K(power_K(x, exponent - 1), x)
+    ENDIF
+  MEASURE exponent
+
+  polynomial_sum(p: Poly, x: K, count: nat): RECURSIVE K =
+    IF count = 0 THEN
+      zero_K
+    ELSE
+      add_K(
+        polynomial_sum(p, x, count - 1),
+        mul_K(
+          algebra_map(coefficient(p, count - 1)),
+          power_K(x, count - 1)))
+    ENDIF
+  MEASURE count
+
+  evaluate(p: Poly, x: K): K =
+    polynomial_sum(p, x, degree(p) + 1)
+
+  leading_coefficient(p: Poly): A =
+    coefficient(p, degree(p))
+
+  polynomial_representation_laws: bool =
+    (FORALL (p, q: Poly):
+      (FORALL (index: nat):
+        coefficient(p, index) = coefficient(q, index))
+        IMPLIES p = q)
+      AND (FORALL (p: Poly), (index: nat):
+        index > degree(p) IMPLIES coefficient(p, index) = zero_A)
+      AND (FORALL (p: Poly):
+        degree(p) = 0
+          OR NOT coefficient(p, degree(p)) = zero_A)
+      AND (FORALL (f: [nat -> A]):
+        finitely_supported(f) IMPLIES
+          EXISTS (p: Poly):
+            FORALL (index: nat):
+              coefficient(p, index) = f(index))
+
+  monic(p: Poly): bool =
+    leading_coefficient(p) = one_A
+
+  is_integer_A(root: K): bool =
+    EXISTS (value: A): root = algebra_map(value)
+
+  integral_root_context: bool =
+    unique_factorization_domain_laws
+      AND fraction_field_laws
+      AND polynomial_representation_laws
+
+  isInteger_of_is_root_of_monic: bool =
+    integral_root_context IMPLIES
+      FORALL (p: Poly), (root: K):
+        monic(p)
+          AND evaluate(p, root) = zero_K
+        IMPLIES is_integer_A(root)
+
+END Q180345X_integral_root_theorem

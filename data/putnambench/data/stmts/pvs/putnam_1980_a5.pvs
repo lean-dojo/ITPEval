@@ -1,0 +1,185 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1980_a5:
+% a nonconstant real polynomial has only finitely many real upper endpoints
+% where both integrals against sine and cosine vanish. This file contains no proof.
+
+putnam_1980_a5: THEORY
+BEGIN
+  IMPORTING finite_sets[real]
+
+  real_function: TYPE = [real -> real]
+  real_sequence: TYPE = [nat -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  sine_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        sine_partial(x, count - 1)
+          + safe_div(
+              ((-1 :: real) ^ index) * x ^ (2 * index + 1),
+              factorial(2 * index + 1) :: real)
+    ENDIF
+  MEASURE count
+
+  cosine_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        cosine_partial(x, count - 1)
+          + safe_div(
+              ((-1 :: real) ^ index) * x ^ (2 * index),
+              factorial(2 * index) :: real)
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  sine(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat): sine_partial(x, count),
+          value))
+
+  cosine(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat): cosine_partial(x, count),
+          value))
+
+  polynomial_value(p: list[real], x: real): RECURSIVE real =
+    CASES p OF
+      null: 0,
+      cons(coefficient, tail):
+        coefficient + x * polynomial_value(tail, x)
+    ENDCASES
+  MEASURE p BY <<
+
+  polynomial_coefficient(
+      p: list[real],
+      degree: nat): RECURSIVE real =
+    CASES p OF
+      null: 0,
+      cons(coefficient, tail):
+        IF degree = 0 THEN
+          coefficient
+        ELSE
+          polynomial_coefficient(tail, degree - 1)
+        ENDIF
+    ENDCASES
+  MEASURE p BY <<
+
+  nonconstant_polynomial(p: list[real]): bool =
+    EXISTS (degree: nat):
+      degree > 0 AND polynomial_coefficient(p, degree) /= 0
+
+  valid_partition(
+      lower, upper: real,
+      points: real_sequence,
+      count: nat): bool =
+    IF lower = upper THEN
+      count = 0 AND points(0) = lower
+    ELSE
+      count > 0
+        AND points(0) = lower
+        AND points(count) = upper
+        AND (FORALL (index: nat):
+          index < count IMPLIES
+            points(index) < points(index + 1))
+    ENDIF
+
+  valid_tags(
+      points, tags: real_sequence,
+      count: nat): bool =
+    FORALL (index: nat):
+      index < count IMPLIES
+        points(index) <= tags(index)
+          AND tags(index) <= points(index + 1)
+
+  mesh_less_than(
+      points: real_sequence,
+      count: nat,
+      bound: real): bool =
+    FORALL (index: nat):
+      index < count IMPLIES
+        points(index + 1) - points(index) < bound
+
+  riemann_sum(
+      f: real_function,
+      points, tags: real_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      riemann_sum(f, points, tags, count - 1)
+        + f(tags(count - 1))
+            * (points(count) - points(count - 1))
+    ENDIF
+  MEASURE count
+
+  has_integral_on_ordered_interval(
+      f: real_function,
+      integral_value, lower, upper: real): bool =
+    lower <= upper
+      AND FORALL (epsilon_value: posreal):
+        EXISTS (mesh_bound: posreal):
+          FORALL
+              (points, tags: real_sequence),
+              (count: nat):
+            (valid_partition(lower, upper, points, count)
+              AND valid_tags(points, tags, count)
+              AND mesh_less_than(points, count, mesh_bound))
+            IMPLIES
+              abs(
+                riemann_sum(f, points, tags, count)
+                  - integral_value)
+                < epsilon_value
+
+  has_oriented_integral(
+      f: real_function,
+      integral_value, lower, upper: real): bool =
+    IF lower <= upper THEN
+      has_integral_on_ordered_interval(
+        f, integral_value, lower, upper)
+    ELSE
+      has_integral_on_ordered_interval(
+        f, -integral_value, upper, lower)
+    ENDIF
+
+  common_integral_zero(p: list[real], x: real): bool =
+    has_oriented_integral(
+      LAMBDA (t: real): polynomial_value(p, t) * sine(t),
+      0, 0, x)
+      AND has_oriented_integral(
+        LAMBDA (t: real): polynomial_value(p, t) * cosine(t),
+        0, 0, x)
+
+  putnam_1980_a5: bool =
+    FORALL (p: list[real]):
+      nonconstant_polynomial(p) IMPLIES
+        EXISTS (solutions: finite_set[real]):
+          FORALL (x: real):
+            solutions(x) IFF common_integral_zero(p, x)
+END putnam_1980_a5

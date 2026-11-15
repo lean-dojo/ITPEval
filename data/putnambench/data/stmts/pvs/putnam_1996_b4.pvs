@@ -1,0 +1,97 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1996_b4:
+% the nonexistence of a real 2-by-2 matrix whose matrix sine, defined by its
+% usual power series, is [[1, 1996], [0, 1]]. This file contains no proof.
+
+putnam_1996_b4: THEORY
+BEGIN
+  coordinate: TYPE = below(2)
+  matrix: TYPE = [coordinate, coordinate -> real]
+  matrix_sequence: TYPE = [nat -> matrix]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  nat_factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * nat_factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  matrix_zero: matrix =
+    LAMBDA (i, j: coordinate): 0
+
+  matrix_identity: matrix =
+    LAMBDA (i, j: coordinate):
+      IF i = j THEN 1 ELSE 0 ENDIF
+
+  matrix_add(A, B: matrix): matrix =
+    LAMBDA (i, j: coordinate):
+      A(i, j) + B(i, j)
+
+  matrix_scale(c: real, A: matrix): matrix =
+    LAMBDA (i, j: coordinate):
+      c * A(i, j)
+
+  matrix_multiply(A, B: matrix): matrix =
+    LAMBDA (i, j: coordinate):
+      A(i, 0) * B(0, j) + A(i, 1) * B(1, j)
+
+  matrix_power(A: matrix, exponent: nat): RECURSIVE matrix =
+    IF exponent = 0 THEN
+      matrix_identity
+    ELSE
+      matrix_multiply(A, matrix_power(A, exponent - 1))
+    ENDIF
+  MEASURE exponent
+
+  sine_series_term(A: matrix, index: nat): matrix =
+    matrix_scale(
+      safe_div(
+        (-1 :: real) ^ index,
+        nat_factorial(2 * index + 1) :: real),
+      matrix_power(A, 2 * index + 1))
+
+  matrix_sine_partial(A: matrix, count: nat): RECURSIVE matrix =
+    IF count = 0 THEN
+      matrix_zero
+    ELSE
+      matrix_add(
+        matrix_sine_partial(A, count - 1),
+        sine_series_term(A, count - 1))
+    ENDIF
+  MEASURE count
+
+  matrix_converges_to(
+      sequence: matrix_sequence,
+      value: matrix): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat), (i, j: coordinate):
+          cutoff <= index IMPLIES
+            abs(sequence(index)(i, j) - value(i, j))
+              < epsilon_value
+
+  mat1996: matrix =
+    LAMBDA (i, j: coordinate):
+      IF i = 0 THEN
+        IF j = 0 THEN 1 ELSE 1996 ENDIF
+      ELSE
+        IF j = 0 THEN 0 ELSE 1 ENDIF
+      ENDIF
+
+  putnam_1996_b4_solution: bool = FALSE
+
+  putnam_1996_b4: bool =
+    (EXISTS (A: matrix):
+      matrix_converges_to(
+        LAMBDA (count: nat):
+          matrix_sine_partial(A, count),
+        mat1996))
+      IFF putnam_1996_b4_solution
+END putnam_1996_b4

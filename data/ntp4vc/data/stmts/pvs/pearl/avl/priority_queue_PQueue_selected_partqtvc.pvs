@@ -1,0 +1,389 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/avl/priority_queue_PQueue_selected_partqtvc: an AVL priority-queue
+% verification condition whose aggregate comparisons dispatch a selected
+% split to Here, Left, or Right while preserving its selection invariant.
+% This file contains no proof.
+
+priority_queue_PQueue_selected_partqtvc[
+  item: TYPE+,
+  key_value: TYPE+
+]: THEORY
+BEGIN
+  key_option: DATATYPE
+  BEGIN
+    NoKey: NoKey?
+    SomeKey(key_datum: key_value): SomeKey?
+  END key_option
+
+  item_option: DATATYPE
+  BEGIN
+    NoItem: NoItem?
+    SomeItem(item_datum: item): SomeItem?
+  END item_option
+
+  selection_split: TYPE =
+    [# split_left: list[item],
+       split_middle: item_option,
+       split_right: list[item] #]
+
+  selector_part: DATATYPE
+  BEGIN
+    Here: Here?
+    Left: Left?
+    Right: Right?
+  END selector_part
+
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  nth_default(
+      values: list[item],
+      index: nat,
+      default_item: item): RECURSIVE item =
+    CASES values OF
+      null:
+        default_item,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          nth_default(tail, index - 1, default_item)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  list_drop(count: nat, values: list[item]):
+      RECURSIVE list[item] =
+    IF count = 0 THEN
+      values
+    ELSE
+      CASES values OF
+        null:
+          null,
+        cons(head, tail):
+          list_drop(count - 1, tail)
+      ENDCASES
+    ENDIF
+  MEASURE count
+
+  option_to_sequence(option: item_option): list[item] =
+    CASES option OF
+      NoItem:
+        null,
+      SomeItem(datum):
+        cons(datum, null)
+    ENDCASES
+
+  rebuild(parts: selection_split): list[item] =
+    append(
+      append(
+        split_left(parts),
+        option_to_sequence(split_middle(parts))),
+      split_right(parts))
+
+  left_extend(
+      left_values: list[item],
+      datum: item,
+      parts: selection_split): selection_split =
+    (# split_left :=
+         append(
+           left_values,
+           cons(datum, split_left(parts))),
+       split_middle := split_middle(parts),
+       split_right := split_right(parts) #)
+
+  right_extend(
+      parts: selection_split,
+      datum: item,
+      right_values: list[item]): selection_split =
+    (# split_left := split_left(parts),
+       split_middle := split_middle(parts),
+       split_right :=
+         append(
+           split_right(parts),
+           cons(datum, right_values)) #)
+
+  strict_key_order(
+      leq: [key_value, key_value -> bool],
+      left, right: key_value): bool =
+    leq(left, right) AND NOT leq(right, left)
+
+  key_equivalent(
+      leq: [key_value, key_value -> bool],
+      left, right: key_value): bool =
+    leq(left, right) AND leq(right, left)
+
+  option_op(
+      left, right: key_option,
+      leq: [key_value, key_value -> bool]): key_option =
+    CASES left OF
+      NoKey:
+        right,
+      SomeKey(left_key):
+        CASES right OF
+          NoKey:
+            left,
+          SomeKey(right_key):
+            IF strict_key_order(leq, right_key, left_key)
+            THEN right
+            ELSE left
+            ENDIF
+        ENDCASES
+    ENDCASES
+
+  lower_bound(
+      lower_key: key_value,
+      values: list[item],
+      key: [item -> key_value],
+      leq: [key_value, key_value -> bool],
+      default_item: item): bool =
+    FORALL (index: int):
+      (0 <= index AND index < length(values))
+        IMPLIES
+          leq(
+            lower_key,
+            key(
+              nth_default(
+                values, int_to_nat(index), default_item)))
+
+  lower_bound_strict(
+      lower_key: key_value,
+      values: list[item],
+      key: [item -> key_value],
+      leq: [key_value, key_value -> bool],
+      default_item: item): bool =
+    FORALL (index: int):
+      (0 <= index AND index < length(values))
+        IMPLIES
+          strict_key_order(
+            leq,
+            lower_key,
+            key(
+              nth_default(
+                values, int_to_nat(index), default_item)))
+
+  selected(
+      parts: selection_split,
+      key: [item -> key_value],
+      leq: [key_value, key_value -> bool],
+      default_item: item): bool =
+    CASES split_middle(parts) OF
+      NoItem:
+        FALSE,
+      SomeItem(datum):
+        lower_bound(
+          key(datum), split_right(parts),
+          key, leq, default_item)
+          AND
+        lower_bound_strict(
+          key(datum), split_left(parts),
+          key, leq, default_item)
+    ENDCASES
+
+  selection_possible(values: list[item]): bool =
+    length(values) /= 0
+
+  key_order_laws(
+      leq: [key_value, key_value -> bool]): bool =
+    (FORALL (x: key_value): leq(x, x))
+      AND
+    (FORALL (x, y, z: key_value):
+      leq(x, y) AND leq(y, z) IMPLIES leq(x, z))
+      AND
+    (FORALL (x, y: key_value): leq(x, y) OR leq(y, x))
+
+  option_monoid_laws(
+      leq: [key_value, key_value -> bool]): bool =
+    (FORALL (a, b, c: key_option):
+      option_op(a, option_op(b, c, leq), leq)
+        = option_op(option_op(a, b, leq), c, leq))
+      AND
+    (FORALL (x: key_option):
+      option_op(x, NoKey, leq) = x
+        AND x = option_op(NoKey, x, leq))
+
+  aggregate_definition(
+      agg: [[item -> key_option],
+            list[item] -> key_option],
+      leq: [key_value, key_value -> bool],
+      default_item: item): bool =
+    FORALL (f: [item -> key_option]), (values: list[item]):
+      IF length(values) = 0 THEN
+        agg(f, values) = NoKey
+      ELSE
+        agg(f, values)
+          = option_op(
+              f(nth_default(values, 0, default_item)),
+              agg(f, list_drop(1, values)),
+              leq)
+      ENDIF
+
+  background_assumptions(
+      balancing: nat,
+      key: [item -> key_value],
+      leq: [key_value, key_value -> bool],
+      agg: [[item -> key_option],
+            list[item] -> key_option],
+      measure_closure: [item -> key_option],
+      default_item: item): bool =
+    0 < balancing
+      AND key_order_laws(leq)
+      AND option_monoid_laws(leq)
+      AND aggregate_definition(agg, leq, default_item)
+      AND
+        (FORALL (datum: item):
+          measure_closure(datum) = SomeKey(key(datum)))
+
+  comparison_witness(
+      witness: int,
+      first, second: key_value,
+      leq: [key_value, key_value -> bool]): bool =
+    ((0 < witness) = strict_key_order(leq, first, second))
+      AND
+    ((witness < 0) = strict_key_order(leq, second, first))
+      AND
+    ((witness = 0) = key_equivalent(leq, second, first))
+
+  aggregate_precheck(
+      rseq, lseq: list[item],
+      agg: [[item -> key_option],
+            list[item] -> key_option],
+      measure_closure: [item -> key_option]): bool =
+    CASES agg(measure_closure, rseq) OF
+      NoKey:
+        CASES agg(measure_closure, lseq) OF
+          NoKey: TRUE,
+          SomeKey(left_key): TRUE
+        ENDCASES,
+      SomeKey(right_key):
+        CASES agg(measure_closure, lseq) OF
+          NoKey: TRUE,
+          SomeKey(left_key): TRUE
+        ENDCASES
+    ENDCASES
+
+  dispatch_premise(
+      result: selector_part,
+      datum: item,
+      rseq, lseq: list[item],
+      key: [item -> key_value],
+      leq: [key_value, key_value -> bool],
+      agg: [[item -> key_option],
+            list[item] -> key_option],
+      measure_closure: [item -> key_option]): bool =
+    LET datum_key: key_value = key(datum)
+    IN
+      CASES agg(measure_closure, rseq) OF
+        NoKey:
+          CASES agg(measure_closure, lseq) OF
+            NoKey:
+              result = Here,
+            SomeKey(left_key):
+              EXISTS (o1: int):
+                comparison_witness(o1, left_key, datum_key, leq)
+                  AND
+                (IF o1 < 0
+                 THEN result = Here
+                 ELSE result = Left
+                 ENDIF)
+          ENDCASES,
+        SomeKey(right_key):
+          CASES agg(measure_closure, lseq) OF
+            NoKey:
+              EXISTS (o1: int):
+                comparison_witness(o1, right_key, datum_key, leq)
+                  AND
+                (IF o1 <= 0
+                 THEN result = Here
+                 ELSE result = Right
+                 ENDIF),
+            SomeKey(left_key):
+              EXISTS (o1: int):
+                comparison_witness(o1, right_key, datum_key, leq)
+                  AND
+                (IF o1 <= 0
+                 THEN
+                   EXISTS (o2: int):
+                     comparison_witness(
+                       o2, datum_key, left_key, leq)
+                       AND
+                     (IF o2 <= 0
+                      THEN result = Left
+                      ELSE result = Here
+                      ENDIF)
+                 ELSE
+                   EXISTS (o2: int):
+                     comparison_witness(
+                       o2, right_key, left_key, leq)
+                       AND
+                     (IF o2 <= 0
+                      THEN result = Left
+                      ELSE result = Right
+                      ENDIF)
+                 ENDIF)
+          ENDCASES
+      ENDCASES
+
+  dispatch_conclusion(
+      result: selector_part,
+      datum: item,
+      rseq, lseq: list[item],
+      key: [item -> key_value],
+      leq: [key_value, key_value -> bool],
+      default_item: item): bool =
+    CASES result OF
+      Here:
+        selected(
+          (# split_left := lseq,
+             split_middle := SomeItem(datum),
+             split_right := rseq #),
+          key, leq, default_item),
+      Left:
+        selection_possible(lseq)
+          AND
+        (FORALL (parts: selection_split):
+          (selected(parts, key, leq, default_item)
+            AND rebuild(parts) = lseq)
+          IMPLIES
+            selected(
+              right_extend(parts, datum, rseq),
+              key, leq, default_item)),
+      Right:
+        selection_possible(rseq)
+          AND
+        (FORALL (parts: selection_split):
+          (selected(parts, key, leq, default_item)
+            AND rebuild(parts) = rseq)
+          IMPLIES
+            selected(
+              left_extend(lseq, datum, parts),
+              key, leq, default_item))
+    ENDCASES
+
+  selected_part_vc: bool =
+    FORALL
+      (balancing: nat),
+      (key: [item -> key_value]),
+      (leq: [key_value, key_value -> bool]),
+      (agg: [[item -> key_option],
+             list[item] -> key_option]),
+      (measure_closure: [item -> key_option]),
+      (default_item: item),
+      (datum: item),
+      (rseq, lseq: list[item]):
+        background_assumptions(
+          balancing, key, leq, agg,
+          measure_closure, default_item)
+        IMPLIES
+          aggregate_precheck(
+            rseq, lseq, agg, measure_closure)
+            AND
+          (FORALL (result: selector_part):
+            dispatch_premise(
+              result, datum, rseq, lseq,
+              key, leq, agg, measure_closure)
+            IMPLIES
+              dispatch_conclusion(
+                result, datum, rseq, lseq,
+                key, leq, default_item))
+END priority_queue_PQueue_selected_partqtvc

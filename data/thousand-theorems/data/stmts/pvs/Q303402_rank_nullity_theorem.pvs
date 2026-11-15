@@ -1,0 +1,435 @@
+% Statement-only formalization of the Thousand Theorems corpus artifact Q303402,
+% "Rank–nullity theorem": for a linear map of modules over a ring satisfying
+% the universe-wide rank-nullity class, the cardinal ranks of its range and
+% kernel add to the cardinal rank of its domain. This file contains no proof.
+
+Q303402_rank_nullity_support: THEORY
+BEGIN
+
+  ring_structure[R: TYPE+]: TYPE =
+    [# rzero: R,
+       rone: R,
+       radd: [R, R -> R],
+       rmul: [R, R -> R],
+       rneg: [R -> R] #]
+
+  module_structure[R, X: TYPE+]: TYPE =
+    [# mzero: X,
+       madd: [X, X -> X],
+       mneg: [X -> X],
+       msmul: [R, X -> X] #]
+
+  ring_laws[R: TYPE+](
+      ring: ring_structure[R]): bool =
+    rzero(ring) /= rone(ring)
+    AND (FORALL (a, b, c: R):
+       radd(ring)(radd(ring)(a, b), c) =
+         radd(ring)(a, radd(ring)(b, c))
+       AND radd(ring)(a, b) = radd(ring)(b, a)
+       AND radd(ring)(rzero(ring), a) = a
+       AND radd(ring)(rneg(ring)(a), a) = rzero(ring)
+       AND rmul(ring)(rmul(ring)(a, b), c) =
+         rmul(ring)(a, rmul(ring)(b, c))
+       AND rmul(ring)(rone(ring), a) = a
+       AND rmul(ring)(a, rone(ring)) = a
+       AND rmul(ring)(a, radd(ring)(b, c)) =
+         radd(ring)(rmul(ring)(a, b), rmul(ring)(a, c))
+       AND rmul(ring)(radd(ring)(a, b), c) =
+         radd(ring)(rmul(ring)(a, c), rmul(ring)(b, c)))
+
+  module_laws[R, X: TYPE+](
+      ring: ring_structure[R],
+      module: module_structure[R, X]): bool =
+    (FORALL (x, y, z: X), (a, b: R):
+       madd(module)(madd(module)(x, y), z) =
+         madd(module)(x, madd(module)(y, z))
+       AND madd(module)(x, y) = madd(module)(y, x)
+       AND madd(module)(mzero(module), x) = x
+       AND madd(module)(mneg(module)(x), x) = mzero(module)
+       AND msmul(module)(radd(ring)(a, b), x) =
+         madd(module)(msmul(module)(a, x), msmul(module)(b, x))
+       AND msmul(module)(a, madd(module)(x, y)) =
+         madd(module)(msmul(module)(a, x), msmul(module)(a, y))
+       AND msmul(module)(rmul(ring)(a, b), x) =
+         msmul(module)(a, msmul(module)(b, x))
+       AND msmul(module)(rone(ring), x) = x)
+
+  subset[X: TYPE+](
+      smaller: [X -> bool],
+      larger: [X -> bool]): bool =
+    (FORALL (x: X): smaller(x) IMPLIES larger(x))
+
+  submodule[R, X: TYPE+](
+      ring: ring_structure[R],
+      module: module_structure[R, X],
+      carrier: [X -> bool]): bool =
+    carrier(mzero(module))
+    AND (FORALL (x, y: X):
+      carrier(x) AND carrier(y) IMPLIES carrier(madd(module)(x, y)))
+    AND (FORALL (x: X):
+      carrier(x) IMPLIES carrier(mneg(module)(x)))
+    AND (FORALL (a: R), (x: X):
+      carrier(x) IMPLIES carrier(msmul(module)(a, x)))
+
+  linear_combination[R, X: TYPE+](
+      ring: ring_structure[R],
+      module: module_structure[R, X],
+      coefficients: [nat -> R],
+      values: [nat -> X],
+      count: nat): RECURSIVE X =
+    IF count = 0
+    THEN mzero(module)
+    ELSE madd(module)(
+           linear_combination[R, X](
+             ring, module, coefficients, values, count - 1),
+           msmul(module)(coefficients(count - 1), values(count - 1)))
+    ENDIF
+    MEASURE count
+
+  coefficients_zero[R: TYPE+](
+      ring: ring_structure[R],
+      coefficients: [nat -> R],
+      count: nat): bool =
+    (FORALL (i: nat):
+      i < count IMPLIES coefficients(i) = rzero(ring))
+
+  distinct_prefix[X: TYPE+](
+      values: [nat -> X],
+      count: nat): bool =
+    (FORALL (i, j: nat):
+      i < count AND j < count AND values(i) = values(j)
+        IMPLIES i = j)
+
+  prefix_in[X: TYPE+](
+      values: [nat -> X],
+      count: nat,
+      carrier: [X -> bool]): bool =
+    (FORALL (i: nat): i < count IMPLIES carrier(values(i)))
+
+  linear_independent[R, X: TYPE+](
+      ring: ring_structure[R],
+      module: module_structure[R, X],
+      carrier: [X -> bool]): bool =
+    (FORALL
+        (values: [nat -> X]),
+        (coefficients: [nat -> R]),
+        (count: nat):
+      prefix_in[X](values, count, carrier)
+      AND distinct_prefix[X](values, count)
+      AND linear_combination[R, X](
+        ring, module, coefficients, values, count) = mzero(module)
+      IMPLIES coefficients_zero[R](ring, coefficients, count))
+
+  injects[X, Y: TYPE+](
+      source: [X -> bool],
+      target: [Y -> bool],
+      mapping: [X -> Y]): bool =
+    (FORALL (x: X): source(x) IMPLIES target(mapping(x)))
+    AND (FORALL (x1, x2: X):
+      source(x1) AND source(x2) AND mapping(x1) = mapping(x2)
+        IMPLIES x1 = x2)
+
+  rank_witness[R, X: TYPE+](
+      ring: ring_structure[R],
+      module: module_structure[R, X],
+      basis: [X -> bool],
+      carrier: [X -> bool]): bool =
+    subset[X](basis, carrier)
+    AND linear_independent[R, X](ring, module, basis)
+    AND (FORALL (independent_set: [X -> bool]):
+      subset[X](independent_set, carrier)
+      AND linear_independent[R, X](ring, module, independent_set)
+      IMPLIES
+        (EXISTS (embedding: [X -> X]):
+          injects[X, X](independent_set, basis, embedding)))
+
+  same_coset[R, X: TYPE+](
+      module: module_structure[R, X],
+      normal: [X -> bool],
+      x: X,
+      y: X): bool =
+    normal(madd(module)(x, mneg(module)(y)))
+
+  quotient_representatives[R, X: TYPE+](
+      module: module_structure[R, X],
+      normal: [X -> bool],
+      representatives: [X -> bool]): bool =
+    (FORALL (x, y: X):
+      representatives(x) AND representatives(y)
+      AND same_coset[R, X](module, normal, x, y)
+        IMPLIES x = y)
+
+  quotient_linear_independent[R, X: TYPE+](
+      ring: ring_structure[R],
+      module: module_structure[R, X],
+      normal: [X -> bool],
+      representatives: [X -> bool]): bool =
+    quotient_representatives[R, X](module, normal, representatives)
+    AND (FORALL
+        (values: [nat -> X]),
+        (coefficients: [nat -> R]),
+        (count: nat):
+      prefix_in[X](values, count, representatives)
+      AND distinct_prefix[X](values, count)
+      AND normal(linear_combination[R, X](
+        ring, module, coefficients, values, count))
+      IMPLIES coefficients_zero[R](ring, coefficients, count))
+
+  cardinal_sum_le[X, Y, Z: TYPE+](
+      left: [X -> bool],
+      right: [Y -> bool],
+      target: [Z -> bool]): bool =
+    (EXISTS
+        (left_embedding: [X -> Z]),
+        (right_embedding: [Y -> Z]):
+      injects[X, Z](left, target, left_embedding)
+      AND injects[Y, Z](right, target, right_embedding)
+      AND (FORALL (x: X), (y: Y):
+        left(x) AND right(y)
+          IMPLIES left_embedding(x) /= right_embedding(y)))
+
+  cardinal_le_sum[Z, X, Y: TYPE+](
+      source: [Z -> bool],
+      left: [X -> bool],
+      right: [Y -> bool]): bool =
+    (EXISTS
+        (uses_left: [Z -> bool]),
+        (left_embedding: [Z -> X]),
+        (right_embedding: [Z -> Y]):
+      (FORALL (z: Z):
+        source(z) IMPLIES
+          IF uses_left(z)
+          THEN left(left_embedding(z))
+          ELSE right(right_embedding(z))
+          ENDIF)
+      AND (FORALL (z1, z2: Z):
+        source(z1) AND source(z2)
+        AND uses_left(z1) = uses_left(z2)
+        AND (IF uses_left(z1)
+             THEN left_embedding(z1) = left_embedding(z2)
+             ELSE right_embedding(z1) = right_embedding(z2)
+             ENDIF)
+          IMPLIES z1 = z2))
+
+  rank_sum_equal[R, X, Y, Z: TYPE+](
+      ring: ring_structure[R],
+      left_module: module_structure[R, X],
+      left_carrier: [X -> bool],
+      right_module: module_structure[R, Y],
+      right_carrier: [Y -> bool],
+      total_module: module_structure[R, Z],
+      total_carrier: [Z -> bool]): bool =
+    (FORALL
+        (left_set: [X -> bool]),
+        (right_set: [Y -> bool]):
+      subset[X](left_set, left_carrier)
+      AND linear_independent[R, X](ring, left_module, left_set)
+      AND subset[Y](right_set, right_carrier)
+      AND linear_independent[R, Y](ring, right_module, right_set)
+      IMPLIES
+        (EXISTS (total_set: [Z -> bool]):
+          subset[Z](total_set, total_carrier)
+          AND linear_independent[R, Z](ring, total_module, total_set)
+          AND cardinal_sum_le[X, Y, Z](
+            left_set, right_set, total_set)))
+    AND
+    (FORALL (total_set: [Z -> bool]):
+      subset[Z](total_set, total_carrier)
+      AND linear_independent[R, Z](ring, total_module, total_set)
+      IMPLIES
+        (EXISTS
+            (left_set: [X -> bool]),
+            (right_set: [Y -> bool]):
+          subset[X](left_set, left_carrier)
+          AND linear_independent[R, X](ring, left_module, left_set)
+          AND subset[Y](right_set, right_carrier)
+          AND linear_independent[R, Y](ring, right_module, right_set)
+          AND cardinal_le_sum[Z, X, Y](
+            total_set, left_set, right_set)))
+
+  quotient_rank_sum_equal[R, X: TYPE+](
+      ring: ring_structure[R],
+      module: module_structure[R, X],
+      normal: [X -> bool]): bool =
+    (FORALL
+        (quotient_set: [X -> bool]),
+        (normal_set: [X -> bool]):
+      quotient_linear_independent[R, X](
+        ring, module, normal, quotient_set)
+      AND subset[X](normal_set, normal)
+      AND linear_independent[R, X](ring, module, normal_set)
+      IMPLIES
+        (EXISTS (total_set: [X -> bool]):
+          linear_independent[R, X](ring, module, total_set)
+          AND cardinal_sum_le[X, X, X](
+            quotient_set, normal_set, total_set)))
+    AND
+    (FORALL (total_set: [X -> bool]):
+      linear_independent[R, X](ring, module, total_set)
+      IMPLIES
+        (EXISTS
+            (quotient_set: [X -> bool]),
+            (normal_set: [X -> bool]):
+          quotient_linear_independent[R, X](
+            ring, module, normal, quotient_set)
+          AND subset[X](normal_set, normal)
+          AND linear_independent[R, X](ring, module, normal_set)
+          AND cardinal_le_sum[X, X, X](
+            total_set, quotient_set, normal_set)))
+
+  linear_map_laws[R, X, Y: TYPE+](
+      ring: ring_structure[R],
+      domain_module: module_structure[R, X],
+      codomain_module: module_structure[R, Y],
+      linear_map: [X -> Y]): bool =
+    (FORALL (x1, x2: X), (a: R):
+      linear_map(madd(domain_module)(x1, x2)) =
+        madd(codomain_module)(linear_map(x1), linear_map(x2))
+      AND linear_map(msmul(domain_module)(a, x1)) =
+        msmul(codomain_module)(a, linear_map(x1)))
+
+  kernel[R, X, Y: TYPE+](
+      codomain_module: module_structure[R, Y],
+      linear_map: [X -> Y],
+      x: X): bool =
+    linear_map(x) = mzero(codomain_module)
+
+  range[R, X, Y: TYPE+](
+      linear_map: [X -> Y],
+      y: Y): bool =
+    (EXISTS (x: X): linear_map(x) = y)
+
+  rank_range_add_rank_ker_for[R, X, Y: TYPE+](
+      ring: ring_structure[R],
+      domain_module: module_structure[R, X],
+      codomain_module: module_structure[R, Y],
+      linear_map: [X -> Y]): bool =
+    (ring_laws[R](ring)
+     AND module_laws[R, X](ring, domain_module)
+     AND module_laws[R, Y](ring, codomain_module)
+     AND linear_map_laws[R, X, Y](
+       ring, domain_module, codomain_module, linear_map))
+    IMPLIES
+      rank_sum_equal[R, Y, X, X](
+        ring,
+        codomain_module,
+        (LAMBDA (y: Y): range[R, X, Y](linear_map, y)),
+        domain_module,
+        (LAMBDA (x: X):
+          kernel[R, X, Y](codomain_module, linear_map, x)),
+        domain_module,
+        (LAMBDA (x: X): TRUE))
+
+END Q303402_rank_nullity_support
+
+Q303402_has_rank_nullity[
+  (IMPORTING Q303402_rank_nullity_support)
+  Base: TYPE+,
+  zero_R, one_R: Base,
+  add_R, mul_R: [Base, Base -> Base],
+  neg_R: [Base -> Base]
+]: THEORY
+BEGIN
+
+  ASSUMING
+    exists_set_linearIndependent[Carrier: TYPE+]: ASSUMPTION
+      FORALL (module: module_structure[Base, Carrier]):
+        module_laws[Base, Carrier](
+          (# rzero := zero_R,
+             rone := one_R,
+             radd := add_R,
+             rmul := mul_R,
+             rneg := neg_R #),
+          module)
+        IMPLIES
+          (EXISTS (basis: [Carrier -> bool]):
+            rank_witness[Base, Carrier](
+              (# rzero := zero_R,
+                 rone := one_R,
+                 radd := add_R,
+                 rmul := mul_R,
+                 rneg := neg_R #),
+              module,
+              basis,
+              (LAMBDA (x: Carrier): TRUE)))
+
+    rank_quotient_add_rank[Carrier: TYPE+]: ASSUMPTION
+      FORALL
+          (module: module_structure[Base, Carrier]),
+          (normal: [Carrier -> bool]):
+        module_laws[Base, Carrier](
+          (# rzero := zero_R,
+             rone := one_R,
+             radd := add_R,
+             rmul := mul_R,
+             rneg := neg_R #),
+          module)
+        AND submodule[Base, Carrier](
+          (# rzero := zero_R,
+             rone := one_R,
+             radd := add_R,
+             rmul := mul_R,
+             rneg := neg_R #),
+          module,
+          normal)
+        IMPLIES
+          quotient_rank_sum_equal[Base, Carrier](
+            (# rzero := zero_R,
+               rone := one_R,
+               radd := add_R,
+               rmul := mul_R,
+               rneg := neg_R #),
+            module,
+            normal)
+  ENDASSUMING
+
+END Q303402_has_rank_nullity
+
+Q303402_rank_nullity_theorem[
+  Base, Domain, Codomain: TYPE+,
+  zero_R, one_R: Base,
+  add_R, mul_R: [Base, Base -> Base],
+  neg_R: [Base -> Base],
+  zero_Domain: Domain,
+  add_Domain: [Domain, Domain -> Domain],
+  neg_Domain: [Domain -> Domain],
+  smul_Domain: [Base, Domain -> Domain],
+  zero_Codomain: Codomain,
+  add_Codomain: [Codomain, Codomain -> Codomain],
+  neg_Codomain: [Codomain -> Codomain],
+  smul_Codomain: [Base, Codomain -> Codomain],
+  linear_map: [Domain -> Codomain],
+  Evidence: THEORY Q303402_has_rank_nullity[
+    Base, zero_R, one_R, add_R, mul_R, neg_R]
+]: THEORY
+BEGIN
+
+  IMPORTING Q303402_rank_nullity_support
+
+  selected_ring: ring_structure[Base] =
+    (# rzero := zero_R,
+       rone := one_R,
+       radd := add_R,
+       rmul := mul_R,
+       rneg := neg_R #)
+
+  selected_domain_module: module_structure[Base, Domain] =
+    (# mzero := zero_Domain,
+       madd := add_Domain,
+       mneg := neg_Domain,
+       msmul := smul_Domain #)
+
+  selected_codomain_module: module_structure[Base, Codomain] =
+    (# mzero := zero_Codomain,
+       madd := add_Codomain,
+       mneg := neg_Codomain,
+       msmul := smul_Codomain #)
+
+  rank_nullity_statement: bool =
+    rank_range_add_rank_ker_for[Base, Domain, Codomain](
+      selected_ring,
+      selected_domain_module,
+      selected_codomain_module,
+      linear_map)
+
+END Q303402_rank_nullity_theorem

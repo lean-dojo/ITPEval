@@ -1,0 +1,212 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/equality_up_to_spaces_Top_compare_up_to_spacesqtvc: the verification
+% condition for comparing two character lists after recursively removing
+% occurrences of a distinguished space character. This file contains no proof.
+
+equality_up_to_spaces_Top_compare_up_to_spacesqtvc[
+  char: TYPE+,
+  char_default: char
+]: THEORY
+BEGIN
+
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  nth_char(values: list[char], index: nat): RECURSIVE char =
+    CASES values OF
+      null:
+        char_default,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          nth_char(tail, index - 1)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  list_drop(count: nat, values: list[char]): RECURSIVE list[char] =
+    IF count = 0 THEN
+      values
+    ELSE
+      CASES values OF
+        null:
+          null,
+        cons(head, tail):
+          list_drop(count - 1, tail)
+      ENDCASES
+    ENDIF
+  MEASURE count
+
+  equality_specification(eqc: [char, char -> bool]): bool =
+    FORALL (left, right: char):
+      (eqc(left, right) = TRUE) <=> (left = right)
+
+  remove_spaces_specification(
+      space: char,
+      eqc: [char, char -> bool],
+      remove_spaces: [list[char] -> list[char]]): bool =
+    FORALL (values: list[char]):
+      IF length(values) = 0 THEN
+        remove_spaces(values) = values
+      ELSIF eqc(nth_char(values, 0), space) = TRUE THEN
+        remove_spaces(values) = remove_spaces(list_drop(1, values))
+      ELSE
+        remove_spaces(values) =
+          cons(
+            nth_char(values, 0),
+            remove_spaces(list_drop(1, values)))
+      ENDIF
+
+  suffix_equivalence(
+      remove_spaces: [list[char] -> list[char]],
+      x, y: list[char],
+      i, j: int): bool =
+    (remove_spaces(x) = remove_spaces(y))
+      <=>
+    (remove_spaces(list_drop(int_to_nat(i), x))
+      =
+     remove_spaces(list_drop(int_to_nat(j), y)))
+
+  compare_up_to_spaces_vc: bool =
+    FORALL
+      (space: char),
+      (eqc: [char, char -> bool]),
+      (remove_spaces: [list[char] -> list[char]]),
+      (x, y: list[char]):
+      (equality_specification(eqc)
+        AND
+       remove_spaces_specification(space, eqc, remove_spaces))
+      IMPLIES
+        LET n: int = length(x),
+            m: int = length(y)
+        IN
+          (((0 <= 0 AND 0 <= n)
+            AND
+           (0 <= 0 AND 0 <= m)
+            AND
+           suffix_equivalence(remove_spaces, x, y, 0, 0))
+          AND
+          (FORALL (j, i: int):
+            ((0 <= i AND i <= n)
+              AND
+             (0 <= j AND j <= m)
+              AND
+             suffix_equivalence(remove_spaces, x, y, i, j))
+            IMPLIES
+              (FORALL (o1: bool):
+                (IF i < n THEN
+                   o1 = TRUE
+                 ELSE
+                   o1 = (IF j < m THEN TRUE ELSE FALSE ENDIF)
+                 ENDIF)
+                IMPLIES
+                  (IF o1 = TRUE THEN
+                     (FORALL (o2: bool):
+                       (IF i < n THEN
+                          o2 = eqc(
+                            nth_char(x, int_to_nat(i)), space)
+                            AND
+                          ((o2 = TRUE)
+                            <=>
+                           (nth_char(x, int_to_nat(i)) = space))
+                        ELSE
+                          o2 = FALSE
+                        ENDIF)
+                       IMPLIES
+                         (IF o2 = TRUE THEN
+                            (0 <= n - i + m - j
+                              AND
+                             n - (i + 1) + m - j
+                               < n - i + m - j)
+                              AND
+                            (0 <= i + 1 AND i + 1 <= n)
+                              AND
+                            (0 <= j AND j <= m)
+                              AND
+                            suffix_equivalence(
+                              remove_spaces, x, y, i + 1, j)
+                          ELSE
+                            (FORALL (o3: bool):
+                              (IF j < m THEN
+                                 o3 = eqc(
+                                   nth_char(y, int_to_nat(j)), space)
+                                   AND
+                                 ((o3 = TRUE)
+                                   <=>
+                                  (nth_char(y, int_to_nat(j)) = space))
+                               ELSE
+                                 o3 = FALSE
+                               ENDIF)
+                              IMPLIES
+                                (IF o3 = TRUE THEN
+                                   (0 <= n - i + m - j
+                                     AND
+                                    n - i + m - (j + 1)
+                                      < n - i + m - j)
+                                     AND
+                                   (0 <= i AND i <= n)
+                                     AND
+                                   (0 <= j + 1 AND j + 1 <= m)
+                                     AND
+                                   suffix_equivalence(
+                                     remove_spaces, x, y, i, j + 1)
+                                 ELSE
+                                   (FORALL (o4: bool):
+                                     (IF i = n THEN
+                                        o4 = TRUE
+                                      ELSE
+                                        o4 =
+                                          (IF j = m THEN
+                                             TRUE
+                                           ELSE
+                                             FALSE
+                                           ENDIF)
+                                      ENDIF)
+                                     IMPLIES
+                                       (IF o4 = TRUE THEN
+                                          remove_spaces(x)
+                                            /= remove_spaces(y)
+                                        ELSE
+                                          LET o5: char =
+                                                nth_char(
+                                                  y, int_to_nat(j))
+                                          IN
+                                            LET o6: char =
+                                                  nth_char(
+                                                    x, int_to_nat(i))
+                                            IN
+                                              LET o7: bool = eqc(o6, o5)
+                                              IN
+                                                ((o7 = TRUE)
+                                                  <=> (o6 = o5))
+                                                IMPLIES
+                                                  (IF NOT (o7 = TRUE) THEN
+                                                     remove_spaces(x)
+                                                       /= remove_spaces(y)
+                                                   ELSE
+                                                     (0 <= n - i + m - j
+                                                       AND
+                                                      n - (i + 1)
+                                                        + m - (j + 1)
+                                                        < n - i + m - j)
+                                                       AND
+                                                     (0 <= i + 1
+                                                       AND i + 1 <= n)
+                                                       AND
+                                                     (0 <= j + 1
+                                                       AND j + 1 <= m)
+                                                       AND
+                                                     suffix_equivalence(
+                                                       remove_spaces,
+                                                       x, y,
+                                                       i + 1, j + 1)
+                                                   ENDIF)
+                                        ENDIF))
+                                 ENDIF))
+                          ENDIF))
+                   ELSE
+                     remove_spaces(x) = remove_spaces(y)
+                   ENDIF))))
+
+END equality_up_to_spaces_Top_compare_up_to_spacesqtvc

@@ -1,0 +1,197 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/patience_PatienceAbstract_play_cardsqtvc: the abstract patience-game
+% verification condition that playing a list of cards preserves the state
+% invariant and appends exactly those card values. This file contains no proof.
+
+patience_PatienceAbstract_play_cardsqtvc: THEORY
+BEGIN
+
+  card: TYPE = int
+
+  state: TYPE =
+    [# num_stacks: int,
+       num_elts: int,
+       values: [int -> int],
+       stack_sizes: [int -> int],
+       stacks: [int -> [int -> int]],
+       positions: [int -> [int, int]],
+       preds: [int -> int] #]
+
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  nth_int(values: list[int], index: int): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF int_to_nat(index) = 0 THEN
+          head
+        ELSE
+          nth_int(tail, int_to_nat(index) - 1)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  input_tail_is(input, expected_tail: list[int]): bool =
+    CASES input OF
+      null:
+        FALSE,
+      cons(head, tail):
+        tail = expected_tail
+    ENDCASES
+
+  inv(s: state): bool =
+    (0 <= num_stacks(s) AND num_stacks(s) <= num_elts(s))
+      AND
+    (0 < num_elts(s) IMPLIES 0 < num_stacks(s))
+      AND
+    (FORALL (i: int):
+      (0 <= i AND i < num_stacks(s))
+        IMPLIES
+          (1 <= stack_sizes(s)(i)
+            AND
+           (FORALL (j: int):
+             (0 <= j AND j < stack_sizes(s)(i))
+               IMPLIES
+                 (0 <= stacks(s)(i)(j)
+                   AND stacks(s)(i)(j) < num_elts(s)))))
+      AND
+    (FORALL (i: int):
+      (0 <= i AND i < num_elts(s))
+        IMPLIES
+          LET position: [int, int] = positions(s)(i),
+              stack_index: int = position`1,
+              stack_position: int = position`2
+          IN
+            (0 <= stack_index AND stack_index < num_stacks(s))
+              AND
+            (0 <= stack_position
+              AND stack_position < stack_sizes(s)(stack_index))
+              AND
+            stacks(s)(stack_index)(stack_position) = i)
+      AND
+    (FORALL (stack_index: int):
+      (0 <= stack_index AND stack_index < num_stacks(s))
+        IMPLIES
+          (FORALL (stack_position: int):
+            (0 <= stack_position
+              AND stack_position < stack_sizes(s)(stack_index))
+              IMPLIES
+                LET card_index: int =
+                  stacks(s)(stack_index)(stack_position)
+                IN
+                  positions(s)(card_index)
+                    = (stack_index, stack_position)))
+      AND
+    (FORALL (stack_index: int):
+      (0 <= stack_index AND stack_index < num_stacks(s))
+        IMPLIES
+          (FORALL (lower, upper: int):
+            (0 <= lower
+              AND lower < upper
+              AND upper < stack_sizes(s)(stack_index))
+              IMPLIES
+                stacks(s)(stack_index)(lower)
+                  < stacks(s)(stack_index)(upper)))
+      AND
+    (FORALL (stack_index: int):
+      (0 <= stack_index AND stack_index < num_stacks(s))
+        IMPLIES
+          (FORALL (lower, upper: int):
+            (0 <= lower
+              AND lower <= upper
+              AND upper < stack_sizes(s)(stack_index))
+              IMPLIES
+                values(s)(stacks(s)(stack_index)(upper))
+                  <= values(s)(stacks(s)(stack_index)(lower))))
+      AND
+    (FORALL (i: int):
+      (0 <= i AND i < num_elts(s))
+        IMPLIES
+          LET predecessor: int = preds(s)(i),
+              position: [int, int] = positions(s)(i),
+              stack_index: int = position`1
+          IN
+            (-1 <= predecessor AND predecessor < num_elts(s))
+              AND predecessor < i
+              AND
+            (IF predecessor < 0 THEN
+               stack_index = 0
+             ELSE
+               LET predecessor_position: [int, int] =
+                     positions(s)(predecessor),
+                   predecessor_stack: int = predecessor_position`1
+               IN
+                 values(s)(predecessor) < values(s)(i)
+                   AND 0 < stack_index
+                   AND predecessor_stack = stack_index - 1
+             ENDIF))
+
+  play_cards_vc: bool =
+    FORALL (s: state), (input: list[int]):
+      inv(s)
+        IMPLIES
+          CASES input OF
+            null:
+              inv(s)
+                AND num_elts(s) = num_elts(s) + length(input)
+                AND
+              (FORALL (i: int):
+                (num_elts(s) <= i AND i < num_elts(s))
+                  IMPLIES
+                    values(s)(i)
+                      = nth_int(input, i - num_elts(s))),
+            cons(c, rem):
+              inv(s)
+                AND
+              (FORALL (s1: state):
+                (inv(s1)
+                  AND num_elts(s1) = num_elts(s) + 1
+                  AND
+                    values(s1)
+                      = values(s) WITH [(num_elts(s)) := c])
+                  IMPLIES
+                    (input_tail_is(input, rem) AND inv(s1))
+                      AND
+                    (FORALL (s2: state):
+                      (inv(s2)
+                        AND
+                          num_elts(s2)
+                            = num_elts(s1) + length(rem)
+                        AND
+                          (FORALL (i: int):
+                            (0 <= i AND i < num_elts(s1))
+                              IMPLIES
+                                values(s2)(i) = values(s1)(i))
+                        AND
+                          (FORALL (i: int):
+                            (num_elts(s1) <= i
+                              AND i < num_elts(s2))
+                              IMPLIES
+                                values(s2)(i)
+                                  = nth_int(
+                                      rem,
+                                      i - num_elts(s1))))
+                        IMPLIES
+                          inv(s2)
+                            AND
+                          num_elts(s2)
+                            = num_elts(s) + length(input)
+                            AND
+                          (FORALL (i: int):
+                            (0 <= i AND i < num_elts(s))
+                              IMPLIES
+                                values(s2)(i) = values(s)(i))
+                            AND
+                          (FORALL (i: int):
+                            (num_elts(s) <= i
+                              AND i < num_elts(s2))
+                              IMPLIES
+                                values(s2)(i)
+                                  = nth_int(
+                                      input,
+                                      i - num_elts(s)))))
+          ENDCASES
+
+END patience_PatienceAbstract_play_cardsqtvc

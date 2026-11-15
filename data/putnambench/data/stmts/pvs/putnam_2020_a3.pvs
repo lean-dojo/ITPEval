@@ -1,0 +1,107 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2020_a3:
+% the squared terms of the sine recurrence beginning at pi/2 form a divergent
+% infinite series. This file contains no proof.
+
+putnam_2020_a3: THEORY
+BEGIN
+  real_sequence: TYPE = [nat -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  nat_factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * nat_factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  alternating_sign(index: nat): RECURSIVE real =
+    IF index = 0 THEN
+      1
+    ELSE
+      -alternating_sign(index - 1)
+    ENDIF
+  MEASURE index
+
+  leibniz_partial_sum(count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        leibniz_partial_sum(count - 1)
+          + safe_div(
+              alternating_sign(index),
+              (2 * index + 1) :: real)
+    ENDIF
+  MEASURE count
+
+  is_pi(value: real): bool =
+    converges_to(
+      LAMBDA (count: nat):
+        4 * leibniz_partial_sum(count),
+      value)
+
+  pi: real =
+    epsilon(
+      LAMBDA (value: real):
+        is_pi(value))
+
+  sine_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        sine_partial(x, count - 1)
+          + safe_div(
+              ((-1 :: real) ^ index) * x ^ (2 * index + 1),
+              nat_factorial(2 * index + 1) :: real)
+    ENDIF
+  MEASURE count
+
+  sine(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat):
+            sine_partial(x, count),
+          value))
+
+  square_partial_sum(a: real_sequence, upper: nat): RECURSIVE real =
+    IF upper = 0 THEN
+      0
+    ELSE
+      square_partial_sum(a, upper - 1) + a(upper) ^ 2
+    ENDIF
+  MEASURE upper
+
+  square_series_converges(a: real_sequence): bool =
+    EXISTS (limit_value: real):
+      converges_to(
+        LAMBDA (upper: nat):
+          square_partial_sum(a, upper),
+        limit_value)
+
+  putnam_2020_a3_solution: bool = FALSE
+
+  putnam_2020_a3: bool =
+    FORALL (a: real_sequence):
+      (a(0) = pi / 2
+        AND (FORALL (n: nat):
+          a(n + 1) = sine(a(n))))
+      IMPLIES
+        (square_series_converges(a)
+          IFF putnam_2020_a3_solution)
+END putnam_2020_a3

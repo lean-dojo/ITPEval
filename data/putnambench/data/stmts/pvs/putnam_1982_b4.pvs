@@ -1,0 +1,80 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1982_b4:
+% two claims about nonempty finite sets of distinct integers whose product
+% divides every common integer shift-product. This file contains no proof.
+
+putnam_1982_b4: THEORY
+BEGIN
+  IMPORTING finite_sets[int]
+
+  integer_divides(divisor, value: int): bool =
+    EXISTS (quotient: int):
+      value = divisor * quotient
+
+  distinct_entries(values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null: TRUE,
+      cons(value, tail):
+        NOT member(value, tail) AND distinct_entries(tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  integer_product(values: list[int]): RECURSIVE int =
+    CASES values OF
+      null: 1,
+      cons(value, tail):
+        value * integer_product(tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  shifted_integer_product(
+      values: list[int],
+      shift: int): RECURSIVE int =
+    CASES values OF
+      null: 1,
+      cons(value, tail):
+        (value + shift) * shifted_integer_product(tail, shift)
+    ENDCASES
+  MEASURE values BY <<
+
+  enumerates_set(
+      values: list[int],
+      S: finite_set[int]): bool =
+    distinct_entries(values)
+      AND (FORALL (value: int):
+        S(value) IFF member(value, values))
+
+  has_shift_divisibility(S: finite_set[int]): bool =
+    card(S) > 0
+      AND EXISTS (values: list[int]):
+        enumerates_set(values, S)
+          AND (FORALL (shift: int):
+            integer_divides(
+              integer_product(values),
+              shifted_integer_product(values, shift)))
+
+  all_positive(S: finite_set[int]): bool =
+    FORALL (value: int):
+      S(value) IMPLIES value > 0
+
+  is_initial_positive_segment(S: finite_set[int]): bool =
+    FORALL (value: int):
+      S(value) IFF
+        (1 <= value AND value <= (card(S) :: int))
+
+  solution_pair: TYPE =
+    [# claim_one: bool, claim_two: bool #]
+
+  putnam_1982_b4_solution: solution_pair =
+    (# claim_one := TRUE, claim_two := TRUE #)
+
+  putnam_1982_b4: bool =
+    ((FORALL (S: finite_set[int]):
+        has_shift_divisibility(S)
+          IMPLIES (S(1) OR S(-1)))
+      IFF claim_one(putnam_1982_b4_solution))
+      AND
+    ((FORALL (S: finite_set[int]):
+        has_shift_divisibility(S) AND all_positive(S)
+          IMPLIES is_initial_positive_segment(S))
+      IFF claim_two(putnam_1982_b4_solution))
+END putnam_1982_b4

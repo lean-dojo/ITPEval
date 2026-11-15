@@ -1,0 +1,699 @@
+:: Statement-only formalization of the NTP4VC corpus artifact
+:: pearl/multiprecision/powm_Powm_wmpn_redc_1qtvc: the verification
+:: condition for one-limb Montgomery reduction of a double-width
+:: multiprecision integer, including its loop invariant and final
+:: conditional subtraction. This file contains no proof.
+
+environ
+  vocabularies TARSKI, XBOOLE_0, SUBSET_1, RELAT_1, FUNCT_1,
+    FUNCT_2, PARTFUN1, ZFMISC_1, NUMBERS, XREAL_0, CARD_1,
+    XXREAL_0, ARYTM_1, ARYTM_3, REAL_1, INT_1, NAT_1,
+    VALUED_0, VALUED_1, ORDINAL1, MCART_1, MARGREL1,
+    XBOOLEAN, NEWTON, FINSEQ_1, FINSEQ_2;
+  notations TARSKI, XBOOLE_0, SUBSET_1, ZFMISC_1, XTUPLE_0,
+    MCART_1, RELAT_1, FUNCT_1, RELSET_1, PARTFUN1, FUNCT_2,
+    ORDINAL1, CARD_1, NUMBERS, XCMPLX_0, XREAL_0, REAL_1,
+    INT_1, NAT_1, NAT_D, NEWTON, XXREAL_0, MARGREL1, XBOOLEAN,
+    FINSEQ_1, FINSEQ_2;
+  constructors SUBSET_1, FUNCT_1, RELSET_1, PARTFUN1, FUNCT_2, CARD_1,
+    REAL_1, INT_1, XXREAL_0, ZFMISC_1, MCART_1, NAT_1,
+    NAT_D, NEWTON, MARGREL1, FINSEQ_1, FINSEQ_2;
+  registrations XBOOLE_0, SUBSET_1, RELAT_1, FUNCT_1,
+    RELSET_1, FUNCT_2, NUMBERS, CARD_1, XXREAL_0, MEMBERED,
+    VALUED_0, VALUED_1, XCMPLX_0, XREAL_0, ORDINAL1, INT_1,
+    NAT_1, NEWTON, MARGREL1, XBOOLEAN, FINSEQ_1;
+  requirements REAL, NUMERALS, SUBSET, BOOLE, ARITHM;
+  equalities XBOOLEAN;
+
+begin
+
+::$P-
+theorem
+  for P,Z being non empty set,
+      Len being Function of P,NAT,
+      Offset,Minimum,Maximum being Function of P,INT,
+      Writable being Function of P,BOOLEAN,
+      Zone being Function of P,Z,
+      Pelt being Function of [:P,INT:],INT,
+      VSub being Function of [:P,[:INT,INT:]:],INT,
+      Value being Function of [:P,INT:],INT,
+      PowRadix being Function of INT,INT,
+      SPelts,SMeta,ShftSt,Outside,Updated,
+      FinPrem,FinConcl,FinBody,AllFin,
+      SubBody,AllSub,SubPBody,AllSubP,NoSub,
+      BoolBody,AllBool,O6Body,AllO6,Rp1Body,AllRp1,
+      FinO5B,AllFinO5,NegO4B,AllNegO4,
+      UprBody,AllUpr,NegO3B,AllNegO3,FinStage,
+      ArithInv,LoopInv,NextInv,ExitInv,AddmSt,
+      NxtO5B,AllNxtO5,U2Body,AllU2,O4Body,AllO4,
+      U1Body,AllU1,NnjBody,AllNnj,PosO3B,AllPosO3,
+      MBody,AllM,JBody,AllJ,LoopStB,AllLoopS,
+      InitInv,O2Body,AllO2,O1Body,AllO1 being set,
+      mp,up,rp being Element of P,
+      n,invm being Element of INT
+  st
+    (for p being Element of P, j being Element of INT holds
+       for limb being Integer st limb = Pelt.[p,j] holds
+         0 <= limb & limb < (2 |^ 64) &
+         (j < 0 implies limb = Pelt.[p,0]) &
+         (Len.p <= j implies limb = 0)) &
+    (for e being Element of INT holds
+       (e < 0 implies PowRadix.e = 1) &
+       (0 <= e implies
+          ex k being Nat st
+            k = e & PowRadix.e = (2 |^ 64) |^ k)) &
+    (for p being Element of P, a,b being Element of INT holds
+       (a < b implies
+          for v,limb,vnext being Integer st
+            v = VSub.[p,[a,b]] &
+            limb = Pelt.[p,a] &
+            vnext = VSub.[p,[a+1,b]]
+          holds v = limb + (2 |^ 64) * vnext) &
+       (not a < b implies VSub.[p,[a,b]] = 0)) &
+    (for p being Element of P, sz being Element of INT holds
+       Value.[p,sz] = VSub.[p,[Offset.p,Offset.p+sz]]) &
+    (for a,b being Element of P holds
+       [a,b] in SPelts iff
+         for i being Element of INT holds
+           Pelt.[a,i] = Pelt.[b,i]) &
+    (for a,b being Element of P holds
+       [a,b] in SMeta iff
+         Len.a = Len.b & Offset.a = Offset.b &
+         Minimum.a = Minimum.b & Maximum.a = Maximum.b &
+         Writable.a = Writable.b & Zone.a = Zone.b) &
+    (for a,b being Element of P, d being Element of INT holds
+       [a,[b,d]] in ShftSt iff
+         Offset.a = Offset.b + d & Len.a = Len.b &
+         [a,b] in SPelts & Minimum.a = Minimum.b &
+         Maximum.a = Maximum.b & Zone.a = Zone.b &
+         Writable.a = Writable.b) &
+    (for a,b being Element of P, s,z being Element of INT holds
+       [a,[b,[s,z]]] in Outside iff
+         for i being Element of INT st i < s or s+z <= i holds
+           Pelt.[a,i] = Pelt.[b,i]) &
+    (for a,b being Element of P, i,x being Element of INT holds
+       [a,[b,[i,x]]] in Updated iff
+         for k being Element of INT holds
+           (k = i implies Pelt.[a,k] = x) &
+           (k <> i implies
+              Pelt.[a,k] =
+                Pelt.[b,k])) &
+
+    (for nn being Element of INT, uu,r1,r2 being Element of P,
+         c,vm being Element of INT st
+         -(2 |^ 31) <= nn & nn <= 2147483647 &
+         0 <= c & c < (2 |^ 64)
+     holds
+       [nn,[uu,[r1,[r2,[c,vm]]]]] in FinPrem iff
+         for vr2,vr1,vup,pw being Integer st
+           vr2 = Value.[r2,nn] & vr1 = Value.[r1,nn] &
+           vup = Value.[uu,2*nn] & pw = PowRadix.nn
+         holds
+           vr2 mod vm = (vr1 + pw*c) mod vm &
+           [r2,[r1,[Offset.r2,nn]]] in Outside &
+           (vup < pw*vm implies vr2 < 2*vm)) &
+    (for nn being Element of INT, uu,rr,mm,r2 being Element of P st
+         -(2 |^ 31) <= nn & nn <= 2147483647
+     holds
+       [nn,[uu,[rr,[mm,r2]]]] in FinConcl iff
+         for vup,vmm,vr2,pw being Integer st
+           vup = Value.[uu,2*nn] & vmm = Value.[mm,nn] &
+           vr2 = Value.[r2,nn] & pw = PowRadix.nn
+         holds
+           vup mod vmm = (pw*vr2) mod vmm &
+           [r2,[rr,[Offset.r2,nn]]] in Outside &
+           (vup < pw*vmm implies vr2 < 2*vmm)) &
+    (for nn being Element of INT, uu,rr,mm,r1,r2 being Element of P,
+         c,vm being Element of INT st
+         -(2 |^ 31) <= nn & nn <= 2147483647 &
+         0 <= c & c < (2 |^ 64)
+     holds
+       [nn,[uu,[rr,[mm,[r1,[c,[vm,r2]]]]]]] in FinBody iff
+         ([r2,r1] in SMeta implies
+           ([nn,[uu,[r1,[r2,[c,vm]]]]] in FinPrem implies
+             [nn,[uu,[rr,[mm,r2]]]] in FinConcl))) &
+    (for nn being Element of INT, uu,rr,mm,r1 being Element of P,
+         c,vm being Element of INT st
+         -(2 |^ 31) <= nn & nn <= 2147483647 &
+         0 <= c & c < (2 |^ 64)
+     holds
+       [nn,[uu,[rr,[mm,[r1,[c,vm]]]]]] in AllFin iff
+         for r2 being Element of P holds
+           [nn,[uu,[rr,[mm,[r1,[c,[vm,r2]]]]]]] in FinBody) &
+    (for nn being Element of INT, uu,mm,r1,r2 being Element of P,
+         c,vm,b being Element of INT st
+         -(2 |^ 31) <= nn & nn <= 2147483647 &
+         0 <= c & c < (2 |^ 64) & 0 <= b & b < (2 |^ 64)
+     holds
+       [nn,[uu,[mm,[r1,[r2,[c,[vm,b]]]]]]] in SubBody iff
+         for vr2,vr1,vmm,vup,pw being Integer st
+           vr2 = Value.[r2,nn] & vr1 = Value.[r1,nn] &
+           vmm = Value.[mm,nn] & vup = Value.[uu,2*nn] &
+           pw = PowRadix.nn
+         holds
+           (vr2 - pw*b = vr1 - vmm &
+            0 <= b & b <= 1 &
+            [r2,[r1,[Offset.r2,nn]]] in Outside implies
+              vr2 mod vm = (vr1 + pw*c) mod vm &
+              [r2,[r1,[Offset.r2,nn]]] in Outside &
+              (vup < pw*vm implies vr2 < 2*vm))) &
+    (for nn being Element of INT, uu,mm,r1,r2 being Element of P,
+         c,vm being Element of INT st
+         -(2 |^ 31) <= nn & nn <= 2147483647 &
+         0 <= c & c < (2 |^ 64)
+     holds
+       [nn,[uu,[mm,[r1,[r2,[c,vm]]]]]] in AllSub iff
+         for b being Element of INT st 0 <= b & b < (2 |^ 64) holds
+           [nn,[uu,[mm,[r1,[r2,[c,[vm,b]]]]]]] in SubBody) &
+    (for nn being Element of INT, uu,mm,r1,r2 being Element of P,
+         c,vm being Element of INT st
+         -(2 |^ 31) <= nn & nn <= 2147483647 &
+         0 <= c & c < (2 |^ 64)
+     holds
+       [nn,[uu,[mm,[r1,[c,[vm,r2]]]]]] in SubPBody iff
+         ([r2,r1] in SMeta implies
+           [nn,[uu,[mm,[r1,[r2,[c,vm]]]]]] in AllSub)) &
+    (for nn being Element of INT, uu,mm,r1 being Element of P,
+         c,vm being Element of INT st
+         -(2 |^ 31) <= nn & nn <= 2147483647 &
+         0 <= c & c < (2 |^ 64)
+     holds
+       [nn,[uu,[mm,[r1,[c,vm]]]]] in AllSubP iff
+         for r2 being Element of P holds
+           [nn,[uu,[mm,[r1,[c,[vm,r2]]]]]] in SubPBody) &
+    (for nn being Element of INT, uu,r1 being Element of P,
+         c,vm being Element of INT st
+         -(2 |^ 31) <= nn & nn <= 2147483647 &
+         0 <= c & c < (2 |^ 64)
+     holds
+       [nn,[uu,[r1,[c,vm]]]] in NoSub iff
+         for vr1,vup,pw being Integer st
+           vr1 = Value.[r1,nn] & vup = Value.[uu,2*nn] &
+           pw = PowRadix.nn
+         holds
+           vr1 mod vm = (vr1 + pw*c) mod vm &
+           (vup < pw*vm implies vr1 < 2*vm)) &
+    (for nn being Element of INT, uu,rr,mm,r1 being Element of P,
+         c,vm being Element of INT, flag being Element of BOOLEAN st
+         -(2 |^ 31) <= nn & nn <= 2147483647 &
+         0 <= c & c < (2 |^ 64)
+     holds
+       [nn,[uu,[rr,[mm,[r1,[c,[vm,flag]]]]]]] in BoolBody iff
+         ((c = 0 iff flag = TRUE) implies
+           ((flag <> TRUE implies
+              0 <= nn &
+              (-(2 |^ 31) <= nn & nn <= 2147483647 &
+               0 <= nn & 0 <= Minimum.r1 &
+               Minimum.r1 <= Offset.r1 &
+               Offset.r1+nn <= Maximum.r1 &
+               Maximum.r1 <= Len.r1) &
+              (-(2 |^ 31) <= nn & nn <= 2147483647 &
+               0 <= nn & 0 <= Minimum.mm &
+               Minimum.mm <= Offset.mm &
+               Offset.mm+nn <= Maximum.mm &
+               Maximum.mm <= Len.mm) &
+              Writable.r1 = TRUE &
+              [nn,[uu,[mm,[r1,[c,vm]]]]] in AllSubP) &
+            (flag = TRUE implies
+              [nn,[uu,[r1,[c,vm]]]] in NoSub) &
+            [nn,[uu,[rr,[mm,[r1,[c,vm]]]]]] in AllFin))) &
+    (for nn being Element of INT, uu,rr,mm,r1 being Element of P,
+         c,vm being Element of INT st
+         -(2 |^ 31) <= nn & nn <= 2147483647 &
+         0 <= c & c < (2 |^ 64)
+     holds
+       [nn,[uu,[rr,[mm,[r1,[c,vm]]]]]] in AllBool iff
+         for flag being Element of BOOLEAN holds
+           [nn,[uu,[rr,[mm,[r1,[c,[vm,flag]]]]]]] in BoolBody) &
+    (for nn being Element of INT, uu,rr,mm,base,o5,r1 being Element of P,
+         vm,c being Element of INT st
+         -(2 |^ 31) <= nn & nn <= 2147483647 &
+         0 <= c & c < (2 |^ 64)
+     holds
+       [nn,[uu,[rr,[mm,[base,[o5,[r1,[vm,c]]]]]]]] in O6Body iff
+         for vr1,vbase,vo5,pw being Integer st
+           vr1 = Value.[r1,nn] & vbase = Value.[base,nn] &
+           vo5 = Value.[o5,nn] & pw = PowRadix.nn
+         holds
+           (0 <= c & c <= 1 &
+            vr1 + pw*c = vbase + vo5 &
+            [r1,[rr,[Offset.r1,nn]]] in Outside implies
+              [nn,[uu,[rr,[mm,[r1,[c,vm]]]]]] in AllBool)) &
+    (for nn being Element of INT, uu,rr,mm,base,o5,r1 being Element of P,
+         vm being Element of INT st
+         -(2 |^ 31) <= nn & nn <= 2147483647
+     holds
+       [nn,[uu,[rr,[mm,[base,[o5,[r1,vm]]]]]]] in AllO6 iff
+         for c being Element of INT st 0 <= c & c < (2 |^ 64) holds
+           [nn,[uu,[rr,[mm,[base,[o5,[r1,[vm,c]]]]]]]] in O6Body) &
+    (for nn being Element of INT, uu,rr,mm,base,o5,r1 being Element of P,
+         vm being Element of INT st
+         -(2 |^ 31) <= nn & nn <= 2147483647
+     holds
+       [nn,[uu,[rr,[mm,[base,[o5,[vm,r1]]]]]]] in Rp1Body iff
+         ([r1,rr] in SMeta implies
+           [nn,[uu,[rr,[mm,[base,[o5,[r1,vm]]]]]]] in AllO6)) &
+    (for nn being Element of INT, uu,rr,mm,base,o5 being Element of P,
+         vm being Element of INT st
+         -(2 |^ 31) <= nn & nn <= 2147483647
+     holds
+       [nn,[uu,[rr,[mm,[base,[o5,vm]]]]]] in AllRp1 iff
+         for r1 being Element of P holds
+           [nn,[uu,[rr,[mm,[base,[o5,[vm,r1]]]]]]] in Rp1Body) &
+    (for nn being Element of INT, uu,rr,mm,base,o5 being Element of P,
+         vm,o4 being Element of INT st
+         -(2 |^ 31) <= nn & nn <= 2147483647 &
+         -(2 |^ 31) <= o4 & o4 <= 2147483647
+     holds
+       [nn,[uu,[rr,[mm,[base,[vm,[o4,o5]]]]]]] in FinO5B iff
+         ([o5,[base,o4]] in ShftSt implies
+           (-(2 |^ 31) <= nn & nn <= 2147483647 &
+            0 <= nn & 0 <= Minimum.base &
+            Minimum.base <= Offset.base &
+            Offset.base+nn <= Maximum.base &
+            Maximum.base <= Len.base) &
+           (-(2 |^ 31) <= nn & nn <= 2147483647 &
+            0 <= nn & 0 <= Minimum.o5 &
+            Minimum.o5 <= Offset.o5 &
+            Offset.o5+nn <= Maximum.o5 &
+            Maximum.o5 <= Len.o5) &
+           (-(2 |^ 31) <= nn & nn <= 2147483647 &
+            0 <= nn & 0 <= Minimum.rr &
+            Minimum.rr <= Offset.rr &
+            Offset.rr+nn <= Maximum.rr &
+            Maximum.rr <= Len.rr) &
+           Writable.rr = TRUE &
+           [nn,[uu,[rr,[mm,[base,[o5,vm]]]]]] in AllRp1)) &
+    (for nn being Element of INT, uu,rr,mm,base being Element of P,
+         vm,o4 being Element of INT st
+         -(2 |^ 31) <= nn & nn <= 2147483647 &
+         -(2 |^ 31) <= o4 & o4 <= 2147483647
+     holds
+       [nn,[uu,[rr,[mm,[base,[vm,o4]]]]]] in AllFinO5 iff
+         for o5 being Element of P holds
+           [nn,[uu,[rr,[mm,[base,[vm,[o4,o5]]]]]]] in FinO5B) &
+    (for nn being Element of INT, uu,rr,mm,base being Element of P,
+         vm,o4 being Element of INT st
+         -(2 |^ 31) <= nn & nn <= 2147483647 &
+         -(2 |^ 31) <= o4 & o4 <= 2147483647
+     holds
+       [nn,[uu,[rr,[mm,[base,[vm,o4]]]]]] in NegO4B iff
+         (o4 = -nn implies
+           Minimum.base <= Offset.base+o4 &
+           Offset.base+o4 <= Maximum.base &
+           [nn,[uu,[rr,[mm,[base,[vm,o4]]]]]] in AllFinO5)) &
+    (for nn being Element of INT, uu,rr,mm,base being Element of P,
+         vm being Element of INT st
+         -(2 |^ 31) <= nn & nn <= 2147483647
+     holds
+       [nn,[uu,[rr,[mm,[base,vm]]]]] in AllNegO4 iff
+         for o4 being Element of INT st
+           -(2 |^ 31) <= o4 & o4 <= 2147483647
+         holds [nn,[uu,[rr,[mm,[base,[vm,o4]]]]]] in NegO4B) &
+    (for nn being Element of INT, uu,rr,mm,base,uprime being Element of P,
+         vm,o3 being Element of INT st
+         -(2 |^ 31) <= nn & nn <= 2147483647 &
+         -(2 |^ 31) <= o3 & o3 <= 2147483647
+     holds
+       [nn,[uu,[rr,[mm,[base,[vm,[o3,uprime]]]]]]] in UprBody iff
+         ([uprime,[base,o3]] in ShftSt implies
+           -(2 |^ 31) <= -nn & -nn <= 2147483647 &
+           [nn,[uu,[rr,[mm,[base,vm]]]]] in AllNegO4)) &
+    (for nn being Element of INT, uu,rr,mm,base being Element of P,
+         vm,o3 being Element of INT st
+         -(2 |^ 31) <= nn & nn <= 2147483647 &
+         -(2 |^ 31) <= o3 & o3 <= 2147483647
+     holds
+       [nn,[uu,[rr,[mm,[base,[vm,o3]]]]]] in AllUpr iff
+         for uprime being Element of P holds
+           [nn,[uu,[rr,[mm,[base,[vm,[o3,uprime]]]]]]] in UprBody) &
+    (for nn being Element of INT, uu,rr,mm,base being Element of P,
+         vm,o3 being Element of INT st
+         -(2 |^ 31) <= nn & nn <= 2147483647 &
+         -(2 |^ 31) <= o3 & o3 <= 2147483647
+     holds
+       [nn,[uu,[rr,[mm,[base,[vm,o3]]]]]] in NegO3B iff
+         (o3 = -nn implies
+           Minimum.base <= Offset.base+o3 &
+           Offset.base+o3 <= Maximum.base &
+           [nn,[uu,[rr,[mm,[base,[vm,o3]]]]]] in AllUpr)) &
+    (for nn being Element of INT, uu,rr,mm,base being Element of P,
+         vm being Element of INT st
+         -(2 |^ 31) <= nn & nn <= 2147483647
+     holds
+       [nn,[uu,[rr,[mm,[base,vm]]]]] in AllNegO3 iff
+         for o3 being Element of INT st
+           -(2 |^ 31) <= o3 & o3 <= 2147483647
+         holds [nn,[uu,[rr,[mm,[base,[vm,o3]]]]]] in NegO3B) &
+    (for nn being Element of INT, uu,rr,mm,base being Element of P,
+         vm being Element of INT st
+         -(2 |^ 31) <= nn & nn <= 2147483647
+     holds
+       [nn,[uu,[rr,[mm,[base,vm]]]]] in FinStage iff
+         -(2 |^ 31) <= -nn & -nn <= 2147483647 &
+         [nn,[uu,[rr,[mm,[base,vm]]]]] in AllNegO3) &
+
+    (for nn being Element of INT, uu,u,u1 being Element of P,
+         vm,added,index being Element of INT st
+         -(2 |^ 31) <= nn & nn <= 2147483647
+     holds
+       [nn,[uu,[vm,[added,[u,[u1,index]]]]]] in ArithInv iff
+         for pwi,vu,pwn,vu1,vup being Integer st
+           pwi = PowRadix.index &
+           vu = Value.[u,nn+nn-index] &
+           pwn = PowRadix.nn & vu1 = Value.[u1,index] &
+           vup = Value.[uu,nn+nn]
+         holds
+           pwi*vu + pwn*vu1 = vup + vm*added &
+           0 <= added & added < pwi &
+           (pwi*vu + pwn*vu1) mod vm = vup mod vm) &
+    (for nn being Element of INT, uu,u,u1 being Element of P,
+         o2,vm,added,j being Element of INT st
+         -(2 |^ 31) <= nn & nn <= 2147483647 &
+         -(2 |^ 31) <= o2 & o2 <= 2147483647 &
+         -(2 |^ 31) <= j & j <= 2147483647
+     holds
+       [nn,[uu,[o2,[vm,[added,[u,[u1,j]]]]]]] in LoopInv iff
+         0 <= j & j <= o2 & Offset.u = Offset.u1+j &
+         [u,u1] in SPelts & Minimum.u = Minimum.u1 &
+         Maximum.u = Maximum.u1 & Len.u = Len.u1 &
+         Writable.u = TRUE &
+         [nn,[uu,[vm,[added,[u,[u1,j]]]]]] in ArithInv) &
+    (for nn being Element of INT, uu,o5,u3 being Element of P,
+         vm,added,m,j being Element of INT st
+         -(2 |^ 31) <= nn & nn <= 2147483647 &
+         0 <= m & m < (2 |^ 64) &
+         -(2 |^ 31) <= j & j <= 2147483647
+     holds
+       [nn,[uu,[vm,[added,[m,[j,[o5,u3]]]]]]] in NextInv iff
+         for pwj being Integer st pwj = PowRadix.j holds
+           Offset.o5 = Offset.u3+j+1 &
+           [o5,u3] in SPelts & Minimum.o5 = Minimum.u3 &
+           Maximum.o5 = Maximum.u3 & Len.o5 = Len.u3 &
+           Writable.o5 = TRUE &
+           [nn,[uu,[vm,[added+m*pwj,
+             [o5,[u3,j+1]]]]]] in ArithInv) &
+    (for nn being Element of INT, uu,u,u1 being Element of P,
+         o2,vm,added being Element of INT st
+         -(2 |^ 31) <= nn & nn <= 2147483647 &
+         -(2 |^ 31) <= o2 & o2 <= 2147483647
+     holds
+       [nn,[uu,[o2,[vm,[added,[u,u1]]]]]] in ExitInv iff
+         Offset.u = Offset.u1+o2+1 & [u,u1] in SPelts &
+         Minimum.u = Minimum.u1 & Maximum.u = Maximum.u1 &
+         Len.u = Len.u1 & Writable.u = TRUE &
+         [nn,[uu,[vm,[added,[u,[u1,o2+1]]]]]] in ArithInv) &
+    (for a,b,c being Element of P holds
+       [a,[b,c]] in AddmSt iff
+         Len.a = Len.b & [a,b] in SPelts & Len.b = Len.c &
+         Offset.a = Offset.c & Minimum.a = Minimum.c &
+         Maximum.a = Maximum.c & Writable.a = Writable.c &
+         Zone.a = Zone.c) &
+    (for nn being Element of INT, uu,u2,u3,o5 being Element of P,
+         vm,added,m,j being Element of INT st
+         -(2 |^ 31) <= nn & nn <= 2147483647 &
+         0 <= m & m < (2 |^ 64) &
+         -(2 |^ 31) <= j & j <= 2147483647
+     holds
+       [nn,[uu,[vm,[added,[m,[j,[u2,[u3,o5]]]]]]]] in NxtO5B iff
+         ([o5,[u2,1]] in ShftSt implies
+           [nn,[uu,[vm,[added,[m,[j,[o5,u3]]]]]]] in NextInv)) &
+    (for nn being Element of INT, uu,u2,u3 being Element of P,
+         vm,added,m,j being Element of INT st
+         -(2 |^ 31) <= nn & nn <= 2147483647 &
+         0 <= m & m < (2 |^ 64) &
+         -(2 |^ 31) <= j & j <= 2147483647
+     holds
+       [nn,[uu,[vm,[added,[m,[j,[u2,u3]]]]]]] in AllNxtO5 iff
+         for o5 being Element of P holds
+           [nn,[uu,[vm,[added,[m,[j,[u2,[u3,o5]]]]]]]] in NxtO5B) &
+    (for nn being Element of INT, uu,u1,u2,u3,u4 being Element of P,
+         vm,added,m,j,o4 being Element of INT st
+         -(2 |^ 31) <= nn & nn <= 2147483647 &
+         0 <= m & m < (2 |^ 64) &
+         -(2 |^ 31) <= j & j <= 2147483647 &
+         0 <= o4 & o4 < (2 |^ 64)
+     holds
+       [nn,[uu,[vm,[added,[m,[j,[u1,[u2,[u3,[u4,o4]]]]]]]]]] in U2Body iff
+         ([u3,[u4,u1]] in AddmSt implies
+          ([u3,[u4,u1]] in AddmSt implies
+           ([u4,u2] in SMeta implies
+            ([u3,[u1,[Offset.u3,o4]]] in Updated implies
+              Minimum.u3 <= Offset.u3+1 &
+              Offset.u3+1 <= Maximum.u3 &
+              [nn,[uu,[vm,[added,[m,[j,[u3,u4]]]]]]] in AllNxtO5))))) &
+    (for nn being Element of INT, uu,u1,u2 being Element of P,
+         vm,added,m,j,o4 being Element of INT st
+         -(2 |^ 31) <= nn & nn <= 2147483647 &
+         0 <= m & m < (2 |^ 64) &
+         -(2 |^ 31) <= j & j <= 2147483647 &
+         0 <= o4 & o4 < (2 |^ 64)
+     holds
+       [nn,[uu,[vm,[added,[m,[j,[u1,[u2,o4]]]]]]]] in AllU2 iff
+         for u3,u4 being Element of P holds
+           [nn,[uu,[vm,[added,[m,[j,[u1,[u2,[u3,[u4,o4]]]]]]]]]] in U2Body) &
+    (for nn being Element of INT, uu,mm,u,u1,u2 being Element of P,
+         vm,added,m,j,o4 being Element of INT st
+         -(2 |^ 31) <= nn & nn <= 2147483647 &
+         0 <= m & m < (2 |^ 64) &
+         -(2 |^ 31) <= j & j <= 2147483647 &
+         0 <= o4 & o4 < (2 |^ 64)
+     holds
+       [nn,[uu,[mm,[vm,[added,[u,[m,[j,[u1,[u2,o4]]]]]]]]]] in O4Body iff
+         for vu1,pw,vu,vmm being Integer st
+           vu1 = Value.[u1,nn] & pw = PowRadix.nn &
+           vu = Value.[u,nn] & vmm = Value.[mm,nn]
+         holds
+           (vu1 + pw*o4 = vu + vmm*m &
+            [u1,[u,[Offset.u1,nn]]] in Outside implies
+              Minimum.u1 <= Offset.u1 & Offset.u1 < Maximum.u1 &
+              Writable.u1 = TRUE &
+              [nn,[uu,[vm,[added,[m,[j,[u1,[u2,o4]]]]]]]] in AllU2)) &
+    (for nn being Element of INT, uu,mm,u,u1,u2 being Element of P,
+         vm,added,m,j being Element of INT st
+         -(2 |^ 31) <= nn & nn <= 2147483647 &
+         0 <= m & m < (2 |^ 64) &
+         -(2 |^ 31) <= j & j <= 2147483647
+     holds
+       [nn,[uu,[mm,[vm,[added,[u,[m,[j,[u1,u2]]]]]]]]] in AllO4 iff
+         for o4 being Element of INT st 0 <= o4 & o4 < (2 |^ 64) holds
+           [nn,[uu,[mm,[vm,[added,[u,[m,[j,[u1,[u2,o4]]]]]]]]]] in O4Body) &
+    (for nn being Element of INT, uu,mm,u,u0,u1,u2 being Element of P,
+         vm,added,m,j being Element of INT st
+         -(2 |^ 31) <= nn & nn <= 2147483647 &
+         0 <= m & m < (2 |^ 64) &
+         -(2 |^ 31) <= j & j <= 2147483647
+     holds
+       [nn,[uu,[mm,[vm,[added,[u,[u0,[m,[j,[u1,u2]]]]]]]]]] in U1Body iff
+         ([u1,[u2,u]] in AddmSt implies
+          ([u1,[u2,u]] in AddmSt implies
+           ([u2,u0] in SMeta implies
+             [nn,[uu,[mm,[vm,[added,[u,[m,[j,[u1,u2]]]]]]]]]
+               in AllO4)))) &
+    (for nn being Element of INT, uu,mm,u,u0 being Element of P,
+         vm,added,m,j being Element of INT st
+         -(2 |^ 31) <= nn & nn <= 2147483647 &
+         0 <= m & m < (2 |^ 64) &
+         -(2 |^ 31) <= j & j <= 2147483647
+     holds
+       [nn,[uu,[mm,[vm,[added,[u,[u0,[m,j]]]]]]]] in AllU1 iff
+         for u1,u2 being Element of P holds
+           [nn,[uu,[mm,[vm,[added,[u,[u0,[m,[j,[u1,u2]]]]]]]]]] in U1Body) &
+    (for nn being Element of INT, uu,mm,u,u0 being Element of P,
+         vm,added,m,j,o3,nnj being Element of INT st
+         -(2 |^ 31) <= nn & nn <= 2147483647 &
+         0 <= m & m < (2 |^ 64) &
+         -(2 |^ 31) <= j & j <= 2147483647 &
+         -(2 |^ 31) <= o3 & o3 <= 2147483647 &
+         -(2 |^ 31) <= nnj & nnj <= 2147483647
+     holds
+       [nn,[uu,[mm,[vm,[added,[u,[u0,[m,[j,[o3,nnj]]]]]]]]]] in NnjBody iff
+         (nnj = o3-j implies
+           (-(2 |^ 31) <= nn & nn <= 2147483647 &
+            0 <= nn & 0 <= Minimum.mm &
+            Minimum.mm <= Offset.mm &
+            Offset.mm+nn <= Maximum.mm & Maximum.mm <= Len.mm) &
+           (-(2 |^ 31) <= nn & nn <= 2147483647 &
+            0 <= nn & 0 <= Minimum.u &
+            Minimum.u <= Offset.u &
+            Offset.u+nn <= Maximum.u & Maximum.u <= Len.u) &
+           Writable.u = TRUE &
+           [nn,[uu,[mm,[vm,[added,[u,[u0,[m,j]]]]]]]] in AllU1)) &
+    (for nn being Element of INT, uu,mm,u,u0 being Element of P,
+         vm,added,m,j,o3 being Element of INT st
+         -(2 |^ 31) <= nn & nn <= 2147483647 &
+         0 <= m & m < (2 |^ 64) &
+         -(2 |^ 31) <= j & j <= 2147483647 &
+         -(2 |^ 31) <= o3 & o3 <= 2147483647
+     holds
+       [nn,[uu,[mm,[vm,[added,[u,[u0,[m,[j,o3]]]]]]]]] in AllNnj iff
+         for nnj being Element of INT st
+           -(2 |^ 31) <= nnj & nnj <= 2147483647
+         holds
+           [nn,[uu,[mm,[vm,[added,[u,[u0,[m,[j,[o3,nnj]]]]]]]]]] in NnjBody) &
+    (for nn being Element of INT, uu,mm,u,u0 being Element of P,
+         vm,added,m,j,o3 being Element of INT st
+         -(2 |^ 31) <= nn & nn <= 2147483647 &
+         0 <= m & m < (2 |^ 64) &
+         -(2 |^ 31) <= j & j <= 2147483647 &
+         -(2 |^ 31) <= o3 & o3 <= 2147483647
+     holds
+       [nn,[uu,[mm,[vm,[added,[u,[u0,[m,[j,o3]]]]]]]]] in PosO3B iff
+         (o3 = nn+nn implies
+           -(2 |^ 31) <= o3-j & o3-j <= 2147483647 &
+           [nn,[uu,[mm,[vm,[added,[u,[u0,[m,[j,o3]]]]]]]]] in AllNnj)) &
+    (for nn being Element of INT, uu,mm,u,u0 being Element of P,
+         vm,added,m,j being Element of INT st
+         -(2 |^ 31) <= nn & nn <= 2147483647 &
+         0 <= m & m < (2 |^ 64) &
+         -(2 |^ 31) <= j & j <= 2147483647
+     holds
+       [nn,[uu,[mm,[vm,[added,[u,[u0,[m,j]]]]]]]] in AllPosO3 iff
+         for o3 being Element of INT st
+           -(2 |^ 31) <= o3 & o3 <= 2147483647
+         holds
+           [nn,[uu,[mm,[vm,[added,[u,[u0,[m,[j,o3]]]]]]]]] in PosO3B) &
+    (for nn being Element of INT, uu,mm,u,u0 being Element of P,
+         inv,vm,added,j,m being Element of INT st
+         -(2 |^ 31) <= nn & nn <= 2147483647 &
+         0 <= inv & inv < (2 |^ 64) &
+         -(2 |^ 31) <= j & j <= 2147483647 &
+         0 <= m & m < (2 |^ 64)
+     holds
+       [nn,[uu,[mm,[inv,[vm,[added,[u,[u0,[j,m]]]]]]]]] in MBody iff
+         for limb being Integer st limb = Pelt.[u,Offset.u] holds
+           (m = (limb*inv) mod (2 |^ 64) implies
+             -(2 |^ 31) <= nn+nn & nn+nn <= 2147483647 &
+             [nn,[uu,[mm,[vm,[added,[u,[u0,[m,j]]]]]]]]
+               in AllPosO3)) &
+    (for nn being Element of INT, uu,mm,u,u0 being Element of P,
+         inv,vm,added,j being Element of INT st
+         -(2 |^ 31) <= nn & nn <= 2147483647 &
+         0 <= inv & inv < (2 |^ 64) &
+         -(2 |^ 31) <= j & j <= 2147483647
+     holds
+       [nn,[uu,[mm,[inv,[vm,[added,[u,[u0,j]]]]]]]] in AllM iff
+         for m being Element of INT st 0 <= m & m < (2 |^ 64) holds
+           [nn,[uu,[mm,[inv,[vm,[added,[u,[u0,[j,m]]]]]]]]] in MBody) &
+    (for nn being Element of INT, uu,rr,mm,u,u0 being Element of P,
+         inv,o2,vm,added,j being Element of INT st
+         -(2 |^ 31) <= nn & nn <= 2147483647 &
+         0 <= inv & inv < (2 |^ 64) &
+         -(2 |^ 31) <= o2 & o2 <= 2147483647 &
+         -(2 |^ 31) <= j & j <= 2147483647
+     holds
+       [nn,[uu,[rr,[mm,[inv,[o2,[vm,[added,[u,[u0,j]]]]]]]]]] in JBody iff
+         ([nn,[uu,[o2,[vm,[added,[u,[u0,j]]]]]]] in LoopInv implies
+            Minimum.u <= Offset.u & Offset.u < Maximum.u &
+            [nn,[uu,[mm,[inv,[vm,[added,[u,[u0,j]]]]]]]] in AllM) &
+         ([nn,[uu,[o2,[vm,[added,[u,u0]]]]]] in ExitInv implies
+            [nn,[uu,[rr,[mm,[u,vm]]]]] in FinStage)) &
+    (for nn being Element of INT, uu,rr,mm,u,u0 being Element of P,
+         inv,o2,vm,added being Element of INT st
+         -(2 |^ 31) <= nn & nn <= 2147483647 &
+         0 <= inv & inv < (2 |^ 64) &
+         -(2 |^ 31) <= o2 & o2 <= 2147483647
+     holds
+       [nn,[uu,[rr,[mm,[inv,[o2,[vm,[added,[u,u0]]]]]]]]] in AllJ iff
+         for j being Element of INT st
+           -(2 |^ 31) <= j & j <= 2147483647
+         holds
+           [nn,[uu,[rr,[mm,[inv,[o2,[vm,[added,[u,[u0,j]]]]]]]]]] in JBody) &
+    (for nn being Element of INT, uu,rr,mm,u,u0 being Element of P,
+         inv,o2,vm,added being Element of INT st
+         -(2 |^ 31) <= nn & nn <= 2147483647 &
+         0 <= inv & inv < (2 |^ 64) &
+         -(2 |^ 31) <= o2 & o2 <= 2147483647
+     holds
+       [nn,[uu,[rr,[mm,[inv,[o2,[vm,[added,[u,u0]]]]]]]]] in LoopStB iff
+         ([u0,uu] in SMeta implies
+           [nn,[uu,[rr,[mm,[inv,[o2,[vm,[added,[u,u0]]]]]]]]] in AllJ)) &
+    (for nn being Element of INT, uu,rr,mm being Element of P,
+         inv,o2,vm being Element of INT st
+         -(2 |^ 31) <= nn & nn <= 2147483647 &
+         0 <= inv & inv < (2 |^ 64) &
+         -(2 |^ 31) <= o2 & o2 <= 2147483647
+     holds
+       [nn,[uu,[rr,[mm,[inv,[o2,vm]]]]]] in AllLoopS iff
+         for added being Element of INT, u,u0 being Element of P holds
+           [nn,[uu,[rr,[mm,[inv,[o2,[vm,[added,[u,u0]]]]]]]]] in LoopStB) &
+    (for nn being Element of INT, uu,o1 being Element of P,
+         vm being Element of INT st
+         -(2 |^ 31) <= nn & nn <= 2147483647
+     holds
+       [nn,[uu,[o1,vm]]] in InitInv iff
+         for pw0,vo1,pwn,vu0,vup being Integer st
+           pw0 = PowRadix.0 & vo1 = Value.[o1,nn+nn] &
+           pwn = PowRadix.nn & vu0 = Value.[uu,0] &
+           vup = Value.[uu,nn+nn]
+         holds
+           Offset.o1 = Offset.uu & [o1,uu] in SPelts &
+           Minimum.o1 = Minimum.uu & Maximum.o1 = Maximum.uu &
+           Len.o1 = Len.uu & Writable.o1 = TRUE &
+           pw0*vo1 + pwn*vu0 = vup + vm*0 &
+           0 <= 0 & 0 < pw0 &
+           (pw0*vo1 + pwn*vu0) mod vm = vup mod vm) &
+    (for nn being Element of INT, uu,rr,mm,o1 being Element of P,
+         inv,vm,o2 being Element of INT st
+         -(2 |^ 31) <= nn & nn <= 2147483647 &
+         0 <= inv & inv < (2 |^ 64) &
+         -(2 |^ 31) <= o2 & o2 <= 2147483647
+     holds
+       [nn,[uu,[rr,[mm,[inv,[o1,[vm,o2]]]]]]] in O2Body iff
+         (o2 = nn-1 implies
+           (0 <= o2+1 implies
+              [nn,[uu,[o1,vm]]] in InitInv &
+              [nn,[uu,[rr,[mm,[inv,[o2,vm]]]]]] in AllLoopS) &
+           (o2+1 < 0 implies
+              [nn,[uu,[rr,[mm,[o1,vm]]]]] in FinStage))) &
+    (for nn being Element of INT, uu,rr,mm,o1 being Element of P,
+         inv,vm being Element of INT st
+         -(2 |^ 31) <= nn & nn <= 2147483647 &
+         0 <= inv & inv < (2 |^ 64)
+     holds
+       [nn,[uu,[rr,[mm,[inv,[o1,vm]]]]]] in AllO2 iff
+         for o2 being Element of INT st
+           -(2 |^ 31) <= o2 & o2 <= 2147483647
+         holds [nn,[uu,[rr,[mm,[inv,[o1,[vm,o2]]]]]]] in O2Body) &
+    (for nn being Element of INT, uu,rr,mm,o1 being Element of P,
+         inv being Element of INT st
+         -(2 |^ 31) <= nn & nn <= 2147483647 &
+         0 <= inv & inv < (2 |^ 64)
+     holds
+       [nn,[uu,[rr,[mm,[inv,o1]]]]] in O1Body iff
+         ([o1,[uu,0]] in ShftSt implies
+           -(2 |^ 31) <= nn-1 & nn-1 <= 2147483647 &
+           [nn,[uu,[rr,[mm,
+             [inv,[o1,Value.[mm,nn]]]]]]] in AllO2)) &
+    (for nn being Element of INT, uu,rr,mm being Element of P,
+         inv being Element of INT st
+         -(2 |^ 31) <= nn & nn <= 2147483647 &
+         0 <= inv & inv < (2 |^ 64)
+     holds
+       [nn,[uu,[rr,[mm,inv]]]] in AllO1 iff
+         for o1 being Element of P holds
+           [nn,[uu,[rr,[mm,[inv,o1]]]]] in O1Body) &
+
+    -(2 |^ 31) <= n & n <= 2147483647 &
+    0 <= invm & invm < (2 |^ 64) &
+    0 < n &
+    (-(2 |^ 31) <= n & n <= 2147483647 &
+     0 <= n & 0 <= Minimum.mp & Minimum.mp <= Offset.mp &
+     Offset.mp+n <= Maximum.mp & Maximum.mp <= Len.mp) &
+    (-(2 |^ 31) <= 2*n & 2*n <= 2147483647 &
+     0 <= 2*n & 0 <= Minimum.up & Minimum.up <= Offset.up &
+     Offset.up+2*n <= Maximum.up & Maximum.up <= Len.up) &
+    (-(2 |^ 31) <= n & n <= 2147483647 &
+     0 <= n & 0 <= Minimum.rp & Minimum.rp <= Offset.rp &
+     Offset.rp+n <= Maximum.rp & Maximum.rp <= Len.rp) &
+    (for vmm being Integer st vmm = Value.[mp,n] holds
+       vmm mod 2 = 1 &
+       (vmm*invm) mod (2 |^ 64) = (2 |^ 64)-1) &
+    Writable.up = TRUE & Writable.rp = TRUE
+  holds
+    Minimum.up <= Offset.up &
+    Offset.up <= Maximum.up &
+    [n,[up,[rp,[mp,invm]]]] in AllO1
+proof
+end;
+::$P+

@@ -1,0 +1,152 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1984_a5:
+% the integral of x^1 y^9 z^8 (1-x-y-z)^4 over the nonnegative unit
+% simplex equals 1! 9! 8! 4! / 25!. This file contains no proof.
+
+putnam_1984_a5: THEORY
+BEGIN
+  real_function: TYPE = [real -> real]
+  real_sequence: TYPE = [nat -> real]
+
+  solution_tuple: TYPE =
+    [# a_value: nat,
+       b_value: nat,
+       c_value: nat,
+       d_value: nat,
+       n_value: nat #]
+
+  putnam_1984_a5_solution: solution_tuple =
+    (# a_value := 1,
+       b_value := 9,
+       c_value := 8,
+       d_value := 4,
+       n_value := 25 #)
+
+  nat_factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * nat_factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  factorial_quotient(solution: solution_tuple): real =
+    safe_div(
+      (nat_factorial(a_value(solution))
+        * nat_factorial(b_value(solution))
+        * nat_factorial(c_value(solution))
+        * nat_factorial(d_value(solution))) :: real,
+      nat_factorial(n_value(solution)) :: real)
+
+  valid_partition(
+      lower, upper: real,
+      points: real_sequence,
+      count: nat): bool =
+    IF lower = upper THEN
+      count = 0 AND points(0) = lower
+    ELSE
+      count > 0
+        AND points(0) = lower
+        AND points(count) = upper
+        AND (FORALL (index: nat):
+          index < count IMPLIES
+            points(index) < points(index + 1))
+    ENDIF
+
+  valid_tags(
+      points, tags: real_sequence,
+      count: nat): bool =
+    FORALL (index: nat):
+      index < count IMPLIES
+        points(index) <= tags(index)
+          AND tags(index) <= points(index + 1)
+
+  mesh_less_than(
+      points: real_sequence,
+      count: nat,
+      bound: real): bool =
+    FORALL (index: nat):
+      index < count IMPLIES
+        points(index + 1) - points(index) < bound
+
+  riemann_sum(
+      function_value: real_function,
+      points, tags: real_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      riemann_sum(
+        function_value, points, tags, count - 1)
+        + function_value(tags(count - 1))
+            * (points(count) - points(count - 1))
+    ENDIF
+  MEASURE count
+
+  has_interval_integral(
+      function_value: real_function,
+      integral_value, lower, upper: real): bool =
+    lower <= upper
+      AND FORALL (epsilon_value: posreal):
+        EXISTS (mesh_bound: posreal):
+          FORALL
+              (points, tags: real_sequence),
+              (count: nat):
+            (valid_partition(lower, upper, points, count)
+              AND valid_tags(points, tags, count)
+              AND mesh_less_than(points, count, mesh_bound))
+            IMPLIES
+              abs(
+                riemann_sum(
+                  function_value, points, tags, count)
+                  - integral_value)
+                < epsilon_value
+
+  interval_integral(
+      function_value: real_function,
+      lower, upper: real): real =
+    IF EXISTS (integral_value: real):
+        has_interval_integral(
+          function_value, integral_value, lower, upper)
+    THEN
+      epsilon(
+        LAMBDA (integral_value: real):
+          has_interval_integral(
+            function_value, integral_value, lower, upper))
+    ELSE
+      0
+    ENDIF
+
+  simplex_integrand(x, y, z: real): real =
+    x ^ 1 * y ^ 9 * z ^ 8 * (1 - x - y - z) ^ 4
+
+  inner_integral(y, z: real): real =
+    interval_integral(
+      LAMBDA (x: real): simplex_integrand(x, y, z),
+      0,
+      1 - y - z)
+
+  middle_integral(z: real): real =
+    interval_integral(
+      LAMBDA (y: real): inner_integral(y, z),
+      0,
+      1 - z)
+
+  simplex_integral: real =
+    interval_integral(middle_integral, 0, 1)
+
+  putnam_1984_a5: bool =
+    a_value(putnam_1984_a5_solution) > 0
+      AND b_value(putnam_1984_a5_solution) > 0
+      AND c_value(putnam_1984_a5_solution) > 0
+      AND d_value(putnam_1984_a5_solution) > 0
+      AND n_value(putnam_1984_a5_solution) > 0
+      AND simplex_integral
+        = factorial_quotient(putnam_1984_a5_solution)
+END putnam_1984_a5

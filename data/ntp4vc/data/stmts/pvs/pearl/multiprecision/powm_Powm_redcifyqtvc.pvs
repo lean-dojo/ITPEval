@@ -1,0 +1,381 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/multiprecision/powm_Powm_redcifyqtvc: the verification condition for
+% allocating scratch arrays, copying a multiprecision operand, and obtaining
+% its radix-scaled residue from quotient-and-remainder division.
+% This file contains no proof.
+
+powm_Powm_redcifyqtvc[zone: TYPE+]: THEORY
+BEGIN
+
+  IMPORTING
+    bv[32], bv[64],
+    bv_nat[32], bv_nat[64]
+
+  word32: TYPE = bvec[32]
+  word64: TYPE = bvec[64]
+
+  ptr: TYPE =
+    [# contents: list[word64],
+       pointer_offset: int,
+       pointer_min: int,
+       pointer_max: int,
+       is_writable: bool,
+       pointer_zone: zone #]
+
+  radix: int = 18446744073709551616
+
+  zero64: word64 = fill[64](FALSE)
+
+  unsigned64(value1: word64): int =
+    bv2nat[64](value1)
+
+  unsigned32(value1: word32): int =
+    bv2nat[32](value1)
+
+  signed32(value1: word32): int =
+    IF value1(31) THEN
+      bv2nat[32](value1) - 4294967296
+    ELSE
+      bv2nat[32](value1)
+    ENDIF
+
+  int32_in_bounds(value1: int): bool =
+    -2147483648 <= value1 AND value1 <= 2147483647
+
+  int_to_nat(value1: int): nat =
+    IF value1 < 0 THEN 0 ELSE value1 ENDIF
+
+  nat_power(base: int, exponent: nat): RECURSIVE int =
+    IF exponent = 0 THEN
+      1
+    ELSE
+      base * nat_power(base, exponent - 1)
+    ENDIF
+  MEASURE exponent
+
+  int_power(base, exponent: int): int =
+    nat_power(base, int_to_nat(exponent))
+
+  plength(p: ptr): int =
+    length(contents(p))
+
+  pelt(p: ptr, index: int): word64 =
+    LET natural_index: nat = int_to_nat(index)
+    IN
+      IF natural_index < length(contents(p)) THEN
+        nth(contents(p), natural_index)
+      ELSE
+        zero64
+      ENDIF
+
+  valid(p: ptr, size: int): bool =
+    int32_in_bounds(size)
+      AND 0 <= size
+      AND 0 <= pointer_min(p)
+      AND pointer_min(p) <= pointer_offset(p)
+      AND pointer_offset(p) + size <= pointer_max(p)
+      AND pointer_max(p) <= plength(p)
+
+  value_from(
+      p: ptr,
+      index: int,
+      count: nat): RECURSIVE int =
+    IF count = 0 THEN
+      0
+    ELSE
+      unsigned64(pelt(p, index))
+        + radix * value_from(p, index + 1, count - 1)
+    ENDIF
+  MEASURE count
+
+  value(p: ptr, size: int): int =
+    value_from(
+      p,
+      pointer_offset(p),
+      int_to_nat(size))
+
+  redc(ur, u, n, m: int): bool =
+    mod(ur, m) = mod(int_power(radix, n) * u, m)
+
+  same_shape(newer, older: ptr): bool =
+    length(contents(newer)) = length(contents(older))
+      AND pointer_offset(newer) = pointer_offset(older)
+      AND pointer_min(newer) = pointer_min(older)
+      AND pointer_max(newer) = pointer_max(older)
+      AND is_writable(newer) = is_writable(older)
+      AND pointer_zone(newer) = pointer_zone(older)
+
+  same_pelts(left, right: ptr): bool =
+    FORALL (index: int):
+      pelt(left, index) = pelt(right, index)
+
+  frame(newer, older: ptr, size: int): bool =
+    FORALL (index: int):
+      index < pointer_offset(newer)
+        OR pointer_offset(newer) + size <= index
+      IMPLIES
+        pelt(newer, index) = pelt(older, index)
+
+  scratch_layout(p: ptr, size: int): bool =
+    plength(p) = size
+      AND pointer_offset(p) = 0
+      AND pointer_min(p) = 0
+      AND pointer_max(p) = size
+      AND is_writable(p) = TRUE
+
+  shifted_pointer(
+      shifted, original: ptr,
+      displacement: int): bool =
+    pointer_offset(shifted)
+        = pointer_offset(original) + displacement
+      AND plength(shifted) = plength(original)
+      AND same_pelts(shifted, original)
+      AND contents(shifted) = contents(original)
+      AND pointer_min(shifted) = pointer_min(original)
+      AND pointer_max(shifted) = pointer_max(original)
+      AND pointer_zone(shifted) = pointer_zone(original)
+      AND is_writable(shifted) = is_writable(original)
+
+  rebased_copy(
+      copied, shared, original: ptr): bool =
+    contents(copied) = contents(shared)
+      AND length(contents(shared)) = length(contents(original))
+      AND pointer_offset(copied) = pointer_offset(original)
+      AND pointer_min(copied) = pointer_min(original)
+      AND pointer_max(copied) = pointer_max(original)
+      AND is_writable(copied) = is_writable(original)
+      AND pointer_zone(copied) = pointer_zone(original)
+
+  map_eq_sub_shift(
+      left, right: ptr,
+      left_offset, right_offset, size: int): bool =
+    FORALL (index: int):
+      0 <= index AND index < size
+        IMPLIES
+          pelt(left, left_offset + index)
+            = pelt(right, right_offset + index)
+
+  division_postcondition(
+      tp2, qp1, mp, rp1: ptr,
+      total_size, modulus_size: int): bool =
+    value(tp2, total_size)
+      =
+    value(qp1, total_size - modulus_size + 1)
+        * value(mp, modulus_size)
+      + value(rp1, modulus_size)
+      AND
+    value(rp1, modulus_size) < value(mp, modulus_size)
+
+  residue_postcondition(
+      rp1, up, mp: ptr,
+      operand_size, modulus_size: int): bool =
+    value(rp1, modulus_size)
+      =
+    mod(
+      int_power(radix, modulus_size)
+        * value(up, operand_size),
+      value(mp, modulus_size))
+      AND
+    redc(
+      value(rp1, modulus_size),
+      value(up, operand_size),
+      modulus_size,
+      value(mp, modulus_size))
+
+  division_obligation(
+      tp2, qp, mp, rp, up: ptr,
+      total_size, operand_size, modulus_size: int): bool =
+    FORALL (qp1, rp1: ptr):
+      same_shape(qp1, qp)
+        IMPLIES
+      same_shape(rp1, rp)
+        IMPLIES
+      division_postcondition(
+        tp2, qp1, mp, rp1,
+        total_size, modulus_size)
+        IMPLIES
+      residue_postcondition(
+        rp1, up, mp,
+        operand_size, modulus_size)
+
+  final_division_call(
+      rp, up, mp, qp, tp2: ptr,
+      n, un, o7: word32): bool =
+    ((1 <= signed32(n)
+        AND signed32(n) <= signed32(o7)
+        AND signed32(o7) <= 2147483647 - 1)
+      AND valid(tp2, signed32(o7))
+      AND valid(mp, signed32(n))
+      AND
+        valid(
+          qp,
+          signed32(o7) - signed32(n) + 1)
+      AND valid(rp, signed32(n))
+      AND
+        (is_writable(qp) = TRUE
+          AND is_writable(rp) = TRUE)
+      AND
+        0
+          < unsigned64(
+              pelt(
+                mp,
+                pointer_offset(mp) + signed32(n) - 1)))
+      AND
+        division_obligation(
+          tp2, qp, mp, rp, up,
+          signed32(o7), signed32(un), signed32(n))
+
+  copied_operand_obligation(
+      rp, up, mp, qp, tp1, o5: ptr,
+      n, un: word32): bool =
+    FORALL (o6, tp2: ptr):
+      rebased_copy(o6, tp2, o5)
+        IMPLIES
+      same_shape(tp2, tp1)
+        IMPLIES
+      (map_eq_sub_shift(
+          o6, up,
+          pointer_offset(o6),
+          pointer_offset(up),
+          signed32(un))
+        AND frame(o6, o5, signed32(un)))
+        IMPLIES
+      int32_in_bounds(signed32(un) + signed32(n))
+        AND
+      (FORALL (o7: word32):
+        signed32(o7) = signed32(un) + signed32(n)
+          IMPLIES
+            final_division_call(
+              rp, up, mp, qp, tp2,
+              n, un, o7))
+
+  shifted_scratch_obligation(
+      rp, up, mp, qp, tp1: ptr,
+      n, un: word32): bool =
+    FORALL (o5: ptr):
+      shifted_pointer(o5, tp1, signed32(n))
+        IMPLIES
+          (valid(up, signed32(un))
+            AND valid(o5, signed32(un))
+            AND is_writable(o5) = TRUE)
+          AND
+            copied_operand_obligation(
+              rp, up, mp, qp, tp1, o5,
+              n, un)
+
+  zeroed_scratch_obligation(
+      rp, up, mp, qp, tp: ptr,
+      n, un: word32): bool =
+    FORALL (tp1: ptr):
+      same_shape(tp1, tp)
+        IMPLIES
+      (value(tp1, signed32(n)) = 0
+        AND frame(tp1, tp, signed32(n)))
+        IMPLIES
+          (pointer_min(tp1)
+              <= pointer_offset(tp1) + signed32(n)
+            AND
+              pointer_offset(tp1) + signed32(n)
+                <= pointer_max(tp1))
+          AND
+            shifted_scratch_obligation(
+              rp, up, mp, qp, tp1,
+              n, un)
+
+  quotient_scratch_obligation(
+      rp, up, mp, tp: ptr,
+      n, un: word32): bool =
+    FORALL (qp: ptr):
+      scratch_layout(qp, signed32(un) + 1)
+        IMPLIES
+          (valid(tp, signed32(n))
+            AND is_writable(tp) = TRUE)
+          AND
+            zeroed_scratch_obligation(
+              rp, up, mp, qp, tp,
+              n, un)
+
+  quotient_size_obligation(
+      rp, up, mp, tp: ptr,
+      n, un, o3: word32): bool =
+    FORALL (o4: word32):
+      unsigned32(o4) = signed32(o3)
+        IMPLIES
+          0 <= unsigned32(o4)
+          AND
+            quotient_scratch_obligation(
+              rp, up, mp, tp,
+              n, un)
+
+  quotient_allocation_obligation(
+      rp, up, mp, tp: ptr,
+      n, un: word32): bool =
+    int32_in_bounds(signed32(un) + 1)
+      AND
+    (FORALL (o3: word32):
+      signed32(o3) = signed32(un) + 1
+        IMPLIES
+          0 <= signed32(o3)
+          AND
+            quotient_size_obligation(
+              rp, up, mp, tp,
+              n, un, o3))
+
+  temporary_scratch_obligation(
+      rp, up, mp: ptr,
+      n, un, o2: word32): bool =
+    FORALL (tp: ptr):
+      scratch_layout(tp, unsigned32(o2))
+        IMPLIES
+          quotient_allocation_obligation(
+            rp, up, mp, tp,
+            n, un)
+
+  temporary_size_obligation(
+      rp, up, mp: ptr,
+      n, un, o1: word32): bool =
+    FORALL (o2: word32):
+      unsigned32(o2) = signed32(o1)
+        IMPLIES
+          0 <= unsigned32(o2)
+          AND
+            temporary_scratch_obligation(
+              rp, up, mp,
+              n, un, o2)
+
+  redcify_vc: bool =
+    FORALL
+        (rp, up, mp: ptr),
+        (n, un: word32):
+      valid(rp, signed32(n))
+        IMPLIES
+      valid(up, signed32(un))
+        IMPLIES
+      valid(mp, signed32(n))
+        IMPLIES
+      1 <= signed32(n)
+        IMPLIES
+      1 <= signed32(un)
+        IMPLIES
+      signed32(un) + signed32(n) < 2147483647
+        IMPLIES
+      0
+        < unsigned64(
+            pelt(
+              mp,
+              pointer_offset(mp) + signed32(n) - 1))
+        IMPLIES
+      is_writable(rp) = TRUE
+        IMPLIES
+          int32_in_bounds(signed32(un) + signed32(n))
+          AND
+          (FORALL (o1: word32):
+            signed32(o1) = signed32(un) + signed32(n)
+              IMPLIES
+                0 <= signed32(o1)
+                AND
+                  temporary_size_obligation(
+                    rp, up, mp,
+                    n, un, o1))
+
+END powm_Powm_redcifyqtvc

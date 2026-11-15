@@ -1,0 +1,111 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1988_a2:
+% for f(x) = exp(x^2), an open interval admits a nonzero differentiable real
+% function g satisfying the erroneous identity (f*g)' = f'*g'. This file
+% contains no proof.
+
+putnam_1988_a2: THEORY
+BEGIN
+  real_function: TYPE = [real -> real]
+  real_sequence: TYPE = [nat -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  nat_factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * nat_factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  exponential_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        exponential_partial(x, count - 1)
+          + safe_div(
+              x ^ index,
+              nat_factorial(index) :: real)
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  real_exponential(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat):
+            exponential_partial(x, count),
+          value))
+
+  given_function: real_function =
+    LAMBDA (x: real): real_exponential(x ^ 2)
+
+  has_derivative_at(
+      f: real_function,
+      derivative, x: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (delta: posreal):
+        FORALL (h: real):
+          (NOT (h = 0) AND abs(h) < delta)
+            IMPLIES
+              abs(
+                f(x + h) - f(x)
+                  - derivative * h)
+                < epsilon_value * abs(h)
+
+  differentiable_at(f: real_function, x: real): bool =
+    EXISTS (derivative: real):
+      has_derivative_at(f, derivative, x)
+
+  derivative_value(f: real_function, x: real): real =
+    IF differentiable_at(f, x) THEN
+      epsilon(
+        LAMBDA (derivative: real):
+          has_derivative_at(f, derivative, x))
+    ELSE
+      0
+    ENDIF
+
+  in_open_interval(x, a, b: real): bool =
+    a < x AND x < b
+
+  differentiable_on_open_interval(
+      f: real_function,
+      a, b: real): bool =
+    FORALL (x: real):
+      in_open_interval(x, a, b)
+        IMPLIES differentiable_at(f, x)
+
+  putnam_1988_a2_solution: bool = TRUE
+
+  putnam_1988_a2: bool =
+    (EXISTS (a, b: real), (g: real_function):
+      a < b
+        AND (EXISTS (x: real):
+          in_open_interval(x, a, b) AND g(x) /= 0)
+        AND differentiable_on_open_interval(g, a, b)
+        AND (FORALL (x: real):
+          in_open_interval(x, a, b)
+            IMPLIES
+              derivative_value(
+                LAMBDA (y: real):
+                  given_function(y) * g(y),
+                x)
+              =
+              derivative_value(given_function, x)
+                * derivative_value(g, x)))
+    IFF putnam_1988_a2_solution
+END putnam_1988_a2

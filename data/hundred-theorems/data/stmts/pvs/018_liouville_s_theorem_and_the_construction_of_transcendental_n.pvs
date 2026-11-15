@@ -1,0 +1,156 @@
+% Statement-only formalization of "Liouville's Theorem and the Construction of Transcendental
+% Numbers" from Hundred Theorems item 018. This file contains no proof.
+
+hundred_theorems_018: THEORY
+BEGIN
+  digit_sequence: TYPE = [nat -> int]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  nat_factorial(n: nat): RECURSIVE nat =
+    IF n = 0 THEN
+      1
+    ELSE
+      n * nat_factorial(n - 1)
+    ENDIF
+  MEASURE n
+
+  integer_polynomial_value(
+      coefficients: [nat -> int],
+      x: real,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET k: nat = count - 1 IN
+        integer_polynomial_value(coefficients, x, count - 1)
+          + (coefficients(k) :: real) * x ^ k
+    ENDIF
+  MEASURE count
+
+  algebraic_real(x: real): bool =
+    EXISTS (degree: nat):
+      EXISTS (coefficients: [nat -> int]):
+        NOT (coefficients(degree) = 0)
+          AND integer_polynomial_value(
+            coefficients, x, degree + 1) = 0
+
+  transcendental_real(x: real): bool =
+    NOT algebraic_real(x)
+
+  irrational_real(x: real): bool =
+    NOT rational?(x)
+
+  liouville_lower_bound(x: real): bool =
+    EXISTS (exponent: nat):
+      EXISTS (constant: real):
+        constant > 0
+          AND FORALL (p, q: int):
+            q > 0 IMPLIES
+              abs(x - safe_div((p :: real), (q :: real)))
+                > safe_div(
+                    constant,
+                    (q :: real) ^ exponent)
+
+  liouville_approximation_theorem: bool =
+    FORALL (x: real):
+      (algebraic_real(x) AND irrational_real(x))
+        IMPLIES liouville_lower_bound(x)
+
+  liouville_number(x: real): bool =
+    FORALL (exponent: nat):
+      EXISTS (p, q: int):
+        q > 1
+          AND NOT (
+            x = safe_div((p :: real), (q :: real)))
+          AND abs(
+            x - safe_div((p :: real), (q :: real)))
+              < safe_div(
+                  1,
+                  (q :: real) ^ exponent)
+
+  liouville_numbers_are_transcendental: bool =
+    FORALL (x: real):
+      liouville_number(x)
+        IMPLIES transcendental_real(x)
+
+  valid_standard_digits(
+      digits: digit_sequence,
+      base: int): bool =
+    base > 1
+      AND FORALL (index: nat):
+        0 <= digits(index)
+          AND digits(index) < base
+
+  frequently_nonzero(digits: digit_sequence): bool =
+    FORALL (cutoff: nat):
+      EXISTS (index: nat):
+        cutoff <= index
+          AND NOT (digits(index) = 0)
+
+  standard_liouville_partial_sum(
+      digits: digit_sequence,
+      base: int,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET k: nat = count - 1 IN
+        standard_liouville_partial_sum(
+          digits, base, count - 1)
+          + safe_div(
+              (digits(k) :: real),
+              (base :: real) ^ nat_factorial(count))
+    ENDIF
+  MEASURE count
+
+  converges_to(
+      sequence: [nat -> real],
+      value: real): bool =
+    FORALL (eps: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < eps
+
+  standard_liouville_value(
+      digits: digit_sequence,
+      base: int,
+      value: real): bool =
+    converges_to(
+      (LAMBDA (count: nat):
+        standard_liouville_partial_sum(
+          digits, base, count)),
+      value)
+
+  standard_liouville_construction: bool =
+    FORALL (digits: digit_sequence), (base: int):
+      (valid_standard_digits(digits, base)
+        AND frequently_nonzero(digits))
+      IMPLIES
+        EXISTS (value: real):
+          standard_liouville_value(
+            digits, base, value)
+            AND liouville_number(value)
+            AND transcendental_real(value)
+
+  unit_digits(index: nat): int = 1
+
+  liouville_constant_construction: bool =
+    EXISTS (value: real):
+      standard_liouville_value(
+        unit_digits, 10, value)
+        AND liouville_number(value)
+        AND transcendental_real(value)
+
+  liouville_s_theorem_and_the_construction_of_transcendental_numbers: bool =
+    liouville_approximation_theorem
+      AND liouville_numbers_are_transcendental
+      AND standard_liouville_construction
+      AND liouville_constant_construction
+END hundred_theorems_018

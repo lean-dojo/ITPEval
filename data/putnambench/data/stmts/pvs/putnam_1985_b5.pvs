@@ -1,0 +1,226 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1985_b5:
+% assuming the Gaussian integral equals sqrt(pi), the improper integral of
+% t^(-1/2) * exp(-1985 * (t + t^(-1))) on the positive real axis equals
+% sqrt(pi / 1985) * exp(-3970). This file contains no proof.
+
+putnam_1985_b5: THEORY
+BEGIN
+  real_function: TYPE = [real -> real]
+  real_sequence: TYPE = [nat -> real]
+  positive_real_function: TYPE = [posreal -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  nat_factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * nat_factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  alternating_sign(index: nat): RECURSIVE real =
+    IF index = 0 THEN
+      1
+    ELSE
+      -alternating_sign(index - 1)
+    ENDIF
+  MEASURE index
+
+  exponential_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        exponential_partial(x, count - 1)
+          + safe_div(
+              x ^ index,
+              nat_factorial(index) :: real)
+    ENDIF
+  MEASURE count
+
+  leibniz_partial_sum(count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        leibniz_partial_sum(count - 1)
+          + safe_div(
+              alternating_sign(index),
+              (2 * index + 1) :: real)
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  real_exponential(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat):
+            exponential_partial(x, count),
+          value))
+
+  is_pi(value: real): bool =
+    converges_to(
+      LAMBDA (count: nat):
+        4 * leibniz_partial_sum(count),
+      value)
+
+  pi: real =
+    epsilon(
+      LAMBDA (value: real):
+        is_pi(value))
+
+  nonnegative_sqrt(x: real): real =
+    IF x >= 0 THEN
+      epsilon(
+        LAMBDA (root: real):
+          root >= 0 AND root * root = x)
+    ELSE
+      0
+    ENDIF
+
+  inverse_sqrt_on_positive(t: real): real =
+    IF t > 0 THEN
+      safe_div(1, nonnegative_sqrt(t))
+    ELSE
+      0
+    ENDIF
+
+  gaussian_integrand(x: real): real =
+    real_exponential(-(x ^ 2))
+
+  target_integrand(t: real): real =
+    inverse_sqrt_on_positive(t)
+      * real_exponential(
+          -1985 * (t + safe_div(1, t)))
+
+  valid_tagged_partition(
+      left, right: real,
+      points, tags: real_sequence,
+      count: nat): bool =
+    count > 0
+      AND points(0) = left
+      AND points(count) = right
+      AND FORALL (index: nat):
+        index < count IMPLIES
+          (points(index) < points(index + 1)
+            AND points(index) <= tags(index)
+            AND tags(index) <= points(index + 1))
+
+  mesh_less_than(
+      points: real_sequence,
+      count: nat,
+      bound: real): bool =
+    FORALL (index: nat):
+      index < count IMPLIES
+        points(index + 1) - points(index) < bound
+
+  riemann_sum(
+      function_value: real_function,
+      points, tags: real_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      riemann_sum(
+        function_value, points, tags, count - 1)
+        + function_value(tags(count - 1))
+            * (points(count) - points(count - 1))
+    ENDIF
+  MEASURE count
+
+  has_interval_integral(
+      function_value: real_function,
+      left, right, integral_value: real): bool =
+    left < right
+      AND FORALL (epsilon_value: posreal):
+        EXISTS (mesh_bound: posreal):
+          FORALL
+              (points, tags: real_sequence),
+              (count: nat):
+            (valid_tagged_partition(
+                left, right, points, tags, count)
+              AND mesh_less_than(
+                points, count, mesh_bound))
+            IMPLIES
+              abs(
+                riemann_sum(
+                  function_value, points, tags, count)
+                  - integral_value)
+                < epsilon_value
+
+  interval_integral(
+      function_value: real_function,
+      left, right: real): real =
+    IF left = right THEN
+      0
+    ELSIF left < right THEN
+      IF EXISTS (integral_value: real):
+          has_interval_integral(
+            function_value, left, right, integral_value)
+      THEN
+        epsilon(
+          LAMBDA (integral_value: real):
+            has_interval_integral(
+              function_value, left, right, integral_value))
+      ELSE
+        0
+      ENDIF
+    ELSE
+      IF EXISTS (integral_value: real):
+          has_interval_integral(
+            function_value, right, left, integral_value)
+      THEN
+        -epsilon(
+          LAMBDA (integral_value: real):
+            has_interval_integral(
+              function_value, right, left, integral_value))
+      ELSE
+        0
+      ENDIF
+    ENDIF
+
+  converges_at_real_top(
+      values: positive_real_function,
+      limit_value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: posreal):
+        FORALL (radius: posreal):
+          cutoff <= radius IMPLIES
+            abs(values(radius) - limit_value) < epsilon_value
+
+  gaussian_integral_value(value: real): bool =
+    converges_at_real_top(
+      LAMBDA (radius: posreal):
+        interval_integral(
+          gaussian_integrand, -radius, radius),
+      value)
+
+  target_integral_value(value: real): bool =
+    converges_at_real_top(
+      LAMBDA (radius: posreal):
+        interval_integral(
+          target_integrand, 0, radius),
+      value)
+
+  putnam_1985_b5_solution: real =
+    nonnegative_sqrt(safe_div(pi, 1985))
+      * real_exponential(-3970)
+
+  putnam_1985_b5: bool =
+    gaussian_integral_value(nonnegative_sqrt(pi))
+      IMPLIES
+        target_integral_value(putnam_1985_b5_solution)
+END putnam_1985_b5

@@ -1,0 +1,143 @@
+% Statement-only formalization of the Thousand Theorems artifact Q7432915,
+% "Schroeder–Bernstein theorem for measurable spaces": measurable embeddings
+% in both directions yield a measurable equivalence. This file contains no proof.
+
+schroeder_bernstein_measurable_spaces_Q7432915[
+  A: TYPE,
+  B: TYPE
+]: THEORY
+BEGIN
+  a_set: TYPE = [A -> bool]
+  b_set: TYPE = [B -> bool]
+  a_set_sequence: TYPE = [nat -> a_set]
+  b_set_sequence: TYPE = [nat -> b_set]
+  a_sigma_algebra: TYPE = [a_set -> bool]
+  b_sigma_algebra: TYPE = [b_set -> bool]
+
+  a_full_set: a_set =
+    LAMBDA (x: A): TRUE
+
+  b_full_set: b_set =
+    LAMBDA (y: B): TRUE
+
+  a_complement(value: a_set): a_set =
+    LAMBDA (x: A): NOT value(x)
+
+  b_complement(value: b_set): b_set =
+    LAMBDA (y: B): NOT value(y)
+
+  a_countable_union(values: a_set_sequence): a_set =
+    LAMBDA (x: A):
+      EXISTS (index: nat): values(index)(x)
+
+  b_countable_union(values: b_set_sequence): b_set =
+    LAMBDA (y: B):
+      EXISTS (index: nat): values(index)(y)
+
+  is_a_sigma_algebra(SigmaA: a_sigma_algebra): bool =
+    SigmaA(a_full_set)
+      AND (FORALL (value: a_set):
+        SigmaA(value) IMPLIES
+          SigmaA(a_complement(value)))
+      AND (FORALL (values: a_set_sequence):
+        (FORALL (index: nat):
+          SigmaA(values(index)))
+        IMPLIES
+          SigmaA(a_countable_union(values)))
+
+  is_b_sigma_algebra(SigmaB: b_sigma_algebra): bool =
+    SigmaB(b_full_set)
+      AND (FORALL (value: b_set):
+        SigmaB(value) IMPLIES
+          SigmaB(b_complement(value)))
+      AND (FORALL (values: b_set_sequence):
+        (FORALL (index: nat):
+          SigmaB(values(index)))
+        IMPLIES
+          SigmaB(b_countable_union(values)))
+
+  injective_ab(f: [A -> B]): bool =
+    FORALL (x, y: A):
+      f(x) = f(y) IMPLIES x = y
+
+  injective_ba(g: [B -> A]): bool =
+    FORALL (x, y: B):
+      g(x) = g(y) IMPLIES x = y
+
+  image_ab(f: [A -> B], value: a_set): b_set =
+    LAMBDA (y: B):
+      EXISTS (x: A):
+        value(x) AND f(x) = y
+
+  image_ba(g: [B -> A], value: b_set): a_set =
+    LAMBDA (x: A):
+      EXISTS (y: B):
+        value(y) AND g(y) = x
+
+  preimage_ab(f: [A -> B], value: b_set): a_set =
+    LAMBDA (x: A): value(f(x))
+
+  preimage_ba(g: [B -> A], value: a_set): b_set =
+    LAMBDA (y: B): value(g(y))
+
+  measurable_ab(
+      f: [A -> B],
+      SigmaA: a_sigma_algebra,
+      SigmaB: b_sigma_algebra): bool =
+    FORALL (value: b_set):
+      SigmaB(value) IMPLIES
+        SigmaA(preimage_ab(f, value))
+
+  measurable_ba(
+      g: [B -> A],
+      SigmaA: a_sigma_algebra,
+      SigmaB: b_sigma_algebra): bool =
+    FORALL (value: a_set):
+      SigmaA(value) IMPLIES
+        SigmaB(preimage_ba(g, value))
+
+  measurable_embedding_ab(
+      f: [A -> B],
+      SigmaA: a_sigma_algebra,
+      SigmaB: b_sigma_algebra): bool =
+    injective_ab(f)
+      AND measurable_ab(f, SigmaA, SigmaB)
+      AND (FORALL (value: a_set):
+        SigmaA(value) IMPLIES
+          SigmaB(image_ab(f, value)))
+
+  measurable_embedding_ba(
+      g: [B -> A],
+      SigmaA: a_sigma_algebra,
+      SigmaB: b_sigma_algebra): bool =
+    injective_ba(g)
+      AND measurable_ba(g, SigmaA, SigmaB)
+      AND (FORALL (value: b_set):
+        SigmaB(value) IMPLIES
+          SigmaA(image_ba(g, value)))
+
+  measurable_equivalence(
+      h: [A -> B],
+      k: [B -> A],
+      SigmaA: a_sigma_algebra,
+      SigmaB: b_sigma_algebra): bool =
+    (FORALL (x: A): k(h(x)) = x)
+      AND (FORALL (y: B): h(k(y)) = y)
+      AND measurable_ab(h, SigmaA, SigmaB)
+      AND measurable_ba(k, SigmaA, SigmaB)
+
+  schroeder_bernstein_theorem: bool =
+    FORALL
+      (SigmaA: a_sigma_algebra),
+      (SigmaB: b_sigma_algebra),
+      (f: [A -> B]),
+      (g: [B -> A]):
+        (is_a_sigma_algebra(SigmaA)
+          AND is_b_sigma_algebra(SigmaB)
+          AND measurable_embedding_ab(f, SigmaA, SigmaB)
+          AND measurable_embedding_ba(g, SigmaA, SigmaB))
+        IMPLIES
+          EXISTS (h: [A -> B]), (k: [B -> A]):
+            measurable_equivalence(
+              h, k, SigmaA, SigmaB)
+END schroeder_bernstein_measurable_spaces_Q7432915

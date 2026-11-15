@@ -1,0 +1,237 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2019_b4:
+% every twice continuously differentiable real function satisfying the stated
+% two partial differential equations has mixed unit-square differences with
+% infimum 2 times the natural logarithm of 2 minus 1/2, independently of the
+% function. This file contains no proof.
+
+putnam_2019_b4: THEORY
+BEGIN
+  point: TYPE = [# x_coord: real, y_coord: real #]
+  gradient: TYPE = [# dx: real, dy: real #]
+  hessian: TYPE =
+    [# dxx: real, dxy: real, dyx: real, dyy: real #]
+
+  scalar_field: TYPE = [point -> real]
+  gradient_field: TYPE = [point -> gradient]
+  hessian_field: TYPE = [point -> hessian]
+  real_sequence: TYPE = [nat -> real]
+
+  squared_distance(p, q: point): real =
+    (x_coord(p) - x_coord(q)) ^ 2
+      + (y_coord(p) - y_coord(q)) ^ 2
+
+  gradient_distance_squared(first, second: gradient): real =
+    (dx(first) - dx(second)) ^ 2
+      + (dy(first) - dy(second)) ^ 2
+
+  hessian_distance_squared(first, second: hessian): real =
+    (dxx(first) - dxx(second)) ^ 2
+      + (dxy(first) - dxy(second)) ^ 2
+      + (dyx(first) - dyx(second)) ^ 2
+      + (dyy(first) - dyy(second)) ^ 2
+
+  in_quadrant(p: point): bool =
+    x_coord(p) >= 1 AND y_coord(p) >= 1
+
+  scalar_derivative_error(
+      f: scalar_field,
+      derivative: gradient,
+      p, q: point): real =
+    f(q) - f(p)
+      - dx(derivative) * (x_coord(q) - x_coord(p))
+      - dy(derivative) * (y_coord(q) - y_coord(p))
+
+  has_scalar_frechet_derivative_at(
+      f: scalar_field,
+      derivative: gradient,
+      p: point): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (delta: posreal):
+        FORALL (q: point):
+          (q /= p
+            AND squared_distance(q, p) < delta ^ 2)
+          IMPLIES
+            scalar_derivative_error(f, derivative, p, q) ^ 2
+              < epsilon_value ^ 2 * squared_distance(q, p)
+
+  gradient_derivative_error_squared(
+      f: gradient_field,
+      derivative: hessian,
+      p, q: point): real =
+    (dx(f(q)) - dx(f(p))
+      - dxx(derivative) * (x_coord(q) - x_coord(p))
+      - dxy(derivative) * (y_coord(q) - y_coord(p))) ^ 2
+      + (dy(f(q)) - dy(f(p))
+        - dyx(derivative) * (x_coord(q) - x_coord(p))
+        - dyy(derivative) * (y_coord(q) - y_coord(p))) ^ 2
+
+  has_gradient_frechet_derivative_at(
+      f: gradient_field,
+      derivative: hessian,
+      p: point): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (delta: posreal):
+        FORALL (q: point):
+          (q /= p
+            AND squared_distance(q, p) < delta ^ 2)
+          IMPLIES
+            gradient_derivative_error_squared(
+              f, derivative, p, q)
+              < epsilon_value ^ 2 * squared_distance(q, p)
+
+  continuous_scalar_on_quadrant(f: scalar_field): bool =
+    FORALL (p: point):
+      in_quadrant(p) IMPLIES
+        FORALL (epsilon_value: posreal):
+          EXISTS (delta: posreal):
+            FORALL (q: point):
+              (in_quadrant(q)
+                AND squared_distance(q, p) < delta ^ 2)
+              IMPLIES
+                (f(q) - f(p)) ^ 2 < epsilon_value ^ 2
+
+  continuous_gradient_on_quadrant(f: gradient_field): bool =
+    FORALL (p: point):
+      in_quadrant(p) IMPLIES
+        FORALL (epsilon_value: posreal):
+          EXISTS (delta: posreal):
+            FORALL (q: point):
+              (in_quadrant(q)
+                AND squared_distance(q, p) < delta ^ 2)
+              IMPLIES
+                gradient_distance_squared(f(q), f(p))
+                  < epsilon_value ^ 2
+
+  continuous_hessian_on_quadrant(f: hessian_field): bool =
+    FORALL (p: point):
+      in_quadrant(p) IMPLIES
+        FORALL (epsilon_value: posreal):
+          EXISTS (delta: posreal):
+            FORALL (q: point):
+              (in_quadrant(q)
+                AND squared_distance(q, p) < delta ^ 2)
+              IMPLIES
+                hessian_distance_squared(f(q), f(p))
+                  < epsilon_value ^ 2
+
+  twice_continuously_differentiable_on_quadrant(
+      f: scalar_field,
+      first: gradient_field,
+      second: hessian_field): bool =
+    continuous_scalar_on_quadrant(f)
+      AND continuous_gradient_on_quadrant(first)
+      AND continuous_hessian_on_quadrant(second)
+      AND FORALL (p: point):
+        in_quadrant(p) IMPLIES
+          (has_scalar_frechet_derivative_at(f, first(p), p)
+            AND has_gradient_frechet_derivative_at(
+              first, second(p), p))
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  nat_factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * nat_factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  exponential_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        exponential_partial(x, count - 1)
+          + safe_div(
+              x ^ index,
+              nat_factorial(index) :: real)
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  real_exponential(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat):
+            exponential_partial(x, count),
+          value))
+
+  natural_log(x: real): real =
+    IF x > 0 THEN
+      epsilon(
+        LAMBDA (value: real):
+          real_exponential(value) = x)
+    ELSE
+      0
+    ENDIF
+
+  satisfies_differential_equations(
+      first: gradient_field,
+      second: hessian_field): bool =
+    FORALL (p: point):
+      in_quadrant(p) IMPLIES
+        (x_coord(p) * dx(first(p))
+          + y_coord(p) * dy(first(p))
+          = x_coord(p) * y_coord(p)
+              * natural_log(x_coord(p) * y_coord(p))
+        AND x_coord(p) ^ 2 * dxx(second(p))
+          + y_coord(p) ^ 2 * dyy(second(p))
+          = x_coord(p) * y_coord(p))
+
+  admissible(f: scalar_field): bool =
+    EXISTS
+        (first: gradient_field),
+        (second: hessian_field):
+      twice_continuously_differentiable_on_quadrant(
+        f, first, second)
+        AND satisfies_differential_equations(first, second)
+
+  plane_point(x, y: real): point =
+    (# x_coord := x, y_coord := y #)
+
+  mixed_square_difference(f: scalar_field, s: real): real =
+    f(plane_point(s + 1, s + 1))
+      - f(plane_point(s + 1, s))
+      - f(plane_point(s, s + 1))
+      + f(plane_point(s, s))
+
+  attainable_difference(
+      f: scalar_field,
+      value: real): bool =
+    EXISTS (s: real):
+      s >= 1 AND value = mixed_square_difference(f, s)
+
+  is_lower_bound(
+      f: scalar_field,
+      bound: real): bool =
+    FORALL (value: real):
+      attainable_difference(f, value) IMPLIES bound <= value
+
+  is_infimum(
+      f: scalar_field,
+      value: real): bool =
+    is_lower_bound(f, value)
+      AND FORALL (bound: real):
+        is_lower_bound(f, bound) IMPLIES bound <= value
+
+  putnam_2019_b4_solution: real =
+    2 * natural_log(2) - 1 / 2
+
+  putnam_2019_b4_statement: bool =
+    FORALL (f: scalar_field):
+      admissible(f) IMPLIES
+        is_infimum(f, putnam_2019_b4_solution)
+END putnam_2019_b4

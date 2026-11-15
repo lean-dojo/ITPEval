@@ -1,0 +1,116 @@
+% Statement-only formalization of the VERINA corpus artifact
+% verina_advanced_60, catalog title "partitionEvensOdds": partitioning a
+% natural-number list into its order-preserving even and odd sublists and
+% stating the executable program's correctness contract. This file contains no proof.
+
+verina_advanced_60: THEORY
+BEGIN
+
+  nat_list_pair: TYPE =
+    [# evens: list[nat],
+       odds: list[nat] #]
+
+  append_nat_lists(
+      first, second: list[nat]): RECURSIVE list[nat] =
+    CASES first OF
+      null:
+        second,
+      cons(head, tail):
+        cons(
+          head,
+          append_nat_lists(tail, second))
+    ENDCASES
+  MEASURE first BY <<
+
+  filter_even(values: list[nat]): RECURSIVE list[nat] =
+    CASES values OF
+      null:
+        null[nat],
+      cons(head, tail):
+        IF mod(head, 2) = 0 THEN
+          cons(head, filter_even(tail))
+        ELSE
+          filter_even(tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  filter_odd(values: list[nat]): RECURSIVE list[nat] =
+    CASES values OF
+      null:
+        null[nat],
+      cons(head, tail):
+        IF mod(head, 2) = 1 THEN
+          cons(head, filter_odd(tail))
+        ELSE
+          filter_odd(tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  all_even(values: list[nat]): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        mod(head, 2) = 0
+          AND all_even(tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  all_odd(values: list[nat]): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        mod(head, 2) = 1
+          AND all_odd(tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  partitionEvensOdds_precond(nums: list[nat]): bool =
+    TRUE
+
+  partitionEvensOdds_helper(
+      nums: list[nat]): RECURSIVE nat_list_pair =
+    CASES nums OF
+      null:
+        (# evens := null[nat],
+           odds := null[nat] #),
+      cons(head, tail):
+        LET partitioned_tail: nat_list_pair =
+              partitionEvensOdds_helper(tail)
+        IN
+          IF mod(head, 2) = 0 THEN
+            (# evens := cons(head, evens(partitioned_tail)),
+               odds := odds(partitioned_tail) #)
+          ELSE
+            (# evens := evens(partitioned_tail),
+               odds := cons(head, odds(partitioned_tail)) #)
+          ENDIF
+    ENDCASES
+  MEASURE nums BY <<
+
+  % The Lean precondition proof is computationally irrelevant. This is the
+  % exact proof-erased recursive partition computation.
+  partitionEvensOdds(nums: list[nat]): nat_list_pair =
+    partitionEvensOdds_helper(nums)
+
+  partitionEvensOdds_postcond(
+      nums: list[nat],
+      result: nat_list_pair): bool =
+    append_nat_lists(evens(result), odds(result))
+        =
+      append_nat_lists(filter_even(nums), filter_odd(nums))
+      AND all_even(evens(result))
+      AND all_odd(odds(result))
+
+  partitionEvensOdds_spec_satisfied: bool =
+    FORALL (nums: list[nat]):
+      partitionEvensOdds_precond(nums)
+        IMPLIES
+          partitionEvensOdds_postcond(
+            nums,
+            partitionEvensOdds(nums))
+
+END verina_advanced_60

@@ -1,0 +1,185 @@
+% Statement-only formalization of the VERINA corpus artifact
+% verina_basic_102, catalog title "twoSum": a deterministic nested scan returns
+% the lexicographically first pair of integer-array indices whose values sum
+% to the target. This file contains no proof.
+
+verina_basic_102: THEORY
+BEGIN
+
+  index_pair: TYPE =
+    [# first_index: nat,
+       second_index: nat #]
+
+  index_pair_option: DATATYPE
+  BEGIN
+    NoIndexPair: NoIndexPair?
+    SomeIndexPair(index_pair_value: index_pair): SomeIndexPair?
+  END index_pair_option
+
+  int_list_length(
+      values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        int_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  int_list_nth_default(
+      index: nat,
+      values: list[int]): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          int_list_nth_default(index - 1, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  all_sums_differ(
+      first: int,
+      remaining: list[int],
+      target: int): RECURSIVE bool =
+    CASES remaining OF
+      null:
+        TRUE,
+      cons(current, rest):
+        first + current /= target
+          AND all_sums_differ(first, rest, target)
+    ENDCASES
+  MEASURE remaining BY <<
+
+  pairwise_sums_differ(
+      values: list[int],
+      target: int): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(first, remaining):
+        all_sums_differ(first, remaining, target)
+          AND pairwise_sums_differ(remaining, target)
+    ENDCASES
+  MEASURE values BY <<
+
+  twoSum_precond(
+      nums: list[int],
+      target: int): bool =
+    int_list_length(nums) > 1
+      AND NOT pairwise_sums_differ(nums, target)
+
+  twoSum_inner(
+      first: int,
+      remaining: list[int],
+      target: int,
+      first_position, current_position: nat):
+        RECURSIVE index_pair_option =
+    CASES remaining OF
+      null:
+        NoIndexPair,
+      cons(current, rest):
+        IF first + current = target THEN
+          SomeIndexPair(
+            (# first_index := first_position,
+               second_index := current_position #))
+        ELSE
+          twoSum_inner(
+            first,
+            rest,
+            target,
+            first_position,
+            current_position + 1)
+        ENDIF
+    ENDCASES
+  MEASURE remaining BY <<
+
+  twoSum_outer(
+      remaining: list[int],
+      target: int,
+      first_position: nat):
+        RECURSIVE index_pair_option =
+    CASES remaining OF
+      null:
+        NoIndexPair,
+      cons(first, rest):
+        LET inner_result: index_pair_option =
+              twoSum_inner(
+                first,
+                rest,
+                target,
+                first_position,
+                first_position + 1)
+        IN
+          CASES inner_result OF
+            NoIndexPair:
+              twoSum_outer(
+                rest,
+                target,
+                first_position + 1),
+            SomeIndexPair(pair):
+              SomeIndexPair(pair)
+          ENDCASES
+    ENDCASES
+  MEASURE remaining BY <<
+
+  % The Lean proof argument is computationally irrelevant. Under
+  % twoSum_precond the NoIndexPair branch is unreachable, so the fallback does
+  % not alter the source function's proof-restricted executable semantics.
+  twoSum(
+      nums: list[int],
+      target: int): index_pair =
+    LET search_result: index_pair_option =
+          twoSum_outer(nums, target, 0)
+    IN
+      CASES search_result OF
+        NoIndexPair:
+          (# first_index := 0,
+             second_index := 0 #),
+        SomeIndexPair(pair):
+          pair
+      ENDCASES
+
+  twoSum_postcond(
+      nums: list[int],
+      target: int,
+      result: index_pair): bool =
+    LET i: nat = first_index(result),
+        j: nat = second_index(result),
+        size: nat = int_list_length(nums)
+    IN
+      i < j
+        AND j < size
+        AND int_list_nth_default(i, nums)
+              + int_list_nth_default(j, nums)
+              = target
+        AND
+          (FORALL (earlier_i, later_j: nat):
+            (earlier_i < i
+              AND earlier_i < later_j
+              AND later_j < size)
+            IMPLIES
+              int_list_nth_default(earlier_i, nums)
+                + int_list_nth_default(later_j, nums)
+                /= target)
+        AND
+          (FORALL (between: nat):
+            (i < between AND between < j)
+            IMPLIES
+              int_list_nth_default(i, nums)
+                + int_list_nth_default(between, nums)
+                /= target)
+
+  twoSum_spec_satisfied: bool =
+    FORALL (nums: list[int], target: int):
+      twoSum_precond(nums, target)
+        IMPLIES
+          twoSum_postcond(
+            nums,
+            target,
+            twoSum(nums, target))
+
+END verina_basic_102

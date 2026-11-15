@@ -1,0 +1,111 @@
+% Statement-only formalization of the VERINA corpus artifact
+% verina_advanced_69, catalog title "searchInsert": a deterministic scan of a
+% strictly increasing integer list returns the target's position or its
+% sorted insertion position, with the specified bounds contract. This file
+% contains no proof.
+
+verina_advanced_69: THEORY
+BEGIN
+
+  int_list_length(values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        int_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  all_strictly_greater_than(
+      lower: int,
+      values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        lower < head
+          AND all_strictly_greater_than(lower, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  pairwise_strictly_increasing(
+      values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        all_strictly_greater_than(head, tail)
+          AND pairwise_strictly_increasing(tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  searchInsert_precond(
+      xs: list[int],
+      target: int): bool =
+    pairwise_strictly_increasing(xs)
+
+  searchInsert_helper(
+      ys: list[int],
+      target: int,
+      index: nat): RECURSIVE nat =
+    CASES ys OF
+      null:
+        index,
+      cons(current, rest):
+        IF target <= current THEN
+          index
+        ELSE
+          searchInsert_helper(
+            rest,
+            target,
+            index + 1)
+        ENDIF
+    ENDCASES
+  MEASURE ys BY <<
+
+  % The source precondition proof argument is computationally irrelevant.
+  % Calling the helper on the empty list also returns zero, so this definition
+  % is extensionally identical to the source's outer empty/nonempty match.
+  searchInsert(
+      xs: list[int],
+      target: int): nat =
+    searchInsert_helper(xs, target, 0)
+
+  int_list_nth_default(
+      index: nat,
+      values: list[int]): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          int_list_nth_default(index - 1, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  searchInsert_postcond(
+      xs: list[int],
+      target: int,
+      result: nat): bool =
+    result <= int_list_length(xs)
+      AND
+        (FORALL (i: nat):
+          i < result IMPLIES
+            int_list_nth_default(i, xs) < target)
+      AND
+        (result < int_list_length(xs) IMPLIES
+          target <= int_list_nth_default(result, xs))
+
+  searchInsert_spec_satisfied: bool =
+    FORALL (xs: list[int], target: int):
+      searchInsert_precond(xs, target)
+        IMPLIES
+          searchInsert_postcond(
+            xs,
+            target,
+            searchInsert(xs, target))
+
+END verina_advanced_69

@@ -1,0 +1,206 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/kmp_KnuthMorrisPratt_kmpqtvc: the Knuth-Morris-Pratt search-loop
+% verification condition for fallback matching and first-occurrence
+% correctness. This file contains no proof.
+
+kmp_KnuthMorrisPratt_kmpqtvc[
+  char: TYPE+,
+  char_default: char
+]: THEORY
+BEGIN
+
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  nth_int(values: list[int], index: int): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF int_to_nat(index) = 0 THEN
+          head
+        ELSE
+          nth_int(tail, int_to_nat(index) - 1)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  nth_char(values: list[char], index: int): RECURSIVE char =
+    CASES values OF
+      null:
+        char_default,
+      cons(head, tail):
+        IF int_to_nat(index) = 0 THEN
+          head
+        ELSE
+          nth_char(tail, int_to_nat(index) - 1)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  matches1(
+      a1: list[char],
+      i1: int,
+      a2: list[char],
+      i2, count: int): bool =
+    (0 <= i1 AND i1 <= length(a1) - count)
+      AND
+    (0 <= i2 AND i2 <= length(a2) - count)
+      AND
+    (FORALL (offset: int):
+      (0 <= offset AND offset < count)
+        IMPLIES
+          nth_char(a1, i1 + offset)
+            =
+          nth_char(a2, i2 + offset))
+
+  is_next(p: list[char], j, border: int): bool =
+    (0 <= border AND border < j)
+      AND matches1(p, j - border, p, 0, border)
+      AND
+    (FORALL (candidate: int):
+      (border < candidate AND candidate < j)
+        IMPLIES
+          NOT matches1(p, j - candidate, p, 0, candidate))
+
+  first_occur(
+      p, a: list[char],
+      result: int): bool =
+    ((0 <= result AND result < length(a))
+      IMPLIES matches1(a, result, p, 0, length(p)))
+      AND
+    (FORALL (position: int):
+      (0 <= position AND position < result)
+        IMPLIES
+          NOT matches1(a, position, p, 0, length(p)))
+
+  next_table_valid(
+      p: list[char],
+      next: list[int]): bool =
+    length(next) = length(p)
+      AND
+    (FORALL (j: int):
+      (0 < j AND j < length(p))
+        IMPLIES is_next(p, j, nth_int(next, j)))
+
+  search_invariant(
+      p, a: list[char],
+      m, n, j, i: int): bool =
+    (0 <= j AND j <= m)
+      AND j <= i
+      AND i <= n
+      AND matches1(a, i - j, p, 0, j)
+      AND
+    (FORALL (position: int):
+      (0 <= position AND position < i - j)
+        IMPLIES
+          NOT matches1(a, position, p, 0, m))
+
+  initial_invariant(
+      p, a: list[char],
+      m, n: int): bool =
+    (0 <= 0 AND 0 <= m)
+      AND (0 <= 0 AND 0 <= n)
+      AND matches1(a, 0 - 0, p, 0, 0)
+      AND
+    (FORALL (position: int):
+      (0 <= position AND position < 0 - 0)
+        IMPLIES
+          NOT matches1(a, position, p, 0, m))
+
+  equal_character_step(
+      p, a: list[char],
+      m, n, j, i: int): bool =
+    ((0 <= n - i AND n - (i + 1) < n - i)
+      OR
+     (n - i = n - (i + 1)
+       AND 0 <= j
+       AND j + 1 < j))
+      AND
+    search_invariant(p, a, m, n, j + 1, i + 1)
+
+  zero_border_step(
+      p, a: list[char],
+      m, n, j, i: int): bool =
+    ((0 <= n - i AND n - (i + 1) < n - i)
+      OR
+     (n - i = n - (i + 1)
+       AND 0 <= j
+       AND j < j))
+      AND
+    search_invariant(p, a, m, n, j, i + 1)
+
+  fallback_step(
+      p, a: list[char],
+      m, n, j, i: int,
+      next: list[int]): bool =
+    (0 <= j AND j < length(next))
+      AND
+    ((0 <= n - i AND n - i < n - i)
+      OR
+     (0 <= j AND nth_int(next, j) < j))
+      AND
+    search_invariant(
+      p, a, m, n, nth_int(next, j), i)
+
+  loop_or_exit(
+      p, a: list[char],
+      m, n, j, i: int,
+      next: list[int],
+      continue: bool): bool =
+    IF continue = TRUE THEN
+      (0 <= j AND j < length(p))
+        AND (0 <= i AND i < length(a))
+        AND
+      IF nth_char(a, i) = nth_char(p, j) THEN
+        equal_character_step(p, a, m, n, j, i)
+      ELSIF j = 0 THEN
+        zero_border_step(p, a, m, n, j, i)
+      ELSE
+        fallback_step(p, a, m, n, j, i, next)
+      ENDIF
+    ELSE
+      FORALL (result: int):
+        (IF j = m THEN
+           result = i - m
+         ELSE
+           result = i
+         ENDIF)
+          IMPLIES first_occur(p, a, result)
+    ENDIF
+
+  loop_step(
+      p, a: list[char],
+      m, n, j, i: int,
+      next: list[int]): bool =
+    FORALL (continue: bool):
+      (IF j < m THEN
+         continue = (IF i < n THEN TRUE ELSE FALSE ENDIF)
+       ELSE
+         continue = FALSE
+       ENDIF)
+        IMPLIES
+          loop_or_exit(
+            p, a, m, n, j, i, next, continue)
+
+  kmp_vc: bool =
+    FORALL (p, a: list[char]):
+      1 <= length(p)
+        IMPLIES
+          LET m: int = length(p),
+              n: int = length(a)
+          IN
+            1 <= length(p)
+              AND
+            (FORALL (next: list[int]):
+              next_table_valid(p, next)
+                IMPLIES
+                  initial_invariant(p, a, m, n)
+                    AND
+                  (FORALL (j, i: int):
+                    search_invariant(p, a, m, n, j, i)
+                      IMPLIES
+                        loop_step(
+                          p, a, m, n, j, i, next)))
+
+END kmp_KnuthMorrisPratt_kmpqtvc

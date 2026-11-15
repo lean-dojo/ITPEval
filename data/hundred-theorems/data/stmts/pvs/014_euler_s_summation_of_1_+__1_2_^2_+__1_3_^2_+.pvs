@@ -1,0 +1,59 @@
+% Statement-only formalization of Hundred Theorems item 014, "Euler's Summation of
+% 1 + (1/2)^2 + (1/3)^2 + ...". The real reciprocal-square series converges to pi
+% squared over six, with pi characterized by the Leibniz series. This file contains
+% no proof.
+
+euler_s_summation_014: THEORY
+BEGIN
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN 0 ELSE numerator / denominator ENDIF
+
+  alternating_sign(index: nat): RECURSIVE real =
+    IF index = 0 THEN
+      1
+    ELSE
+      -alternating_sign(index - 1)
+    ENDIF
+  MEASURE index
+
+  leibniz_partial_sum(count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        leibniz_partial_sum(count - 1)
+          + safe_div(
+              alternating_sign(index),
+              (2 * index + 1) :: real)
+    ENDIF
+  MEASURE count
+
+  reciprocal_square_partial_sum(count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      reciprocal_square_partial_sum(count - 1)
+        + safe_div(1, (count :: real) ^ 2)
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: [nat -> real], value: real): bool =
+    FORALL (eps: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < eps
+
+  is_pi(value: real): bool =
+    converges_to(
+      (LAMBDA (count: nat): 4 * leibniz_partial_sum(count)),
+      value)
+
+  pi: real =
+    epsilon(LAMBDA (value: real): is_pi(value))
+
+  euler_s_summation: bool =
+    converges_to(
+      (LAMBDA (count: nat): reciprocal_square_partial_sum(count)),
+      pi ^ 2 / 6)
+END euler_s_summation_014

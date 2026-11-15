@@ -1,0 +1,292 @@
+% Statement-only formalization of the thousand-theorems corpus artifact Q7433182,
+% "Schwartz–Zippel theorem": the zero density of a nonzero multivariate
+% polynomial over an integral domain is bounded by the maximum normalized
+% coordinate-degree sum of a monomial in its support. This file contains no proof.
+
+Q7433182_schwartz_zippel_theorem[
+  n: nat,
+  R: TYPE+,
+  zero_R, one_R: R,
+  neg_R: [R -> R],
+  add_R, mul_R: [R, R -> R]
+]: THEORY
+BEGIN
+
+  monomial: TYPE = [nat -> nat]
+  point: TYPE = [nat -> R]
+  coefficient_function: TYPE = [monomial -> R]
+  coordinate_family: TYPE = [nat -> list[R]]
+
+  polynomial: TYPE =
+    [# coefficients: coefficient_function,
+       support_list: list[monomial] #]
+
+  element_member(value: R, values: list[R]): RECURSIVE bool =
+    CASES values OF
+      null: FALSE,
+      cons(head, tail):
+        value = head OR element_member(value, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  no_duplicate_elements(values: list[R]): RECURSIVE bool =
+    CASES values OF
+      null: TRUE,
+      cons(head, tail):
+        NOT element_member(head, tail)
+          AND no_duplicate_elements(tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  list_length(values: list[R]): RECURSIVE nat =
+    CASES values OF
+      null: 0,
+      cons(head, tail): 1 + list_length(tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  monomial_member(
+      value: monomial,
+      values: list[monomial]): RECURSIVE bool =
+    CASES values OF
+      null: FALSE,
+      cons(head, tail):
+        value = head OR monomial_member(value, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  no_duplicate_monomials(values: list[monomial]): RECURSIVE bool =
+    CASES values OF
+      null: TRUE,
+      cons(head, tail):
+        NOT monomial_member(head, tail)
+          AND no_duplicate_monomials(tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  supported_below(value: monomial, count: nat): bool =
+    FORALL (index: nat):
+      count <= index IMPLIES value(index) = 0
+
+  exact_support(p: polynomial): bool =
+    no_duplicate_monomials(support_list(p))
+      AND
+    (FORALL (value: monomial):
+      monomial_member(value, support_list(p))
+        IFF coefficients(p)(value) /= zero_R)
+      AND
+    (FORALL (value: monomial):
+      monomial_member(value, support_list(p))
+        IMPLIES supported_below(value, n))
+
+  nonzero_polynomial(p: polynomial): bool =
+    EXISTS (value: monomial):
+      coefficients(p)(value) /= zero_R
+
+  coordinate_sets_valid(
+      sets: coordinate_family,
+      count: nat): RECURSIVE bool =
+    IF count = 0 THEN
+      TRUE
+    ELSE
+      coordinate_sets_valid(sets, count - 1)
+        AND no_duplicate_elements(sets(count - 1))
+    ENDIF
+  MEASURE count
+
+  ring_power(value: R, exponent: nat): RECURSIVE R =
+    IF exponent = 0 THEN
+      one_R
+    ELSE
+      mul_R(ring_power(value, exponent - 1), value)
+    ENDIF
+  MEASURE exponent
+
+  monomial_value(
+      assignment: point,
+      value: monomial,
+      count: nat): RECURSIVE R =
+    IF count = 0 THEN
+      one_R
+    ELSE
+      mul_R(
+        monomial_value(assignment, value, count - 1),
+        ring_power(
+          assignment(count - 1),
+          value(count - 1)))
+    ENDIF
+  MEASURE count
+
+  polynomial_sum(
+      p: polynomial,
+      assignment: point,
+      terms: list[monomial]): RECURSIVE R =
+    CASES terms OF
+      null: zero_R,
+      cons(head, tail):
+        add_R(
+          mul_R(
+            coefficients(p)(head),
+            monomial_value(assignment, head, n)),
+          polynomial_sum(p, assignment, tail))
+    ENDCASES
+  MEASURE terms BY <<
+
+  evaluate(p: polynomial, assignment: point): R =
+    polynomial_sum(p, assignment, support_list(p))
+
+  point_in_box(
+      assignment: point,
+      sets: coordinate_family,
+      count: nat): RECURSIVE bool =
+    IF count = 0 THEN
+      TRUE
+    ELSE
+      point_in_box(assignment, sets, count - 1)
+        AND element_member(
+          assignment(count - 1),
+          sets(count - 1))
+    ENDIF
+  MEASURE count
+
+  same_prefix(
+      left, right: point,
+      count: nat): RECURSIVE bool =
+    IF count = 0 THEN
+      TRUE
+    ELSE
+      same_prefix(left, right, count - 1)
+        AND left(count - 1) = right(count - 1)
+    ENDIF
+  MEASURE count
+
+  is_zero_assignment(
+      p: polynomial,
+      sets: coordinate_family,
+      assignment: point): bool =
+    point_in_box(assignment, sets, n)
+      AND evaluate(p, assignment) = zero_R
+
+  has_zero_cardinality(
+      p: polynomial,
+      sets: coordinate_family,
+      cardinality: nat): bool =
+    EXISTS (enumeration: [below(cardinality) -> point]):
+      (FORALL (index: below(cardinality)):
+        is_zero_assignment(p, sets, enumeration(index)))
+        AND
+      (FORALL (left, right: below(cardinality)):
+        same_prefix(enumeration(left), enumeration(right), n)
+          IMPLIES left = right)
+        AND
+      (FORALL (assignment: point):
+        is_zero_assignment(p, sets, assignment)
+          IMPLIES
+            EXISTS (index: below(cardinality)):
+              same_prefix(
+                enumeration(index),
+                assignment,
+                n))
+
+  coordinate_product(
+      sets: coordinate_family,
+      count: nat): RECURSIVE nat =
+    IF count = 0 THEN
+      1
+    ELSE
+      coordinate_product(sets, count - 1)
+        * list_length(sets(count - 1))
+    ENDIF
+  MEASURE count
+
+  safe_ratio(numerator, denominator: nat): rat =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      (numerator :: rat) / (denominator :: rat)
+    ENDIF
+
+  monomial_score(
+      value: monomial,
+      sets: coordinate_family,
+      count: nat): RECURSIVE rat =
+    IF count = 0 THEN
+      0
+    ELSE
+      monomial_score(value, sets, count - 1)
+        + safe_ratio(
+            value(count - 1),
+            list_length(sets(count - 1)))
+    ENDIF
+  MEASURE count
+
+  maximum_support_score(
+      terms: list[monomial],
+      sets: coordinate_family): RECURSIVE rat =
+    CASES terms OF
+      null: 0,
+      cons(head, tail):
+        LET head_score: rat = monomial_score(head, sets, n),
+            tail_score: rat =
+              maximum_support_score(tail, sets)
+        IN
+          IF head_score <= tail_score THEN
+            tail_score
+          ELSE
+            head_score
+          ENDIF
+    ENDCASES
+  MEASURE terms BY <<
+
+  commutative_integral_domain_laws: bool =
+    zero_R /= one_R
+      AND
+    (FORALL (x, y: R):
+      add_R(x, y) = add_R(y, x))
+      AND
+    (FORALL (x, y, z: R):
+      add_R(add_R(x, y), z) = add_R(x, add_R(y, z)))
+      AND
+    (FORALL (x: R):
+      add_R(x, zero_R) = x
+        AND add_R(x, neg_R(x)) = zero_R)
+      AND
+    (FORALL (x, y: R):
+      mul_R(x, y) = mul_R(y, x))
+      AND
+    (FORALL (x, y, z: R):
+      mul_R(mul_R(x, y), z) = mul_R(x, mul_R(y, z)))
+      AND
+    (FORALL (x: R):
+      mul_R(x, one_R) = x)
+      AND
+    (FORALL (x, y, z: R):
+      mul_R(x, add_R(y, z))
+        = add_R(mul_R(x, y), mul_R(x, z)))
+      AND
+    (FORALL (x, y: R):
+      mul_R(x, y) = zero_R
+        IMPLIES x = zero_R OR y = zero_R)
+
+  schwartz_zippel_sup_sum: bool =
+    commutative_integral_domain_laws
+      IMPLIES
+        FORALL
+          (p: polynomial),
+          (sets: coordinate_family):
+            (exact_support(p)
+              AND nonzero_polynomial(p)
+              AND coordinate_sets_valid(sets, n))
+            IMPLIES
+              EXISTS (zero_count: nat):
+                has_zero_cardinality(p, sets, zero_count)
+                  AND
+                safe_ratio(
+                  zero_count,
+                  coordinate_product(sets, n))
+                  <=
+                maximum_support_score(
+                  support_list(p),
+                  sets)
+
+END Q7433182_schwartz_zippel_theorem

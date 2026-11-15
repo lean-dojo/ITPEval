@@ -1,0 +1,99 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1991_b6:
+% for positive real a and b, the largest real c for which the stated
+% hyperbolic-sine inequality holds is abs(ln(a / b)). This file contains no
+% proof.
+
+putnam_1991_b6: THEORY
+BEGIN
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  nat_factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * nat_factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  exponential_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        exponential_partial(x, count - 1)
+          + safe_div(
+              x ^ index,
+              nat_factorial(index) :: real)
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: [nat -> real], value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  exponential_value(argument, value: real): bool =
+    converges_to(
+      (LAMBDA (count: nat):
+        exponential_partial(argument, count)),
+      value)
+
+  natural_log_value(argument, value: real): bool =
+    argument > 0
+      AND exponential_value(value, argument)
+
+  real_power_value(base, exponent, value: real): bool =
+    base > 0
+      AND EXISTS (log_base: real):
+        natural_log_value(base, log_base)
+          AND exponential_value(exponent * log_base, value)
+
+  hyperbolic_sine_value(argument, value: real): bool =
+    EXISTS (positive_exp, negative_exp: real):
+      exponential_value(argument, positive_exp)
+        AND exponential_value(-argument, negative_exp)
+        AND value = (positive_exp - negative_exp) / 2
+
+  admissible(c, a, b: real): bool =
+    FORALL (u: real):
+      (0 < abs(u) AND abs(u) <= c)
+      IMPLIES
+        FORALL (x: real):
+          (0 < x AND x < 1)
+          IMPLIES
+            EXISTS
+                (a_to_x, b_to_one_minus_x,
+                 sinh_ux, sinh_u_one_minus_x, sinh_u: real):
+              real_power_value(a, x, a_to_x)
+                AND real_power_value(
+                  b, 1 - x, b_to_one_minus_x)
+                AND hyperbolic_sine_value(
+                  u * x, sinh_ux)
+                AND hyperbolic_sine_value(
+                  u * (1 - x), sinh_u_one_minus_x)
+                AND hyperbolic_sine_value(u, sinh_u)
+                AND sinh_u /= 0
+                AND a_to_x * b_to_one_minus_x
+                  <= a * safe_div(sinh_ux, sinh_u)
+                    + b * safe_div(
+                        sinh_u_one_minus_x, sinh_u)
+
+  putnam_1991_b6: bool =
+    FORALL (a, b: real):
+      (a > 0 AND b > 0)
+      IMPLIES
+        EXISTS (log_ratio: real):
+          natural_log_value(
+            safe_div(a, b), log_ratio)
+            AND admissible(abs(log_ratio), a, b)
+            AND (FORALL (c: real):
+              admissible(c, a, b)
+                IMPLIES c <= abs(log_ratio))
+END putnam_1991_b6

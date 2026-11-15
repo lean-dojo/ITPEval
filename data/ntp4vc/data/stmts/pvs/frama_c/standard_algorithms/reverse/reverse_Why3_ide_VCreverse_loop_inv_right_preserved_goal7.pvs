@@ -1,0 +1,161 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% frama_c/standard_algorithms/reverse/reverse_Why3_ide_VCreverse_loop_inv_right_preserved_goal7:
+% a reverse-loop verification condition asserting preservation of the
+% right-hand reversal invariant after swapping the current symmetric array
+% elements, under the stated bounds, memory-validity, integer-range, linkage,
+% unchanged-range, and reversal invariants. This file contains no proof.
+
+reverse_Why3_ide_VCreverse_loop_inv_right_preserved_goal7: THEORY
+BEGIN
+  addr: TYPE = [# base: int, offset: int #]
+  integer_memory: TYPE = [addr -> int]
+  allocation_table: TYPE = [int -> int]
+
+  shift(p: addr, k: int): addr =
+    (# base := base(p), offset := offset(p) + k #)
+
+  shift_sint32(p: addr, k: int): addr =
+    shift(p, k)
+
+  separated(p: addr, p_size: int, q: addr, q_size: int): bool =
+    p_size <= 0
+      OR q_size <= 0
+      OR base(p) /= base(q)
+      OR offset(q) + q_size <= offset(p)
+      OR offset(p) + p_size <= offset(q)
+
+  havoc(
+      original, outside: integer_memory,
+      start: addr,
+      size: int): integer_memory =
+    LAMBDA (q: addr):
+      IF separated(q, 1, start, size) THEN
+        outside(q)
+      ELSE
+        original(q)
+      ENDIF
+
+  valid_rw(malloc: allocation_table, p: addr, size: int): bool =
+    0 < size IMPLIES
+      0 < base(p)
+        AND 0 <= offset(p)
+        AND offset(p) + size <= malloc(base(p))
+
+  is_uint32(value: int): bool =
+    0 <= value AND value < 4294967296
+
+  is_sint32(value: int): bool =
+    -2147483648 <= value AND value < 2147483648
+
+  trunc_div(n, d: int): int =
+    IF d = 0 THEN
+      0
+    ELSIF n * d >= 0 THEN
+      floor((n :: real) / (d :: real))
+    ELSE
+      -floor(-((n :: real) / (d :: real)))
+    ENDIF
+
+  uint32_projection_axioms(to_uint32: [int -> int]): bool =
+    (FORALL (value: int): is_uint32(to_uint32(value)))
+      AND
+    (FORALL (value: int):
+      is_uint32(value) IMPLIES to_uint32(value) = value)
+
+  p_unchanged(
+      mint_0, mint_1: integer_memory,
+      a: addr,
+      lower, upper: int): bool =
+    FORALL (index: int):
+      lower <= index IMPLIES
+      index < upper IMPLIES
+      mint_1(shift(a, index)) = mint_0(shift(a, index))
+
+  p_reverse_1(
+      mint_0, mint_1: integer_memory,
+      a: addr,
+      length: int,
+      b: addr): bool =
+    FORALL (index: int):
+      0 <= index IMPLIES
+      index < length IMPLIES
+      mint_0(shift(b, length - 1 - index)) =
+        mint_1(shift(a, index))
+
+  p_reverse_2(
+      mint_0, mint_1: integer_memory,
+      a: addr,
+      lower, upper: int,
+      b: addr,
+      destination_offset: int): bool =
+    p_reverse_1(
+      mint_0,
+      mint_1,
+      shift(a, lower),
+      upper - lower,
+      shift(b, destination_offset))
+
+  p_reverse_4(
+      mint_0, mint_1: integer_memory,
+      a: addr,
+      lower, upper, destination_offset: int): bool =
+    p_reverse_2(
+      mint_0,
+      mint_1,
+      a,
+      lower,
+      upper,
+      a,
+      destination_offset)
+
+  goal7: bool =
+    FORALL
+      (region: [int -> int]),
+      (linked: [allocation_table -> bool]),
+      (to_uint32: [int -> int]),
+      (a: addr),
+      (t_1, t_2: integer_memory),
+      (i_1, i_2, i: int),
+      (t: allocation_table):
+      uint32_projection_axioms(to_uint32) IMPLIES
+      LET a_1: addr = shift_sint32(a, 0),
+          a_2: integer_memory = havoc(t_1, t_2, a_1, i_1),
+          x_1: int = i_1 - 1 - i_2,
+          a_3: addr = shift_sint32(a, x_1),
+          a_4: addr = shift_sint32(a, i_2),
+          a_5: int = a_2(a_3),
+          a_6: integer_memory =
+            ((a_2 WITH [(a_3) := i])
+              WITH [(a_4) := a_5]),
+          a_7: int = a_6(a_3),
+          a_8: int = a_2(a_4),
+          x_2: int = trunc_div(i_1, 2),
+          x_3: int = to_uint32(i_1 - 1),
+          x_4: int = i_1 - i_2
+      IN
+        a_7 = a_8 IMPLIES
+        0 < i_1 IMPLIES
+        0 <= i_2 IMPLIES
+        i_2 < x_2 IMPLIES
+        i_2 <= x_2 IMPLIES
+        region(base(a)) <= 0 IMPLIES
+        i_2 + x_2 <= i_1 IMPLIES
+        i_2 <= x_3 IMPLIES
+        i_2 <= 4294967294 IMPLIES
+        x_3 <= 4294967295 + i_2 IMPLIES
+        linked(t) IMPLIES
+        is_uint32(i_1) IMPLIES
+        is_uint32(i_2) IMPLIES
+        is_uint32(x_2) IMPLIES
+        is_uint32(1 + i_2) IMPLIES
+        valid_rw(t, a_1, i_1) IMPLIES
+        valid_rw(t, a_4, 1) IMPLIES
+        is_sint32(a_8) IMPLIES
+        is_sint32(a_5) IMPLIES
+        valid_rw(t, a_3, 1) IMPLIES
+        is_sint32(a_7) IMPLIES
+        p_unchanged(a_2, t_2, a, i_2, x_4) IMPLIES
+        p_reverse_4(a_2, t_2, a, 0, i_2, x_4) IMPLIES
+        p_reverse_4(a_2, t_2, a, x_4, i_1, 0) IMPLIES
+        p_reverse_4(a_6, t_2, a, x_1, i_1, 0)
+END reverse_Why3_ide_VCreverse_loop_inv_right_preserved_goal7

@@ -1,0 +1,710 @@
+% Statement-only formalization of the Thousand Theorems artifact Q1067156,
+% "Dominated convergence theorem": on an arbitrary possibly empty source carrier,
+% almost-everywhere convergence of strongly measurable Bochner-integrable functions under an
+% integrable dominator implies convergence of their Bochner integrals. This file contains no proof.
+
+dominated_convergence_theorem_Q1067156[
+  A: TYPE+,
+  carrier: [A -> bool],
+  G: TYPE+,
+  zeroG: G,
+  addG: [G, G -> G],
+  negG: [G -> G],
+  smulG: [real, G -> G],
+  normG: [G -> real]
+]: THEORY
+BEGIN
+  event: TYPE = [A -> bool]
+  event_sequence: TYPE = [nat -> event]
+  sigma_algebra: TYPE = [event -> bool]
+
+  measure_value: TYPE =
+    [# infinite_flag: bool, finite_part: real #]
+  measure_value_sequence: TYPE = [nat -> measure_value]
+  measure_map: TYPE = [event -> measure_value]
+
+  real_function: TYPE = [A -> real]
+  real_function_sequence: TYPE = [nat -> real_function]
+  real_sequence: TYPE = [nat -> real]
+  g_function: TYPE = [A -> G]
+  g_function_sequence: TYPE = [nat -> g_function]
+  g_sequence: TYPE = [nat -> G]
+  nonnegative_function: TYPE = [A -> measure_value]
+
+  subG(x, y: G): G = addG(x, negG(y))
+
+  normed_real_vector_space: bool =
+    (FORALL (x, y: G): addG(x, y) = addG(y, x))
+      AND (FORALL (x, y, z: G):
+        addG(addG(x, y), z) = addG(x, addG(y, z)))
+      AND (FORALL (x: G): addG(x, zeroG) = x)
+      AND (FORALL (x: G): addG(x, negG(x)) = zeroG)
+      AND (FORALL (a: real), (x, y: G):
+        smulG(a, addG(x, y)) =
+          addG(smulG(a, x), smulG(a, y)))
+      AND (FORALL (a, b: real), (x: G):
+        smulG(a + b, x) =
+          addG(smulG(a, x), smulG(b, x)))
+      AND (FORALL (a, b: real), (x: G):
+        smulG(a * b, x) = smulG(a, smulG(b, x)))
+      AND (FORALL (x: G): smulG(1, x) = x)
+      AND (FORALL (x: G): normG(x) >= 0)
+      AND (FORALL (x: G): normG(x) = 0 IFF x = zeroG)
+      AND (FORALL (a: real), (x: G):
+        normG(smulG(a, x)) = abs(a) * normG(x))
+      AND (FORALL (x, y: G):
+        normG(addG(x, y)) <= normG(x) + normG(y))
+
+  converges_to_g(values: g_sequence, limit: G): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            normG(subG(values(index), limit)) < epsilon_value
+
+  cauchy_g(values: g_sequence): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (left_index, right_index: nat):
+          cutoff <= left_index AND cutoff <= right_index IMPLIES
+            normG(
+              subG(values(left_index), values(right_index)))
+              < epsilon_value
+
+  complete_space_g: bool =
+    FORALL (values: g_sequence):
+      cauchy_g(values) IMPLIES
+        EXISTS (limit: G): converges_to_g(values, limit)
+
+  converges_to_real(values: real_sequence, limit: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(values(index) - limit) < epsilon_value
+
+  zero_measure_value: measure_value =
+    (# infinite_flag := FALSE, finite_part := 0 #)
+
+  infinite_measure_value: measure_value =
+    (# infinite_flag := TRUE, finite_part := 0 #)
+
+  finite_measure_value(value: real): measure_value =
+    (# infinite_flag := FALSE, finite_part := value #)
+
+  canonical_measure_value(value: measure_value): bool =
+    IF infinite_flag(value) THEN
+      finite_part(value) = 0
+    ELSE
+      finite_part(value) >= 0
+    ENDIF
+
+  measure_value_is_zero(value: measure_value): bool =
+    NOT infinite_flag(value)
+      AND finite_part(value) = 0
+
+  measure_value_le(left, right: measure_value): bool =
+    canonical_measure_value(left)
+      AND canonical_measure_value(right)
+      AND IF infinite_flag(right) THEN
+        TRUE
+      ELSIF infinite_flag(left) THEN
+        FALSE
+      ELSE
+        finite_part(left) <= finite_part(right)
+      ENDIF
+
+  measure_value_add(left, right: measure_value): measure_value =
+    IF infinite_flag(left) OR infinite_flag(right) THEN
+      infinite_measure_value
+    ELSE
+      finite_measure_value(
+        finite_part(left) + finite_part(right))
+    ENDIF
+
+  measure_value_product(left, right: measure_value): measure_value =
+    IF measure_value_is_zero(left)
+        OR measure_value_is_zero(right) THEN
+      zero_measure_value
+    ELSIF infinite_flag(left)
+        OR infinite_flag(right) THEN
+      infinite_measure_value
+    ELSE
+      finite_measure_value(
+        finite_part(left) * finite_part(right))
+    ENDIF
+
+  carrier_event(E: event): bool =
+    FORALL (omega: A):
+      E(omega) IMPLIES carrier(omega)
+
+  full_event: event = carrier
+
+  empty_event: event =
+    LAMBDA (omega: A): FALSE
+
+  event_complement(E: event): event =
+    LAMBDA (omega: A):
+      carrier(omega) AND NOT E(omega)
+
+  countable_union(events: event_sequence): event =
+    LAMBDA (omega: A):
+      carrier(omega)
+        AND EXISTS (index: nat): events(index)(omega)
+
+  pairwise_disjoint(events: event_sequence): bool =
+    FORALL (left_index, right_index: nat):
+      left_index /= right_index IMPLIES
+        FORALL (omega: A):
+          carrier(omega) IMPLIES
+            NOT (events(left_index)(omega)
+              AND events(right_index)(omega))
+
+  pairwise_disjoint_below(
+      events: event_sequence,
+      count: nat): bool =
+    FORALL (left_index, right_index: nat):
+      left_index < count
+        AND right_index < count
+        AND left_index /= right_index
+      IMPLIES
+        FORALL (omega: A):
+          carrier(omega) IMPLIES
+            NOT (events(left_index)(omega)
+              AND events(right_index)(omega))
+
+  finite_real_sum(values: real_sequence, count: nat):
+      RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      finite_real_sum(values, count - 1)
+        + values(count - 1)
+    ENDIF
+  MEASURE count
+
+  unbounded_above(values: real_sequence): bool =
+    FORALL (bound: real):
+      EXISTS (index: nat):
+        bound < values(index)
+
+  partial_measure_sum(
+      values: measure_value_sequence,
+      count: nat): real =
+    finite_real_sum(
+      LAMBDA (index: nat):
+        finite_part(values(index)),
+      count)
+
+  extended_nonnegative_sum(
+      values: measure_value_sequence,
+      total: measure_value): bool =
+    canonical_measure_value(total)
+      AND (FORALL (index: nat):
+        canonical_measure_value(values(index)))
+      AND IF infinite_flag(total) THEN
+        (EXISTS (index: nat):
+          infinite_flag(values(index)))
+          OR ((FORALL (index: nat):
+                NOT infinite_flag(values(index)))
+            AND unbounded_above(
+              LAMBDA (count: nat):
+                partial_measure_sum(values, count)))
+      ELSE
+        (FORALL (index: nat):
+          NOT infinite_flag(values(index)))
+          AND converges_to_real(
+            LAMBDA (count: nat):
+              partial_measure_sum(values, count),
+            finite_part(total))
+      ENDIF
+
+  is_sigma_algebra(Sigma: sigma_algebra): bool =
+    (FORALL (E: event):
+      Sigma(E) IMPLIES carrier_event(E))
+      AND Sigma(full_event)
+      AND (FORALL (E: event):
+        Sigma(E) IMPLIES Sigma(event_complement(E)))
+      AND (FORALL (events: event_sequence):
+        (FORALL (index: nat): Sigma(events(index)))
+          IMPLIES Sigma(countable_union(events)))
+
+  is_measure(
+      M: measure_map,
+      Sigma: sigma_algebra): bool =
+    is_sigma_algebra(Sigma)
+      AND measure_value_is_zero(M(empty_event))
+      AND (FORALL (E: event):
+        Sigma(E) IMPLIES canonical_measure_value(M(E)))
+      AND (FORALL (events: event_sequence):
+        ((FORALL (index: nat): Sigma(events(index)))
+          AND pairwise_disjoint(events))
+        IMPLIES
+          extended_nonnegative_sum(
+            LAMBDA (index: nat): M(events(index)),
+            M(countable_union(events))))
+
+  null_event(
+      M: measure_map,
+      Sigma: sigma_algebra,
+      E: event): bool =
+    carrier_event(E)
+      AND EXISTS (measurable_cover: event):
+        Sigma(measurable_cover)
+          AND (FORALL (omega: A):
+            carrier(omega) AND E(omega)
+              IMPLIES measurable_cover(omega))
+          AND measure_value_is_zero(M(measurable_cover))
+
+  almost_everywhere(
+      M: measure_map,
+      Sigma: sigma_algebra,
+      property: [A -> bool]): bool =
+    null_event(
+      M,
+      Sigma,
+      LAMBDA (omega: A):
+        carrier(omega) AND NOT property(omega))
+
+  finite_g_sum(values: g_sequence, count: nat):
+      RECURSIVE G =
+    IF count = 0 THEN
+      zeroG
+    ELSE
+      addG(
+        finite_g_sum(values, count - 1),
+        values(count - 1))
+    ENDIF
+  MEASURE count
+
+  finite_simple_g_value(
+      coefficients: g_sequence,
+      pieces: event_sequence,
+      count: nat,
+      omega: A): G =
+    finite_g_sum(
+      LAMBDA (index: nat):
+        IF index < count AND pieces(index)(omega) THEN
+          coefficients(index)
+        ELSE
+          zeroG
+        ENDIF,
+      count)
+
+  measurable_simple_g_data(
+      Sigma: sigma_algebra,
+      coefficients: g_sequence,
+      pieces: event_sequence,
+      count: nat): bool =
+    pairwise_disjoint_below(pieces, count)
+      AND (FORALL (index: nat):
+        index < count IMPLIES Sigma(pieces(index)))
+
+  measurable_simple_g(
+      Sigma: sigma_algebra,
+      function_value: g_function): bool =
+    EXISTS
+        (coefficients: g_sequence),
+        (pieces: event_sequence),
+        (count: nat):
+      measurable_simple_g_data(
+        Sigma, coefficients, pieces, count)
+        AND (FORALL (omega: A):
+          carrier(omega) IMPLIES
+            function_value(omega) =
+              finite_simple_g_value(
+                coefficients, pieces, count, omega))
+
+  finite_simple_real_value(
+      coefficients: real_sequence,
+      pieces: event_sequence,
+      count: nat,
+      omega: A): real =
+    finite_real_sum(
+      LAMBDA (index: nat):
+        IF index < count AND pieces(index)(omega) THEN
+          coefficients(index)
+        ELSE
+          0
+        ENDIF,
+      count)
+
+  measurable_simple_real(
+      Sigma: sigma_algebra,
+      function_value: real_function): bool =
+    EXISTS
+        (coefficients: real_sequence),
+        (pieces: event_sequence),
+        (count: nat):
+      pairwise_disjoint_below(pieces, count)
+        AND (FORALL (index: nat):
+          index < count IMPLIES Sigma(pieces(index)))
+        AND (FORALL (omega: A):
+          carrier(omega) IMPLIES
+            function_value(omega) =
+              finite_simple_real_value(
+                coefficients, pieces, count, omega))
+
+  strongly_measurable_g(
+      Sigma: sigma_algebra,
+      function_value: g_function): bool =
+    EXISTS (approximants: g_function_sequence):
+      (FORALL (index: nat):
+        measurable_simple_g(
+          Sigma, approximants(index)))
+        AND (FORALL (omega: A):
+          carrier(omega) IMPLIES
+            converges_to_g(
+              LAMBDA (index: nat):
+                approximants(index)(omega),
+              function_value(omega)))
+
+  ae_strongly_measurable_g(
+      M: measure_map,
+      Sigma: sigma_algebra,
+      function_value: g_function): bool =
+    EXISTS (measurable_version: g_function):
+      strongly_measurable_g(Sigma, measurable_version)
+        AND almost_everywhere(
+          M,
+          Sigma,
+          LAMBDA (omega: A):
+            function_value(omega) =
+              measurable_version(omega))
+
+  strongly_measurable_real(
+      Sigma: sigma_algebra,
+      function_value: real_function): bool =
+    EXISTS (approximants: real_function_sequence):
+      (FORALL (index: nat):
+        measurable_simple_real(
+          Sigma, approximants(index)))
+        AND (FORALL (omega: A):
+          carrier(omega) IMPLIES
+            converges_to_real(
+              LAMBDA (index: nat):
+                approximants(index)(omega),
+              function_value(omega)))
+
+  ae_strongly_measurable_real(
+      M: measure_map,
+      Sigma: sigma_algebra,
+      function_value: real_function): bool =
+    EXISTS (measurable_version: real_function):
+      strongly_measurable_real(Sigma, measurable_version)
+        AND almost_everywhere(
+          M,
+          Sigma,
+          LAMBDA (omega: A):
+            function_value(omega) =
+              measurable_version(omega))
+
+  canonical_nonnegative_function(
+      function_value: nonnegative_function): bool =
+    FORALL (omega: A):
+      carrier(omega) IMPLIES
+        canonical_measure_value(function_value(omega))
+
+  finite_simple_nonnegative_value(
+      coefficients: measure_value_sequence,
+      pieces: event_sequence,
+      count: nat,
+      omega: A): RECURSIVE measure_value =
+    IF count = 0 THEN
+      zero_measure_value
+    ELSE
+      measure_value_add(
+        finite_simple_nonnegative_value(
+          coefficients, pieces, count - 1, omega),
+        IF pieces(count - 1)(omega) THEN
+          coefficients(count - 1)
+        ELSE
+          zero_measure_value
+        ENDIF)
+    ENDIF
+  MEASURE count
+
+  measurable_simple_nonnegative(
+      Sigma: sigma_algebra,
+      coefficients: measure_value_sequence,
+      pieces: event_sequence,
+      count: nat): bool =
+    pairwise_disjoint_below(pieces, count)
+      AND (FORALL (index: nat):
+        index < count IMPLIES
+          canonical_measure_value(coefficients(index))
+            AND NOT infinite_flag(coefficients(index))
+            AND Sigma(pieces(index)))
+
+  measurable_simple_minorant(
+      Sigma: sigma_algebra,
+      function_value: nonnegative_function,
+      coefficients: measure_value_sequence,
+      pieces: event_sequence,
+      count: nat): bool =
+    canonical_nonnegative_function(function_value)
+      AND measurable_simple_nonnegative(
+        Sigma, coefficients, pieces, count)
+      AND (FORALL (omega: A):
+        carrier(omega) IMPLIES
+          measure_value_le(
+            finite_simple_nonnegative_value(
+              coefficients, pieces, count, omega),
+            function_value(omega)))
+
+  finite_simple_nonnegative_integral(
+      M: measure_map,
+      coefficients: measure_value_sequence,
+      pieces: event_sequence,
+      count: nat): RECURSIVE measure_value =
+    IF count = 0 THEN
+      zero_measure_value
+    ELSE
+      measure_value_add(
+        finite_simple_nonnegative_integral(
+          M, coefficients, pieces, count - 1),
+        measure_value_product(
+          coefficients(count - 1),
+          M(pieces(count - 1))))
+    ENDIF
+  MEASURE count
+
+  lower_integral_upper_bound(
+      M: measure_map,
+      Sigma: sigma_algebra,
+      function_value: nonnegative_function,
+      upper: measure_value): bool =
+    canonical_measure_value(upper)
+      AND FORALL
+          (coefficients: measure_value_sequence),
+          (pieces: event_sequence),
+          (count: nat):
+        measurable_simple_minorant(
+          Sigma, function_value,
+          coefficients, pieces, count)
+        IMPLIES
+          measure_value_le(
+            finite_simple_nonnegative_integral(
+              M, coefficients, pieces, count),
+            upper)
+
+  has_lower_lebesgue_integral(
+      M: measure_map,
+      Sigma: sigma_algebra,
+      function_value: nonnegative_function,
+      integral_value: measure_value): bool =
+    canonical_nonnegative_function(function_value)
+      AND canonical_measure_value(integral_value)
+      AND lower_integral_upper_bound(
+        M, Sigma, function_value, integral_value)
+      AND (FORALL (upper: measure_value):
+        lower_integral_upper_bound(
+          M, Sigma, function_value, upper)
+        IMPLIES
+          measure_value_le(integral_value, upper))
+
+  enorm_g(function_value: g_function):
+      nonnegative_function =
+    LAMBDA (omega: A):
+      IF carrier(omega) THEN
+        finite_measure_value(normG(function_value(omega)))
+      ELSE
+        zero_measure_value
+      ENDIF
+
+  abs_enorm_real(function_value: real_function):
+      nonnegative_function =
+    LAMBDA (omega: A):
+      IF carrier(omega) THEN
+        finite_measure_value(abs(function_value(omega)))
+      ELSE
+        zero_measure_value
+      ENDIF
+
+  has_finite_integral_g(
+      M: measure_map,
+      Sigma: sigma_algebra,
+      function_value: g_function): bool =
+    EXISTS (integral_value: measure_value):
+      has_lower_lebesgue_integral(
+        M, Sigma, enorm_g(function_value), integral_value)
+        AND NOT infinite_flag(integral_value)
+
+  has_finite_integral_real(
+      M: measure_map,
+      Sigma: sigma_algebra,
+      function_value: real_function): bool =
+    EXISTS (integral_value: measure_value):
+      has_lower_lebesgue_integral(
+        M,
+        Sigma,
+        abs_enorm_real(function_value),
+        integral_value)
+        AND NOT infinite_flag(integral_value)
+
+  integrable_g(
+      M: measure_map,
+      Sigma: sigma_algebra,
+      function_value: g_function): bool =
+    ae_strongly_measurable_g(M, Sigma, function_value)
+      AND has_finite_integral_g(M, Sigma, function_value)
+
+  integrable_real(
+      M: measure_map,
+      Sigma: sigma_algebra,
+      function_value: real_function): bool =
+    ae_strongly_measurable_real(M, Sigma, function_value)
+      AND has_finite_integral_real(
+        M, Sigma, function_value)
+
+  integrable_simple_g_data(
+      M: measure_map,
+      Sigma: sigma_algebra,
+      coefficients: g_sequence,
+      pieces: event_sequence,
+      count: nat): bool =
+    measurable_simple_g_data(
+      Sigma, coefficients, pieces, count)
+      AND (FORALL (index: nat):
+        index < count IMPLIES
+          coefficients(index) = zeroG
+            OR NOT infinite_flag(M(pieces(index))))
+
+  finite_simple_g_integral(
+      M: measure_map,
+      coefficients: g_sequence,
+      pieces: event_sequence,
+      count: nat): RECURSIVE G =
+    IF count = 0 THEN
+      zeroG
+    ELSE
+      addG(
+        finite_simple_g_integral(
+          M, coefficients, pieces, count - 1),
+        smulG(
+          finite_part(M(pieces(count - 1))),
+          coefficients(count - 1)))
+    ENDIF
+  MEASURE count
+
+  has_simple_g_integral(
+      M: measure_map,
+      Sigma: sigma_algebra,
+      function_value: g_function,
+      integral_value: G): bool =
+    EXISTS
+        (coefficients: g_sequence),
+        (pieces: event_sequence),
+        (count: nat):
+      integrable_simple_g_data(
+        M, Sigma, coefficients, pieces, count)
+        AND (FORALL (omega: A):
+          carrier(omega) IMPLIES
+            function_value(omega) =
+              finite_simple_g_value(
+                coefficients, pieces, count, omega))
+        AND integral_value =
+          finite_simple_g_integral(
+            M, coefficients, pieces, count)
+
+  l1_error(
+      M: measure_map,
+      Sigma: sigma_algebra,
+      function_value,
+      approximant: g_function,
+      error_value: real): bool =
+    error_value >= 0
+      AND has_lower_lebesgue_integral(
+        M,
+        Sigma,
+        enorm_g(
+          LAMBDA (omega: A):
+            subG(
+              function_value(omega),
+              approximant(omega))),
+        finite_measure_value(error_value))
+
+  approximates_in_l1(
+      M: measure_map,
+      Sigma: sigma_algebra,
+      function_value: g_function,
+      approximants: g_function_sequence): bool =
+    (FORALL (index: nat):
+      measurable_simple_g(Sigma, approximants(index)))
+      AND EXISTS (errors: real_sequence):
+        (FORALL (index: nat):
+          l1_error(
+            M,
+            Sigma,
+            function_value,
+            approximants(index),
+            errors(index)))
+          AND converges_to_real(errors, 0)
+
+  has_bochner_integral(
+      M: measure_map,
+      Sigma: sigma_algebra,
+      function_value: g_function,
+      integral_value: G): bool =
+    EXISTS
+        (approximants: g_function_sequence),
+        (simple_integrals: g_sequence):
+      approximates_in_l1(
+        M, Sigma, function_value, approximants)
+        AND (FORALL (index: nat):
+          has_simple_g_integral(
+            M,
+            Sigma,
+            approximants(index),
+            simple_integrals(index)))
+        AND converges_to_g(
+          simple_integrals, integral_value)
+
+  bochner_integral(
+      M: measure_map,
+      Sigma: sigma_algebra,
+      function_value: g_function): G =
+    IF complete_space_g
+        AND integrable_g(M, Sigma, function_value) THEN
+      epsilon(
+        LAMBDA (integral_value: G):
+          has_bochner_integral(
+            M, Sigma, function_value, integral_value))
+    ELSE
+      zeroG
+    ENDIF
+
+  dominated_convergence_theorem: bool =
+    normed_real_vector_space IMPLIES
+      FORALL
+          (M: measure_map),
+          (Sigma: sigma_algebra),
+          (F: g_function_sequence),
+          (f: g_function),
+          (bound: real_function):
+        (is_measure(M, Sigma)
+          AND (FORALL (index: nat):
+            ae_strongly_measurable_g(
+              M, Sigma, F(index)))
+          AND integrable_real(M, Sigma, bound)
+          AND (FORALL (index: nat):
+            almost_everywhere(
+              M,
+              Sigma,
+              LAMBDA (omega: A):
+                normG(F(index)(omega)) <= bound(omega)))
+          AND almost_everywhere(
+            M,
+            Sigma,
+            LAMBDA (omega: A):
+              converges_to_g(
+                LAMBDA (index: nat):
+                  F(index)(omega),
+                f(omega))))
+        IMPLIES
+          converges_to_g(
+            LAMBDA (index: nat):
+              bochner_integral(
+                M, Sigma, F(index)),
+            bochner_integral(M, Sigma, f))
+END dominated_convergence_theorem_Q1067156

@@ -1,0 +1,163 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/verifythis_2021_lexicographic_permutations_1_Top_swapqtvc: the
+% integer-array swap verification condition exchanging two valid entries,
+% preserving every other entry, and preserving permutation occurrence counts.
+% This file contains no proof.
+
+verifythis_2021_lexicographic_permutations_1_Top_swapqtvc: THEORY
+BEGIN
+
+  int_array: TYPE =
+    [# array_length: nat,
+       array_values: [int -> int] #]
+
+  permutation: TYPE = int_array
+
+  array_update(
+      values: int_array,
+      index, value: int): int_array =
+    (# array_length := array_length(values),
+       array_values :=
+         array_values(values) WITH [(index) := value] #)
+
+  in_bounds(index: int, values: int_array): bool =
+    0 <= index AND index < array_length(values)
+
+  count_equal_span(
+      values: [int -> int],
+      element: int,
+      lower: int,
+      span: nat): RECURSIVE int =
+    IF span = 0 THEN
+      0
+    ELSE
+      (IF values(lower) = element THEN 1 ELSE 0 ENDIF)
+        + count_equal_span(
+            values,
+            element,
+            lower + 1,
+            span - 1)
+    ENDIF
+  MEASURE span
+
+  occ_all(element: int, values: permutation): int =
+    count_equal_span(
+      array_values(values),
+      element,
+      0,
+      array_length(values))
+
+  to_seq(values: int_array): permutation =
+    values
+
+  is_permutation_of(
+      left, right: permutation): bool =
+    array_length(left) = array_length(right)
+      AND
+    (FORALL (element: int):
+      occ_all(element, left) = occ_all(element, right))
+
+  update_function_equation(
+      before, after: int_array,
+      index, value: int): bool =
+    array_values(after)
+      = array_values(before) WITH [(index) := value]
+
+  unchanged_except(
+      original, swapped: int_array,
+      first_index, second_index: int): bool =
+    FORALL (index: int):
+      in_bounds(index, swapped)
+        IMPLIES index /= first_index
+        IMPLIES index /= second_index
+        IMPLIES
+          array_values(swapped)(index)
+            = array_values(original)(index)
+
+  swap_result(
+      original, swapped: int_array,
+      first_index, second_index: int): bool =
+    array_values(swapped)(first_index)
+        = array_values(original)(second_index)
+      AND
+    array_values(swapped)(second_index)
+        = array_values(original)(first_index)
+      AND
+    unchanged_except(
+      original,
+      swapped,
+      first_index,
+      second_index)
+      AND
+    is_permutation_of(
+      to_seq(swapped),
+      to_seq(original))
+
+  swap_obligations(
+      first_index: int,
+      original: int_array,
+      second_index: int): bool =
+    in_bounds(first_index, original)
+      AND
+    (LET first_value: int =
+       array_values(original)(first_index)
+     IN
+       in_bounds(second_index, original)
+         AND
+       (LET second_value: int =
+          array_values(original)(second_index)
+        IN
+          in_bounds(first_index, original)
+            AND
+          (LET after_first: int_array =
+             array_update(
+               original,
+               first_index,
+               second_value)
+           IN
+             array_length(after_first) = array_length(original)
+               IMPLIES
+             update_function_equation(
+               original,
+               after_first,
+               first_index,
+               second_value)
+               IMPLIES
+             in_bounds(second_index, after_first)
+               AND
+             (LET swapped: int_array =
+                array_update(
+                  after_first,
+                  second_index,
+                  first_value)
+              IN
+                array_length(swapped) = array_length(after_first)
+                  IMPLIES
+                update_function_equation(
+                  after_first,
+                  swapped,
+                  second_index,
+                  first_value)
+                  IMPLIES
+                swap_result(
+                  original,
+                  swapped,
+                  first_index,
+                  second_index)))))
+
+  swap_vc: bool =
+    FORALL
+        (first_index: int),
+        (original: int_array),
+        (second_index: int):
+      0 <= first_index
+        IMPLIES first_index < array_length(original)
+        IMPLIES 0 <= second_index
+        IMPLIES second_index < array_length(original)
+        IMPLIES
+          swap_obligations(
+            first_index,
+            original,
+            second_index)
+
+END verifythis_2021_lexicographic_permutations_1_Top_swapqtvc

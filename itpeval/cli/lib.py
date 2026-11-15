@@ -21,6 +21,7 @@ DEFAULT_PROVERS = [
     "rocq",
     "isabelle",
     "hol-light",
+    "acl2", "agda", "hol4", "metamath", "mizar", "pvs",
 ]
 
 

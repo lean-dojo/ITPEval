@@ -1,0 +1,126 @@
+% Statement-only formalization of PutnamBench artifact putnam_1999_a5:
+% a uniform constant bounds the absolute value at zero of every real
+% polynomial of degree 1999 by its absolute-value integral on [-1, 1].
+% This file contains no proof.
+
+putnam_1999_a5: THEORY
+BEGIN
+  real_function: TYPE = [real -> real]
+  real_sequence: TYPE = [nat -> real]
+  coefficient_sequence: TYPE = [nat -> real]
+
+  polynomial_value(
+      coefficients: coefficient_sequence,
+      count: nat,
+      x: real): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      polynomial_value(coefficients, count - 1, x)
+        + coefficients(count - 1) * x ^ (count - 1)
+    ENDIF
+  MEASURE count
+
+  degree_1999(coefficients: coefficient_sequence): bool =
+    coefficients(1999) /= 0
+
+  valid_tagged_partition(
+      left, right: real,
+      points, tags: real_sequence,
+      count: nat): bool =
+    count > 0
+      AND points(0) = left
+      AND points(count) = right
+      AND FORALL (index: nat):
+        index < count IMPLIES
+          (points(index) < points(index + 1)
+            AND points(index) <= tags(index)
+            AND tags(index) <= points(index + 1))
+
+  mesh_less_than(
+      points: real_sequence,
+      count: nat,
+      bound: real): bool =
+    FORALL (index: nat):
+      index < count IMPLIES
+        points(index + 1) - points(index) < bound
+
+  riemann_sum(
+      function_value: real_function,
+      points, tags: real_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      riemann_sum(
+        function_value, points, tags, count - 1)
+        + function_value(tags(count - 1))
+            * (points(count) - points(count - 1))
+    ENDIF
+  MEASURE count
+
+  has_interval_integral(
+      function_value: real_function,
+      left, right, integral_value: real): bool =
+    left < right
+      AND FORALL (epsilon_value: posreal):
+        EXISTS (mesh_bound: posreal):
+          FORALL
+              (points, tags: real_sequence),
+              (count: nat):
+            (valid_tagged_partition(
+                left, right, points, tags, count)
+              AND mesh_less_than(
+                points, count, mesh_bound))
+            IMPLIES
+              abs(
+                riemann_sum(
+                  function_value, points, tags, count)
+                  - integral_value)
+                < epsilon_value
+
+  interval_integral(
+      function_value: real_function,
+      left, right: real): real =
+    IF left = right THEN
+      0
+    ELSIF left < right THEN
+      IF EXISTS (integral_value: real):
+          has_interval_integral(
+            function_value, left, right, integral_value)
+      THEN
+        epsilon(
+          LAMBDA (integral_value: real):
+            has_interval_integral(
+              function_value, left, right, integral_value))
+      ELSE
+        0
+      ENDIF
+    ELSE
+      IF EXISTS (integral_value: real):
+          has_interval_integral(
+            function_value, right, left, integral_value)
+      THEN
+        -epsilon(
+          LAMBDA (integral_value: real):
+            has_interval_integral(
+              function_value, right, left, integral_value))
+      ELSE
+        0
+      ENDIF
+    ENDIF
+
+  absolute_polynomial(
+      coefficients: coefficient_sequence): real_function =
+    LAMBDA (x: real):
+      abs(polynomial_value(coefficients, 2000, x))
+
+  putnam_1999_a5: bool =
+    EXISTS (C: real):
+      FORALL (coefficients: coefficient_sequence):
+        degree_1999(coefficients) IMPLIES
+          abs(polynomial_value(coefficients, 2000, 0))
+            <= C
+              * interval_integral(
+                  absolute_polynomial(coefficients), -1, 1)
+END putnam_1999_a5

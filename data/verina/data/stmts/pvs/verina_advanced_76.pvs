@@ -1,0 +1,346 @@
+% Statement-only formalization of the VERINA corpus artifact
+% verina_advanced_76, catalog title "topKFrequent": counting integer
+% occurrences in first-occurrence order, stably sorting by descending
+% frequency, and returning the first k keys under the full executable
+% correctness contract. This file contains no proof.
+
+verina_advanced_76: THEORY
+BEGIN
+
+  frequency_pair: TYPE =
+    [# frequency_key: int,
+       frequency_count: nat #]
+
+  int_list_length(values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        int_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  int_member(
+      requested: int,
+      values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        FALSE,
+      cons(head, tail):
+        head = requested
+          OR int_member(requested, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  append_int(
+      values: list[int],
+      value: int): RECURSIVE list[int] =
+    CASES values OF
+      null:
+        cons(value, null[int]),
+      cons(head, tail):
+        cons(head, append_int(tail, value))
+    ENDCASES
+  MEASURE values BY <<
+
+  distinct_values_fold(
+      remaining, seen: list[int]): RECURSIVE list[int] =
+    CASES remaining OF
+      null:
+        seen,
+      cons(head, tail):
+        distinct_values_fold(
+          tail,
+          IF int_member(head, seen) THEN
+            seen
+          ELSE
+            append_int(seen, head)
+          ENDIF)
+    ENDCASES
+  MEASURE remaining BY <<
+
+  distinct_count(values: list[int]): nat =
+    int_list_length(
+      distinct_values_fold(values, null[int]))
+
+  topKFrequent_precond(
+      nums: list[int],
+      k: nat): bool =
+    k <= distinct_count(nums)
+
+  frequency_key_member(
+      requested: int,
+      frequencies: list[frequency_pair]): RECURSIVE bool =
+    CASES frequencies OF
+      null:
+        FALSE,
+      cons(head, tail):
+        frequency_key(head) = requested
+          OR frequency_key_member(requested, tail)
+    ENDCASES
+  MEASURE frequencies BY <<
+
+  increment_frequency(
+      requested: int,
+      frequencies: list[frequency_pair]):
+        RECURSIVE list[frequency_pair] =
+    CASES frequencies OF
+      null:
+        null[frequency_pair],
+      cons(head, tail):
+        cons(
+          IF frequency_key(head) = requested THEN
+            (# frequency_key := frequency_key(head),
+               frequency_count := frequency_count(head) + 1 #)
+          ELSE
+            head
+          ENDIF,
+          increment_frequency(requested, tail))
+    ENDCASES
+  MEASURE frequencies BY <<
+
+  append_frequency_pair(
+      frequencies: list[frequency_pair],
+      pair: frequency_pair): RECURSIVE list[frequency_pair] =
+    CASES frequencies OF
+      null:
+        cons(pair, null[frequency_pair]),
+      cons(head, tail):
+        cons(
+          head,
+          append_frequency_pair(tail, pair))
+    ENDCASES
+  MEASURE frequencies BY <<
+
+  build_frequency_list(
+      remaining: list[int],
+      frequencies: list[frequency_pair]):
+        RECURSIVE list[frequency_pair] =
+    CASES remaining OF
+      null:
+        frequencies,
+      cons(head, tail):
+        build_frequency_list(
+          tail,
+          IF frequency_key_member(head, frequencies) THEN
+            increment_frequency(head, frequencies)
+          ELSE
+            append_frequency_pair(
+              frequencies,
+              (# frequency_key := head,
+                 frequency_count := 1 #))
+          ENDIF)
+    ENDCASES
+  MEASURE remaining BY <<
+
+  insert_by_descending_frequency(
+      pair: frequency_pair,
+      sorted: list[frequency_pair]):
+        RECURSIVE list[frequency_pair] =
+    CASES sorted OF
+      null:
+        cons(pair, null[frequency_pair]),
+      cons(head, tail):
+        IF frequency_count(pair) > frequency_count(head) THEN
+          cons(pair, cons(head, tail))
+        ELSE
+          cons(
+            head,
+            insert_by_descending_frequency(pair, tail))
+        ENDIF
+    ENDCASES
+  MEASURE sorted BY <<
+
+  stable_frequency_sort_fold(
+      remaining, sorted: list[frequency_pair]):
+        RECURSIVE list[frequency_pair] =
+    CASES remaining OF
+      null:
+        sorted,
+      cons(head, tail):
+        stable_frequency_sort_fold(
+          tail,
+          insert_by_descending_frequency(head, sorted))
+    ENDCASES
+  MEASURE remaining BY <<
+
+  take_frequency_pairs(
+      k: nat,
+      frequencies: list[frequency_pair]):
+        RECURSIVE list[frequency_pair] =
+    IF k = 0 THEN
+      null[frequency_pair]
+    ELSE
+      CASES frequencies OF
+        null:
+          null[frequency_pair],
+        cons(head, tail):
+          cons(
+            head,
+            take_frequency_pairs(k - 1, tail))
+      ENDCASES
+    ENDIF
+  MEASURE k
+
+  frequency_keys(
+      frequencies: list[frequency_pair]):
+        RECURSIVE list[int] =
+    CASES frequencies OF
+      null:
+        null[int],
+      cons(head, tail):
+        cons(
+          frequency_key(head),
+          frequency_keys(tail))
+    ENDCASES
+  MEASURE frequencies BY <<
+
+  % The Lean precondition proof argument is computationally irrelevant. The
+  % two folds and strict comparison below exactly preserve first insertion
+  % order and place a new equal-frequency pair after existing equal pairs.
+  topKFrequent(
+      nums: list[int],
+      k: nat): list[int] =
+    LET frequencies: list[frequency_pair] =
+          build_frequency_list(
+            nums,
+            null[frequency_pair]),
+        sorted: list[frequency_pair] =
+          stable_frequency_sort_fold(
+            frequencies,
+            null[frequency_pair])
+    IN
+      frequency_keys(
+        take_frequency_pairs(k, sorted))
+
+  occurrence_count(
+      requested: int,
+      values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        (IF head = requested THEN 1 ELSE 0 ENDIF)
+          + occurrence_count(requested, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  all_members_of(
+      values, source: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        int_member(head, source)
+          AND all_members_of(tail, source)
+    ENDCASES
+  MEASURE values BY <<
+
+  no_duplicate_ints(values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        NOT int_member(head, tail)
+          AND no_duplicate_ints(tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  all_competitors_bounded(
+      selected: int,
+      competitors, original, result: list[int]):
+        RECURSIVE bool =
+    CASES competitors OF
+      null:
+        TRUE,
+      cons(head, tail):
+        (int_member(head, result)
+          OR occurrence_count(selected, original)
+               >= occurrence_count(head, original))
+          AND all_competitors_bounded(
+                selected,
+                tail,
+                original,
+                result)
+    ENDCASES
+  MEASURE competitors BY <<
+
+  every_result_dominates(
+      remaining, original, result: list[int]):
+        RECURSIVE bool =
+    CASES remaining OF
+      null:
+        TRUE,
+      cons(head, tail):
+        all_competitors_bounded(
+          head,
+          original,
+          original,
+          result)
+          AND every_result_dominates(
+                tail,
+                original,
+                result)
+    ENDCASES
+  MEASURE remaining BY <<
+
+  all_later_counts_at_most(
+      selected: int,
+      later, original: list[int]): RECURSIVE bool =
+    CASES later OF
+      null:
+        TRUE,
+      cons(head, tail):
+        occurrence_count(selected, original)
+            >= occurrence_count(head, original)
+          AND all_later_counts_at_most(
+                selected,
+                tail,
+                original)
+    ENDCASES
+  MEASURE later BY <<
+
+  % In zipIdx, every element recursively compared by List.Pairwise has a
+  % strictly larger index, so the source implication reduces exactly to this
+  % pairwise non-increasing-frequency predicate.
+  pairwise_nonincreasing_frequencies(
+      values, original: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        all_later_counts_at_most(
+          head,
+          tail,
+          original)
+          AND pairwise_nonincreasing_frequencies(
+                tail,
+                original)
+    ENDCASES
+  MEASURE values BY <<
+
+  topKFrequent_postcond(
+      nums: list[int],
+      k: nat,
+      result: list[int]): bool =
+    int_list_length(result) = k
+      AND all_members_of(result, nums)
+      AND no_duplicate_ints(result)
+      AND every_result_dominates(
+            result,
+            nums,
+            result)
+      AND pairwise_nonincreasing_frequencies(
+            result,
+            nums)
+
+  topKFrequent_spec_satisfied: bool =
+    FORALL (nums: list[int], k: nat):
+      topKFrequent_precond(nums, k)
+        IMPLIES
+          topKFrequent_postcond(
+            nums,
+            k,
+            topKFrequent(nums, k))
+
+END verina_advanced_76

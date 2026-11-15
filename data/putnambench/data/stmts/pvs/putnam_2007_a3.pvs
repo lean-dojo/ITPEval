@@ -1,0 +1,96 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2007_a3:
+% the probability that no nonempty prefix sum of a permutation of 1 through
+% 3*k+1 is divisible by 3 has the stated factorial closed form. This file
+% contains no proof.
+
+putnam_2007_a3: THEORY
+BEGIN
+  integer_sequence: TYPE = [nat -> int]
+
+  IMPORTING finite_sets[integer_sequence]
+
+  nat_factorial(n: nat): RECURSIVE nat =
+    IF n = 0 THEN
+      1
+    ELSE
+      n * nat_factorial(n - 1)
+    ENDIF
+  MEASURE n
+
+  prefix_sum(
+      values: integer_sequence,
+      count: nat): RECURSIVE int =
+    IF count = 0 THEN
+      0
+    ELSE
+      prefix_sum(values, count - 1) + values(count - 1)
+    ENDIF
+  MEASURE count
+
+  int_divides(divisor, value: int): bool =
+    EXISTS (quotient: int):
+      value = divisor * quotient
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN 0 ELSE numerator / denominator ENDIF
+
+  appears_exactly_once(
+      values: integer_sequence,
+      length: nat,
+      value: int): bool =
+    EXISTS (index: nat):
+      index < length
+        AND values(index) = value
+        AND (FORALL (other: nat):
+          (other < length AND values(other) = value)
+            IMPLIES other = index)
+
+  permutation_of_first_n(
+      values: integer_sequence,
+      length: nat): bool =
+    (FORALL (index: nat):
+      index < length IMPLIES
+        1 <= values(index)
+          AND values(index) <= (length :: int))
+      AND
+    (FORALL (value: int):
+      (1 <= value AND value <= (length :: int))
+        IMPLIES appears_exactly_once(values, length, value))
+      AND
+    (FORALL (index: nat):
+      index >= length IMPLIES values(index) = 0)
+
+  admissible_permutation(
+      values: integer_sequence,
+      k: posnat): bool =
+    permutation_of_first_n(values, 3 * k + 1)
+
+  good_permutation(
+      values: integer_sequence,
+      k: posnat): bool =
+    admissible_permutation(values, k)
+      AND NOT EXISTS (last_index: nat):
+        last_index < 3 * k + 1
+          AND int_divides(
+            3,
+            prefix_sum(values, last_index + 1))
+
+  putnam_2007_a3_solution(k: posnat): real =
+    safe_div(
+      (nat_factorial(k) :: real)
+        * (nat_factorial(k + 1) :: real),
+      ((3 * k + 1) :: real)
+        * (nat_factorial(2 * k) :: real))
+
+  putnam_2007_a3: bool =
+    FORALL (k: posnat):
+      EXISTS (perms, goodperms: finite_set[integer_sequence]):
+        (FORALL (values: integer_sequence):
+          perms(values) IFF admissible_permutation(values, k))
+          AND
+        (FORALL (values: integer_sequence):
+          goodperms(values) IFF good_permutation(values, k))
+          AND
+        (card(goodperms) :: real)
+          = (card(perms) :: real) * putnam_2007_a3_solution(k)
+END putnam_2007_a3

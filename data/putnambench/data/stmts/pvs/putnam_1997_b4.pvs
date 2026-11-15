@@ -1,0 +1,72 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1997_b4:
+% the alternating sum through floor(2*k/3) of coefficients of
+% (1 + x + x^2)^(k-i) lies between zero and one. This file contains no proof.
+
+putnam_1997_b4: THEORY
+BEGIN
+  coefficient_table: TYPE = [nat, nat -> int]
+
+  trinomial_coefficient(m, n: nat): RECURSIVE int =
+    IF m = 0 THEN
+      IF n = 0 THEN 1 ELSE 0 ENDIF
+    ELSE
+      trinomial_coefficient(m - 1, n)
+        + IF n >= 1 THEN
+            trinomial_coefficient(m - 1, n - 1)
+          ELSE
+            0
+          ENDIF
+        + IF n >= 2 THEN
+            trinomial_coefficient(m - 1, n - 2)
+          ELSE
+            0
+          ENDIF
+    ENDIF
+  MEASURE m
+
+  coefficient_specification(a: coefficient_table): bool =
+    FORALL (m, n: nat):
+      a(m, n) = trinomial_coefficient(m, n)
+
+  nat_subtract(minuend, subtrahend: nat): nat =
+    IF subtrahend <= minuend THEN
+      minuend - subtrahend
+    ELSE
+      0
+    ENDIF
+
+  alternating_sign(index: nat): RECURSIVE int =
+    IF index = 0 THEN
+      1
+    ELSE
+      -alternating_sign(index - 1)
+    ENDIF
+  MEASURE index
+
+  alternating_coefficient_sum(
+      a: coefficient_table,
+      k, count: nat): RECURSIVE int =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        alternating_coefficient_sum(a, k, count - 1)
+          + alternating_sign(index)
+              * a(nat_subtract(k, index), index)
+    ENDIF
+  MEASURE count
+
+  two_thirds_floor(k: nat): nat =
+    ndiv(2 * k, 3)
+
+  putnam_1997_b4: bool =
+    FORALL (a: coefficient_table):
+      coefficient_specification(a)
+        IMPLIES
+          FORALL (k: nat):
+            LET value: int =
+                  alternating_coefficient_sum(
+                    a, k, two_thirds_floor(k) + 1)
+            IN
+              0 <= value AND value <= 1
+END putnam_1997_b4

@@ -1,0 +1,215 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/multiprecision/div_Div_wmpn_tdiv_qr_in_placeqtvc: the verification
+% condition for allocating scratch storage and reducing in-place
+% multiprecision quotient-and-remainder division to its core division
+% routine. This file contains no proof.
+
+div_Div_wmpn_tdiv_qr_in_placeqtvc[
+    zone: TYPE+,
+    null_zone: zone]: THEORY
+BEGIN
+
+  IMPORTING
+    bv[32], bv[64],
+    bv_nat[32], bv_nat[64]
+
+  word32: TYPE = bvec[32]
+  word64: TYPE = bvec[64]
+
+  ptr: TYPE =
+    [# data_length: nat,
+       cells: [int -> word64],
+       pointer_offset: int,
+       pointer_min: int,
+       pointer_max: int,
+       is_writable: bool,
+       pointer_zone: zone #]
+
+  radix: int = 18446744073709551616
+  max_uint32: int = 4294967295
+
+  unsigned32(value1: word32): int =
+    bv2nat[32](value1)
+
+  unsigned64(value1: word64): int =
+    bv2nat[64](value1)
+
+  signed32(value1: word32): int =
+    IF value1(31) THEN
+      bv2nat[32](value1) - 4294967296
+    ELSE
+      bv2nat[32](value1)
+    ENDIF
+
+  int_to_nat(value1: int): nat =
+    IF value1 < 0 THEN 0 ELSE value1 ENDIF
+
+  plength(p: ptr): int =
+    data_length(p)
+
+  pelts(p: ptr, index: int): word64 =
+    cells(p)(index)
+
+  int32_in_bounds(value1: int): bool =
+    -2147483648 <= value1 AND value1 <= 2147483647
+
+  uint32_in_bounds(value1: int): bool =
+    0 <= value1 AND value1 <= max_uint32
+
+  valid(p: ptr, size: int): bool =
+    int32_in_bounds(size)
+      AND 0 <= size
+      AND 0 <= pointer_min(p)
+      AND pointer_min(p) <= pointer_offset(p)
+      AND pointer_offset(p) + size <= pointer_max(p)
+      AND pointer_max(p) <= plength(p)
+
+  not_null(p: ptr): bool =
+    NOT pointer_zone(p) = null_zone
+
+  nat_value_from(
+      p: ptr,
+      index: int,
+      count: nat): RECURSIVE int =
+    IF count = 0 THEN
+      0
+    ELSE
+      unsigned64(pelts(p, index))
+        + radix * nat_value_from(p, index + 1, count - 1)
+    ENDIF
+  MEASURE count
+
+  value(p: ptr, size: int): int =
+    nat_value_from(p, pointer_offset(p), int_to_nat(size))
+
+  same_shape(newer, older: ptr): bool =
+    data_length(newer) = data_length(older)
+      AND pointer_offset(newer) = pointer_offset(older)
+      AND pointer_min(newer) = pointer_min(older)
+      AND pointer_max(newer) = pointer_max(older)
+      AND is_writable(newer) = is_writable(older)
+      AND pointer_zone(newer) = pointer_zone(older)
+
+  scratch_layout(p: ptr): bool =
+    pointer_offset(p) = 0
+      AND pointer_min(p) = 0
+      AND pointer_max(p) = plength(p)
+      AND is_writable(p) = TRUE
+
+  malloc_result(p: ptr, size: int): bool =
+    (NOT pointer_zone(p) = null_zone IMPLIES plength(p) = size)
+      AND scratch_layout(p)
+
+  division_post(
+      original_x, quotient, divisor, remainder: ptr,
+      sx, sy: word32): bool =
+    value(original_x, signed32(sx))
+      =
+    value(quotient, signed32(sx) - signed32(sy) + 1)
+        * value(divisor, signed32(sy))
+      + value(remainder, signed32(sy))
+      AND
+    value(remainder, signed32(sy))
+      < value(divisor, signed32(sy))
+
+  div_qr_in_place_continuation(
+      sy, sx: word32,
+      x, y, q, nx, ny: ptr): bool =
+    ((1 <= signed32(sy)
+        AND signed32(sy) <= signed32(sx)
+        AND signed32(sx) <= 2147483647 - 1)
+      AND valid(x, signed32(sx))
+      AND valid(y, signed32(sy))
+      AND valid(q, signed32(sx) - signed32(sy) + 1)
+      AND valid(nx, signed32(sx) + 1)
+      AND valid(ny, signed32(sy))
+      AND (is_writable(q) = TRUE AND is_writable(x) = TRUE)
+      AND (is_writable(nx) = TRUE AND is_writable(ny) = TRUE)
+      AND
+        0 < unsigned64(
+              pelts(
+                y,
+                pointer_offset(y) + signed32(sy) - 1)))
+      AND
+    (FORALL (ny1, nx1, x1, q1: ptr):
+      same_shape(ny1, ny)
+        IMPLIES
+      same_shape(nx1, nx)
+        IMPLIES
+      same_shape(x1, x)
+        IMPLIES
+      same_shape(q1, q)
+        IMPLIES
+      division_post(x, q1, y, x1, sx, sy)
+        IMPLIES
+      scratch_layout(nx1)
+        AND scratch_layout(ny1)
+        AND division_post(x, q1, y, x1, sx, sy))
+
+  wmpn_tdiv_qr_in_place_vc: bool =
+    FORALL
+        (sy, sx: word32),
+        (x, y, q: ptr),
+        (qxn: word32):
+      1 <= signed32(sy)
+        IMPLIES
+      signed32(sy) <= signed32(sx)
+        IMPLIES
+      signed32(sx) <= 2147483647 - 1
+        IMPLIES
+      valid(x, signed32(sx))
+        IMPLIES
+      valid(y, signed32(sy))
+        IMPLIES
+      valid(q, signed32(sx) - signed32(sy) + 1)
+        IMPLIES
+      is_writable(x) = TRUE
+        IMPLIES
+      is_writable(q) = TRUE
+        IMPLIES
+      signed32(qxn) = 0
+        IMPLIES
+      0 < unsigned64(
+            pelts(
+              y,
+              pointer_offset(y) + signed32(sy) - 1))
+        IMPLIES
+      0 <= signed32(sx)
+        AND
+      (FORALL (o1: word32):
+        unsigned32(o1) = signed32(sx)
+          IMPLIES
+        uint32_in_bounds(unsigned32(o1) + 1)
+          AND
+        (FORALL (o2: word32):
+          unsigned32(o2) = unsigned32(o1) + 1
+            IMPLIES
+          0 <= unsigned32(o2)
+            AND
+          (FORALL (nx: ptr):
+            malloc_result(nx, unsigned32(o2))
+              IMPLIES
+            not_null(nx)
+                = (NOT pointer_zone(nx) = null_zone)
+              IMPLIES
+            not_null(nx)
+              IMPLIES
+            0 <= signed32(sy)
+              AND
+            (FORALL (o3: word32):
+              unsigned32(o3) = signed32(sy)
+                IMPLIES
+              0 <= unsigned32(o3)
+                AND
+              (FORALL (ny: ptr):
+                malloc_result(ny, unsigned32(o3))
+                  IMPLIES
+                not_null(ny)
+                    = (NOT pointer_zone(ny) = null_zone)
+                  IMPLIES
+                not_null(ny)
+                  IMPLIES
+                div_qr_in_place_continuation(
+                  sy, sx, x, y, q, nx, ny))))))
+
+END div_Div_wmpn_tdiv_qr_in_placeqtvc

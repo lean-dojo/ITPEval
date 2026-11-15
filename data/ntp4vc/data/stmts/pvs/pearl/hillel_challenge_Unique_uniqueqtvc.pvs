@@ -1,0 +1,282 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/hillel_challenge_Unique_uniqueqtvc: the verification condition for
+% constructing a duplicate-free integer list with the same elements as the
+% input list, using finite-map domains and loop invariants. This file contains
+% no proof.
+
+hillel_challenge_Unique_uniqueqtvc: THEORY
+BEGIN
+
+  IMPORTING finite_sets[int]
+
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  nth_int(values: list[int], index: int): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF int_to_nat(index) = 0 THEN
+          head
+        ELSE
+          nth_int(tail, int_to_nat(index) - 1)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  list_set(
+      values: list[int],
+      index: nat,
+      value: int): RECURSIVE list[int] =
+    CASES values OF
+      null:
+        null,
+      cons(head, tail):
+        IF index = 0 THEN
+          cons(value, tail)
+        ELSE
+          cons(head, list_set(tail, index - 1, value))
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  set_function_equal(
+      values: list[int],
+      index, value: int): bool =
+    FORALL (argument: int):
+      nth_int(
+        list_set(values, int_to_nat(index), value),
+        argument)
+      =
+      IF argument = index THEN
+        value
+      ELSE
+        nth_int(values, argument)
+      ENDIF
+
+  prefix_mem(
+      value: int,
+      values: list[int],
+      upper: int): bool =
+    EXISTS (index: int):
+      (0 <= index AND index < upper)
+        AND nth_int(values, index) = value
+
+  same_prefix_elements(
+      input, output: list[int],
+      input_upper, output_upper: int): bool =
+    FORALL (value: int):
+      prefix_mem(value, input, input_upper)
+        IFF prefix_mem(value, output, output_upper)
+
+  domain_matches_prefix(
+      input: list[int],
+      input_upper: int,
+      seen: finite_set[int]): bool =
+    FORALL (value: int):
+      prefix_mem(value, input, input_upper)
+        IFF seen(value)
+
+  distinct_prefix(values: list[int], upper: int): bool =
+    FORALL (left, right: int):
+      (0 <= left AND left < right AND right < upper)
+        IMPLIES
+          NOT nth_int(values, left) = nth_int(values, right)
+
+  loop_invariant(
+      input, output: list[int],
+      seen: finite_set[int],
+      input_index, output_length, last_index: int): bool =
+    (0 <= input_index AND input_index <= last_index)
+      AND
+    (0 <= output_length AND output_length <= input_index)
+      AND
+    domain_matches_prefix(input, input_index, seen)
+      AND
+    same_prefix_elements(
+      input, output, input_index, output_length)
+      AND
+    distinct_prefix(output, output_length)
+
+  initial_invariant(
+      input, output: list[int],
+      seen: finite_set[int]): bool =
+    0 <= 0
+      AND
+    domain_matches_prefix(input, 0, seen)
+      AND
+    same_prefix_elements(input, output, 0, 0)
+      AND
+    distinct_prefix(output, 0)
+
+  updated_invariant(
+      input, output: list[int],
+      seen: finite_set[int],
+      input_index, output_length, value: int): bool =
+    LET updated: list[int] =
+      list_set(output, int_to_nat(output_length), value)
+    IN
+      (0 <= output_length + 1
+        AND output_length + 1 <= input_index + 1)
+        AND
+      domain_matches_prefix(input, input_index + 1, seen)
+        AND
+      same_prefix_elements(
+        input, updated, input_index + 1, output_length + 1)
+        AND
+      distinct_prefix(updated, output_length + 1)
+
+  update_obligation(
+      input, output: list[int],
+      seen: finite_set[int],
+      input_index, output_length, value: int): bool =
+    (0 <= output_length AND output_length < length(output))
+      AND
+    (length(
+       list_set(output, int_to_nat(output_length), value))
+       = length(output)
+      IMPLIES
+        set_function_equal(output, output_length, value)
+          IMPLIES
+            updated_invariant(
+              input, output, seen,
+              input_index, output_length, value))
+
+  new_value_branch(
+      input, output: list[int],
+      seen_before: finite_set[int],
+      input_index, output_length: int): bool =
+    (0 <= input_index AND input_index < length(input))
+      AND
+    (FORALL (seen_after: finite_set[int]):
+      seen_after = add(nth_int(input, input_index), seen_before)
+        IMPLIES
+          (0 <= input_index AND input_index < length(input))
+            AND
+          LET value: int = nth_int(input, input_index)
+          IN
+            update_obligation(
+              input, output, seen_after,
+              input_index, output_length, value))
+
+  existing_value_branch(
+      input, output: list[int],
+      seen: finite_set[int],
+      input_index, output_length: int): bool =
+    (0 <= output_length AND output_length <= input_index + 1)
+      AND
+    domain_matches_prefix(input, input_index + 1, seen)
+      AND
+    same_prefix_elements(
+      input, output, input_index + 1, output_length)
+      AND
+    distinct_prefix(output, output_length)
+
+  loop_step(
+      input, output: list[int],
+      seen: finite_set[int],
+      input_index, output_length: int): bool =
+    (0 <= input_index AND input_index < length(input))
+      AND
+    IF NOT seen(nth_int(input, input_index)) THEN
+      new_value_branch(
+        input, output, seen, input_index, output_length)
+    ELSE
+      existing_value_branch(
+        input, output, seen, input_index, output_length)
+    ENDIF
+
+  result_postcondition(
+      input, result: list[int]): bool =
+    same_prefix_elements(
+      result, input, length(result), length(input))
+      AND
+    distinct_prefix(result, length(result))
+
+  slice_obligation(
+      input, source: list[int],
+      slice_length: int): bool =
+    (0 <= 0
+      AND 0 <= slice_length
+      AND 0 + slice_length <= length(source))
+      AND
+    (FORALL (result: list[int]):
+      length(result) = slice_length
+        AND
+      (FORALL (index: int):
+        (0 <= index AND index < slice_length)
+          IMPLIES
+            nth_int(result, index)
+              = nth_int(source, 0 + index))
+        IMPLIES result_postcondition(input, result))
+
+  loop_obligations(
+      input, initial_output: list[int],
+      last_index: int): bool =
+    FORALL
+        (output_length: int),
+        (output: list[int]),
+        (seen: finite_set[int]):
+      length(output) = length(initial_output)
+        IMPLIES
+          ((FORALL (input_index: int):
+            loop_invariant(
+              input, output, seen,
+              input_index, output_length, last_index)
+              IMPLIES
+                loop_step(
+                  input, output, seen,
+                  input_index, output_length))
+            AND
+          (((0 <= output_length
+              AND output_length <= last_index + 1)
+             AND
+             domain_matches_prefix(
+               input, last_index + 1, seen)
+             AND
+             same_prefix_elements(
+               input, output,
+               last_index + 1, output_length)
+             AND
+             distinct_prefix(output, output_length))
+            IMPLIES
+              slice_obligation(
+                input, output, output_length)))
+
+  nonnegative_length_case(
+      input, initial_output: list[int],
+      initial_seen: finite_set[int],
+      last_index: int): bool =
+    initial_invariant(input, initial_output, initial_seen)
+      AND
+    loop_obligations(input, initial_output, last_index)
+
+  unique_vc: bool =
+    FORALL (input: list[int]):
+      LET input_length: int = length(input)
+      IN
+        FORALL (initial_seen: finite_set[int]):
+          initial_seen = emptyset[int]
+            IMPLIES
+              0 <= input_length
+                AND
+              (FORALL (initial_output: list[int]):
+                ((FORALL (index: int):
+                  (0 <= index AND index < input_length)
+                    IMPLIES nth_int(initial_output, index) = 0)
+                  AND length(initial_output) = input_length)
+                  IMPLIES
+                    LET last_index: int = input_length - 1
+                    IN
+                      ((0 <= last_index + 1)
+                        IMPLIES
+                          nonnegative_length_case(
+                            input, initial_output,
+                            initial_seen, last_index))
+                        AND
+                      ((last_index + 1 < 0)
+                        IMPLIES
+                          slice_obligation(input, initial_output, 0)))
+
+END hillel_challenge_Unique_uniqueqtvc

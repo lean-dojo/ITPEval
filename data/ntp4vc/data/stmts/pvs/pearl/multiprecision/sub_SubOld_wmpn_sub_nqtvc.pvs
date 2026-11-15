@@ -1,0 +1,326 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/multiprecision/sub_SubOld_wmpn_sub_nqtvc: the loop verification
+% condition for equal-length multiprecision subtraction into a separate
+% result pointer, including borrow arithmetic, pointer-state updates, numeric
+% value, loop invariants, and memory framing. This file contains no proof.
+
+sub_SubOld_wmpn_sub_nqtvc[zone: TYPE+]: THEORY
+BEGIN
+
+  IMPORTING
+    bv[32], bv[64],
+    bv_nat[32], bv_nat[64]
+
+  word32: TYPE = bvec[32]
+  word64: TYPE = bvec[64]
+
+  ptr: TYPE =
+    [# data_length: nat,
+       cells: [int -> word64],
+       pointer_offset: int,
+       pointer_min: int,
+       pointer_max: int,
+       is_writable: bool,
+       pointer_zone: zone #]
+
+  radix: int = 18446744073709551616
+
+  unsigned64(value1: word64): int =
+    bv2nat[64](value1)
+
+  signed32(value1: word32): int =
+    IF value1(31) THEN
+      bv2nat[32](value1) - 4294967296
+    ELSE
+      bv2nat[32](value1)
+    ENDIF
+
+  int_to_nat(value1: int): nat =
+    IF value1 < 0 THEN 0 ELSE value1 ENDIF
+
+  nat_power(base: int, exponent: nat): RECURSIVE int =
+    IF exponent = 0 THEN
+      1
+    ELSE
+      base * nat_power(base, exponent - 1)
+    ENDIF
+  MEASURE exponent
+
+  int_power(base, exponent: int): int =
+    nat_power(base, int_to_nat(exponent))
+
+  value_from(
+      values: [int -> word64],
+      start: int,
+      count: nat): RECURSIVE int =
+    IF count = 0 THEN
+      0
+    ELSE
+      unsigned64(values(start))
+        + radix * value_from(values, start + 1, count - 1)
+    ENDIF
+  MEASURE count
+
+  value(p: ptr, count: int): int =
+    value_from(
+      cells(p),
+      pointer_offset(p),
+      int_to_nat(count))
+
+  int32_in_bounds(value1: int): bool =
+    -2147483648 <= value1 AND value1 <= 2147483647
+
+  valid(p: ptr, count: int): bool =
+    int32_in_bounds(count)
+      AND 0 <= count
+      AND 0 <= pointer_min(p)
+      AND pointer_min(p) <= pointer_offset(p)
+      AND pointer_offset(p) + count <= pointer_max(p)
+      AND pointer_max(p) <= (data_length(p) :: int)
+
+  same_snapshot(new, old: ptr): bool =
+    data_length(new) = data_length(old)
+      AND pointer_offset(new) = pointer_offset(old)
+      AND pointer_min(new) = pointer_min(old)
+      AND pointer_max(new) = pointer_max(old)
+      AND is_writable(new) = is_writable(old)
+      AND pointer_zone(new) = pointer_zone(old)
+
+  valid_index(p: ptr, index: int): bool =
+    pointer_min(p) <= pointer_offset(p) + index
+      AND pointer_offset(p) + index < pointer_max(p)
+
+  borrow_in_bounds(borrow: word64): bool =
+    0 <= unsigned64(borrow)
+      AND unsigned64(borrow) <= 1
+
+  single_update(
+      new, old: ptr,
+      index: int,
+      replacement: word64): bool =
+    cells(new) = cells(old) WITH [(index) := replacement]
+
+  frame(
+      new, old: ptr,
+      count: int): bool =
+    FORALL (j: int):
+      j < pointer_offset(new)
+        OR pointer_offset(new) + count <= j
+      IMPLIES cells(new)(j) = cells(old)(j)
+
+  value_equation(
+      current, minuend, subtrahend: ptr,
+      count: int,
+      borrow: word64): bool =
+    value(current, count)
+        - int_power(radix, count) * unsigned64(borrow)
+      =
+    value(minuend, count) - value(subtrahend, count)
+
+  loop_invariant(
+      current, original_result, minuend, subtrahend: ptr,
+      size, index: word32,
+      borrow: word64): bool =
+    0 <= signed32(index)
+      AND signed32(index) <= signed32(size)
+      AND
+        value_equation(
+          current,
+          minuend,
+          subtrahend,
+          signed32(index),
+          borrow)
+      AND frame(current, original_result, signed32(size))
+      AND borrow_in_bounds(borrow)
+
+  subtract_with_borrow(
+      minuend, subtrahend: ptr,
+      index: word32,
+      incoming, result, outgoing: word64): bool =
+    unsigned64(result) - radix * unsigned64(outgoing)
+      =
+    unsigned64(
+      cells(minuend)(
+        pointer_offset(minuend) + signed32(index)))
+      -
+    unsigned64(
+      cells(subtrahend)(
+        pointer_offset(subtrahend) + signed32(index)))
+      - unsigned64(incoming)
+      AND borrow_in_bounds(outgoing)
+
+  next_invariant(
+      updated, original_result, minuend, subtrahend: ptr,
+      size, index, next_index: word32,
+      borrow: word64): bool =
+    0 <= signed32(size) - signed32(index)
+      AND
+        signed32(size) - signed32(next_index)
+          < signed32(size) - signed32(index)
+      AND
+        loop_invariant(
+          updated,
+          original_result,
+          minuend,
+          subtrahend,
+          size,
+          next_index,
+          borrow)
+
+  after_write(
+      updated, original_result, minuend, subtrahend: ptr,
+      size, index: word32,
+      borrow: word64): bool =
+    int32_in_bounds(signed32(index) + 1)
+      AND
+        (FORALL (next_index: word32):
+          signed32(next_index) = signed32(index) + 1
+            IMPLIES
+              next_invariant(
+                updated,
+                original_result,
+                minuend,
+                subtrahend,
+                size,
+                index,
+                next_index,
+                borrow))
+
+  write_result(
+      current, original_result, minuend, subtrahend: ptr,
+      size, index: word32,
+      incoming, result, outgoing: word64): bool =
+    subtract_with_borrow(
+      minuend,
+      subtrahend,
+      index,
+      incoming,
+      result,
+      outgoing)
+      IMPLIES
+        (valid_index(current, signed32(index))
+          AND is_writable(current) = TRUE)
+        AND
+          (FORALL (updated: ptr):
+            same_snapshot(updated, current)
+              IMPLIES
+                (single_update(
+                    updated,
+                    current,
+                    pointer_offset(updated) + signed32(index),
+                    result)
+                  AND
+                    cells(updated)(
+                      pointer_offset(updated) + signed32(index))
+                      = result)
+              IMPLIES
+                after_write(
+                  updated,
+                  original_result,
+                  minuend,
+                  subtrahend,
+                  size,
+                  index,
+                  outgoing))
+
+  final_state(
+      current, original_result, minuend, subtrahend: ptr,
+      size: word32,
+      borrow: word64): bool =
+    borrow_in_bounds(borrow)
+      AND
+        value_equation(
+          current,
+          minuend,
+          subtrahend,
+          signed32(size),
+          borrow)
+      AND frame(current, original_result, signed32(size))
+
+  loop_step(
+      current, original_result, minuend, subtrahend: ptr,
+      size, index: word32,
+      incoming: word64): bool =
+    IF signed32(index) < signed32(size) THEN
+      valid_index(minuend, signed32(index))
+        AND valid_index(subtrahend, signed32(index))
+        AND borrow_in_bounds(incoming)
+        AND
+          (FORALL (result, outgoing: word64):
+            write_result(
+              current,
+              original_result,
+              minuend,
+              subtrahend,
+              size,
+              index,
+              incoming,
+              result,
+              outgoing))
+    ELSE
+      final_state(
+        current,
+        original_result,
+        minuend,
+        subtrahend,
+        size,
+        incoming)
+    ENDIF
+
+  all_loop_states(
+      original_result, minuend, subtrahend: ptr,
+      size: word32): bool =
+    FORALL
+        (index: word32),
+        (borrow: word64),
+        (current: ptr):
+      same_snapshot(current, original_result)
+        IMPLIES
+          loop_invariant(
+            current,
+            original_result,
+            minuend,
+            subtrahend,
+            size,
+            index,
+            borrow)
+        IMPLIES
+          loop_step(
+            current,
+            original_result,
+            minuend,
+            subtrahend,
+            size,
+            index,
+            borrow)
+
+  wmpn_sub_n_vc: bool =
+    FORALL
+        (minuend: ptr),
+        (size: word32),
+        (subtrahend, result_pointer: ptr):
+      valid(minuend, signed32(size))
+        IMPLIES
+          valid(subtrahend, signed32(size))
+        IMPLIES
+          valid(result_pointer, signed32(size))
+        IMPLIES
+          is_writable(result_pointer) = TRUE
+        IMPLIES
+          0 <= 0
+            AND 0 <= signed32(size)
+            AND
+              value(result_pointer, 0)
+                  - int_power(radix, 0) * 0
+                =
+              value(minuend, 0) - value(subtrahend, 0)
+            AND 0 <= 0
+            AND 0 <= 1
+            AND
+              all_loop_states(
+                result_pointer,
+                minuend,
+                subtrahend,
+                size)
+
+END sub_SubOld_wmpn_sub_nqtvc

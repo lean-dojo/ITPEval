@@ -1,0 +1,754 @@
+% Statement-only formalization of the Thousand Theorems artifact Q25378690,
+% "Ionescu-Tulcea theorem": iterating measurable Markov kernels yields a
+% measurable probability kernel on infinite trajectories with the prescribed
+% finite-dimensional distributions. This file contains no proof.
+
+ionescu_tulcea_theorem_Q25378690[S: TYPE+]: THEORY
+BEGIN
+  state_event: TYPE = [S -> bool]
+  state_event_sequence: TYPE = [nat -> state_event]
+  state_event_family: TYPE = [nat -> state_event]
+  state_sigma_algebra: TYPE = [state_event -> bool]
+  state_sigma_family: TYPE = [nat -> state_sigma_algebra]
+  state_family: TYPE = [nat -> state_event]
+
+  trajectory: TYPE = [nat -> S]
+  trajectory_event: TYPE = [trajectory -> bool]
+  trajectory_event_sequence: TYPE = [nat -> trajectory_event]
+  trajectory_sigma_algebra: TYPE = [trajectory_event -> bool]
+
+  measure_value: TYPE =
+    [# infinite_flag: bool, finite_part: real #]
+  measure_value_sequence: TYPE = [nat -> measure_value]
+  real_sequence: TYPE = [nat -> real]
+  nonnegative_state_function: TYPE = [S -> measure_value]
+
+  state_measure: TYPE = [state_event -> measure_value]
+  path_measure: TYPE = [trajectory_event -> measure_value]
+  state_kernel_family: TYPE =
+    [nat -> [trajectory -> state_measure]]
+  path_kernel: TYPE = [trajectory -> path_measure]
+  path_kernel_family: TYPE = [nat -> path_kernel]
+
+  zero_measure_value: measure_value =
+    (# infinite_flag := FALSE, finite_part := 0 #)
+
+  one_measure_value: measure_value =
+    (# infinite_flag := FALSE, finite_part := 1 #)
+
+  infinite_measure_value: measure_value =
+    (# infinite_flag := TRUE, finite_part := 0 #)
+
+  finite_measure_value(value: real): measure_value =
+    (# infinite_flag := FALSE, finite_part := value #)
+
+  canonical_measure_value(value: measure_value): bool =
+    IF infinite_flag(value) THEN
+      finite_part(value) = 0
+    ELSE
+      finite_part(value) >= 0
+    ENDIF
+
+  measure_value_is_zero(value: measure_value): bool =
+    NOT infinite_flag(value)
+      AND finite_part(value) = 0
+
+  measure_value_is_one(value: measure_value): bool =
+    NOT infinite_flag(value)
+      AND finite_part(value) = 1
+
+  measure_value_le(left, right: measure_value): bool =
+    canonical_measure_value(left)
+      AND canonical_measure_value(right)
+      AND IF infinite_flag(right) THEN
+        TRUE
+      ELSIF infinite_flag(left) THEN
+        FALSE
+      ELSE
+        finite_part(left) <= finite_part(right)
+      ENDIF
+
+  measure_value_add(left, right: measure_value): measure_value =
+    IF infinite_flag(left) OR infinite_flag(right) THEN
+      infinite_measure_value
+    ELSE
+      finite_measure_value(
+        finite_part(left) + finite_part(right))
+    ENDIF
+
+  measure_value_product(left, right: measure_value): measure_value =
+    IF measure_value_is_zero(left)
+        OR measure_value_is_zero(right) THEN
+      zero_measure_value
+    ELSIF infinite_flag(left)
+        OR infinite_flag(right) THEN
+      infinite_measure_value
+    ELSE
+      finite_measure_value(
+        finite_part(left) * finite_part(right))
+    ENDIF
+
+  finite_real_sum(values: real_sequence, count: nat):
+      RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      finite_real_sum(values, count - 1)
+        + values(count - 1)
+    ENDIF
+  MEASURE count
+
+  converges_to_real(values: real_sequence, limit: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(values(index) - limit) < epsilon_value
+
+  unbounded_above(values: real_sequence): bool =
+    FORALL (bound: real):
+      EXISTS (index: nat):
+        bound < values(index)
+
+  partial_measure_sum(
+      values: measure_value_sequence,
+      count: nat): real =
+    finite_real_sum(
+      LAMBDA (index: nat):
+        finite_part(values(index)),
+      count)
+
+  extended_nonnegative_sum(
+      values: measure_value_sequence,
+      total: measure_value): bool =
+    canonical_measure_value(total)
+      AND (FORALL (index: nat):
+        canonical_measure_value(values(index)))
+      AND IF infinite_flag(total) THEN
+        (EXISTS (index: nat):
+          infinite_flag(values(index)))
+          OR ((FORALL (index: nat):
+                NOT infinite_flag(values(index)))
+            AND unbounded_above(
+              LAMBDA (count: nat):
+                partial_measure_sum(values, count)))
+      ELSE
+        (FORALL (index: nat):
+          NOT infinite_flag(values(index)))
+          AND converges_to_real(
+            LAMBDA (count: nat):
+              partial_measure_sum(values, count),
+            finite_part(total))
+      ENDIF
+
+  empty_state_event: state_event =
+    LAMBDA (value: S): FALSE
+
+  state_complement(
+      domain, E: state_event): state_event =
+    LAMBDA (value: S):
+      domain(value) AND NOT E(value)
+
+  state_countable_union(
+      domain: state_event,
+      events: state_event_sequence): state_event =
+    LAMBDA (value: S):
+      domain(value)
+        AND EXISTS (index: nat): events(index)(value)
+
+  state_event_subset(E, F: state_event): bool =
+    FORALL (value: S):
+      E(value) IMPLIES F(value)
+
+  state_pairwise_disjoint(
+      domain: state_event,
+      events: state_event_sequence): bool =
+    FORALL (left_index, right_index: nat):
+      left_index /= right_index IMPLIES
+        FORALL (value: S):
+          domain(value) IMPLIES
+            NOT (events(left_index)(value)
+              AND events(right_index)(value))
+
+  is_state_sigma_algebra(
+      domain: state_event,
+      Sigma: state_sigma_algebra): bool =
+    (FORALL (E: state_event):
+      Sigma(E) IMPLIES state_event_subset(E, domain))
+      AND Sigma(domain)
+      AND (FORALL (E: state_event):
+        Sigma(E) IMPLIES
+          Sigma(state_complement(domain, E)))
+      AND (FORALL (events: state_event_sequence):
+        (FORALL (index: nat): Sigma(events(index)))
+          IMPLIES
+            Sigma(state_countable_union(domain, events)))
+
+  is_state_measure(
+      domain: state_event,
+      Sigma: state_sigma_algebra,
+      M: state_measure): bool =
+    is_state_sigma_algebra(domain, Sigma)
+      AND measure_value_is_zero(M(empty_state_event))
+      AND (FORALL (E: state_event):
+        Sigma(E) IMPLIES canonical_measure_value(M(E)))
+      AND (FORALL (events: state_event_sequence):
+        ((FORALL (index: nat): Sigma(events(index)))
+          AND state_pairwise_disjoint(domain, events))
+        IMPLIES
+          extended_nonnegative_sum(
+            LAMBDA (index: nat): M(events(index)),
+            M(state_countable_union(domain, events))))
+
+  is_state_probability_measure(
+      domain: state_event,
+      Sigma: state_sigma_algebra,
+      M: state_measure): bool =
+    is_state_measure(domain, Sigma, M)
+      AND measure_value_is_one(M(domain))
+
+  valid_prefix(
+      fiber: state_family,
+      last_index: nat,
+      x: trajectory): bool =
+    FORALL (index: nat):
+      index <= last_index IMPLIES fiber(index)(x(index))
+
+  valid_path(
+      fiber: state_family,
+      x: trajectory): bool =
+    FORALL (index: nat): fiber(index)(x(index))
+
+  prefix_equivalent(
+      last_index: nat,
+      x, y: trajectory): bool =
+    FORALL (index: nat):
+      index <= last_index IMPLIES x(index) = y(index)
+
+  prefix_domain(
+      fiber: state_family,
+      last_index: nat): trajectory_event =
+    LAMBDA (x: trajectory):
+      valid_prefix(fiber, last_index, x)
+
+  path_domain(fiber: state_family): trajectory_event =
+    LAMBDA (x: trajectory): valid_path(fiber, x)
+
+  empty_trajectory_event: trajectory_event =
+    LAMBDA (x: trajectory): FALSE
+
+  trajectory_complement(
+      domain, E: trajectory_event): trajectory_event =
+    LAMBDA (x: trajectory):
+      domain(x) AND NOT E(x)
+
+  trajectory_countable_union(
+      domain: trajectory_event,
+      events: trajectory_event_sequence):
+      trajectory_event =
+    LAMBDA (x: trajectory):
+      domain(x)
+        AND EXISTS (index: nat): events(index)(x)
+
+  trajectory_event_subset(
+      E, F: trajectory_event): bool =
+    FORALL (x: trajectory):
+      E(x) IMPLIES F(x)
+
+  trajectory_pairwise_disjoint(
+      domain: trajectory_event,
+      events: trajectory_event_sequence): bool =
+    FORALL (left_index, right_index: nat):
+      left_index /= right_index IMPLIES
+        FORALL (x: trajectory):
+          domain(x) IMPLIES
+            NOT (events(left_index)(x)
+              AND events(right_index)(x))
+
+  is_trajectory_sigma_algebra(
+      domain: trajectory_event,
+      Sigma: trajectory_sigma_algebra): bool =
+    (FORALL (E: trajectory_event):
+      Sigma(E) IMPLIES trajectory_event_subset(E, domain))
+      AND Sigma(domain)
+      AND (FORALL (E: trajectory_event):
+        Sigma(E) IMPLIES
+          Sigma(trajectory_complement(domain, E)))
+      AND (FORALL (events: trajectory_event_sequence):
+        (FORALL (index: nat): Sigma(events(index)))
+          IMPLIES
+            Sigma(trajectory_countable_union(domain, events)))
+
+  prefix_coordinate_event(
+      fiber: state_family,
+      last_index, coordinate: nat,
+      E: state_event): trajectory_event =
+    LAMBDA (x: trajectory):
+      valid_prefix(fiber, last_index, x)
+        AND E(x(coordinate))
+
+  path_coordinate_event(
+      fiber: state_family,
+      coordinate: nat,
+      E: state_event): trajectory_event =
+    LAMBDA (x: trajectory):
+      valid_path(fiber, x)
+        AND E(x(coordinate))
+
+  contains_prefix_coordinate_generators(
+      fiber: state_family,
+      fiber_sigma: state_sigma_family,
+      last_index: nat,
+      Sigma: trajectory_sigma_algebra): bool =
+    FORALL (coordinate: nat), (E: state_event):
+      coordinate <= last_index
+        AND fiber_sigma(coordinate)(E)
+      IMPLIES
+        Sigma(
+          prefix_coordinate_event(
+            fiber, last_index, coordinate, E))
+
+  contains_path_coordinate_generators(
+      fiber: state_family,
+      fiber_sigma: state_sigma_family,
+      Sigma: trajectory_sigma_algebra): bool =
+    FORALL (coordinate: nat), (E: state_event):
+      fiber_sigma(coordinate)(E)
+        IMPLIES
+          Sigma(path_coordinate_event(fiber, coordinate, E))
+
+  prefix_product_sigma(
+      fiber: state_family,
+      fiber_sigma: state_sigma_family,
+      last_index: nat): trajectory_sigma_algebra =
+    LAMBDA (E: trajectory_event):
+      FORALL (candidate: trajectory_sigma_algebra):
+        (is_trajectory_sigma_algebra(
+            prefix_domain(fiber, last_index), candidate)
+          AND contains_prefix_coordinate_generators(
+            fiber, fiber_sigma, last_index, candidate))
+        IMPLIES candidate(E)
+
+  path_product_sigma(
+      fiber: state_family,
+      fiber_sigma: state_sigma_family):
+      trajectory_sigma_algebra =
+    LAMBDA (E: trajectory_event):
+      FORALL (candidate: trajectory_sigma_algebra):
+        (is_trajectory_sigma_algebra(
+            path_domain(fiber), candidate)
+          AND contains_path_coordinate_generators(
+            fiber, fiber_sigma, candidate))
+        IMPLIES candidate(E)
+
+  is_path_measure(
+      fiber: state_family,
+      fiber_sigma: state_sigma_family,
+      M: path_measure): bool =
+    is_trajectory_sigma_algebra(
+      path_domain(fiber),
+      path_product_sigma(fiber, fiber_sigma))
+      AND measure_value_is_zero(M(empty_trajectory_event))
+      AND (FORALL (E: trajectory_event):
+        path_product_sigma(fiber, fiber_sigma)(E)
+          IMPLIES canonical_measure_value(M(E)))
+      AND (FORALL (events: trajectory_event_sequence):
+        ((FORALL (index: nat):
+            path_product_sigma(fiber, fiber_sigma)(
+              events(index)))
+          AND trajectory_pairwise_disjoint(
+            path_domain(fiber), events))
+        IMPLIES
+          extended_nonnegative_sum(
+            LAMBDA (index: nat): M(events(index)),
+            M(trajectory_countable_union(
+              path_domain(fiber), events))))
+
+  is_path_probability_measure(
+      fiber: state_family,
+      fiber_sigma: state_sigma_family,
+      M: path_measure): bool =
+    is_path_measure(fiber, fiber_sigma, M)
+      AND measure_value_is_one(M(path_domain(fiber)))
+
+  state_measure_equal(
+      Sigma: state_sigma_algebra,
+      left, right: state_measure): bool =
+    FORALL (E: state_event):
+      Sigma(E) IMPLIES left(E) = right(E)
+
+  path_measure_equal(
+      fiber: state_family,
+      fiber_sigma: state_sigma_family,
+      left, right: path_measure): bool =
+    FORALL (E: trajectory_event):
+      path_product_sigma(fiber, fiber_sigma)(E)
+        IMPLIES left(E) = right(E)
+
+  measurable_measure_value_on_prefix(
+      fiber: state_family,
+      fiber_sigma: state_sigma_family,
+      last_index: nat,
+      f: [trajectory -> measure_value]): bool =
+    FORALL (bound: real):
+      bound >= 0 IMPLIES
+        prefix_product_sigma(
+          fiber, fiber_sigma, last_index)(
+            LAMBDA (x: trajectory):
+              valid_prefix(fiber, last_index, x)
+                AND measure_value_le(
+                  f(x), finite_measure_value(bound)))
+
+  is_markov_state_kernel_family(
+      fiber: state_family,
+      fiber_sigma: state_sigma_family,
+      K: state_kernel_family): bool =
+    (FORALL (index: nat), (x: trajectory):
+      valid_prefix(fiber, index, x)
+        IMPLIES
+          is_state_probability_measure(
+            fiber(index + 1),
+            fiber_sigma(index + 1),
+            K(index)(x)))
+      AND (FORALL (index: nat), (x, y: trajectory):
+        valid_prefix(fiber, index, x)
+          AND valid_prefix(fiber, index, y)
+          AND prefix_equivalent(index, x, y)
+        IMPLIES
+          state_measure_equal(
+            fiber_sigma(index + 1),
+            K(index)(x),
+            K(index)(y)))
+      AND (FORALL
+          (index: nat),
+          (E: state_event):
+        fiber_sigma(index + 1)(E)
+          IMPLIES
+            measurable_measure_value_on_prefix(
+              fiber,
+              fiber_sigma,
+              index,
+              LAMBDA (x: trajectory): K(index)(x)(E)))
+
+  is_markov_path_kernel(
+      fiber: state_family,
+      fiber_sigma: state_sigma_family,
+      last_index: nat,
+      K: path_kernel): bool =
+    (FORALL (x: trajectory):
+      valid_prefix(fiber, last_index, x)
+        IMPLIES
+          is_path_probability_measure(
+            fiber, fiber_sigma, K(x)))
+      AND (FORALL (x, y: trajectory):
+        valid_prefix(fiber, last_index, x)
+          AND valid_prefix(fiber, last_index, y)
+          AND prefix_equivalent(last_index, x, y)
+        IMPLIES
+          path_measure_equal(
+            fiber, fiber_sigma, K(x), K(y)))
+      AND (FORALL (E: trajectory_event):
+        path_product_sigma(fiber, fiber_sigma)(E)
+          IMPLIES
+            measurable_measure_value_on_prefix(
+              fiber,
+              fiber_sigma,
+              last_index,
+              LAMBDA (x: trajectory): K(x)(E)))
+
+  state_pairwise_disjoint_below(
+      domain: state_event,
+      events: state_event_sequence,
+      count: nat): bool =
+    FORALL (left_index, right_index: nat):
+      left_index < count
+        AND right_index < count
+        AND left_index /= right_index
+      IMPLIES
+        FORALL (value: S):
+          domain(value) IMPLIES
+            NOT (events(left_index)(value)
+              AND events(right_index)(value))
+
+  finite_simple_state_value(
+      coefficients: measure_value_sequence,
+      pieces: state_event_sequence,
+      count: nat,
+      value: S): RECURSIVE measure_value =
+    IF count = 0 THEN
+      zero_measure_value
+    ELSE
+      measure_value_add(
+        finite_simple_state_value(
+          coefficients, pieces, count - 1, value),
+        IF pieces(count - 1)(value) THEN
+          coefficients(count - 1)
+        ELSE
+          zero_measure_value
+        ENDIF)
+    ENDIF
+  MEASURE count
+
+  measurable_simple_state_data(
+      domain: state_event,
+      Sigma: state_sigma_algebra,
+      coefficients: measure_value_sequence,
+      pieces: state_event_sequence,
+      count: nat): bool =
+    state_pairwise_disjoint_below(domain, pieces, count)
+      AND (FORALL (index: nat):
+        index < count IMPLIES
+          canonical_measure_value(coefficients(index))
+            AND NOT infinite_flag(coefficients(index))
+            AND Sigma(pieces(index)))
+
+  measurable_simple_state_minorant(
+      domain: state_event,
+      Sigma: state_sigma_algebra,
+      f: nonnegative_state_function,
+      coefficients: measure_value_sequence,
+      pieces: state_event_sequence,
+      count: nat): bool =
+    (FORALL (value: S):
+      domain(value) IMPLIES canonical_measure_value(f(value)))
+      AND measurable_simple_state_data(
+        domain, Sigma, coefficients, pieces, count)
+      AND (FORALL (value: S):
+        domain(value) IMPLIES
+          measure_value_le(
+            finite_simple_state_value(
+              coefficients, pieces, count, value),
+            f(value)))
+
+  finite_simple_state_integral(
+      M: state_measure,
+      coefficients: measure_value_sequence,
+      pieces: state_event_sequence,
+      count: nat): RECURSIVE measure_value =
+    IF count = 0 THEN
+      zero_measure_value
+    ELSE
+      measure_value_add(
+        finite_simple_state_integral(
+          M, coefficients, pieces, count - 1),
+        measure_value_product(
+          coefficients(count - 1),
+          M(pieces(count - 1))))
+    ENDIF
+  MEASURE count
+
+  state_integral_upper_bound(
+      domain: state_event,
+      M: state_measure,
+      Sigma: state_sigma_algebra,
+      f: nonnegative_state_function,
+      upper: measure_value): bool =
+    canonical_measure_value(upper)
+      AND FORALL
+          (coefficients: measure_value_sequence),
+          (pieces: state_event_sequence),
+          (count: nat):
+        measurable_simple_state_minorant(
+          domain, Sigma, f, coefficients, pieces, count)
+        IMPLIES
+          measure_value_le(
+            finite_simple_state_integral(
+              M, coefficients, pieces, count),
+            upper)
+
+  has_lower_state_integral(
+      domain: state_event,
+      M: state_measure,
+      Sigma: state_sigma_algebra,
+      f: nonnegative_state_function,
+      integral_value: measure_value): bool =
+    (FORALL (value: S):
+      domain(value) IMPLIES canonical_measure_value(f(value)))
+      AND canonical_measure_value(integral_value)
+      AND state_integral_upper_bound(
+        domain, M, Sigma, f, integral_value)
+      AND (FORALL (upper: measure_value):
+        state_integral_upper_bound(
+          domain, M, Sigma, f, upper)
+        IMPLIES measure_value_le(integral_value, upper))
+
+  update_coordinate(
+      x: trajectory,
+      coordinate: nat,
+      value: S): trajectory =
+    LAMBDA (index: nat):
+      IF index = coordinate THEN value ELSE x(index) ENDIF
+
+  tail_cylinder_probability_value(
+      fiber: state_family,
+      fiber_sigma: state_sigma_family,
+      K: state_kernel_family,
+      sets: state_event_family,
+      prefix: trajectory,
+      current_index: nat,
+      steps: nat,
+      probability: measure_value): RECURSIVE bool =
+    IF steps = 0 THEN
+      probability = one_measure_value
+    ELSE
+      EXISTS (continuation: nonnegative_state_function):
+        (FORALL (value: S):
+          (fiber(current_index + 1)(value)
+            AND sets(current_index + 1)(value)
+          IMPLIES
+            tail_cylinder_probability_value(
+              fiber,
+              fiber_sigma,
+              K,
+              sets,
+              update_coordinate(
+                prefix, current_index + 1, value),
+              current_index + 1,
+              steps - 1,
+              continuation(value)))
+          AND
+          (NOT (fiber(current_index + 1)(value)
+            AND sets(current_index + 1)(value))
+          IMPLIES
+            continuation(value) = zero_measure_value))
+        AND has_lower_state_integral(
+          fiber(current_index + 1),
+          K(current_index)(prefix),
+          fiber_sigma(current_index + 1),
+          continuation,
+          probability)
+    ENDIF
+  MEASURE steps
+
+  finite_coordinate_cylinder(
+      fiber: state_family,
+      last_index: nat,
+      sets: state_event_family): trajectory_event =
+    LAMBDA (x: trajectory):
+      valid_path(fiber, x)
+        AND (FORALL (index: nat):
+          index <= last_index IMPLIES sets(index)(x(index)))
+
+  measurable_sets_through(
+      fiber_sigma: state_sigma_family,
+      last_index: nat,
+      sets: state_event_family): bool =
+    FORALL (index: nat):
+      index <= last_index IMPLIES
+        fiber_sigma(index)(sets(index))
+
+  initial_coordinates_in_sets(
+      last_index: nat,
+      prefix: trajectory,
+      sets: state_event_family): bool =
+    FORALL (index: nat):
+      index <= last_index IMPLIES sets(index)(prefix(index))
+
+  iterated_cylinder_probability_value(
+      fiber: state_family,
+      fiber_sigma: state_sigma_family,
+      K: state_kernel_family,
+      sets: state_event_family,
+      prefix: trajectory,
+      last_initial_index: nat,
+      steps: nat,
+      probability: measure_value): bool =
+    IF initial_coordinates_in_sets(
+        last_initial_index, prefix, sets) THEN
+      tail_cylinder_probability_value(
+        fiber,
+        fiber_sigma,
+        K,
+        sets,
+        prefix,
+        last_initial_index,
+        steps,
+        probability)
+    ELSE
+      probability = zero_measure_value
+    ENDIF
+
+  measurable_space_family(
+      fiber: state_family,
+      fiber_sigma: state_sigma_family): bool =
+    FORALL (index: nat):
+      is_state_sigma_algebra(
+        fiber(index), fiber_sigma(index))
+
+  trajectory_kernel_has_marginals(
+      fiber: state_family,
+      fiber_sigma: state_sigma_family,
+      K: state_kernel_family,
+      last_initial_index: nat,
+      eta: path_kernel): bool =
+    is_markov_path_kernel(
+      fiber,
+      fiber_sigma,
+      last_initial_index,
+      eta)
+      AND (FORALL
+          (prefix: trajectory),
+          (sets: state_event_family),
+          (steps: nat):
+        (valid_prefix(
+            fiber, last_initial_index, prefix)
+          AND measurable_sets_through(
+            fiber_sigma,
+            last_initial_index + steps,
+            sets))
+        IMPLIES
+          EXISTS (expected_probability: measure_value):
+            iterated_cylinder_probability_value(
+              fiber,
+              fiber_sigma,
+              K,
+              sets,
+              prefix,
+              last_initial_index,
+              steps,
+              expected_probability)
+            AND eta(prefix)(
+              finite_coordinate_cylinder(
+                fiber,
+                last_initial_index + steps,
+                sets))
+              = expected_probability)
+
+  ionescu_tulcea_theorem: bool =
+    FORALL
+        (fiber: state_family),
+        (fiber_sigma: state_sigma_family),
+        (K: state_kernel_family):
+      (measurable_space_family(fiber, fiber_sigma)
+        AND is_markov_state_kernel_family(
+          fiber, fiber_sigma, K))
+      IMPLIES
+        FORALL (last_initial_index: nat):
+          EXISTS (eta: path_kernel):
+            trajectory_kernel_has_marginals(
+              fiber,
+              fiber_sigma,
+              K,
+              last_initial_index,
+              eta)
+            AND (FORALL (candidate: path_kernel):
+              trajectory_kernel_has_marginals(
+                fiber,
+                fiber_sigma,
+                K,
+                last_initial_index,
+                candidate)
+              IMPLIES
+                FORALL
+                    (prefix: trajectory),
+                    (E: trajectory_event):
+                  (valid_prefix(
+                      fiber,
+                      last_initial_index,
+                      prefix)
+                    AND path_product_sigma(
+                      fiber,
+                      fiber_sigma)(E))
+                  IMPLIES
+                    candidate(prefix)(E) = eta(prefix)(E))
+END ionescu_tulcea_theorem_Q25378690

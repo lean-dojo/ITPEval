@@ -70,6 +70,8 @@ def _make_request(pair: dict, mode: str) -> dict:
         "_tgt_prover":   pair["tgt_prover"],
         "_sample_idx":   0,
         "_temperature":  0.0,
+        "_corpus":       pair.get("corpus"),
+        "_source_sha256": pair.get("source_sha256"),
     }
 
 
@@ -118,9 +120,21 @@ def cmd_submit(args: argparse.Namespace) -> None:
         subset = {(it["source"], int(it["theorem_id"])) for it in subset_items}
     models = select_models(args.models)
     pairs = load_pairs(args.mode, sources=sources, theorem_ids=ids, subset=subset)
+    if getattr(args, "src", None):
+        pairs = [p for p in pairs if p["src_prover"] == args.src]
+    if getattr(args, "tgt", None):
+        pairs = [p for p in pairs if p["tgt_prover"] == args.tgt]
     print(f"Loaded {len(pairs)} pairs (mode={args.mode})")
 
-    BATCH_JOBS_DIR.mkdir(exist_ok=True)
+    if getattr(args, "dry_run", False):
+        print(f"Dry run: {len(pairs)} pairs x {len(models)} models; no requests submitted")
+        if pairs:
+            request = _make_request(pairs[0], args.mode)
+            print(request["system_prompt"])
+            print(request["user_prompt"])
+        return
+
+    BATCH_JOBS_DIR.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     job_file = BATCH_JOBS_DIR / f"{timestamp}.json"
 
@@ -128,6 +142,7 @@ def cmd_submit(args: argparse.Namespace) -> None:
         "submitted_at": datetime.now(timezone.utc).isoformat(),
         "mode":         args.mode,
         "sources":      sources,
+        "corpus":       "extended" if args.mode == "stmts" else "proofs",
         "models":       {},
         "requests":     [],
     }
@@ -294,6 +309,8 @@ def cmd_collect(args: argparse.Namespace) -> None:
                 "tier": m.get("_tier"),
                 "src_prover": m.get("_src_prover"),
                 "tgt_prover": m.get("_tgt_prover", ""),
+                "corpus": m.get("_corpus"),
+                "source_sha256": m.get("_source_sha256"),
             }
             records.append(make_translation_record(
                 pair=pair,
@@ -317,9 +334,12 @@ def main() -> None:
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     p_submit = sub.add_parser("submit", help="Submit batch jobs")
-    p_submit.add_argument("--mode",    choices=["stmts", "proofs"], default="proofs",
-                          help="stmts: translate sorry-filled statements; proofs: translate full proofs (default: proofs)")
+    p_submit.add_argument("--mode",    choices=["stmts", "proofs"], default="stmts",
+                          help="Translate statements or full proofs (default: stmts)")
     p_submit.add_argument("--sources", help="Comma-separated benchmark names (default: all)")
+    p_submit.add_argument("--src", help="Filter to one source prover")
+    p_submit.add_argument("--tgt", help="Filter to one target prover")
+    p_submit.add_argument("--dry-run", action="store_true", help="Preview selection and first prompt without submitting")
     p_submit.add_argument("--ids",     help="Comma-separated theorem IDs to include (default: all)")
     p_submit.add_argument(
         "--subset",

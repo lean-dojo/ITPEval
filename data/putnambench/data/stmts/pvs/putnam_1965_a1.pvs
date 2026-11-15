@@ -1,0 +1,113 @@
+% Statement-only formalization of PutnamBench artifact putnam_1965_a1:
+% a triangle with ordered angles and two external angle-bisector points at
+% prescribed equal distances has angle CAB equal to pi/15. This file contains
+% no proof.
+
+putnam_1965_a1: THEORY
+BEGIN
+  point: TYPE = [# x_coord: real, y_coord: real #]
+  real_sequence: TYPE = [nat -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  cosine_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        cosine_partial(x, count - 1)
+          + safe_div(
+              ((-1 :: real) ^ index) * x ^ (2 * index),
+              factorial(2 * index) :: real)
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  cosine(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat): cosine_partial(x, count),
+          value))
+
+  pi: real =
+    epsilon(
+      LAMBDA (value: real):
+        3 < value
+          AND value < 4
+          AND cosine(value / 2) = 0)
+
+  squared_distance(P, Q: point): real =
+    (x_coord(Q) - x_coord(P)) ^ 2
+      + (y_coord(Q) - y_coord(P)) ^ 2
+
+  distance(P, Q: point): real =
+    epsilon(
+      LAMBDA (length: real):
+        0 <= length
+          AND length * length = squared_distance(P, Q))
+
+  dot_from(O, P, Q: point): real =
+    (x_coord(P) - x_coord(O)) * (x_coord(Q) - x_coord(O))
+      + (y_coord(P) - y_coord(O)) * (y_coord(Q) - y_coord(O))
+
+  cross_from(P, Q, R: point): real =
+    (x_coord(Q) - x_coord(P)) * (y_coord(R) - y_coord(P))
+      - (y_coord(Q) - y_coord(P)) * (x_coord(R) - x_coord(P))
+
+  collinear(P, Q, R: point): bool =
+    cross_from(P, Q, R) = 0
+
+  principal_angle_value(A, O, B: point, theta: real): bool =
+    0 <= theta
+      AND theta <= pi
+      AND
+        IF A = O OR B = O THEN
+          theta = pi / 2
+        ELSE
+          cosine(theta) * distance(O, A) * distance(O, B)
+            = dot_from(O, A, B)
+        ENDIF
+
+  angle(A, O, B: point): real =
+    epsilon(
+      LAMBDA (theta: real):
+        principal_angle_value(A, O, B, theta))
+
+  putnam_1965_a1_solution: real =
+    pi / 15
+
+  putnam_1965_a1: bool =
+    FORALL (A, B, C, X, Y: point):
+      (NOT collinear(A, B, C)
+        AND angle(C, A, B) < angle(B, C, A)
+        AND angle(B, C, A) < pi / 2
+        AND pi / 2 < angle(A, B, C)
+        AND collinear(X, B, C)
+        AND angle(X, A, B) = (pi - angle(C, A, B)) / 2
+        AND distance(A, X) = distance(A, B)
+        AND collinear(Y, C, A)
+        AND angle(Y, B, C) = (pi - angle(A, B, C)) / 2
+        AND distance(B, Y) = distance(A, B))
+      IMPLIES
+        angle(C, A, B) = putnam_1965_a1_solution
+END putnam_1965_a1

@@ -1,0 +1,110 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/register_allocation_DWP_wrapqtvc: correctness of wrapping a
+% double-weakest-precondition code transformer with a state-indexed binary
+% postcondition for the register-allocation machine. This file contains no proof.
+
+register_allocation_DWP_wrapqtvc[
+  addr: TYPE+
+]: THEORY
+BEGIN
+
+  instr: DATATYPE
+  BEGIN
+    Iload(load_address: addr, load_register: int): Iload?
+    Ineg(neg_register: int): Ineg?
+    Iadd(source_register: int, target_register: int): Iadd?
+    Ipush(push_register: int): Ipush?
+    Ipop(pop_register: int): Ipop?
+  END instr
+
+  state: TYPE =
+    [# mem: [addr -> int],
+       reg: [int -> int],
+       st: list[int] #]
+
+  update_registers(
+      registers: [int -> int],
+      register, value: int): [int -> int] =
+    LAMBDA (query: int):
+      IF query = register THEN value ELSE registers(query) ENDIF
+
+  exec(instruction: instr, s: state): state =
+    CASES instruction OF
+      Iload(address, register):
+        (# mem := mem(s),
+           reg :=
+             update_registers(
+               reg(s), register, mem(s)(address)),
+           st := st(s) #),
+      Ineg(register):
+        (# mem := mem(s),
+           reg :=
+             update_registers(
+               reg(s), register, -reg(s)(register)),
+           st := st(s) #),
+      Iadd(source, target):
+        (# mem := mem(s),
+           reg :=
+             update_registers(
+               reg(s),
+               target,
+               reg(s)(source) + reg(s)(target)),
+           st := st(s) #),
+      Ipush(register):
+        (# mem := mem(s),
+           reg := reg(s),
+           st := cons(reg(s)(register), st(s)) #),
+      Ipop(register):
+        CASES st(s) OF
+          null:
+            s,
+          cons(value, rest):
+            (# mem := mem(s),
+               reg :=
+                 update_registers(reg(s), register, value),
+               st := rest #)
+        ENDCASES
+    ENDCASES
+
+  exec_list(code: list[instr], s: state): RECURSIVE state =
+    CASES code OF
+      null:
+        s,
+      cons(instruction, rest):
+        exec_list(rest, exec(instruction, s))
+    ENDCASES
+  MEASURE code BY <<
+
+  post: TYPE = [state -> [state -> bool]]
+
+  hcode: TYPE =
+    [# hcode1: list[instr],
+       post1: post #]
+
+  hcode_ok(hc: hcode): bool =
+    FORALL (s: state):
+      post1(hc)(s)(exec_list(hcode1(hc), s)) = TRUE
+
+  trans: TYPE = [[state -> bool] -> [state -> bool]]
+
+  wcode: TYPE =
+    [# trans1: trans,
+       wcode1: list[instr] #]
+
+  wcode_ok(wc: wcode): bool =
+    FORALL (q: [state -> bool]), (s: state):
+      trans1(wc)(q)(s) = TRUE
+        IMPLIES q(exec_list(wcode1(wc), s)) = TRUE
+
+  wrap_vc: bool =
+    FORALL (wc: wcode), (pst: post):
+      wcode_ok(wc)
+        IMPLIES
+          (FORALL (x: state):
+            trans1(wc)(pst(x))(x) = TRUE)
+        IMPLIES
+          hcode_ok(
+            (# hcode1 := wcode1(wc),
+               post1 := pst #))
+
+END register_allocation_DWP_wrapqtvc

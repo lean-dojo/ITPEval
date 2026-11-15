@@ -1,0 +1,231 @@
+% Statement-only formalization of the Thousand Theorems corpus artifact Q619985,
+% "Multinomial theorem": over a semiring, the power of a finite sum of pairwise
+% commuting elements equals its multinomial expansion. This file contains no proof.
+
+Q619985_multinomial_theorem[
+  A: TYPE,
+  R: TYPE+,
+  zeroR, oneR: R,
+  addR, mulR: [R, R -> R]
+]: THEORY
+BEGIN
+
+  semiring_laws: bool =
+    (FORALL (a, b, c: R):
+      addR(addR(a, b), c) = addR(a, addR(b, c)))
+      AND (FORALL (a, b: R):
+        addR(a, b) = addR(b, a))
+      AND (FORALL (a: R):
+        addR(zeroR, a) = a
+          AND addR(a, zeroR) = a)
+      AND (FORALL (a, b, c: R):
+        mulR(mulR(a, b), c) = mulR(a, mulR(b, c)))
+      AND (FORALL (a: R):
+        mulR(oneR, a) = a
+          AND mulR(a, oneR) = a)
+      AND (FORALL (a, b, c: R):
+        mulR(a, addR(b, c)) =
+          addR(mulR(a, b), mulR(a, c)))
+      AND (FORALL (a, b, c: R):
+        mulR(addR(a, b), c) =
+          addR(mulR(a, c), mulR(b, c)))
+      AND (FORALL (a: R):
+        mulR(zeroR, a) = zeroR
+          AND mulR(a, zeroR) = zeroR)
+
+  member(index: A, indices: list[A]): RECURSIVE bool =
+    CASES indices OF
+      null: FALSE,
+      cons(head, tail):
+        index = head OR member(index, tail)
+    ENDCASES
+  MEASURE indices BY <<
+
+  no_duplicates(indices: list[A]): RECURSIVE bool =
+    CASES indices OF
+      null: TRUE,
+      cons(head, tail):
+        NOT member(head, tail)
+          AND no_duplicates(tail)
+    ENDCASES
+  MEASURE indices BY <<
+
+  commutes_with(
+      value: A,
+      indices: list[A],
+      f: [A -> R]): RECURSIVE bool =
+    CASES indices OF
+      null: TRUE,
+      cons(head, tail):
+        mulR(f(value), f(head)) = mulR(f(head), f(value))
+          AND commutes_with(value, tail, f)
+    ENDCASES
+  MEASURE indices BY <<
+
+  pairwise_commute(
+      indices: list[A],
+      f: [A -> R]): RECURSIVE bool =
+    CASES indices OF
+      null: TRUE,
+      cons(head, tail):
+        commutes_with(head, tail, f)
+          AND pairwise_commute(tail, f)
+    ENDCASES
+  MEASURE indices BY <<
+
+  finite_sum(
+      indices: list[A],
+      f: [A -> R]): RECURSIVE R =
+    CASES indices OF
+      null: zeroR,
+      cons(head, tail):
+        addR(f(head), finite_sum(tail, f))
+    ENDCASES
+  MEASURE indices BY <<
+
+  semiring_power(value: R, exponent: nat): RECURSIVE R =
+    IF exponent = 0 THEN
+      oneR
+    ELSE
+      mulR(
+        semiring_power(value, exponent - 1),
+        value)
+    ENDIF
+  MEASURE exponent
+
+  natural_cast(value: nat): RECURSIVE R =
+    IF value = 0 THEN
+      zeroR
+    ELSE
+      addR(natural_cast(value - 1), oneR)
+    ENDIF
+  MEASURE value
+
+  natural_factorial(value: nat): RECURSIVE nat =
+    IF value = 0 THEN
+      1
+    ELSE
+      value * natural_factorial(value - 1)
+    ENDIF
+  MEASURE value
+
+  exponent_sum(
+      indices: list[A],
+      code, degree: nat): RECURSIVE nat =
+    CASES indices OF
+      null: 0,
+      cons(head, tail):
+        mod(code, degree + 1)
+          + exponent_sum(
+              tail,
+              ndiv(code, degree + 1),
+              degree)
+    ENDCASES
+  MEASURE indices BY <<
+
+  exponent_factorial_product(
+      indices: list[A],
+      code, degree: nat): RECURSIVE nat =
+    CASES indices OF
+      null: 1,
+      cons(head, tail):
+        natural_factorial(mod(code, degree + 1))
+          * exponent_factorial_product(
+              tail,
+              ndiv(code, degree + 1),
+              degree)
+    ENDCASES
+  MEASURE indices BY <<
+
+  powered_product(
+      indices: list[A],
+      f: [A -> R],
+      code, degree: nat): RECURSIVE R =
+    CASES indices OF
+      null: oneR,
+      cons(head, tail):
+        mulR(
+          semiring_power(
+            f(head),
+            mod(code, degree + 1)),
+          powered_product(
+            tail,
+            f,
+            ndiv(code, degree + 1),
+            degree))
+    ENDCASES
+  MEASURE indices BY <<
+
+  exponent_code_count(
+      indices: list[A],
+      degree: nat): RECURSIVE nat =
+    CASES indices OF
+      null: 1,
+      cons(head, tail):
+        (degree + 1) * exponent_code_count(tail, degree)
+    ENDCASES
+  MEASURE indices BY <<
+
+  natural_quotient(numerator, denominator: nat): nat =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      ndiv(numerator, denominator)
+    ENDIF
+
+  multinomial_term(
+      indices: list[A],
+      f: [A -> R],
+      code, degree: nat): R =
+    mulR(
+      natural_cast(
+        natural_quotient(
+          natural_factorial(degree),
+          exponent_factorial_product(
+            indices,
+            code,
+            degree))),
+      powered_product(indices, f, code, degree))
+
+  multinomial_sum(
+      indices: list[A],
+      f: [A -> R],
+      degree, count: nat): RECURSIVE R =
+    IF count = 0 THEN
+      zeroR
+    ELSE
+      LET code: nat = count - 1 IN
+        addR(
+          multinomial_sum(
+            indices,
+            f,
+            degree,
+            count - 1),
+          IF exponent_sum(indices, code, degree) = degree THEN
+            multinomial_term(indices, f, code, degree)
+          ELSE
+            zeroR
+          ENDIF)
+    ENDIF
+  MEASURE count
+
+  multinomial_theorem: bool =
+    semiring_laws IMPLIES
+      (FORALL
+          (indices: list[A]),
+          (f: [A -> R]),
+          (degree: nat):
+        (no_duplicates(indices)
+          AND pairwise_commute(indices, f))
+        IMPLIES
+          semiring_power(
+            finite_sum(indices, f),
+            degree)
+          =
+          multinomial_sum(
+            indices,
+            f,
+            degree,
+            exponent_code_count(indices, degree)))
+
+END Q619985_multinomial_theorem

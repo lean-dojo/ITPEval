@@ -1,0 +1,89 @@
+% Statement-only formalization of the VERINA corpus artifact verina_basic_4,
+% catalog title "kthElement": selecting the valid kth integer-array element
+% under 1-based indexing, with the executable lookup and its correctness
+% contract. This file contains no proof.
+
+verina_basic_4: THEORY
+BEGIN
+
+  % Finite PVS lists preserve the exact contents and order of Lean arrays.
+  int_list_length(values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        int_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  % Lean's Array.get! on integer arrays returns zero outside the array.
+  int_list_get_bang(
+      index: nat,
+      values: list[int]): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          int_list_get_bang(index - 1, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  % Lean natural-number subtraction is truncated at zero.
+  nat_subtract(first, second: nat): nat =
+    IF first >= second THEN first - second ELSE 0 ENDIF
+
+  kthElement_precond(
+      arr: list[int],
+      k: nat): bool =
+    k >= 1
+      AND k <= int_list_length(arr)
+
+  % The source precondition proof argument is computationally irrelevant.
+  kthElement(
+      arr: list[int],
+      k: nat): int =
+    int_list_get_bang(
+      nat_subtract(k, 1),
+      arr)
+
+  % This recursive scan is exactly Array.any applied to the source predicate.
+  int_list_any_result_and_selected(
+      values: list[int],
+      result, selected: int): RECURSIVE bool =
+    CASES values OF
+      null:
+        FALSE,
+      cons(head, tail):
+        (head = result AND head = selected)
+          OR int_list_any_result_and_selected(
+               tail,
+               result,
+               selected)
+    ENDCASES
+  MEASURE values BY <<
+
+  kthElement_postcond(
+      arr: list[int],
+      k: nat,
+      result: int): bool =
+    int_list_any_result_and_selected(
+      arr,
+      result,
+      int_list_get_bang(
+        nat_subtract(k, 1),
+        arr))
+
+  kthElement_spec_satisfied: bool =
+    FORALL (arr: list[int], k: nat):
+      kthElement_precond(arr, k)
+        IMPLIES
+          kthElement_postcond(
+            arr,
+            k,
+            kthElement(arr, k))
+
+END verina_basic_4

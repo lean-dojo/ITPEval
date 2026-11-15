@@ -1,0 +1,606 @@
+% Statement-only formalization of NTP4VC corpus artifact
+% pearl/verifythis_2021_shearsort_ShearSort_sort_rowqtvc: the full
+% verification condition for copying, sorting, optionally reversing, and
+% writing back one row of an integer matrix while preserving all other rows
+% and the selected row's multiplicities. This file contains no proof.
+
+verifythis_2021_shearsort_ShearSort_sort_rowqtvc: THEORY
+BEGIN
+
+  matrix_data: TYPE =
+    [# rows: int,
+       columns: int,
+       elts: [int -> [int -> int]] #]
+
+  matrix: TYPE =
+    {m: matrix_data |
+      0 <= rows(m) AND 0 <= columns(m)}
+
+  valid_index(m: matrix, row, column_index: int): bool =
+    0 <= row
+      AND row < rows(m)
+      AND 0 <= column_index
+      AND column_index < columns(m)
+
+  int_list_length(values: list[int]): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        int_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  % This is the exported total list lookup after conversion from an integer
+  % index to a natural index: negative indices select index zero, and lookup
+  % beyond the end of the list returns the inhabited integer default zero.
+  int_list_nth(values: list[int], index: int): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index <= 0 THEN
+          head
+        ELSE
+          int_list_nth(tail, index - 1)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  int_list_set(
+      values: list[int],
+      index, value: int): RECURSIVE list[int] =
+    CASES values OF
+      null:
+        null[int],
+      cons(head, tail):
+        IF index <= 0 THEN
+          cons(value, tail)
+        ELSE
+          cons(
+            head,
+            int_list_set(tail, index - 1, value))
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  nth_function(values: list[int]): [int -> int] =
+    LAMBDA (index: int): int_list_nth(values, index)
+
+  interval_length(lower, upper: int): nat =
+    IF lower < upper THEN upper - lower ELSE 0 ENDIF
+
+  occurrences(
+      value: int,
+      values: [int -> int],
+      lower: int,
+      count: nat): RECURSIVE nat =
+    IF count = 0 THEN
+      0
+    ELSE
+      occurrences(value, values, lower, count - 1)
+        + IF values(lower + count - 1) = value THEN 1 ELSE 0 ENDIF
+    ENDIF
+  MEASURE count
+
+  interval_occurrences(
+      value: int,
+      values: [int -> int],
+      lower, upper: int): nat =
+    occurrences(
+      value,
+      values,
+      lower,
+      interval_length(lower, upper))
+
+  permut(
+      left, right: [int -> int],
+      lower, upper: int): bool =
+    FORALL (value: int):
+      interval_occurrences(value, left, lower, upper)
+        = interval_occurrences(value, right, lower, upper)
+
+  same_dimensions(left, right: matrix): bool =
+    rows(left) = rows(right)
+      AND columns(left) = columns(right)
+
+  prefix_matches(
+      values: list[int],
+      m: matrix,
+      selected_row, bound: int): bool =
+    FORALL (column_index: int):
+      0 <= column_index AND column_index < bound
+        IMPLIES
+          int_list_nth(values, column_index)
+            = elts(m)(selected_row)(column_index)
+
+  other_rows_unchanged(
+      current, original: matrix,
+      selected_row: int): bool =
+    FORALL (row, column_index: int):
+      (0 <= row
+        AND row < rows(current)
+        AND 0 <= column_index
+        AND column_index < columns(current)
+        AND row /= selected_row)
+      IMPLIES
+        elts(current)(row)(column_index)
+          = elts(original)(row)(column_index)
+
+  row_sorted(
+      m: matrix,
+      selected_row: int,
+      ascending: bool): bool =
+    FORALL (left_column, right_column: int):
+      0 <= left_column
+        AND left_column <= right_column
+        AND right_column < columns(m)
+      IMPLIES
+        IF ascending THEN
+          elts(m)(selected_row)(left_column)
+            <= elts(m)(selected_row)(right_column)
+        ELSE
+          elts(m)(selected_row)(right_column)
+            <= elts(m)(selected_row)(left_column)
+        ENDIF
+
+  row_permuted(
+      current, original: matrix,
+      selected_row: int): bool =
+    permut(
+      elts(current)(selected_row),
+      elts(original)(selected_row),
+      0,
+      columns(current))
+
+  final_result(
+      current, original: matrix,
+      selected_row: int,
+      ascending: bool): bool =
+    other_rows_unchanged(current, original, selected_row)
+      AND row_sorted(current, selected_row, ascending)
+      AND row_permuted(current, original, selected_row)
+
+  sorted_values(values: list[int]): bool =
+    FORALL (left_index, right_index: int):
+      0 <= left_index
+        AND left_index <= right_index
+        AND right_index < int_list_length(values)
+      IMPLIES
+        int_list_nth(values, left_index)
+          <= int_list_nth(values, right_index)
+
+  list_permuted(
+      current, previous: list[int]): bool =
+    permut(
+      nth_function(current),
+      nth_function(previous),
+      0,
+      int_list_length(current))
+
+  matrix_update(
+      entries: [int -> [int -> int]],
+      row, column_index, value: int):
+      [int -> [int -> int]] =
+    entries WITH
+      [(row) := entries(row) WITH [(column_index) := value]]
+
+  write_step_obligations(
+      values: list[int],
+      current, original: matrix,
+      selected_row, last_column: int): bool =
+    FORALL (column_index: int):
+      ((0 <= column_index AND column_index <= last_column)
+        AND prefix_matches(
+          values,
+          current,
+          selected_row,
+          column_index)
+        AND other_rows_unchanged(
+          current,
+          original,
+          selected_row))
+      IMPLIES
+        (0 <= column_index
+          AND column_index < int_list_length(values))
+          AND valid_index(current, selected_row, column_index)
+          AND
+        (FORALL (next: matrix):
+          same_dimensions(next, current)
+            IMPLIES
+              elts(next)
+                = matrix_update(
+                    elts(current),
+                    selected_row,
+                    column_index,
+                    int_list_nth(values, column_index))
+            IMPLIES
+              prefix_matches(
+                values,
+                next,
+                selected_row,
+                column_index + 1)
+                AND
+              other_rows_unchanged(
+                next,
+                original,
+                selected_row))
+
+  write_matrix_case(
+      values: list[int],
+      current, original: matrix,
+      selected_row, last_column: int,
+      ascending: bool): bool =
+    same_dimensions(current, original)
+      IMPLIES
+        write_step_obligations(
+          values,
+          current,
+          original,
+          selected_row,
+          last_column)
+          AND
+        ((prefix_matches(
+            values,
+            current,
+            selected_row,
+            last_column + 1)
+          AND
+            other_rows_unchanged(
+              current,
+              original,
+              selected_row))
+        IMPLIES
+          final_result(
+            current,
+            original,
+            selected_row,
+            ascending))
+
+  writeback_vc(
+      values: list[int],
+      original: matrix,
+      selected_row: int,
+      ascending: bool): bool =
+    LET last_column: int = columns(original) - 1
+    IN
+      (0 <= last_column + 1
+        IMPLIES
+          prefix_matches(values, original, selected_row, 0)
+            AND
+          (FORALL (current: matrix):
+            write_matrix_case(
+              values,
+              current,
+              original,
+              selected_row,
+              last_column,
+              ascending)))
+        AND
+      (last_column + 1 < 0
+        IMPLIES
+          row_sorted(original, selected_row, ascending)
+            AND
+          row_permuted(original, original, selected_row))
+
+  reverse_initial(base: list[int]): bool =
+    LET upper: int = int_list_length(base) - 1
+    IN
+      (0 <= 0
+        AND 0 <= upper + 1
+        AND upper + 1 <= int_list_length(base))
+        AND 0 + upper = int_list_length(base) - 1
+        AND
+      (FORALL (column_index: int):
+        (0 <= column_index AND column_index < 0)
+          OR
+        (upper < column_index
+          AND column_index < int_list_length(base))
+        IMPLIES
+          int_list_nth(base, column_index)
+            = int_list_nth(
+                base,
+                int_list_length(base) - 1 - column_index))
+        AND
+      list_permuted(base, base)
+
+  reverse_invariant(
+      base, current: list[int],
+      lower, upper: int): bool =
+    0 <= lower
+      AND lower <= upper + 1
+      AND upper + 1 <= int_list_length(current)
+      AND lower + upper = int_list_length(current) - 1
+      AND
+    (FORALL (column_index: int):
+      lower <= column_index AND column_index <= upper
+        IMPLIES
+          int_list_nth(current, column_index)
+            = int_list_nth(base, column_index))
+      AND
+    (FORALL (column_index: int):
+      (0 <= column_index AND column_index < lower)
+        OR
+      (upper < column_index
+        AND column_index < int_list_length(current))
+      IMPLIES
+        int_list_nth(current, column_index)
+          = int_list_nth(
+              base,
+              int_list_length(current) - 1 - column_index))
+      AND
+    list_permuted(base, current)
+
+  swap_effect(
+      before, after: list[int],
+      lower, upper: int): bool =
+    LET size: int = int_list_length(after)
+    IN
+      (0 <= lower AND lower < size)
+        AND (0 <= upper AND upper < size)
+        AND
+      (FORALL (column_index: int):
+        (0 <= column_index
+          AND column_index <= size)
+          AND column_index /= lower
+          AND column_index /= upper
+        IMPLIES
+          int_list_nth(after, column_index)
+            = int_list_nth(before, column_index))
+        AND int_list_nth(after, lower)
+          = int_list_nth(before, upper)
+        AND int_list_nth(after, upper)
+          = int_list_nth(before, lower)
+
+  reverse_step_result(
+      base, current: list[int],
+      lower, upper: int): bool =
+    (0 <= upper - lower
+      AND upper - 1 - (lower + 1) < upper - lower)
+      AND reverse_invariant(
+        base,
+        current,
+        lower + 1,
+        upper - 1)
+
+  swap_case(
+      base, current: list[int],
+      lower, upper: int): bool =
+    (0 <= upper AND upper < int_list_length(current))
+      AND
+    LET temporary: int = int_list_nth(current, upper)
+    IN
+      (0 <= lower AND lower < int_list_length(current))
+        AND
+      LET old_lower: int = int_list_nth(current, lower)
+      IN
+        (0 <= upper AND upper < int_list_length(current))
+          AND
+        LET at_upper: list[int] =
+          int_list_set(current, upper, old_lower)
+        IN
+          (int_list_length(at_upper)
+              = int_list_length(current)
+            IMPLIES
+              nth_function(at_upper)
+                = nth_function(current)
+                    WITH [(upper) := old_lower]
+            IMPLIES
+              (0 <= lower
+                AND lower < int_list_length(at_upper))
+                AND
+              LET swapped: list[int] =
+                int_list_set(at_upper, lower, temporary)
+              IN
+                (int_list_length(swapped)
+                    = int_list_length(at_upper)
+                  IMPLIES
+                    nth_function(swapped)
+                      = nth_function(at_upper)
+                          WITH [(lower) := temporary]
+                  IMPLIES
+                    swap_effect(
+                      current,
+                      swapped,
+                      lower,
+                      upper)
+                      AND
+                    (permut(
+                        nth_function(swapped),
+                        nth_function(current),
+                        0,
+                        int_list_length(swapped))
+                      IMPLIES
+                        reverse_step_result(
+                          base,
+                          swapped,
+                          lower,
+                          upper))))
+
+  reverse_loop(
+      base: list[int],
+      original: matrix,
+      selected_row: int,
+      ascending: bool): bool =
+    reverse_initial(base)
+      AND
+    (FORALL (upper, lower: int), (current: list[int]):
+      int_list_length(current) = int_list_length(base)
+        IMPLIES
+          reverse_invariant(base, current, lower, upper)
+        IMPLIES
+          IF lower < upper THEN
+            swap_case(base, current, lower, upper)
+          ELSE
+            writeback_vc(
+              current,
+              original,
+              selected_row,
+              ascending)
+          ENDIF)
+
+  after_sort(
+      sorted: list[int],
+      original: matrix,
+      selected_row: int,
+      ascending: bool): bool =
+    IF NOT ascending THEN
+      reverse_loop(
+        sorted,
+        original,
+        selected_row,
+        ascending)
+    ELSE
+      writeback_vc(
+        sorted,
+        original,
+        selected_row,
+        ascending)
+    ENDIF
+
+  copy_step_obligations(
+      values: list[int],
+      original: matrix,
+      selected_row, last_column: int): bool =
+    FORALL (column_index: int):
+      ((0 <= column_index AND column_index <= last_column)
+        AND prefix_matches(
+          values,
+          original,
+          selected_row,
+          column_index))
+      IMPLIES
+        valid_index(original, selected_row, column_index)
+          AND
+        LET copied_value: int =
+          elts(original)(selected_row)(column_index),
+            updated_values: list[int] =
+              int_list_set(
+                values,
+                column_index,
+                copied_value)
+        IN
+          (0 <= column_index
+            AND column_index < int_list_length(values))
+            AND
+          (int_list_length(updated_values)
+              = int_list_length(values)
+            IMPLIES
+              nth_function(updated_values)
+                = nth_function(values)
+                    WITH [(column_index) := copied_value]
+            IMPLIES
+              prefix_matches(
+                updated_values,
+                original,
+                selected_row,
+                column_index + 1))
+
+  copy_list_case(
+      values, initial_values: list[int],
+      original: matrix,
+      selected_row, last_column: int,
+      ascending: bool): bool =
+    int_list_length(values)
+        = int_list_length(initial_values)
+      IMPLIES
+        copy_step_obligations(
+          values,
+          original,
+          selected_row,
+          last_column)
+          AND
+        (prefix_matches(
+            values,
+            original,
+            selected_row,
+            last_column + 1)
+          IMPLIES
+            (FORALL (sorted: list[int]):
+              int_list_length(sorted)
+                  = int_list_length(values)
+                IMPLIES
+                  (sorted_values(sorted)
+                    AND list_permuted(sorted, values))
+                IMPLIES
+                  after_sort(
+                    sorted,
+                    original,
+                    selected_row,
+                    ascending)))
+
+  empty_copy_result(
+      sorted, initial_values: list[int],
+      original: matrix,
+      selected_row: int,
+      ascending: bool): bool =
+    int_list_length(sorted)
+        = int_list_length(initial_values)
+      IMPLIES
+        (sorted_values(sorted)
+          AND list_permuted(sorted, initial_values))
+      IMPLIES
+        after_sort(
+          sorted,
+          original,
+          selected_row,
+          ascending)
+
+  initialized_zero_list(values: list[int], size: int): bool =
+    (FORALL (column_index: int):
+      0 <= column_index AND column_index < size
+        IMPLIES int_list_nth(values, column_index) = 0)
+      AND int_list_length(values) = size
+
+  sort_row_body_vc(
+      original: matrix,
+      selected_row: int,
+      ascending: bool): bool =
+    LET column_count: int = columns(original)
+    IN
+      0 <= column_count
+        AND
+      (FORALL (initial_values: list[int]):
+        initialized_zero_list(initial_values, column_count)
+          IMPLIES
+            LET last_column: int = columns(original) - 1
+            IN
+              (0 <= last_column + 1
+                IMPLIES
+                  prefix_matches(
+                    initial_values,
+                    original,
+                    selected_row,
+                    0)
+                    AND
+                  (FORALL (values: list[int]):
+                    copy_list_case(
+                      values,
+                      initial_values,
+                      original,
+                      selected_row,
+                      last_column,
+                      ascending)))
+                AND
+              (last_column + 1 < 0
+                IMPLIES
+                  (FORALL (sorted: list[int]):
+                    empty_copy_result(
+                      sorted,
+                      initial_values,
+                      original,
+                      selected_row,
+                      ascending))))
+
+  sort_row_vc: bool =
+    FORALL (selected_row: int), (original: matrix),
+      (ascending: bool):
+      (0 <= selected_row
+        AND selected_row < rows(original))
+      IMPLIES
+        sort_row_body_vc(
+          original,
+          selected_row,
+          ascending)
+
+END verifythis_2021_shearsort_ShearSort_sort_rowqtvc

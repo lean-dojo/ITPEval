@@ -1,0 +1,87 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1991_a4:
+% existence of countably many closed discs in the real plane whose centers have
+% no finite limit point, whose total area is finite, and which meet every line.
+% This file contains no proof.
+
+putnam_1991_a4: THEORY
+BEGIN
+  point: TYPE = [# x_coord: real, y_coord: real #]
+  point_sequence: TYPE = [nat -> point]
+  real_sequence: TYPE = [nat -> real]
+
+  squared_distance(P, Q: point): real =
+    (x_coord(P) - x_coord(Q)) ^ 2
+      + (y_coord(P) - y_coord(Q)) ^ 2
+
+  has_finite_limit_point(centers: point_sequence): bool =
+    EXISTS (limit_point: point):
+      FORALL (epsilon_value: posreal):
+        FORALL (cutoff: nat):
+          EXISTS (index: nat):
+            cutoff <= index
+              AND squared_distance(
+                centers(index),
+                limit_point) < epsilon_value ^ 2
+
+  no_finite_limit_point(centers: point_sequence): bool =
+    NOT has_finite_limit_point(centers)
+
+  squared_radius_partial_sum(
+      radii: real_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      squared_radius_partial_sum(radii, count - 1)
+        + radii(count - 1) ^ 2
+    ENDIF
+  MEASURE count
+
+  squared_radius_series_converges(radii: real_sequence): bool =
+    EXISTS (total: real):
+      FORALL (epsilon_value: posreal):
+        EXISTS (cutoff: nat):
+          FORALL (count: nat):
+            cutoff <= count IMPLIES
+              abs(
+                squared_radius_partial_sum(radii, count)
+                  - total) < epsilon_value
+
+  closed_disc_contains(
+      center: point,
+      radius: real,
+      P: point): bool =
+    squared_distance(P, center) <= radius ^ 2
+
+  affine_line_point(
+      base, direction: point,
+      parameter: real): point =
+    (#
+      x_coord := x_coord(base) + parameter * x_coord(direction),
+      y_coord := y_coord(base) + parameter * y_coord(direction)
+    #)
+
+  nonzero_direction(direction: point): bool =
+    x_coord(direction) /= 0 OR y_coord(direction) /= 0
+
+  every_line_intersects_a_disc(
+      centers: point_sequence,
+      radii: real_sequence): bool =
+    FORALL (base, direction: point):
+      nonzero_direction(direction) IMPLIES
+        EXISTS (index: nat), (parameter: real):
+          closed_disc_contains(
+            centers(index),
+            radii(index),
+            affine_line_point(base, direction, parameter))
+
+  putnam_1991_a4_solution: bool = TRUE
+
+  putnam_1991_a4: bool =
+    (EXISTS (centers: point_sequence), (radii: real_sequence):
+      (FORALL (index: nat): radii(index) >= 0)
+        AND no_finite_limit_point(centers)
+        AND squared_radius_series_converges(radii)
+        AND every_line_intersects_a_disc(centers, radii))
+      IFF putnam_1991_a4_solution
+END putnam_1991_a4

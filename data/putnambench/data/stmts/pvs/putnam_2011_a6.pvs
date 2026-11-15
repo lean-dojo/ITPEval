@@ -1,0 +1,213 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2011_a6:
+% the squared distance from uniformity for a generating random walk on a
+% finite abelian group has a positive finite leading exponential rate.
+% This file contains no proof.
+
+putnam_2011_a6[Element: TYPE+]: THEORY
+BEGIN
+  IMPORTING finite_sets@finite_sets_sum_real[Element]
+
+  element_set: TYPE = finite_set[Element]
+  element_sequence: TYPE = [nat -> Element]
+  real_sequence: TYPE = [nat -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  subset_of(A, B: element_set): bool =
+    FORALL (x: Element):
+      A(x) IMPLIES B(x)
+
+  finite_commutative_group(
+      carrier: element_set,
+      one: Element,
+      inverse: [Element -> Element],
+      multiply: [Element, Element -> Element]): bool =
+    carrier(one)
+      AND
+        (FORALL (x, y: Element):
+          carrier(x) AND carrier(y) IMPLIES
+            carrier(multiply(x, y)))
+      AND
+        (FORALL (x: Element):
+          carrier(x) IMPLIES carrier(inverse(x)))
+      AND
+        (FORALL (x, y, z: Element):
+          carrier(x) AND carrier(y) AND carrier(z) IMPLIES
+            multiply(multiply(x, y), z)
+              = multiply(x, multiply(y, z)))
+      AND
+        (FORALL (x: Element):
+          carrier(x) IMPLIES
+            multiply(one, x) = x
+              AND multiply(x, one) = x)
+      AND
+        (FORALL (x: Element):
+          carrier(x) IMPLIES
+            multiply(inverse(x), x) = one
+              AND multiply(x, inverse(x)) = one)
+      AND
+        (FORALL (x, y: Element):
+          carrier(x) AND carrier(y) IMPLIES
+            multiply(x, y) = multiply(y, x))
+
+  is_subgroup(
+      subgroup, carrier: element_set,
+      one: Element,
+      inverse: [Element -> Element],
+      multiply: [Element, Element -> Element]): bool =
+    subset_of(subgroup, carrier)
+      AND subgroup(one)
+      AND
+        (FORALL (x, y: Element):
+          subgroup(x) AND subgroup(y) IMPLIES
+            subgroup(multiply(x, y)))
+      AND
+        (FORALL (x: Element):
+          subgroup(x) IMPLIES subgroup(inverse(x)))
+
+  generates_group(
+      generators, carrier: element_set,
+      one: Element,
+      inverse: [Element -> Element],
+      multiply: [Element, Element -> Element]): bool =
+    subset_of(generators, carrier)
+      AND
+        (FORALL (subgroup: element_set):
+          (is_subgroup(
+              subgroup, carrier, one, inverse, multiply)
+            AND subset_of(generators, subgroup))
+          IMPLIES subset_of(carrier, subgroup))
+
+  injective_below(
+      enumeration: element_sequence,
+      bound: nat): bool =
+    FORALL (i, j: nat):
+      i < bound
+        AND j < bound
+        AND enumeration(i) = enumeration(j)
+      IMPLIES i = j
+
+  enumerates_exactly(
+      enumeration: element_sequence,
+      set_value: element_set,
+      bound: nat): bool =
+    FORALL (x: Element):
+      set_value(x)
+        IFF
+          EXISTS (index: nat):
+            index < bound
+              AND enumeration(index) = x
+
+  die_digit(code: nat, face_count: posnat, index: nat): nat =
+    mod(ndiv(code, face_count ^ index), face_count)
+
+  word_product(
+      faces: element_sequence,
+      multiply: [Element, Element -> Element],
+      one: Element,
+      face_count: posnat,
+      code, length: nat): RECURSIVE Element =
+    IF length = 0 THEN
+      one
+    ELSE
+      multiply(
+        word_product(
+          faces, multiply, one,
+          face_count, code, length - 1),
+        faces(die_digit(
+          code, face_count, length - 1)))
+    ENDIF
+  MEASURE length
+
+  matching_word_count(
+      faces: element_sequence,
+      multiply: [Element, Element -> Element],
+      one, target: Element,
+      face_count: posnat,
+      length, limit: nat): RECURSIVE nat =
+    IF limit = 0 THEN
+      0
+    ELSE
+      matching_word_count(
+        faces, multiply, one, target,
+        face_count, length, limit - 1)
+        + IF word_product(
+              faces, multiply, one,
+              face_count, limit - 1, length)
+              = target
+          THEN 1
+          ELSE 0
+          ENDIF
+    ENDIF
+  MEASURE limit
+
+  die_probability(
+      faces: element_sequence,
+      multiply: [Element, Element -> Element],
+      one, target: Element,
+      face_count: posnat,
+      length: nat): real =
+    safe_div(
+      matching_word_count(
+        faces, multiply, one, target,
+        face_count, length, face_count ^ length) :: real,
+      (face_count ^ length) :: real)
+
+  squared_distance_from_uniform(
+      carrier: element_set,
+      faces: element_sequence,
+      multiply: [Element, Element -> Element],
+      one: Element,
+      group_order, face_count: posnat,
+      length: nat): real =
+    sum(
+      carrier,
+      LAMBDA (x: Element):
+        (die_probability(
+          faces, multiply, one, x, face_count, length)
+          - safe_div(1, group_order :: real)) ^ 2)
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  putnam_2011_a6: bool =
+    FORALL
+        (carrier, generators: element_set),
+        (one: Element),
+        (inverse: [Element -> Element]),
+        (multiply: [Element, Element -> Element]),
+        (group_order, face_count: posnat),
+        (faces: element_sequence):
+      (finite_commutative_group(
+          carrier, one, inverse, multiply)
+        AND group_order = card(carrier)
+        AND face_count = card(generators)
+        AND face_count < group_order
+        AND generators(one)
+        AND generates_group(
+          generators, carrier, one, inverse, multiply)
+        AND injective_below(faces, face_count)
+        AND enumerates_exactly(
+          faces, generators, face_count))
+      IMPLIES
+        EXISTS (b, C: real):
+          0 < b
+            AND b < 1
+            AND C > 0
+            AND converges_to(
+              LAMBDA (length: nat):
+                safe_div(1, b ^ (2 * length))
+                  * squared_distance_from_uniform(
+                      carrier, faces, multiply, one,
+                      group_order, face_count, length),
+              C)
+END putnam_2011_a6

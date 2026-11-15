@@ -1,0 +1,86 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/braun_trees_BraunHeaps_fast_sizeqtvc: the Braun-tree fast-size
+% verification condition for recursive balance facts and the returned size.
+% This file contains no proof.
+
+braun_trees_BraunHeaps_fast_sizeqtvc[
+  elt: TYPE+
+]: THEORY
+BEGIN
+
+  tree: DATATYPE
+  BEGIN
+    Empty: Empty?
+    Node(
+      left_subtree: tree,
+      root_element: elt,
+      right_subtree: tree): Node?
+  END tree
+
+  tree_size(values: tree): RECURSIVE int =
+    CASES values OF
+      Empty:
+        0,
+      Node(left, root, right):
+        1 + tree_size(left) + tree_size(right)
+    ENDCASES
+  MEASURE values BY <<
+
+  inv(values: tree): RECURSIVE bool =
+    CASES values OF
+      Empty:
+        TRUE,
+      Node(left, root, right):
+        (tree_size(left) = tree_size(right)
+          OR tree_size(left) = tree_size(right) + 1)
+          AND inv(left)
+          AND inv(right)
+    ENDCASES
+  MEASURE values BY <<
+
+  is_child(values, expected_child: tree): bool =
+    CASES values OF
+      Empty:
+        FALSE,
+      Node(left, root, right):
+        left = expected_child OR right = expected_child
+    ENDCASES
+
+  recursive_balance_obligation(values: tree): bool =
+    CASES values OF
+      Empty:
+        TRUE,
+      Node(left, root, right):
+        (is_child(values, right) AND inv(right))
+          AND
+        (LET m: int = tree_size(right)
+         IN
+           inv(left)
+             AND 0 <= m
+             AND m <= tree_size(left)
+             AND tree_size(left) <= m + 1)
+    ENDCASES
+
+  result_antecedent(values: tree, result: int): bool =
+    CASES values OF
+      Empty:
+        result = 0,
+      Node(left, root, right):
+        LET m: int = tree_size(right)
+        IN
+          EXISTS (offset: int):
+            tree_size(left) = m + offset
+              AND result = 1 + 2 * m + offset
+    ENDCASES
+
+  fast_size_vc: bool =
+    FORALL (values: tree):
+      inv(values)
+        IMPLIES
+          (recursive_balance_obligation(values)
+            AND
+          (FORALL (result: int):
+            result_antecedent(values, result)
+              IMPLIES result = tree_size(values)))
+
+END braun_trees_BraunHeaps_fast_sizeqtvc

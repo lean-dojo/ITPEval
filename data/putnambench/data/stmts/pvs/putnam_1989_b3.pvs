@@ -1,0 +1,243 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1989_b3:
+% moments of a differentiable function on the nonnegative real axis satisfying
+% a dilation differential equation and rapid decay obey an explicit product
+% formula and a normalized convergence criterion. This file contains no proof.
+
+putnam_1989_b3: THEORY
+BEGIN
+  real_function: TYPE = [real -> real]
+  real_sequence: TYPE = [nat -> real]
+  positive_real_function: TYPE = [posreal -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  nat_factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * nat_factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  finite_solution_product(index: nat): RECURSIVE real =
+    IF index = 0 THEN
+      1
+    ELSE
+      finite_solution_product(index - 1)
+        * (1 - safe_div(1, (2 :: real) ^ index))
+    ENDIF
+  MEASURE index
+
+  putnam_1989_b3_solution(index: nat, initial: real): real =
+    safe_div(
+      initial * (nat_factorial(index) :: real),
+      (3 :: real) ^ index * finite_solution_product(index))
+
+  exponential_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        exponential_partial(x, count - 1)
+          + safe_div(
+              x ^ index,
+              nat_factorial(index) :: real)
+    ENDIF
+  MEASURE count
+
+  sequence_converges_to(
+      sequence: real_sequence,
+      limit_value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - limit_value) < epsilon_value
+
+  real_exponential(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        sequence_converges_to(
+          LAMBDA (count: nat):
+            exponential_partial(x, count),
+          value))
+
+  nonnegative_sqrt(x: real): real =
+    IF x >= 0 THEN
+      epsilon(
+        LAMBDA (root: real):
+          root >= 0 AND root * root = x)
+    ELSE
+      0
+    ENDIF
+
+  has_derivative_at(
+      f: real_function,
+      derivative, x: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (delta: posreal):
+        FORALL (h: real):
+          (h /= 0 AND abs(h) < delta)
+            IMPLIES
+              abs(
+                f(x + h) - f(x) - derivative * h)
+                < epsilon_value * abs(h)
+
+  has_derivative_within_nonnegative(
+      f: real_function,
+      derivative, x: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (delta: posreal):
+        FORALL (y: real):
+          (y >= 0
+            AND y /= x
+            AND abs(y - x) < delta)
+          IMPLIES
+            abs(
+              f(y) - f(x) - derivative * (y - x))
+              < epsilon_value * abs(y - x)
+
+  differentiable_on_nonnegative(f: real_function): bool =
+    FORALL (x: real):
+      x >= 0 IMPLIES
+        EXISTS (derivative: real):
+          has_derivative_within_nonnegative(
+            f, derivative, x)
+
+  satisfies_differential_equation(f: real_function): bool =
+    FORALL (x: real):
+      x > 0 IMPLIES
+        has_derivative_at(
+          f, -3 * f(x) + 6 * f(2 * x), x)
+
+  satisfies_decay_bound(f: real_function): bool =
+    FORALL (x: real):
+      x >= 0 IMPLIES
+        abs(f(x))
+          <= real_exponential(-nonnegative_sqrt(x))
+
+  valid_tagged_partition(
+      left, right: real,
+      points, tags: real_sequence,
+      count: nat): bool =
+    count > 0
+      AND points(0) = left
+      AND points(count) = right
+      AND FORALL (index: nat):
+        index < count IMPLIES
+          (points(index) < points(index + 1)
+            AND points(index) <= tags(index)
+            AND tags(index) <= points(index + 1))
+
+  mesh_less_than(
+      points: real_sequence,
+      count: nat,
+      bound: real): bool =
+    FORALL (index: nat):
+      index < count IMPLIES
+        points(index + 1) - points(index) < bound
+
+  riemann_sum(
+      f: real_function,
+      points, tags: real_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      riemann_sum(f, points, tags, count - 1)
+        + f(tags(count - 1))
+            * (points(count) - points(count - 1))
+    ENDIF
+  MEASURE count
+
+  has_interval_integral(
+      f: real_function,
+      left, right, integral_value: real): bool =
+    left < right
+      AND FORALL (epsilon_value: posreal):
+        EXISTS (mesh_bound: posreal):
+          FORALL
+              (points, tags: real_sequence),
+              (count: nat):
+            (valid_tagged_partition(
+                left, right, points, tags, count)
+              AND mesh_less_than(
+                points, count, mesh_bound))
+            IMPLIES
+              abs(
+                riemann_sum(f, points, tags, count)
+                  - integral_value)
+                < epsilon_value
+
+  interval_integral(
+      f: real_function,
+      left, right: real): real =
+    IF EXISTS (integral_value: real):
+        has_interval_integral(
+          f, left, right, integral_value)
+    THEN
+      epsilon(
+        LAMBDA (integral_value: real):
+          has_interval_integral(
+            f, left, right, integral_value))
+    ELSE
+      0
+    ENDIF
+
+  converges_at_real_top(
+      values: positive_real_function,
+      limit_value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: posreal):
+        FORALL (radius: posreal):
+          cutoff <= radius IMPLIES
+            abs(values(radius) - limit_value) < epsilon_value
+
+  moment_integrand(
+      f: real_function,
+      degree: nat): real_function =
+    LAMBDA (x: real): x ^ degree * f(x)
+
+  has_improper_moment(
+      f: real_function,
+      degree: nat,
+      moment_value: real): bool =
+    converges_at_real_top(
+      LAMBDA (radius: posreal):
+        interval_integral(
+          moment_integrand(f, degree), 0, radius),
+      moment_value)
+
+  moment_values(f: real_function, mu: real_sequence): bool =
+    FORALL (degree: nat):
+      has_improper_moment(f, degree, mu(degree))
+
+  normalized_moments(mu: real_sequence): real_sequence =
+    LAMBDA (degree: nat):
+      safe_div(
+        mu(degree) * (3 :: real) ^ degree,
+        nat_factorial(degree) :: real)
+
+  putnam_1989_b3: bool =
+    FORALL (f: real_function), (mu: real_sequence):
+      (differentiable_on_nonnegative(f)
+        AND satisfies_differential_equation(f)
+        AND satisfies_decay_bound(f)
+        AND moment_values(f, mu))
+      IMPLIES
+        (FORALL (degree: nat):
+          mu(degree)
+            = putnam_1989_b3_solution(
+                degree, mu(0)))
+        AND (EXISTS (limit_value: real):
+          sequence_converges_to(
+            normalized_moments(mu), limit_value))
+        AND (sequence_converges_to(
+              normalized_moments(mu), 0)
+          IMPLIES mu(0) = 0)
+END putnam_1989_b3

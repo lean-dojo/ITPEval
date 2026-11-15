@@ -1,0 +1,298 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/kmp_KnuthMorrisPratt_initnextqtvc: the initialization and loop
+% verification condition for constructing the Knuth-Morris-Pratt next table
+% from maximal proper-prefix matches. This file contains no proof.
+
+kmp_KnuthMorrisPratt_initnextqtvc[
+  char: TYPE+,
+  char_default: char
+]: THEORY
+BEGIN
+
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  nth_int(values: list[int], index: int): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF int_to_nat(index) = 0 THEN
+          head
+        ELSE
+          nth_int(tail, int_to_nat(index) - 1)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  nth_char(values: list[char], index: int): RECURSIVE char =
+    CASES values OF
+      null:
+        char_default,
+      cons(head, tail):
+        IF int_to_nat(index) = 0 THEN
+          head
+        ELSE
+          nth_char(tail, int_to_nat(index) - 1)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  list_set(
+      values: list[int],
+      index: nat,
+      value: int): RECURSIVE list[int] =
+    CASES values OF
+      null:
+        null,
+      cons(head, tail):
+        IF index = 0 THEN
+          cons(value, tail)
+        ELSE
+          cons(head, list_set(tail, index - 1, value))
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  set_function_equal(
+      values: list[int],
+      index, value: int): bool =
+    FORALL (argument: int):
+      nth_int(
+        list_set(values, int_to_nat(index), value),
+        argument)
+      =
+      IF argument = index THEN
+        value
+      ELSE
+        nth_int(values, argument)
+      ENDIF
+
+  update_condition(
+      values: list[int],
+      index, value: int,
+      conclusion: bool): bool =
+    length(list_set(values, int_to_nat(index), value)) = length(values)
+      IMPLIES
+        set_function_equal(values, index, value)
+          IMPLIES conclusion
+
+  matches1(
+      a1: list[char],
+      i1: int,
+      a2: list[char],
+      i2, n: int): bool =
+    (0 <= i1 AND i1 <= length(a1) - n)
+      AND
+    (0 <= i2 AND i2 <= length(a2) - n)
+      AND
+    (FORALL (i: int):
+      (0 <= i AND i < n)
+        IMPLIES
+          nth_char(a1, i1 + i) = nth_char(a2, i2 + i))
+
+  is_next(p: list[char], j, n: int): bool =
+    (0 <= n AND n < j)
+      AND matches1(p, j - n, p, 0, n)
+      AND
+    (FORALL (z: int):
+      (n < z AND z < j)
+        IMPLIES NOT matches1(p, j - z, p, 0, z))
+
+  next_table_property(
+      p: list[char],
+      upper: int,
+      next: list[int]): bool =
+    FORALL (k: int):
+      (0 < k AND k <= upper)
+        IMPLIES is_next(p, k, nth_int(next, k))
+
+  border_invariant(
+      p: list[char],
+      m, j, i: int,
+      next: list[int]): bool =
+    (0 <= j AND j < i AND i <= m)
+      AND matches1(p, i - j, p, 0, j)
+      AND
+    (FORALL (z: int):
+      (j + 1 < z AND z < i + 1)
+        IMPLIES NOT matches1(p, i + 1 - z, p, 0, z))
+      AND next_table_property(p, i, next)
+
+  completed_table(p: list[char], next: list[int]): bool =
+    length(next) = length(p)
+      AND
+    (FORALL (j: int):
+      (0 < j AND j < length(p))
+        IMPLIES is_next(p, j, nth_int(next, j)))
+
+  equal_character_post(
+      p: list[char],
+      m, j, i: int,
+      next: list[int]): bool =
+    ((0 <= m - i AND m - (i + 1) < m - i)
+      OR
+     (m - i = m - (i + 1)
+       AND 0 <= j
+       AND j + 1 < j))
+      AND
+    (0 <= j + 1 AND j + 1 < i + 1 AND i + 1 <= m)
+      AND matches1(p, i + 1 - (j + 1), p, 0, j + 1)
+      AND
+    (FORALL (z: int):
+      (j + 1 + 1 < z AND z < i + 1 + 1)
+        IMPLIES
+          NOT matches1(p, i + 1 + 1 - z, p, 0, z))
+      AND next_table_property(p, i + 1, next)
+
+  equal_character_step(
+      p: list[char],
+      m, j, i: int,
+      next: list[int]): bool =
+    (0 <= i + 1 AND i + 1 < length(next))
+      AND
+    update_condition(
+      next,
+      i + 1,
+      j + 1,
+      equal_character_post(
+        p,
+        m,
+        j,
+        i,
+        list_set(next, int_to_nat(i + 1), j + 1)))
+
+  zero_border_post(
+      p: list[char],
+      m, j, i: int,
+      next: list[int]): bool =
+    ((0 <= m - i AND m - (i + 1) < m - i)
+      OR
+     (m - i = m - (i + 1)
+       AND 0 <= j
+       AND j < j))
+      AND
+    (0 <= j AND j < i + 1 AND i + 1 <= m)
+      AND matches1(p, i + 1 - j, p, 0, j)
+      AND
+    (FORALL (z: int):
+      (j + 1 < z AND z < i + 1 + 1)
+        IMPLIES
+          NOT matches1(p, i + 1 + 1 - z, p, 0, z))
+      AND next_table_property(p, i + 1, next)
+
+  zero_border_step(
+      p: list[char],
+      m, j, i: int,
+      next: list[int]): bool =
+    (0 <= i + 1 AND i + 1 < length(next))
+      AND
+    update_condition(
+      next,
+      i + 1,
+      0,
+      zero_border_post(
+        p,
+        m,
+        j,
+        i,
+        list_set(next, int_to_nat(i + 1), 0)))
+
+  fallback_step(
+      p: list[char],
+      m, j, i: int,
+      next: list[int]): bool =
+    (0 <= j AND j < length(next))
+      AND
+    ((0 <= m - i AND m - i < m - i)
+      OR
+     (0 <= j AND nth_int(next, j) < j))
+      AND
+    (0 <= nth_int(next, j)
+      AND nth_int(next, j) < i
+      AND i <= m)
+      AND
+    matches1(
+      p,
+      i - nth_int(next, j),
+      p,
+      0,
+      nth_int(next, j))
+      AND
+    (FORALL (z: int):
+      (nth_int(next, j) + 1 < z AND z < i + 1)
+        IMPLIES NOT matches1(p, i + 1 - z, p, 0, z))
+      AND next_table_property(p, i, next)
+
+  loop_step(
+      p: list[char],
+      m, j, i: int,
+      next: list[int]): bool =
+    IF i < m - 1 THEN
+      (0 <= j AND j < length(p))
+        AND (0 <= i AND i < length(p))
+        AND
+      IF nth_char(p, i) = nth_char(p, j) THEN
+        equal_character_step(p, m, j, i, next)
+      ELSIF j = 0 THEN
+        zero_border_step(p, m, j, i, next)
+      ELSE
+        fallback_step(p, m, j, i, next)
+      ENDIF
+    ELSE
+      completed_table(p, next)
+    ENDIF
+
+  initial_post(
+      p: list[char],
+      m: int,
+      next: list[int]): bool =
+    ((0 <= 0 AND 0 < 1 AND 1 <= m)
+      AND matches1(p, 1 - 0, p, 0, 0)
+      AND
+     (FORALL (z: int):
+       (0 + 1 < z AND z < 1 + 1)
+         IMPLIES NOT matches1(p, 1 + 1 - z, p, 0, z))
+      AND next_table_property(p, 1, next))
+      AND
+    (FORALL (j, i: int), (next1: list[int]):
+      length(next1) = length(next)
+        IMPLIES
+          border_invariant(p, m, j, i, next1)
+            IMPLIES loop_step(p, m, j, i, next1))
+
+  initial_step(
+      p: list[char],
+      m: int,
+      next: list[int]): bool =
+    (0 <= 1 AND 1 < length(next))
+      AND
+    update_condition(
+      next,
+      1,
+      0,
+      initial_post(
+        p,
+        m,
+        list_set(next, int_to_nat(1), 0)))
+
+  initnext_vc: bool =
+    FORALL (p: list[char]):
+      1 <= length(p)
+        IMPLIES
+          LET m: int = length(p) IN
+            0 <= m
+              AND
+            (FORALL (next: list[int]):
+              ((FORALL (i: int):
+                (0 <= i AND i < m)
+                  IMPLIES nth_int(next, i) = 0)
+                AND length(next) = m)
+                IMPLIES
+                  IF 1 < m THEN
+                    initial_step(p, m, next)
+                  ELSE
+                    completed_table(p, next)
+                  ENDIF)
+
+END kmp_KnuthMorrisPratt_initnextqtvc

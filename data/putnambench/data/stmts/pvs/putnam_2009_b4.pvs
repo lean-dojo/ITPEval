@@ -1,0 +1,276 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2009_b4:
+% the real vector space of balanced bivariate polynomials of total degree at
+% most 2009 has dimension 2020050. This file contains no proof.
+
+putnam_2009_b4: THEORY
+BEGIN
+  exponent: TYPE = [# x_power: nat, y_power: nat #]
+  polynomial: TYPE = [exponent -> real]
+  polynomial_set: TYPE = [polynomial -> bool]
+  polynomial_sequence: TYPE = [nat -> polynomial]
+  coefficient_sequence: TYPE = [nat -> real]
+  real_function: TYPE = [real -> real]
+  real_sequence: TYPE = [nat -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  nat_factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * nat_factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  sine_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        sine_partial(x, count - 1)
+          + safe_div(
+              ((-1 :: real) ^ index) * x ^ (2 * index + 1),
+              nat_factorial(2 * index + 1) :: real)
+    ENDIF
+  MEASURE count
+
+  cosine_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        cosine_partial(x, count - 1)
+          + safe_div(
+              ((-1 :: real) ^ index) * x ^ (2 * index),
+              nat_factorial(2 * index) :: real)
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  sine_value(argument, value: real): bool =
+    converges_to(
+      LAMBDA (count: nat): sine_partial(argument, count),
+      value)
+
+  cosine_value(argument, value: real): bool =
+    converges_to(
+      LAMBDA (count: nat): cosine_partial(argument, count),
+      value)
+
+  sine(argument: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        sine_value(argument, value))
+
+  cosine(argument: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        cosine_value(argument, value))
+
+  pi_value(value: real): bool =
+    3 < value
+      AND value < 4
+      AND cosine_value(value / 2, 0)
+
+  pi: real =
+    epsilon(
+      LAMBDA (value: real):
+        pi_value(value))
+
+  total_degree(e: exponent): nat =
+    x_power(e) + y_power(e)
+
+  degree_at_most(P: polynomial, degree_bound: nat): bool =
+    FORALL (e: exponent):
+      total_degree(e) > degree_bound IMPLIES P(e) = 0
+
+  is_polynomial(P: polynomial): bool =
+    EXISTS (degree_bound: nat):
+      degree_at_most(P, degree_bound)
+
+  polynomial_row_sum(
+      P: polynomial,
+      x, y: real,
+      x_index, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET y_index: nat = count - 1 IN
+        polynomial_row_sum(P, x, y, x_index, count - 1)
+          + P((# x_power := x_index, y_power := y_index #))
+              * x ^ x_index * y ^ y_index
+    ENDIF
+  MEASURE count
+
+  polynomial_square_sum(
+      P: polynomial,
+      x, y: real,
+      side_length, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET x_index: nat = count - 1 IN
+        polynomial_square_sum(
+          P, x, y, side_length, count - 1)
+          + polynomial_row_sum(
+              P, x, y, x_index, side_length)
+    ENDIF
+  MEASURE count
+
+  polynomial_value_with_bound(
+      P: polynomial,
+      x, y: real,
+      degree_bound: nat): real =
+    polynomial_square_sum(
+      P, x, y, degree_bound + 1, degree_bound + 1)
+
+  polynomial_value(P: polynomial, x, y: real): real =
+    IF is_polynomial(P) THEN
+      epsilon(
+        LAMBDA (value: real):
+          EXISTS (degree_bound: nat):
+            degree_at_most(P, degree_bound)
+              AND value =
+                polynomial_value_with_bound(
+                  P, x, y, degree_bound))
+    ELSE
+      0
+    ENDIF
+
+  valid_tagged_partition(
+      left, right: real,
+      points, tags: real_sequence,
+      count: nat): bool =
+    count > 0
+      AND points(0) = left
+      AND points(count) = right
+      AND FORALL (index: nat):
+        index < count IMPLIES
+          (points(index) < points(index + 1)
+            AND points(index) <= tags(index)
+            AND tags(index) <= points(index + 1))
+
+  mesh_less_than(
+      points: real_sequence,
+      count: nat,
+      bound: real): bool =
+    FORALL (index: nat):
+      index < count IMPLIES
+        points(index + 1) - points(index) < bound
+
+  riemann_sum(
+      function_value: real_function,
+      points, tags: real_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      riemann_sum(
+        function_value, points, tags, count - 1)
+        + function_value(tags(count - 1))
+            * (points(count) - points(count - 1))
+    ENDIF
+  MEASURE count
+
+  has_interval_integral(
+      function_value: real_function,
+      left, right, integral_value: real): bool =
+    left < right
+      AND FORALL (epsilon_value: posreal):
+        EXISTS (mesh_bound: posreal):
+          FORALL
+              (points, tags: real_sequence),
+              (count: nat):
+            (valid_tagged_partition(
+                left, right, points, tags, count)
+              AND mesh_less_than(
+                points, count, mesh_bound))
+            IMPLIES
+              abs(
+                riemann_sum(
+                  function_value, points, tags, count)
+                  - integral_value)
+                < epsilon_value
+
+  balanced(P: polynomial): bool =
+    is_polynomial(P)
+      AND FORALL (radius: posreal):
+        EXISTS (integral_value: real):
+          has_interval_integral(
+            LAMBDA (angle: real):
+              polynomial_value(
+                P,
+                radius * cosine(angle),
+                radius * sine(angle)),
+            0,
+            2 * pi,
+            integral_value)
+            AND safe_div(
+              integral_value,
+              2 * pi * radius) = 0
+
+  zero_polynomial: polynomial =
+    LAMBDA (e: exponent): 0
+
+  polynomial_add(P, Q: polynomial): polynomial =
+    LAMBDA (e: exponent): P(e) + Q(e)
+
+  scalar_multiply(a: real, P: polynomial): polynomial =
+    LAMBDA (e: exponent): a * P(e)
+
+  linear_combination(
+      B: polynomial_sequence,
+      coefficients: coefficient_sequence,
+      count: nat): RECURSIVE polynomial =
+    IF count = 0 THEN
+      zero_polynomial
+    ELSE
+      polynomial_add(
+        linear_combination(B, coefficients, count - 1),
+        scalar_multiply(
+          coefficients(count - 1),
+          B(count - 1)))
+    ENDIF
+  MEASURE count
+
+  linearly_independent_through(
+      B: polynomial_sequence,
+      count: nat): bool =
+    FORALL (coefficients: coefficient_sequence):
+      linear_combination(B, coefficients, count)
+          = zero_polynomial
+        IMPLIES
+          FORALL (index: nat):
+            index < count IMPLIES coefficients(index) = 0
+
+  spans_through(
+      B: polynomial_sequence,
+      count: nat,
+      V: polynomial_set): bool =
+    FORALL (P: polynomial):
+      V(P) IFF
+        EXISTS (coefficients: coefficient_sequence):
+          P = linear_combination(B, coefficients, count)
+
+  has_dimension(V: polynomial_set, count: nat): bool =
+    EXISTS (B: polynomial_sequence):
+      linearly_independent_through(B, count)
+        AND spans_through(B, count, V)
+
+  balanced_degree_space(P: polynomial): bool =
+    degree_at_most(P, 2009) AND balanced(P)
+
+  putnam_2009_b4: bool =
+    has_dimension(balanced_degree_space, 2020050)
+END putnam_2009_b4

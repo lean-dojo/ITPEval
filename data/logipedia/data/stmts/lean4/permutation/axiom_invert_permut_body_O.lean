@@ -1,0 +1,25 @@
+-- Statement-only formalization of Logipedia corpus artifact
+-- "permutation.axiom_invert_permut_body_O" (catalog title
+-- "permutation.axiom_invert_permut_body_O"): the source polymorphic equality
+-- identifies the inverse-permutation body at zero with its Boolean-conditional
+-- natural-number function. This file contains no proof.
+
+namespace permutation
+
+-- itpeval-source-signature: logipedia:connectives.equal as equal
+axiom equal : (A : Type) → A → A → Prop
+
+-- itpeval-source-signature: logipedia:bool.match_bool_type as matchBoolType
+axiom matchBoolType : (A : Type) → A → A → Bool → A
+
+-- itpeval-source-signature: logipedia:nat.eqb as eqb
+axiom eqb : Nat → Nat → Bool
+
+-- itpeval-source-signature: logipedia:permutation.invert_permut_body as invertPermutBody
+axiom invertPermutBody : Nat → (Nat → Nat) → Nat → Nat
+
+theorem axiom_invert_permut_body_O :
+    equal ((Nat → Nat) → Nat → Nat) (invertPermutBody 0)
+      (fun f m ↦ matchBoolType Nat 0 0 (eqb m (f 0))) := sorry
+
+end permutation

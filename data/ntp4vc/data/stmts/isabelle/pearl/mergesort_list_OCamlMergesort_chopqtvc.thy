@@ -1,0 +1,43 @@
+theory mergesort_list_OCamlMergesort_chopqtvc
+  imports "NTP4Verif.NTP4Verif"
+begin
+typedecl  elt
+consts le :: "elt \<Rightarrow> elt \<Rightarrow> bool"
+axiomatization where Refl:   "le x x"
+  for x :: "elt"
+axiomatization where Trans:   "le x z"
+ if "le x y"
+ and "le y z"
+  for x :: "elt"
+  and y :: "elt"
+  and z :: "elt"
+axiomatization where Total:   "le x y \<or> le y x"
+  for x :: "elt"
+  and y :: "elt"
+inductive sorted :: "elt list \<Rightarrow> bool" where
+   Sorted_Nil: "sorted (Nil :: elt list)"
+ | Sorted_One: "sorted (Cons x (Nil :: elt list))" for x :: "elt"
+ | Sorted_Two: "le x y \<Longrightarrow> sorted (Cons y l) \<Longrightarrow> sorted (Cons x (Cons y l))" for x :: "elt" and y :: "elt" and l :: "elt list"
+axiomatization where sorted_mem:   "(\<forall>(y :: elt). y \<in> set l \<longrightarrow> le x y) \<and> sorted l \<longleftrightarrow> sorted (Cons x l)"
+  for l :: "elt list"
+  and x :: "elt"
+axiomatization where sorted_append:   "sorted l1 \<and> sorted l2 \<and> (\<forall>(x :: elt) (y :: elt). x \<in> set l1 \<longrightarrow> y \<in> set l2 \<longrightarrow> le x y) \<longleftrightarrow> sorted (l1 @ l2)"
+  for l1 :: "elt list"
+  and l2 :: "elt list"
+consts prefix1 :: "int \<Rightarrow> 'a list \<Rightarrow> 'a list"
+axiomatization where prefix_def1:   "prefix1 (0 :: int) l = (Nil :: 'a list)"
+  for l :: "'a list"
+axiomatization where prefix_def2:   "prefix1 n (Cons x l) = Cons x (prefix1 (n - (1 :: int)) l)"
+ if "(0 :: int) < n"
+  for n :: "int"
+  and x :: "'a"
+  and l :: "'a list"
+theorem chop'vc:
+  fixes n :: "int"
+  fixes l :: "'a list"
+  assumes fact0: "(0 :: int) \<le> n"
+  assumes fact1: "n \<le> int (length l)"
+  shows "\<not>n = (0 :: int) \<longrightarrow> (case l of Cons _ t \<Rightarrow> (let o1 :: int = n - (1 :: int) in ((0 :: int) \<le> n \<and> o1 < n) \<and> (0 :: int) \<le> o1 \<and> o1 \<le> int (length t)) | (Nil :: 'a list) \<Rightarrow> False)"
+  and "\<forall>(result :: 'a list). (if n = (0 :: int) then result = l else (case l of Cons _ t \<Rightarrow> t = prefix1 (n - (1 :: int)) t @ result | (Nil :: 'a list) \<Rightarrow> False)) \<longrightarrow> l = prefix1 n l @ result"
+  sorry
+end

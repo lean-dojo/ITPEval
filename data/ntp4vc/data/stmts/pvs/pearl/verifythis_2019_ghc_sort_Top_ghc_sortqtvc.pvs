@@ -1,0 +1,126 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/verifythis_2019_ghc_sort_Top_ghc_sortqtvc: the final GHC-sort
+% verification condition transferring a sorted, occurrence-equivalent integer
+% list back to an equal-length array representation and concluding sortedness
+% and permutation. This file contains no proof.
+
+verifythis_2019_ghc_sort_Top_ghc_sortqtvc: THEORY
+BEGIN
+
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  list_length(values: list[int]): int =
+    length(values)
+
+  nth_default(values: list[int], index: nat): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          nth_default(tail, index - 1)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  list_occurrences(value: int, values: list[int]): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        (IF head = value THEN 1 ELSE 0 ENDIF)
+          + list_occurrences(value, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  interval_occurrences_span(
+      value: int,
+      values: list[int],
+      lower: int,
+      span: nat): RECURSIVE int =
+    IF span = 0 THEN
+      0
+    ELSE
+      (IF nth_default(values, int_to_nat(lower)) = value
+       THEN 1
+       ELSE 0
+       ENDIF)
+        + interval_occurrences_span(
+            value, values, lower + 1, span - 1)
+    ENDIF
+  MEASURE span
+
+  interval_occurrences(
+      value: int,
+      values: list[int],
+      lower, upper: int): int =
+    interval_occurrences_span(
+      value,
+      values,
+      lower,
+      int_to_nat(upper - lower))
+
+  sorted(values: list[int]): bool =
+    FORALL (i, j: int):
+      (0 <= i AND i <= j AND j < list_length(values))
+        IMPLIES
+          nth_default(values, int_to_nat(i))
+            <= nth_default(values, int_to_nat(j))
+
+  list_permutation(left, right: list[int]): bool =
+    FORALL (value: int):
+      list_occurrences(value, left)
+        = list_occurrences(value, right)
+
+  copy_conditions(
+      copied, original, source: list[int]): bool =
+    (FORALL (index: int):
+      (0 <= index AND index < list_length(copied))
+        IMPLIES
+          nth_default(copied, int_to_nat(index))
+            = nth_default(source, int_to_nat(index - 0)))
+      AND
+    (FORALL (index: int):
+      (0 <= index AND index < 0)
+        IMPLIES
+          nth_default(copied, int_to_nat(index))
+            = nth_default(original, int_to_nat(index)))
+      AND
+    (FORALL (value: int):
+      interval_occurrences(
+        value, copied, 0, list_length(copied))
+        = list_occurrences(value, source))
+
+  ghc_sort_vc: bool =
+    FORALL (a: list[int]):
+      IF list_length(a) = 0 THEN
+        sorted(a)
+          AND list_permutation(a, a)
+      ELSE
+        0 < list_length(a)
+          AND
+        (FORALL (l: list[int]):
+          (sorted(l)
+            AND
+           (FORALL (value: int):
+             interval_occurrences(
+               value, a, 0, list_length(a))
+               = list_occurrences(value, l))
+            AND list_length(l) = list_length(a))
+            IMPLIES
+              ((0 <= 0
+                AND list_length(l) = list_length(a) - 0)
+                AND
+               (FORALL (a1: list[int]):
+                 list_length(a1) = list_length(a)
+                   IMPLIES
+                 (copy_conditions(a1, a, l)
+                    IMPLIES
+                      (sorted(a1)
+                        AND list_permutation(a1, a))))))
+      ENDIF
+
+END verifythis_2019_ghc_sort_Top_ghc_sortqtvc

@@ -1,0 +1,102 @@
+% Statement-only formalization of the thousand-theorems corpus artifact Q179208,
+% "Cayley's theorem": every group acting faithfully on an arbitrary type is
+% multiplicatively isomorphic to the image subgroup of its permutation action.
+% This file contains no proof.
+
+Q179208_cayley_s_theorem[
+  G: TYPE+,
+  H: TYPE,
+  mul: [G, G -> G],
+  inv: [G -> G],
+  one: G,
+  action: [G, H -> H]
+]: THEORY
+BEGIN
+
+  self_map: TYPE = [H -> H]
+  self_map_set: TYPE = [self_map -> bool]
+  representation: TYPE = [G -> self_map]
+
+  group_laws: bool =
+    (FORALL (x, y, z: G):
+      mul(mul(x, y), z) = mul(x, mul(y, z)))
+      AND (FORALL (x: G):
+        mul(one, x) = x
+          AND mul(x, one) = x)
+      AND (FORALL (x: G):
+        mul(inv(x), x) = one
+          AND mul(x, inv(x)) = one)
+
+  action_laws: bool =
+    (FORALL (h: H):
+      action(one, h) = h)
+      AND (FORALL (x, y: G), (h: H):
+        action(mul(x, y), h) = action(x, action(y, h)))
+
+  faithful_action: bool =
+    FORALL (x, y: G):
+      (FORALL (h: H):
+        action(x, h) = action(y, h))
+        IMPLIES x = y
+
+  identity_map: self_map =
+    LAMBDA (h: H): h
+
+  compose(p, q: self_map): self_map =
+    LAMBDA (h: H): p(q(h))
+
+  action_map(x: G): self_map =
+    LAMBDA (h: H): action(x, h)
+
+  injective_map(p: self_map): bool =
+    FORALL (h, k: H):
+      p(h) = p(k) IMPLIES h = k
+
+  surjective_map(p: self_map): bool =
+    FORALL (k: H):
+      EXISTS (h: H): p(h) = k
+
+  permutation(p: self_map): bool =
+    injective_map(p)
+      AND surjective_map(p)
+
+  action_range: self_map_set =
+    LAMBDA (p: self_map):
+      permutation(p)
+        AND EXISTS (x: G): p = action_map(x)
+
+  permutation_subgroup(carrier: self_map_set): bool =
+    (FORALL (p: self_map):
+      carrier(p) IMPLIES permutation(p))
+      AND carrier(identity_map)
+      AND (FORALL (p, q: self_map):
+        carrier(p) AND carrier(q) IMPLIES
+          carrier(compose(p, q)))
+      AND (FORALL (p: self_map):
+        carrier(p) IMPLIES
+          EXISTS (q: self_map):
+            carrier(q)
+              AND compose(p, q) = identity_map
+              AND compose(q, p) = identity_map)
+
+  multiplicative_equivalence_to_range(f: representation): bool =
+    (FORALL (x: G): action_range(f(x)))
+      AND (FORALL (x, y: G):
+        f(x) = f(y) IMPLIES x = y)
+      AND (FORALL (p: self_map):
+        action_range(p) IMPLIES
+          EXISTS (x: G): f(x) = p)
+      AND f(one) = identity_map
+      AND (FORALL (x, y: G):
+        f(mul(x, y)) = compose(f(x), f(y)))
+
+  subgroupOfMulAction: bool =
+    (group_laws AND action_laws AND faithful_action)
+      IMPLIES
+        (permutation_subgroup(action_range)
+          AND EXISTS (f: representation):
+            (FORALL (x: G):
+              f(x) = action_map(x))
+              AND multiplicative_equivalence_to_range(f))
+
+END Q179208_cayley_s_theorem

@@ -1,0 +1,819 @@
+module Div
+
+  use int.Int
+  use mach.int.Int32
+  use import mach.int.UInt64GMP as Limb
+  use int.Power
+  use ref.Ref
+  use mach.c.C
+  use array.Array
+  use map.Map
+  use types.Types
+  use types.Int32Eq
+  use types.UInt64Eq
+  use lemmas.Lemmas
+  use compare.Compare
+  use util.UtilOld
+  use add.AddOld
+  use sub.SubOld
+  use logical.LogicalUtil
+  use logical.LogicalOld
+  use int.EuclideanDivision
+
+  (** Based on Niels Möller and Torbjörn Granlund, "Improved
+      division by invariant integers" 2010 *)
+
+  use int.MinMax as MM
+
+  predicate reciprocal (v d:limb) =
+    v = (div (radix*radix - 1) (d)) - radix
+
+  let ghost fact_div (x y z:int) : unit
+    requires { y > 0 }
+    ensures { div (x + y * z) y = (div x y) + z }
+  = ()
+
+  let invert_limb (d:limb) : limb
+    requires { d >= div radix 2 }
+    ensures { reciprocal result d }
+  =
+    let v = div2by1 Limb.uint64_max
+                    (Limb.uint64_max - d)
+                    d in
+    v
+
+  (** Divide a two-word integer by a one-word integer given the
+  reciprocal of the divisor. *)
+  let div2by1_inv (uh ul d v:limb) : (limb,limb)
+    requires { d >= div radix 2 }
+    requires { uh < d }
+    requires { reciprocal v d }
+    returns { q, r -> l2i q * d + l2i r = ul + radix * uh }
+    returns { _q, r -> 0 <= l2i r < d }
+  =
+    let ghost k = radix * radix - (radix + l2i v) * l2i d in
+    let ghost u = l2i ul + radix * l2i uh in
+    let l,h = mul_double v uh in
+    let sl,c = add_with_carry l ul 0 in
+    let (sh,ghost c') = add_with_carry uh h c in  (* <c',sh,sl> = <uh, ul> + <h,l> *)
+    let qh = ref (sh:limb) in
+    let ql = ref sl in
+    let ghost q0 = l2i !ql in
+    let ghost cq = l2i sh + 1 in (*candidate quotient*)
+    let ghost cr = l2i ul - cq * l2i d + radix * l2i uh in (*candidate remainder*)
+    qh := add_mod !qh 1;
+    let p = mul_mod !qh d in
+    let r = ref (sub_mod ul p) in
+    let ghost r' = !r in
+    if !r > !ql
+    then begin
+      qh := sub_mod !qh 1;
+      r := add_mod !r d;
+    end;
+    if !r >= d
+    then begin
+      qh := !qh + 1;
+      r := !r - d;
+    end;
+    (!qh,!r)
+
+(** `wmpn_divrem_1 q x sz y` divides `(x, sz)` by `y`, writes the quotient
+    in `(q, sz)` and returns the remainder. Corresponds to
+    `mpn_divrem_1`. *)
+(* TODO develop further decimal points (qxn) *)
+let wmpn_divrem_1 (q x:t) (sz:int32) (y:limb) : limb
+    requires { valid x sz }
+    requires { valid q sz }
+    requires { writable q }
+    requires { 0 < sz }
+    requires { 0 < y }
+    ensures { value x sz
+              = value q sz * y + result }
+    ensures { result < y }
+  =
+    let msb = sz - 1 in
+    let lx = ref 0 in
+    let i = ref msb in
+    let r = ref 0 in
+    (*normalize divisor*)
+    let clz = count_leading_zeros y in
+    if (clz > 0)
+    then begin
+      let ghost mult = power 2 (p2i clz) in
+      let ry = lsl y (Limb.of_int32 clz) in
+      let ghost tlum = power 2 (Limb.length - p2i clz) in
+      let v = invert_limb ry in
+      while (!i >= 0) do
+        variant   { !i }
+        invariant { -1 <= !i <= msb }
+        invariant { !r < ry }
+        invariant { mult * value_sub (pelts x) (x.offset + !i + 1) (x.offset + sz)
+                    = value_sub (pelts q) (q.offset + !i + 1)
+                                          (q.offset + sz)
+                      * ry
+                      + !r }
+        invariant { !r <= radix - mult }
+        invariant { mod (!r) mult = 0 }
+        label StartLoop in
+        lx := C.get_ofs x !i;
+        (*TODO lshift in place would simplify things*)
+        let l,h = lsld_ext !lx (Limb.of_int32 clz) in
+        let (qu,rem) = div2by1_inv (!r + h) l ry v in
+        let ghost mer = div (l2i rem) mult in
+        r:=rem;
+        value_sub_update_no_change (pelts q) (q.offset + p2i !i)
+                                   (q.offset + 1 + p2i !i)
+                                   (q.offset + p2i sz) qu;
+        C.set_ofs q !i qu;
+        i := !i - 1;
+      done;
+      let ghost res = lsr !r (Limb.of_int32 clz) in
+      lsr !r (Limb.of_int32 clz) end
+    else begin
+      let v = invert_limb y in
+      while (!i >= 0) do
+        variant   { !i }
+        invariant { -1 <= !i <= msb }
+        invariant { !r < y }
+        invariant { value_sub (pelts x) (x.offset + !i + 1) (x.offset + sz)
+                    = value_sub (pelts q) (q.offset + !i + 1)
+                                          (q.offset + sz)
+                      * y
+                      + !r }
+        label StartLoop in
+        let ghost k = p2i !i in
+        lx := C.get_ofs x !i;
+        let (qu, rem) = div2by1_inv !r !lx y v in
+        r := rem;
+        value_sub_update_no_change (pelts q) (q.offset + p2i !i)
+                                   (q.offset + 1 + p2i !i)
+                                   (q.offset + p2i sz) qu;
+        C.set_ofs q !i qu;
+        i := !i - 1;
+      done;
+      !r
+    end
+
+
+  predicate reciprocal_3by2 (v dh dl:limb) =
+    v = div (radix*radix*radix -1) (dl + radix * dh) - radix
+
+  let div3by2_inv (uh um ul dh dl v: limb) : (limb,limb,limb)
+    requires { dh >= div radix 2 }
+    requires { reciprocal_3by2 v dh dl }
+    requires { um + radix * uh < dl + radix * dh }
+    returns { q, rl, rh -> uint64'int q * dl + radix * q * dh
+                           + uint64'int rl + radix * uint64'int rh
+                  = ul + radix * um + radix * radix * uh }
+    returns { _q, rl, rh -> 0 <= uint64'int rl + radix * uint64'int rh < dl + radix * dh }
+  = [@vc:do_not_keep_trace] (* traceability info breaks the proof *)
+    let ghost d = l2i dl + radix * l2i dh in
+    let ghost u = l2i ul + radix * (l2i um + radix * l2i uh) in
+    let q1 = ref 0 in
+    let r0 = ref 0 in
+    let r1 = ref 0 in
+    let l,h = mul_double v uh in
+    let sl, c = add_with_carry um l 0 in
+    let sh, ghost c' = add_with_carry uh h c in
+    q1 := sh;
+    let ghost q0 = l2i sl in
+    let ghost cq = l2i !q1 + 1 in (*candidate quotient*)
+    q1 := add_mod !q1 1;
+    let p = mul_mod dh sh in
+    r1 := sub_mod um p;
+    label CQuot in
+    let ghost a = div (l2i um - l2i dh * l2i sh) radix in
+    let tl, th = mul_double sh dl in
+    let il, b = sub_with_borrow ul tl 0 in
+    let (ih, ghost b') = sub_with_borrow !r1 th b in
+    let bl,b2 = sub_with_borrow il dl 0 in
+    let bh, ghost b2' = sub_with_borrow ih dh b2 in
+    r1 := bh;
+    r0 := bl;
+    let ghost r' = l2i !r0 + radix * l2i !r1 in
+    let ghost cr = u - d * cq in
+    let ghost m = MM.max (radix * radix - d) (q0 * radix) in
+    label PreCorrections in
+    if !r1 >= sl
+    then begin
+      q1 := sub_mod !q1 1;
+      let rl, c = add_with_carry !r0 dl 0 in
+      let rh, ghost c' = add_with_carry !r1 dh c in
+      r1 := rh;
+      r0 := rl;
+    end
+    else ();
+    label PreRemAdjust in
+    if [@extraction:unlikely] (!r1 > dh) || (!r1 = dh && !r0 >= dl)
+    then begin
+      let bl, b = sub_with_borrow !r0 dl 0 in
+      let bh, ghost b'= sub_with_borrow !r1 dh b in
+      q1 := add_mod !q1 1;
+      r1 := bh;
+      r0 := bl;
+    end;
+    (!q1,!r0,!r1)
+
+  let ghost bounds_imply_rec3by2 (v dh dl:limb) : unit
+    requires { radix * radix * radix - (dl + radix * dh)
+               <= (radix + v) * (dl + radix * dh)
+               < radix * radix * radix }
+    ensures { reciprocal_3by2 v dh dl }
+  = ()
+
+  let reciprocal_word_3by2 (dh dl:limb) : limb
+    requires { dh >= div radix 2 }
+    ensures { reciprocal_3by2 result dh dl }
+  =
+    let ghost d = l2i dl + radix * l2i dh in
+    let v = ref (invert_limb dh) in
+    let p = ref (mul_mod dh !v) in
+    label Estimate in
+    p := add_mod !p dl;
+    if !p < dl (* carry out *)
+    then begin
+      label Carry in
+      if !p >= dh
+      then begin
+        v := !v - 1;
+        p := !p - dh;
+      end;
+      label Borrow in
+      v := !v - 1;
+      p := sub_mod !p dh;
+    end;
+    let tl, th = mul_double !v dl in
+    label Adjust in
+    p := add_mod !p th;
+    if !p < th (* carry out *)
+    then begin
+      if !p > dh || (!p = dh && tl >= dl)
+      then begin
+        v := !v - 1;
+      end;
+      v := !v - 1;
+    end;
+    !v
+
+  (* `(x, sz)` is normalized if its most significant bit is set. *)
+  predicate normalized (x:t) (sz:int32) =
+    valid x sz
+    /\ (pelts x)[x.offset + sz - 1] >= div radix 2
+
+  use mul.Mul
+
+  let div_sb_qr (q x:t) (sx:int32) (y:t) (sy:int32) : limb
+    requires { 3 <= sy <= sx }
+    requires { valid x sx }
+    requires { valid y sy }
+    requires { valid q (sx - sy) }
+    requires { writable q }
+    requires { writable x }
+    requires { normalized y sy }
+    ensures { value (old x) sx =
+              (value q (sx - sy)
+              + power radix (sx - sy) * result)
+                * value y sy
+              + value x sy }
+    ensures { value x sy < value y sy }
+    ensures { 0 <= result <= 1 }
+  = [@vc:do_not_keep_trace] (* traceability info breaks the proof *)
+    let xp = ref (C.incr x (sx - 2)) in
+    let qp = ref (C.incr q (sx - sy)) in
+    let dh = C.get_ofs y (sy - 1) in
+    let dl = C.get_ofs y (sy - 2) in
+    let v = reciprocal_word_3by2 dh dl in
+    let i = ref (sx - sy) in
+    let mdn = 2 - sy in
+    let ql = ref 0 in
+    let xd = C.incr !xp mdn in
+    let ghost vy = value y (p2i sy) in
+    let x1 = ref 0 in
+    let x0 = ref 0 in
+    let r = wmpn_cmp xd y sy in
+    let qh = (*begin
+               ensures { r >= 0 -> result = 1 }
+               ensures { r < 0 -> result = 0 }*)
+               if (r >= 0)
+               then 1
+               else 0
+             (*end*) in
+    label PreAdjust in
+    begin
+    let ghost ox = pelts x in
+    begin [@vc:sp]
+    if (not (qh = 0))
+    then begin
+         let (ghost b) = wmpn_sub_n_in_place xd y sy in ()
+         end
+    else begin
+         end
+    end;
+    let ghost gx1 = (C.get_ofs !xp 1) in
+    x1 := (C.get_ofs !xp 1);
+    end;
+    while (!i > 0) do
+      variant { !i }
+      invariant { 0 <= !i <= sx - sy }
+      invariant { (!qp).offset = q.offset + !i }
+      invariant { (!xp).offset = x.offset + sy + !i - 2 }
+      invariant { plength !qp = plength q }
+      invariant { !qp.min = q.min }
+      invariant { !qp.max = q.max }
+      invariant { plength !xp = plength x }
+      invariant { !xp.min = x.min }
+      invariant { !xp.max = x.max }
+      invariant { pelts !qp = pelts q }
+      invariant { pelts !xp = pelts x }
+      invariant { writable !qp /\ writable !xp }
+      invariant { value (old x) sx =
+                  (value !qp (sx - sy - !i)
+                   + qh * power radix (sx - sy - !i))
+                  * vy * power radix !i
+                  + value x (sy + !i - 1)
+                  + power radix (sy + !i - 1) * !x1 }
+      invariant { value_sub (pelts x) (!xp.offset + mdn)
+                 (!xp.offset + mdn + sy - 1)
+                 + power radix (sy - 1) * !x1
+                 < vy }
+      invariant { dl + radix * dh
+                  >= (pelts x)[(!xp).offset] + radix * !x1 }
+      label StartLoop in
+      let ghost k = int32'int !i in
+      i := !i - 1;
+      let ghost s = int32'int sy + int32'int !i - 1 in
+      xp.contents <- C.incr !xp (-1);
+      let xd = C.incr !xp mdn in
+      let nx0 = C.get_ofs !xp 1 in
+      if [@extraction:unlikely] (!x1 = dh && nx0 = dl)
+      then begin
+        ql := Limb.uint64_max;
+        let ghost vlx = value xd (p2i sy - 1) in
+        begin
+          ensures { value_sub (pelts xd) (xd.offset+1) (xd.offset + p2i sy - 1)
+                        + power radix (sy - 2) * dl
+                        + power radix (sy - 1) * dh
+                     < vy }
+         end;
+        label SubMax in
+        let ghost xc = Array.copy (x.data) in
+        let (ghost b) = wmpn_submul_1 xd y sy !ql in
+        begin
+          ensures { value x !i
+                 = value (x at SubMax) !i }
+        end;
+        value_sub_concat (pelts x) x.offset xd.offset (x.offset + s);
+        x1 := C.get_ofs !xp 1;
+        qp.contents <- C.incr !qp (-1);
+        value_sub_update_no_change (pelts q) (!qp).offset
+                            ((!qp).offset + 1)
+                            ((!qp).offset + p2i sx - p2i sy - p2i !i)
+                            !ql;
+        label QUp in
+        C.set !qp !ql;
+      end
+      else begin
+        label SmallDiv in
+        let ghost vlx = value xd (p2i sy - 2) in
+        let xp0 = C.get !xp in
+        let xp1 = C.get_ofs !xp 1 in
+        begin
+          ensures { value xd sy =
+                    vlx
+                    + power radix (sy - 2) * (xp0 + radix * xp1) }
+        end;
+        let qu, rl, rh =
+            div3by2_inv !x1 xp1 xp0 dh dl v in
+        ql := qu;
+        x1 := rh;
+        x0 := rl;
+        label SubProd in
+        value_sub_concat (pelts x) x.offset xd.offset
+                           (x.offset + p2i sy + k - 1);
+        let ghost xc = Array.copy (x.data) in
+        let cy = wmpn_submul_1 xd y (sy - 2) !ql in
+        label PostSub in
+        begin
+          ensures { value x !i
+                 = value (x at SubProd) !i }
+        end;
+        let (cy1:limb) = [@vc:sp] if (!x0 < cy) then 1 else 0 in
+        x0 := sub_mod !x0 cy;
+        let (cy2:limb) = [@vc:sp] if (!x1 < cy1) then 1 else 0 in
+        x1 := sub_mod !x1 cy1;
+        value_sub_update (pelts x) (!xp).offset xd.offset
+                                   (xd.offset + p2i sy - 1) !x0;
+        value_sub_update_no_change (pelts x) (!xp).offset
+                                   x.offset (x.offset + p2i !i) !x0;
+        value_sub_update_no_change (pelts x) (!xp).offset
+                                   xd.offset (xd.offset + p2i sy - 2) !x0;
+        C.set !xp !x0;
+        begin
+          ensures { value xd (sy - 1)
+                   + power radix (sy - 1) * !x1
+                   - power radix sy * cy2
+                 = value (xd at SubProd) sy
+                   + power radix sy * (!x1 at StartLoop)
+                   - !ql * vy }
+        end;
+        if [@extraction:unlikely] (not (cy2 = 0))
+        then begin
+          label Adjust in
+          begin ensures { !ql > 0 }
+          end;
+          begin
+            ensures { value xd (sy - 1)
+                      + power radix (sy - 1) * !x1
+                      >= power radix sy - vy }
+          end;
+          let ghost xc = Array.copy (x.data) in
+          let c = wmpn_add_n_in_place xd y (sy - 1) in
+          begin
+          ensures { value x !i
+                 = value (x at Adjust) !i }
+          end;
+          label MidAdd in
+          begin
+            ensures { value xd (sy - 1) + power radix (sy - 1) * !x1
+                      = value (xd at Adjust) (sy - 1)
+                      + power radix (sy - 1) * (!x1 at Adjust)
+                      + vy
+                      - power radix sy }
+            let ghost c' = div (l2i !x1 + l2i dh + l2i c) radix in
+            x1 := add_mod !x1 (add_mod dh c);
+          end;
+          ql := !ql - 1;
+          qp.contents <- C.incr !qp (-1);
+          value_sub_update_no_change (pelts q) (!qp).offset
+                            ((!qp).offset + 1)
+                            ((!qp).offset + p2i sx - p2i sy - p2i !i)
+                            !ql;
+          C.set !qp !ql;
+        end
+        else begin
+          qp.contents <- C.incr !qp (-1);
+          value_sub_update_no_change (pelts q) (!qp).offset
+                            ((!qp).offset + 1)
+                            ((!qp).offset + p2i sx - p2i sy - p2i !i)
+                            !ql;
+          C.set !qp !ql;
+        end;
+      end;
+    done;
+    label EndLoop in
+    value_sub_update_no_change (pelts x) (!xp.offset + 1)
+                               x.offset (!xp.offset) !x1;
+    C.set_ofs !xp 1 !x1;
+    qh
+
+  let wmpn_divrem_2 (q x y:t) (sx:int32) : limb
+    requires { 2 <= sx }
+    requires { valid x sx }
+    requires { valid y 2 }
+    requires { valid q (sx - 2) }
+    requires { (pelts y)[y.offset + 1] >= div radix 2 }
+    requires { writable q /\ writable x }
+    ensures { value (old x) sx =
+              (value q (sx - 2)
+               + power radix (sx - 2) * result)
+              * value y 2
+              + value x 2 }
+    ensures { value x 2 < value y 2 }
+    ensures { 0 <= result <= 1 }
+  =
+    let xp = ref (C.incr x (sx - 2)) in
+    let dh = C.get_ofs y 1 in
+    let dl = C.get y in
+    let rh = ref (C.get_ofs !xp 1) in
+    let rl = ref (C.get !xp) in
+    let qh = ref 0 in
+    let lx = ref 0 in
+    let i = ref (sx - 2) in
+    let dinv = reciprocal_word_3by2 dh dl in
+    ([@vc:sp] if (!rh >= dh && ([@vc:sp] !rh > dh || !rl >= dl))
+    then
+      label Adjust in
+      begin
+        let (r0, b) = sub_with_borrow !rl dl 0 in
+        let (r1, ghost b') = sub_with_borrow !rh dh b in
+        rh := r1;
+        rl := r0;
+        qh := 1;
+      end);
+    while (!i > 0) do
+      variant { !i }
+      invariant { 0 <= !i <= sx - 2 }
+      invariant { (!xp).offset = x.offset + !i }
+      invariant { plength !xp = plength x }
+      invariant { !xp.min = x.min }
+      invariant { !xp.max = x.max }
+      invariant { pelts !xp = pelts x }
+      invariant { writable !xp }
+      invariant { value x sx
+                  = (value_sub (pelts q) (q.offset + !i) (q.offset + sx - 2)
+                      + !qh * power radix (sx - 2 - !i))
+                    * value y 2 * power radix !i
+                    + value x !i
+                    + power radix !i * (!rl + radix * !rh) }
+      invariant { !rl + radix * !rh < dl + radix * dh }
+      label StartLoop in
+      let ghost k = p2i !i in
+      xp.contents <- C.incr !xp (-1);
+      lx := C.get !xp;
+      label Got in
+      let (qu, r0, r1) = div3by2_inv !rh !rl !lx dh dl dinv in
+      rh := r1;
+      rl := r0;
+      i := !i - 1;
+      C.set_ofs q !i qu;
+    done;
+    C.set_ofs x 1 !rh;
+    C.set x !rl;
+    !qh
+
+  (** `div_qr q r x y sx sy` divides `(x, sx)` by `(y, sy)`, writes the quotient
+    in `(q, (sx-sy))` and the remainder in `(r, sy)`. Corresponds to
+    `mpn_tdiv_qr`. *)
+  let div_qr (q r x y nx ny:t) (sx sy:int32) : unit
+    requires { 1 <= sy <= sx <= (Int32.max_int32 - 1) }
+    requires { valid x sx }
+    requires { valid y sy }
+    requires { valid q (sx - sy + 1) }
+    requires { valid r sy }
+    requires { valid nx (sx + 1) }
+    requires { valid ny sy }
+    requires { writable nx /\ writable ny }
+    requires { (pelts y)[y.offset + sy - 1] > 0 }
+    requires { writable q /\ writable r }
+    ensures { value x sx
+              = value q (sx - sy + 1) * value y sy
+                + value r sy }
+    ensures { value r sy < value y sy }
+  =
+    label Start in
+    if (sy = 1)
+    then
+      let lr = wmpn_divrem_1 q x sx (C.get y) in
+      C.set r lr
+    else
+    if (sy = 2)
+    then
+      let clz = clz_ext (C.get_ofs y (sy - 1)) in
+      let ghost p = power 2 (p2i clz) in
+      if clz = 0
+      then begin
+        wmpn_copyi nx x sx;
+        C.set_ofs nx sx 0;
+        label Div2_ns in
+        let (ghost _qh) = wmpn_divrem_2 q nx y (sx + 1) in
+        wmpn_copyi r nx sy;
+        ()
+      end
+      else begin
+        let (ghost _c) = wmpn_lshift ny y sy (Limb.of_int32 clz) in
+        begin
+          let ghost dh = (pelts y)[y.offset + p2i sy - 1] in
+          let ghost ndh = (pelts ny)[ny.offset + p2i sy - 1] in ()
+        end;
+        let h = wmpn_lshift nx x sx (Limb.of_int32 clz) in
+        C.set_ofs nx sx h;
+        label Div2_s in
+        (* TODO don't add 1 when not needed, cf "adjust" in GMP algo *)
+        let (ghost _qh) = wmpn_divrem_2 q nx ny (sx + 1) in
+        let (ghost _l) = wmpn_rshift r nx sy (Limb.of_int32 clz) in
+        ()
+      end
+    else
+     (* let qn = ref (Int32.(-) (Int32.(+) sx 1) sy) in
+      if (Int32.(>=)  (Int32.(+) !qn !qn) sx)
+      then*) begin
+        let adjust =
+          if (get_ofs x (sx - 1)) >= (get_ofs y (sy - 1))
+          then 1
+          else 0
+        in
+        let clz = clz_ext (C.get_ofs y (sy - 1)) in
+        let ghost p = power 2 (p2i clz) in
+        if clz = 0
+        then begin
+          wmpn_copyi nx x sx;
+          C.set_ofs nx sx 0;
+          label Div_ns in
+          let (ghost _qh) = div_sb_qr q nx (sx + adjust) y sy in
+          wmpn_copyi r nx sy;
+           label Ret_ns in
+           begin
+             ensures { value q (sx - sy + 1)
+                       = value (q at Ret_ns) (sx - sy + adjust) }
+             if (adjust = 0)
+             then begin
+               set_ofs q (sx - sy) 0;
+               ()
+             end
+           end
+        end
+        else begin
+          let (ghost _c) = wmpn_lshift ny y sy (Limb.of_int32 clz) in
+          begin
+            ensures { normalized ny sy }
+            ensures { value ny sy
+                      = power 2 clz * value y sy }
+            let ghost dh = (pelts y)[y.offset + p2i sy - 1] in
+            let ghost ndh = (pelts ny)[ny.offset + p2i sy - 1] in ()
+          end;
+          let h = wmpn_lshift nx x sx (Limb.of_int32 clz) in
+          label Shifted in
+          C.set_ofs nx sx h;
+          begin
+            ensures { value nx (sx + adjust)
+                      = p * value x sx  }
+            if (adjust = 1)
+            then begin
+              end
+            else begin
+            end
+          end;
+          label Div_s in
+          let (ghost _qh) = div_sb_qr q nx (sx + adjust) ny sy in
+          let (ghost _l) = wmpn_rshift r nx sy (Limb.of_int32 clz) in
+          begin ensures { value nx sy = p * value r sy }
+          end;
+          label Ret_s in
+          begin
+            ensures { value q (sx - sy + 1)
+                      = value (q at Ret_s) (sx - sy + adjust) }
+            if (adjust = 0)
+            then begin
+              set_ofs q (sx - sy) 0;
+            end
+          end;
+          ()
+        end
+        end
+
+  let partial wmpn_tdiv_qr (q r:t) (qxn:int32) (x:t) (sx:int32) (y:t) (sy:int32) : unit
+    requires { 1 <= sy <= sx <= (Int32.max_int32 - 1) }
+    requires { valid x sx }
+    requires { valid y sy }
+    requires { valid q (sx - sy + 1) }
+    requires { valid r sy }
+    requires { writable q /\ writable r }
+    requires { qxn = 0 }
+    requires { (pelts y)[y.offset + sy - 1] > 0 }
+    ensures { value x sx
+              = value q (sx - sy + 1) * value y sy
+                + value r sy }
+    ensures { value r sy < value y sy }
+  =
+    let nx = malloc (UInt32.(+) (UInt32.of_int32 sx) 1) in
+    c_assert (is_not_null nx);
+    let ny = malloc (UInt32.of_int32 sy) in
+    c_assert (is_not_null ny);
+    div_qr q r x y nx ny sx sy;
+    free nx;
+    free ny
+
+  let div_qr_in_place (q x y nx ny:t) (sx sy:int32) : unit
+    requires { 1 <= sy <= sx <= (Int32.max_int32 - 1) }
+    requires { valid x sx }
+    requires { valid y sy }
+    requires { valid q (sx - sy + 1) }
+    requires { valid nx (sx + 1) }
+    requires { valid ny sy }
+    requires { writable q /\ writable x }
+    requires { writable nx /\ writable ny }
+    requires { (pelts y)[y.offset + sy - 1] > 0 }
+    ensures { value (old x) sx
+              = value q (sx - sy + 1) * value y sy
+                + value x sy }
+    ensures { value x sy < value y sy }
+  =
+    label Start in
+    let ghost ox = pure { x } in
+    if (sy = 1)
+    then
+      let lr = wmpn_divrem_1 q x sx (C.get y) in
+      C.set x lr
+    else
+    if (sy = 2)
+    then
+      let clz = clz_ext (C.get_ofs y (sy - 1)) in
+      let ghost p = power 2 (p2i clz) in
+      if clz = 0
+      then begin
+        wmpn_copyi nx x sx;
+        C.set_ofs nx sx 0;
+        label Div2_ns in
+        let (ghost _qh) = wmpn_divrem_2 q nx y (sx + 1) in
+        wmpn_copyi x nx sy;
+        ()
+      end
+      else begin
+        let (ghost _c) = wmpn_lshift ny y sy (Limb.of_int32 clz) in
+        begin
+          ensures { normalized ny sy }
+          ensures { value ny sy = power 2 clz * value y sy }
+          let ghost dh = (pelts y)[y.offset + p2i sy - 1] in
+          let ghost ndh = (pelts ny)[ny.offset + p2i sy - 1] in ()
+        end;
+        let h = wmpn_lshift nx x sx (Limb.of_int32 clz) in
+        C.set_ofs nx sx h;
+        begin
+          ensures { value nx (sx + 1)
+                    = p * value ox sx  }
+        end;
+        label Div2_s in
+        (* TODO don't add 1 when not needed, cf "adjust" in GMP algo *)
+        let (ghost _qh) = wmpn_divrem_2 q nx ny (sx + 1) in
+        let (ghost _l) = wmpn_rshift x nx sy (Limb.of_int32 clz) in
+        begin ensures { value nx 2 = p * value x 2 }
+        end;
+        ()
+      end
+    else
+     (* let qn = ref (Int32.(-) (Int32.(+) sx 1) sy) in
+      if (Int32.(>=)  (Int32.(+) !qn !qn) sx)
+      then*) begin
+        let adjust =
+          if (get_ofs x (sx - 1)) >= (get_ofs y (sy - 1))
+          then 1
+          else 0
+        in
+        let clz = clz_ext (C.get_ofs y (sy - 1)) in
+        let ghost p = power 2 (p2i clz) in
+        if clz = 0
+        then begin
+          wmpn_copyi nx x sx;
+          C.set_ofs nx sx 0;
+          label Div_ns in
+          let (ghost _qh) = div_sb_qr q nx (sx + adjust) y sy in
+          wmpn_copyi x nx sy;
+           label Ret_ns in
+           begin
+             ensures { value q (sx - sy + 1)
+                       = value (q at Ret_ns) (sx - sy + adjust) }
+             if (adjust = 0)
+             then begin
+               set_ofs q (sx - sy) 0;
+               ()
+             end
+           end
+        end
+        else begin
+          let (ghost _c) = wmpn_lshift ny y sy (Limb.of_int32 clz) in
+          begin
+            let ghost dh = (pelts y)[y.offset + p2i sy - 1] in
+            let ghost ndh = (pelts ny)[ny.offset + p2i sy - 1] in ()
+          end;
+          let h = wmpn_lshift nx x sx (Limb.of_int32 clz) in
+          label Shifted in
+          C.set_ofs nx sx h;
+          begin
+            if (adjust = 1)
+            then begin
+              end
+            else begin
+            end
+          end;
+          label Div_s in
+          let (ghost _qh) = div_sb_qr q nx (sx + adjust) ny sy in
+          let (ghost _l) = wmpn_rshift x nx sy (Limb.of_int32 clz) in
+          begin ensures { value nx sy = p * value x sy }
+          end;
+          label Ret_s in
+          begin
+            ensures { value q (sx - sy + 1)
+                      = value (q at Ret_s) (sx - sy + adjust) }
+            if (adjust = 0)
+            then begin
+              set_ofs q (sx - sy) 0;
+            end
+          end;
+          ()
+        end
+        end
+
+  let partial wmpn_tdiv_qr_in_place (q:t) (qxn:int32) (x:t) (sx:int32) (y:t) (sy:int32)
+      : unit
+    requires { 1 <= sy <= sx <= (Int32.max_int32 - 1) }
+    requires { valid x sx }
+    requires { valid y sy }
+    requires { valid q (sx - sy + 1) }
+    requires { writable x /\ writable q }
+    requires { qxn = 0 }
+    requires { (pelts y)[y.offset + sy - 1] > 0 }
+    ensures { value (old x) sx
+              = value q (sx - sy + 1) * value y sy
+                + value x sy }
+    ensures { value x sy < value y sy }
+  =
+    let nx = malloc (UInt32.(+) (UInt32.of_int32 sx) 1) in
+    c_assert (is_not_null nx);
+    let ny = malloc (UInt32.of_int32 sy) in
+    c_assert (is_not_null ny);
+    div_qr_in_place q x y nx ny sx sy;
+    free nx;
+    free ny
+
+
+end

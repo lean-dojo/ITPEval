@@ -1,0 +1,62 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1997_b2:
+% every globally twice-differentiable real function satisfying
+% f(x) + f''(x) = -x*g(x)*f'(x) for a nonnegative real function g has
+% bounded absolute value. This file contains no proof.
+
+putnam_1997_b2: THEORY
+BEGIN
+  real_function: TYPE = [real -> real]
+
+  has_derivative_at(
+      f: real_function,
+      derivative, x: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (delta: posreal):
+        FORALL (h: real):
+          (NOT (h = 0) AND abs(h) < delta)
+            IMPLIES
+              abs(
+                f(x + h) - f(x)
+                  - derivative * h)
+                < epsilon_value * abs(h)
+
+  differentiable_at(f: real_function, x: real): bool =
+    EXISTS (derivative: real):
+      has_derivative_at(f, derivative, x)
+
+  derivative_value(f: real_function, x: real): real =
+    IF differentiable_at(f, x) THEN
+      epsilon(
+        LAMBDA (derivative: real):
+          has_derivative_at(f, derivative, x))
+    ELSE
+      0
+    ENDIF
+
+  derivative_function(f: real_function): real_function =
+    LAMBDA (x: real): derivative_value(f, x)
+
+  twice_differentiable(f: real_function): bool =
+    FORALL (x: real):
+      differentiable_at(f, x)
+        AND differentiable_at(derivative_function(f), x)
+
+  satisfies_differential_equation(
+      f, g: real_function): bool =
+    FORALL (x: real):
+      f(x)
+          + derivative_function(derivative_function(f))(x)
+        = -x * g(x) * derivative_function(f)(x)
+
+  bounded_absolute_value(f: real_function): bool =
+    EXISTS (bound: real):
+      FORALL (x: real):
+        abs(f(x)) <= bound
+
+  putnam_1997_b2: bool =
+    FORALL (f, g: real_function):
+      ((FORALL (x: real): g(x) >= 0)
+        AND twice_differentiable(f)
+        AND satisfies_differential_equation(f, g))
+      IMPLIES bounded_absolute_value(f)
+END putnam_1997_b2

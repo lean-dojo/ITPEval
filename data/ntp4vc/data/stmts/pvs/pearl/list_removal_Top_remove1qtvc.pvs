@@ -1,0 +1,163 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/list_removal_Top_remove1qtvc: a linked-list removal verification
+% condition preserving pointer-chain segments across a single-cell update.
+% This file contains no proof.
+
+list_removal_Top_remove1qtvc[
+  loc: TYPE+,
+  mem: TYPE+,
+  null_loc: loc,
+  head_loc: loc,
+  entry_loc: loc,
+  list_rel: [[loc -> loc], loc, int, loc -> bool]
+]: THEORY
+BEGIN
+
+  update_pointer(
+      mem1: [loc -> loc],
+      point, value: loc): [loc -> loc] =
+    mem1 WITH [(point) := value]
+
+  list_specification: bool =
+    FORALL
+        (n: int),
+        (mem1: [loc -> loc]),
+        (x, y: loc):
+      0 <= n
+        IMPLIES
+          (IF n = 0 THEN
+             list_rel(mem1, x, n, y) IFF x = y
+           ELSE
+             list_rel(mem1, x, n, y)
+               IFF
+                 x /= null_loc
+                   AND
+                 list_rel(mem1, mem1(x), n - 1, y)
+           ENDIF)
+
+  remove1_vc: bool =
+    (head_loc /= null_loc
+      AND entry_loc /= null_loc
+      AND head_loc /= entry_loc
+      AND list_specification)
+      IMPLIES
+        FORALL
+            (n1, n2: int),
+            (mem1: [loc -> loc]):
+          (0 < n1
+            AND 0 < n2
+            AND list_rel(mem1, head_loc, n1, entry_loc)
+            AND list_rel(mem1, entry_loc, n2, null_loc))
+            IMPLIES
+              (LET o1: loc = head_loc IN
+                 o1 /= null_loc
+                   AND
+                 (LET o2: loc = mem1(o1) IN
+                    ((0 < 1 AND 1 <= n1)
+                      AND list_rel(mem1, head_loc, 1, o2)
+                      AND o2 /= null_loc
+                      AND list_rel(mem1, o2, n1 - 1, entry_loc)
+                      AND list_rel(mem1, entry_loc, n2, null_loc))
+                    AND
+                    (FORALL
+                        (n: int),
+                        (curr, prev: loc):
+                      ((0 < n AND n <= n1)
+                        AND list_rel(mem1, head_loc, n, curr)
+                        AND curr /= null_loc
+                        AND (prev = null_loc IMPLIES n = 1)
+                        AND
+                          (prev /= null_loc
+                            IMPLIES mem1(prev) = curr)
+                        AND
+                          (prev /= null_loc
+                            IMPLIES
+                              list_rel(
+                                mem1,
+                                head_loc,
+                                n - 1,
+                                prev))
+                        AND
+                          list_rel(
+                            mem1,
+                            curr,
+                            n1 - n,
+                            entry_loc)
+                        AND
+                          list_rel(
+                            mem1,
+                            entry_loc,
+                            n2,
+                            null_loc))
+                        IMPLIES
+                          (IF curr /= entry_loc THEN
+                             curr /= null_loc
+                               AND
+                             (0 <= n1 - n
+                               AND n1 - (n + 1) < n1 - n)
+                               AND
+                             (0 < n + 1 AND n + 1 <= n1)
+                               AND
+                             list_rel(
+                               mem1,
+                               head_loc,
+                               n + 1,
+                               mem1(curr))
+                               AND
+                             mem1(curr) /= null_loc
+                               AND
+                             (curr = null_loc
+                               IMPLIES n + 1 = 1)
+                               AND
+                             (curr /= null_loc IMPLIES TRUE)
+                               AND
+                             (curr /= null_loc
+                               IMPLIES
+                                 list_rel(
+                                   mem1,
+                                   head_loc,
+                                   n + 1 - 1,
+                                   curr))
+                               AND
+                             list_rel(
+                               mem1,
+                               mem1(curr),
+                               n1 - (n + 1),
+                               entry_loc)
+                               AND
+                             list_rel(
+                               mem1,
+                               entry_loc,
+                               n2,
+                               null_loc)
+                           ELSE
+                             IF prev = null_loc THEN
+                               curr /= null_loc
+                                 AND
+                               (LET o3: loc = head_loc IN
+                                  o3 /= null_loc
+                                    AND
+                                  list_rel(
+                                    update_pointer(
+                                      mem1,
+                                      o3,
+                                      mem1(curr)),
+                                    head_loc,
+                                    n1 + n2 - 1,
+                                    null_loc))
+                             ELSE
+                               curr /= null_loc
+                                 AND prev /= null_loc
+                                 AND
+                               list_rel(
+                                 update_pointer(
+                                   mem1,
+                                   prev,
+                                   mem1(curr)),
+                                 head_loc,
+                                 n1 + n2 - 1,
+                                 null_loc)
+                             ENDIF
+                           ENDIF))))
+
+END list_removal_Top_remove1qtvc

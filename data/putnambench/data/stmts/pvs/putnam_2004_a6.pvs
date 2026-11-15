@@ -1,0 +1,126 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2004_a6:
+% the sum of the squared marginal integrals of a continuous real-valued
+% function on the unit square satisfies the stated integral inequality.
+% This file contains no proof.
+
+putnam_2004_a6: THEORY
+BEGIN
+  real_function: TYPE = [real -> real]
+  bivariate_function: TYPE = [real, real -> real]
+  real_sequence: TYPE = [nat -> real]
+
+  in_closed_unit_interval(x: real): bool =
+    0 <= x AND x <= 1
+
+  continuous_on_unit_square(f: bivariate_function): bool =
+    FORALL (x, y: real):
+      (in_closed_unit_interval(x)
+        AND in_closed_unit_interval(y))
+      IMPLIES
+        FORALL (epsilon_value: posreal):
+          EXISTS (delta: posreal):
+            FORALL (u, v: real):
+              (in_closed_unit_interval(u)
+                AND in_closed_unit_interval(v)
+                AND abs(u - x) < delta
+                AND abs(v - y) < delta)
+              IMPLIES
+                abs(f(u, v) - f(x, y)) < epsilon_value
+
+  valid_partition(
+      points: real_sequence,
+      count: nat): bool =
+    count > 0
+      AND points(0) = 0
+      AND points(count) = 1
+      AND FORALL (index: nat):
+        index < count IMPLIES
+          points(index) < points(index + 1)
+
+  valid_tags(
+      points, tags: real_sequence,
+      count: nat): bool =
+    FORALL (index: nat):
+      index < count IMPLIES
+        points(index) <= tags(index)
+          AND tags(index) <= points(index + 1)
+
+  mesh_less_than(
+      points: real_sequence,
+      count: nat,
+      bound: real): bool =
+    FORALL (index: nat):
+      index < count IMPLIES
+        points(index + 1) - points(index) < bound
+
+  riemann_sum(
+      f: real_function,
+      points, tags: real_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      riemann_sum(f, points, tags, count - 1)
+        + f(tags(count - 1))
+            * (points(count) - points(count - 1))
+    ENDIF
+  MEASURE count
+
+  has_unit_interval_integral(
+      f: real_function,
+      integral_value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (mesh_bound: posreal):
+        FORALL
+            (points, tags: real_sequence),
+            (count: nat):
+          (valid_partition(points, count)
+            AND valid_tags(points, tags, count)
+            AND mesh_less_than(points, count, mesh_bound))
+          IMPLIES
+            abs(
+              riemann_sum(f, points, tags, count)
+                - integral_value)
+              < epsilon_value
+
+  unit_interval_integral(f: real_function): real =
+    IF EXISTS (integral_value: real):
+        has_unit_interval_integral(f, integral_value)
+    THEN
+      epsilon(
+        LAMBDA (integral_value: real):
+          has_unit_interval_integral(f, integral_value))
+    ELSE
+      0
+    ENDIF
+
+  integral_in_x(f: bivariate_function, y: real): real =
+    unit_interval_integral(
+      LAMBDA (x: real): f(x, y))
+
+  integral_in_y(f: bivariate_function, x: real): real =
+    unit_interval_integral(
+      LAMBDA (y: real): f(x, y))
+
+  iterated_integral(f: bivariate_function): real =
+    unit_interval_integral(
+      LAMBDA (y: real): integral_in_x(f, y))
+
+  iterated_integral_of_square(f: bivariate_function): real =
+    unit_interval_integral(
+      LAMBDA (y: real):
+        unit_interval_integral(
+          LAMBDA (x: real): f(x, y) ^ 2))
+
+  putnam_2004_a6: bool =
+    FORALL (f: bivariate_function):
+      continuous_on_unit_square(f)
+        IMPLIES
+          unit_interval_integral(
+            LAMBDA (y: real): integral_in_x(f, y) ^ 2)
+            + unit_interval_integral(
+                LAMBDA (x: real):
+                  integral_in_y(f, x) ^ 2)
+          <= iterated_integral(f) ^ 2
+              + iterated_integral_of_square(f)
+END putnam_2004_a6

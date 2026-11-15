@@ -1,0 +1,331 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/mergesort_list_OCamlMergesort_rev_sortqtvc: the reverse-order list
+% mergesort verification condition for base cases, recursive prefix splits,
+% sorted merge inputs, and permutation preservation. This file contains no proof.
+
+mergesort_list_OCamlMergesort_rev_sortqtvc[
+  Elt: TYPE+,
+  le: [Elt, Elt -> bool]
+]: THEORY
+BEGIN
+
+  trunc_div(numerator, denominator: int): int =
+    IF denominator = 0 THEN
+      0
+    ELSIF numerator * denominator >= 0 THEN
+      floor((numerator :: real) / (denominator :: real))
+    ELSE
+      -floor(-((numerator :: real) / (denominator :: real)))
+    ENDIF
+
+  list_reverse(values: list[Elt]): RECURSIVE list[Elt] =
+    CASES values OF
+      null:
+        null,
+      cons(head, tail):
+        append(list_reverse(tail), cons(head, null))
+    ENDCASES
+  MEASURE values BY <<
+
+  list_member(value: Elt, values: list[Elt]): RECURSIVE bool =
+    CASES values OF
+      null:
+        FALSE,
+      cons(head, tail):
+        value = head OR list_member(value, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  sorted(values: list[Elt]): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(first, rest):
+        CASES rest OF
+          null:
+            TRUE,
+          cons(second, tail):
+            le(first, second) AND sorted(rest)
+        ENDCASES
+    ENDCASES
+  MEASURE values BY <<
+
+  occurrence_count(
+      value: Elt,
+      values: list[Elt]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        (IF value = head THEN 1 ELSE 0 ENDIF)
+          + occurrence_count(value, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  list_permutation(left, right: list[Elt]): bool =
+    FORALL (value: Elt):
+      occurrence_count(value, left)
+        = occurrence_count(value, right)
+
+  order_laws: bool =
+    (FORALL (x: Elt): le(x, x))
+      AND
+    (FORALL (x, y, z: Elt):
+      (le(x, y) AND le(y, z)) IMPLIES le(x, z))
+      AND
+    (FORALL (x, y: Elt): le(x, y) OR le(y, x))
+
+  prefix_specification(
+      prefix1: [int, list[Elt] -> list[Elt]]): bool =
+    (FORALL (values: list[Elt]):
+      prefix1(0, values) = null)
+      AND
+    (FORALL
+        (n: int),
+        (head: Elt),
+        (tail: list[Elt]):
+      0 < n
+        IMPLIES
+          prefix1(n, cons(head, tail))
+            = cons(head, prefix1(n - 1, tail)))
+
+  cross_ordered(left, right: list[Elt]): bool =
+    FORALL (x, y: Elt):
+      (list_member(x, left) AND list_member(y, right))
+        IMPLIES le(x, y)
+
+  has_two(values: list[Elt]): bool =
+    CASES values OF
+      null:
+        FALSE,
+      cons(first, rest):
+        CASES rest OF
+          null:
+            FALSE,
+          cons(second, tail):
+            TRUE
+        ENDCASES
+    ENDCASES
+
+  has_three(values: list[Elt]): bool =
+    CASES values OF
+      null:
+        FALSE,
+      cons(first, rest):
+        CASES rest OF
+          null:
+            FALSE,
+          cons(second, rest2):
+            CASES rest2 OF
+              null:
+                FALSE,
+              cons(third, tail):
+                TRUE
+            ENDCASES
+        ENDCASES
+    ENDCASES
+
+  all_second_sort_obligations(
+      prefix1: [int, list[Elt] -> list[Elt]],
+      second_input: list[Elt],
+      second_size: int,
+      first_sorted: list[Elt]): bool =
+    FORALL (second_sorted: list[Elt]):
+      (sorted(second_sorted)
+        AND list_permutation(
+          second_sorted,
+          prefix1(second_size, second_input)))
+      IMPLIES
+        (sorted(list_reverse(null))
+          AND sorted(first_sorted)
+          AND sorted(second_sorted))
+        AND cross_ordered(null, first_sorted)
+        AND cross_ordered(null, second_sorted)
+
+  all_first_sort_obligations(
+      prefix1: [int, list[Elt] -> list[Elt]],
+      n: int,
+      values, second_input: list[Elt],
+      first_size, second_size: int): bool =
+    FORALL (first_sorted: list[Elt]):
+      (sorted(first_sorted)
+        AND list_permutation(
+          first_sorted,
+          prefix1(first_size, values)))
+      IMPLIES
+        ((0 <= n AND second_size < n)
+          AND 2 <= second_size
+          AND second_size <= length(second_input))
+        AND
+          all_second_sort_obligations(
+            prefix1,
+            second_input,
+            second_size,
+            first_sorted)
+
+  all_split_obligations(
+      prefix1: [int, list[Elt] -> list[Elt]],
+      n: int,
+      values: list[Elt],
+      first_size, second_size: int): bool =
+    FORALL (second_input: list[Elt]):
+      values = append(prefix1(first_size, values), second_input)
+        IMPLIES
+          ((0 <= n AND first_size < n)
+            AND 2 <= first_size
+            AND first_size <= length(values))
+          AND
+            all_first_sort_obligations(
+              prefix1,
+              n,
+              values,
+              second_input,
+              first_size,
+              second_size)
+
+  recursive_obligations(
+      prefix1: [int, list[Elt] -> list[Elt]],
+      n: int,
+      values: list[Elt]): bool =
+    LET first_size: int = trunc_div(n, 2),
+        second_size: int = n - first_size
+    IN
+      (0 <= first_size AND first_size <= length(values))
+        AND
+      all_split_obligations(
+        prefix1,
+        n,
+        values,
+        first_size,
+        second_size)
+
+  control_obligations(
+      prefix1: [int, list[Elt] -> list[Elt]],
+      n: int,
+      values: list[Elt]): bool =
+    IF n = 2 THEN
+      has_two(values)
+    ELSIF n = 3 THEN
+      has_three(values)
+    ELSE
+      2 /= 0
+        AND recursive_obligations(prefix1, n, values)
+    ENDIF
+
+  two_element_result(
+      values, result: list[Elt]): bool =
+    CASES values OF
+      null:
+        FALSE,
+      cons(first, rest):
+        CASES rest OF
+          null:
+            FALSE,
+          cons(second, tail):
+            IF NOT le(first, second) THEN
+              result = cons(first, cons(second, null))
+            ELSE
+              result = cons(second, cons(first, null))
+            ENDIF
+        ENDCASES
+    ENDCASES
+
+  three_element_result(
+      values, result: list[Elt]): bool =
+    CASES values OF
+      null:
+        FALSE,
+      cons(first, rest):
+        CASES rest OF
+          null:
+            FALSE,
+          cons(second, rest2):
+            CASES rest2 OF
+              null:
+                FALSE,
+              cons(third, tail):
+                IF NOT le(first, second) THEN
+                  IF NOT le(second, third) THEN
+                    result =
+                      cons(first, cons(second, cons(third, null)))
+                  ELSIF NOT le(first, third) THEN
+                    result =
+                      cons(first, cons(third, cons(second, null)))
+                  ELSE
+                    result =
+                      cons(third, cons(first, cons(second, null)))
+                  ENDIF
+                ELSIF NOT le(first, third) THEN
+                  result =
+                    cons(second, cons(first, cons(third, null)))
+                ELSIF NOT le(second, third) THEN
+                  result =
+                    cons(second, cons(third, cons(first, null)))
+                ELSE
+                  result =
+                    cons(third, cons(second, cons(first, null)))
+                ENDIF
+            ENDCASES
+        ENDCASES
+    ENDCASES
+
+  recursive_result_premise(
+      prefix1: [int, list[Elt] -> list[Elt]],
+      n: int,
+      values, result: list[Elt]): bool =
+    LET first_size: int = trunc_div(n, 2),
+        second_size: int = n - first_size
+    IN
+      EXISTS (second_input: list[Elt]):
+        values =
+          append(prefix1(first_size, values), second_input)
+          AND
+        EXISTS (first_sorted: list[Elt]):
+          (sorted(first_sorted)
+            AND list_permutation(
+              first_sorted,
+              prefix1(first_size, values)))
+            AND
+          EXISTS (second_sorted: list[Elt]):
+            (sorted(second_sorted)
+              AND list_permutation(
+                second_sorted,
+                prefix1(second_size, second_input)))
+              AND sorted(list_reverse(result))
+              AND list_permutation(
+                result,
+                append(append(null, first_sorted), second_sorted))
+
+  result_premise(
+      prefix1: [int, list[Elt] -> list[Elt]],
+      n: int,
+      values, result: list[Elt]): bool =
+    IF n = 2 THEN
+      two_element_result(values, result)
+    ELSIF n = 3 THEN
+      three_element_result(values, result)
+    ELSE
+      recursive_result_premise(prefix1, n, values, result)
+    ENDIF
+
+  rev_sort_vc: bool =
+    FORALL
+        (prefix1: [int, list[Elt] -> list[Elt]]),
+        (n: int),
+        (values: list[Elt]):
+      (order_laws
+        AND prefix_specification(prefix1)
+        AND 2 <= n
+        AND n <= length(values))
+      IMPLIES
+        control_obligations(prefix1, n, values)
+          AND
+        (FORALL (result: list[Elt]):
+          result_premise(prefix1, n, values, result)
+            IMPLIES
+              sorted(list_reverse(result))
+                AND list_permutation(
+                  result,
+                  prefix1(n, values)))
+
+END mergesort_list_OCamlMergesort_rev_sortqtvc

@@ -1,0 +1,79 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2013_b3:
+% every real-valued valuation on a nonempty finite lattice of subsets of
+% {1,...,n} with one-element descent is a sum of element weights. This file
+% contains no proof.
+
+putnam_2013_b3: THEORY
+BEGIN
+  IMPORTING
+    finite_sets[nat],
+    finite_sets_of_sets[nat]
+
+  natural_set: TYPE = finite_set[nat]
+  natural_set_family: TYPE = finite_set[natural_set]
+  real_weights: TYPE = [nat -> real]
+  valuation: TYPE = [natural_set -> real]
+
+  family_on_initial_segment(
+      P: natural_set_family,
+      n: nat): bool =
+    FORALL (S: natural_set), (i: nat):
+      P(S) AND S(i) IMPLIES 1 <= i AND i <= n
+
+  closed_under_union_and_intersection(
+      P: natural_set_family): bool =
+    FORALL (S, T: natural_set):
+      P(S) AND P(T) IMPLIES
+        P(union(S, T)) AND P(intersection(S, T))
+
+  has_one_element_descent(P: natural_set_family): bool =
+    FORALL (S: natural_set):
+      P(S) AND NOT empty?(S) IMPLIES
+        EXISTS (T: natural_set):
+          P(T)
+            AND strict_subset?(T, S)
+            AND card(T) + 1 = card(S)
+
+  vanishes_on_empty_set(f: valuation): bool =
+    FORALL (S: natural_set):
+      empty?(S) IMPLIES f(S) = 0
+
+  is_valuation_on(
+      P: natural_set_family,
+      f: valuation): bool =
+    FORALL (S, T: natural_set):
+      P(S) AND P(T) IMPLIES
+        f(union(S, T)) =
+          f(S) + f(T) - f(intersection(S, T))
+
+  finite_weight_sum(
+      S: natural_set,
+      weights: real_weights,
+      total: real): bool =
+    EXISTS
+      (enumeration: [below(card(S)) -> (S)]),
+      (partial_sums: [upto(card(S)) -> real]):
+        bijective?(enumeration)
+          AND partial_sums(0) = 0
+          AND
+            (FORALL (index: below(card(S))):
+              partial_sums(index + 1) =
+                partial_sums(index) + weights(enumeration(index)))
+          AND total = partial_sums(card(S))
+
+  putnam_2013_b3: bool =
+    FORALL
+      (n: nat),
+      (P: natural_set_family),
+      (f: valuation):
+        (card(P) > 0
+          AND family_on_initial_segment(P, n)
+          AND closed_under_union_and_intersection(P)
+          AND has_one_element_descent(P)
+          AND vanishes_on_empty_set(f)
+          AND is_valuation_on(P, f))
+        IMPLIES
+          EXISTS (weights: real_weights):
+            FORALL (S: natural_set):
+              P(S) IMPLIES finite_weight_sum(S, weights, f(S))
+END putnam_2013_b3

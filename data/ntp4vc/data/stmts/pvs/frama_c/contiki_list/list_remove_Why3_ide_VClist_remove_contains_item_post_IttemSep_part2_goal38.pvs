@@ -1,0 +1,244 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% frama_c/contiki_list/list_remove_Why3_ide_VClist_remove_contains_item_post_IttemSep_part2_goal38:
+% the removed list item remains separated from the pointer stored at a
+% designated array position after a pointer-memory update, under linked-list,
+% range, validity, uniqueness, and separation invariants.
+% This file contains no proof.
+
+list_remove_Why3_ide_VClist_remove_contains_item_post_IttemSep_part2_goal38[
+  region: [int -> int],
+  linked: [[int -> int] -> bool]
+]: THEORY
+BEGIN
+  addr: TYPE = [# base: int, offset: int #]
+  pointer_memory: TYPE = [addr -> addr]
+  allocation_table: TYPE = [int -> int]
+  index_function: TYPE =
+    [pointer_memory, addr, addr, int, int -> int]
+
+  shift(p: addr, k: int): addr =
+    (# base := base(p), offset := offset(p) + k #)
+
+  separated(p: addr, p_size: int, q: addr, q_size: int): bool =
+    p_size <= 0
+      OR q_size <= 0
+      OR base(p) /= base(q)
+      OR offset(q) + q_size <= offset(p)
+      OR offset(p) + p_size <= offset(q)
+
+  havoc(
+      old_memory, outside_memory: pointer_memory,
+      start: addr,
+      size: int): pointer_memory =
+    LAMBDA (q: addr):
+      IF separated(q, 1, start, size) THEN
+        outside_memory(q)
+      ELSE
+        old_memory(q)
+      ENDIF
+
+  valid_rw(malloc: allocation_table, p: addr, size: int): bool =
+    0 < size IMPLIES
+      0 < base(p)
+        AND 0 <= offset(p)
+        AND offset(p) + size <= malloc(base(p))
+
+  framed(memory: pointer_memory): bool =
+    FORALL (p: addr): region(base(memory(p))) <= 0
+
+  is_sint32(value: int): bool =
+    -2147483648 <= value AND value < 2147483648
+
+  index_axioms(l_index_of: index_function): bool =
+    (FORALL (up_0, down_0: int),
+            (mptr_0: pointer_memory),
+            (item_0, array_0: addr):
+       (up_0 <= down_0 AND 0 <= up_0)
+         IMPLIES
+           l_index_of(mptr_0, item_0, array_0, down_0, up_0) = up_0)
+      AND
+    (FORALL (down_0, up_0: int),
+            (mptr_0: pointer_memory),
+            (array_0, item_0: addr):
+       (mptr_0(shift(array_0, down_0)) = item_0
+         AND 0 <= down_0
+         AND down_0 < up_0)
+         IMPLIES
+           l_index_of(mptr_0, item_0, array_0, down_0, up_0) = down_0)
+      AND
+    (FORALL (down_0, up_0: int),
+            (mptr_0: pointer_memory),
+            (array_0, item_0: addr):
+       (mptr_0(shift(array_0, down_0)) /= item_0
+         AND 0 <= down_0
+         AND down_0 < up_0)
+         IMPLIES
+           l_index_of(mptr_0, item_0, array_0, 1 + down_0, up_0)
+             = l_index_of(mptr_0, item_0, array_0, down_0, up_0))
+
+  linked_candidate: TYPE =
+    [allocation_table, pointer_memory, addr, addr, int, int, addr -> bool]
+
+  p_linked_n(
+      malloc: allocation_table,
+      ptr_memory: pointer_memory,
+      root, array_base: addr,
+      index, count: int,
+      bound: addr): bool =
+    FORALL (candidate: linked_candidate):
+      ((FORALL (base_index: int),
+               (candidate_malloc: allocation_table),
+               (candidate_memory: pointer_memory),
+               (candidate_bound, candidate_array: addr):
+          (0 <= base_index AND base_index <= 2147483646)
+            IMPLIES
+              candidate(
+                candidate_malloc,
+                candidate_memory,
+                candidate_bound,
+                candidate_array,
+                base_index,
+                0,
+                candidate_bound))
+        AND
+        (FORALL (base_index, positive_count: int),
+                (candidate_memory: pointer_memory),
+                (candidate_array, candidate_root: addr),
+                (candidate_malloc: allocation_table),
+                (candidate_bound: addr):
+          (candidate_memory(shift(candidate_array, base_index))
+              = candidate_root
+            AND 0 < positive_count
+            AND 0 <= base_index
+            AND 0 <= base_index + positive_count
+            AND base_index + positive_count <= 2147483646
+            AND valid_rw(candidate_malloc, candidate_root, 4)
+            AND candidate(
+              candidate_malloc,
+              candidate_memory,
+              candidate_memory(shift(candidate_root, 0)),
+              candidate_array,
+              1 + base_index,
+              positive_count - 1,
+              candidate_bound))
+          IMPLIES
+            candidate(
+              candidate_malloc,
+              candidate_memory,
+              candidate_root,
+              candidate_array,
+              base_index,
+              positive_count,
+              candidate_bound)))
+      IMPLIES
+        candidate(malloc, ptr_memory, root, array_base, index, count, bound)
+
+  goal38: bool =
+    FORALL (l_index_of: index_function):
+      index_axioms(l_index_of)
+        IMPLIES
+          (FORALL (t_1, t_2, t_3: pointer_memory),
+                  (a, a_1: addr),
+                  (i_2, i, i_1, i_3: int),
+                  (t: allocation_table):
+             LET a_2: addr = t_1(a),
+                 a_3: addr = t_1(shift(a_1, i_2)),
+                 x: int = i + i_1,
+                 a_4: addr = shift(a_1, 0),
+                 null_addr: addr = (# base := 0, offset := 0 #),
+                 updated_memory: pointer_memory =
+                   t_2 WITH [(a) := t_1(shift(a_2, 0))]
+             IN
+               (a_2 /= null_addr
+                 AND a_3 /= null_addr
+                 AND a_3 = a_2
+                 AND 0 <= i
+                 AND 0 <= i_1
+                 AND i_1 <= i_2
+                 AND i_1 <= i_3
+                 AND i_2 < x
+                 AND region(base(a)) <= 0
+                 AND region(base(a_1)) <= 0
+                 AND region(base(a_2)) <= 0
+                 AND i <= 2147483645
+                 AND 2 + i_3 <= x
+                 AND framed(t_1)
+                 AND linked(t)
+                 AND is_sint32(i)
+                 AND is_sint32(i_1)
+                 AND valid_rw(t, a, 1)
+                 AND valid_rw(t, a_4, 2147483646)
+                 AND separated(a, 1, a_4, 2147483646)
+                 AND separated(a_2, 4, a_4, 2147483646)
+                 AND p_linked_n(
+                   t, t_1, a_2, a_1, i_1, i, null_addr)
+                 AND is_sint32(
+                   l_index_of(t_1, a_3, a_1, i_1, x))
+                 AND
+                   (FORALL (i_4: int):
+                     i_1 <= i_4 IMPLIES
+                       i_4 < x IMPLIES
+                         separated(
+                           a,
+                           1,
+                           t_1(shift(a_1, i_4)),
+                           4))
+                 AND
+                   (FORALL (i_4: int):
+                     i_1 <= i_4 IMPLIES
+                       i_4 < x IMPLIES
+                         separated(
+                           t_1(shift(a_1, i_4)),
+                           4,
+                           a_4,
+                           2147483646))
+                 AND
+                   (FORALL (i_4: int):
+                     LET a_5: addr = t_1(shift(a_1, i_4))
+                     IN
+                       a_3 /= a_5 IMPLIES
+                         i_1 <= i_4 IMPLIES
+                           i_4 < x IMPLIES
+                             separated(a_3, 4, a_5, 4))
+                 AND
+                   (FORALL (i_5, i_4: int):
+                     i_5 /= i_4 IMPLIES
+                       i_1 <= i_4 IMPLIES
+                         i_1 <= i_5 IMPLIES
+                           i_4 < x IMPLIES
+                             i_5 < x IMPLIES
+                               t_1(shift(a_1, i_5))
+                                 /= t_1(shift(a_1, i_4)))
+                 AND
+                   (FORALL (i_5, i_4: int):
+                     i_5 /= i_4 IMPLIES
+                       i_1 <= i_4 IMPLIES
+                         i_1 <= i_5 IMPLIES
+                           i_4 < x IMPLIES
+                             i_5 < x IMPLIES
+                               separated(
+                                 t_1(shift(a_1, i_5)),
+                                 4,
+                                 t_1(shift(a_1, i_4)),
+                                 4))
+                 AND havoc(
+                   t_3,
+                   t_1,
+                   shift(a_1, i_1),
+                   i - 1) = t_2
+                 AND
+                   (FORALL (i_4: int):
+                     i_1 <= i_4 IMPLIES
+                       i_4 < i + i_1 - 1 IMPLIES
+                         separated(
+                           a_2,
+                           4,
+                           t_2(shift(a_1, i_4)),
+                           4)))
+               IMPLIES
+                 separated(
+                   a_3,
+                   4,
+                   updated_memory(shift(a_1, i_3)),
+                   4))
+END list_remove_Why3_ide_VClist_remove_contains_item_post_IttemSep_part2_goal38

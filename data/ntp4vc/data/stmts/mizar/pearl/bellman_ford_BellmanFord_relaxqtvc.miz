@@ -1,0 +1,144 @@
+:: Statement-only formalization of the NTP4VC corpus artifact
+:: pearl/bellman_ford_BellmanFord_relaxqtvc: relaxing an unprocessed
+:: Bellman-Ford edge preserves the path-distance invariant, updating the
+:: distance map exactly when the candidate distance is smaller.
+:: This file contains no proof.
+
+environ
+  vocabularies TARSKI, XBOOLE_0, SUBSET_1, RELAT_1, FUNCT_1,
+    FUNCT_2, PARTFUN1, ZFMISC_1, NUMBERS, XREAL_0, CARD_1,
+    XXREAL_0, ARYTM_1, ARYTM_3, REAL_1, INT_1, NAT_1,
+    VALUED_0, VALUED_1, ORDINAL1, ORDINAL4, FINSEQ_1, FINSEQ_2,
+    FINSET_1, MCART_1;
+  notations TARSKI, XBOOLE_0, SUBSET_1, ZFMISC_1, XTUPLE_0,
+    MCART_1, RELAT_1, FUNCT_1, RELSET_1, PARTFUN1, FUNCT_2,
+    ORDINAL1, CARD_1, NUMBERS, XCMPLX_0, XREAL_0, REAL_1,
+    INT_1, NAT_1, XXREAL_0, FINSEQ_1, FINSEQ_2, FINSET_1;
+  constructors FUNCT_1, RELSET_1, PARTFUN1, FUNCT_2, CARD_1,
+    REAL_1, INT_1, XXREAL_0, ZFMISC_1, MCART_1, NAT_1,
+    FINSEQ_1, FINSEQ_2, FINSET_1;
+  registrations XBOOLE_0, SUBSET_1, RELAT_1, FUNCT_1, RELSET_1,
+    FUNCT_2, NUMBERS, CARD_1, XXREAL_0, MEMBERED, VALUED_0,
+    VALUED_1, XCMPLX_0, XREAL_0, ORDINAL1, INT_1, NAT_1,
+    FINSEQ_1, FINSEQ_2, FINSET_1;
+  requirements REAL, NUMERALS, SUBSET, BOOLE, ARITHM;
+
+begin
+
+::$P-
+theorem
+  for V,T being non empty set,
+      vertices being finite Subset of V,
+      edges being finite Subset of [:V,V:],
+      source being Element of V,
+      weight being Function of [:V,V:],INT,
+      Path being Subset of [:V,[:V*,V:]:],
+      pathWeight being Function of [:V*,V:],INT,
+      infinity being set,
+      Ext being non empty set,
+      extAdd being Function of [:Ext,Ext:],Ext,
+      ExtLt being Relation of Ext,Ext,
+      cont being Function of T,Funcs(V,Ext),
+      update being Function of [:T,[:V,Ext:]:],T,
+      Inv1 being Subset of [:T,[:INT,(bool [:V,V:]):]:],
+      pass being Integer,
+      u,v being Element of V,
+      via being finite Subset of [:V,V:],
+      m being Element of T
+  st
+    not infinity in INT &
+    Ext = INT \/ {infinity} &
+    (for a,b being Element of Ext holds
+      (a in INT & b in INT implies
+        ex x,y being Integer st
+          a = x & b = y & extAdd.[a,b] = x + y) &
+      (a = infinity or b = infinity implies
+        extAdd.[a,b] = infinity)) &
+    (for a,b being Element of Ext holds
+      ([a,b] in ExtLt iff
+        (ex x,y being Integer st
+          a = x & b = y & x < y) or
+        (a in INT & b = infinity))) &
+    source in vertices &
+    (for x,y being Element of V st [x,y] in edges holds
+      x in vertices & y in vertices) &
+    (for x,z being Element of V,
+         l being FinSequence of V
+     holds
+       ([x,[l,z]] in Path iff
+        (l = <*>V & x = z) or
+        ex y being Element of V,
+           l1 being FinSequence of V st
+          l = <*x*> ^ l1 &
+          [x,y] in edges &
+          [y,[l1,z]] in Path)) &
+    (for z being Element of V holds
+      pathWeight.[<*>V,z] = 0) &
+    (for x,z being Element of V holds
+      pathWeight.[<*x*>,z] = weight.[x,z]) &
+    (for x,y,z being Element of V,
+         l being FinSequence of V
+     holds
+       ex wxy,wr being Integer st
+         weight.[x,y] = wxy &
+         pathWeight.[<*y*> ^ l,z] = wr &
+         pathWeight.[<*x*> ^ (<*y*> ^ l),z] = wxy + wr) &
+    (for t0 being Element of T,
+         q,k being Element of V,
+         a being Element of Ext
+     holds
+       (q = k implies
+         (cont.(update.[t0,[k,a]])).q = a) &
+       (q <> k implies
+         (cont.(update.[t0,[k,a]])).q =
+           (cont.t0).q)) &
+    (for t0 being Element of T,
+         p being Integer,
+         processed being Subset of [:V,V:]
+     holds
+       ([t0,[p,processed]] in Inv1 iff
+        for z being Element of V st z in vertices holds
+          (ex n being Integer st
+             (cont.t0).z = n &
+             (ex l being FinSequence of V st
+               [source,[l,z]] in Path &
+               pathWeight.[l,z] = n) &
+             (for l being FinSequence of V st
+               [source,[l,z]] in Path & len l < p
+              holds
+                ex wl being Integer st
+                  pathWeight.[l,z] = wl & n <= wl) &
+             (for x being Element of V,
+                  l being FinSequence of V st
+               [source,[l,x]] in Path & len l < p &
+               [x,z] in processed
+              holds
+                ex wl,wxz being Integer st
+                  pathWeight.[l,x] = wl &
+                  weight.[x,z] = wxz &
+                  n <= wl + wxz)) or
+          ((cont.t0).z = infinity &
+             (for l being FinSequence of V st
+               [source,[l,z]] in Path
+              holds p <= len l) &
+             (for x being Element of V st [x,z] in processed
+              holds
+                for lx being FinSequence of V st
+                  [source,[lx,x]] in Path
+                holds p <= len lx)))) &
+    1 <= pass &
+    [u,v] in edges &
+    not [u,v] in via &
+    [m,[pass,via]] in Inv1
+  holds
+    ([extAdd.[(cont.m).u,weight.[u,v]],(cont.m).v] in ExtLt
+      implies
+        [update.[m,[v,
+          extAdd.[(cont.m).u,weight.[u,v]]]],
+          [pass,via \/ {[u,v]}]] in Inv1) &
+    (not [extAdd.[(cont.m).u,weight.[u,v]],(cont.m).v] in ExtLt
+      implies
+        [m,[pass,via \/ {[u,v]}]] in Inv1)
+proof
+end;
+::$P+

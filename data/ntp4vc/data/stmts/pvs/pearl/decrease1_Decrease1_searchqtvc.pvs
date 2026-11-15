@@ -1,0 +1,134 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/decrease1_Decrease1_searchqtvc: the integer-list zero-search
+% verification condition under an adjacent-decrease assumption, including
+% loop invariants, progress measures, and the first-zero result specification.
+% This file contains no proof.
+
+decrease1_Decrease1_searchqtvc: THEORY
+BEGIN
+
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  nth_default(values: list[int], index: nat): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          nth_default(tail, index - 1)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  valid_index(values: list[int], index: int): bool =
+    0 <= index AND index < length(values)
+
+  decrease1(values: list[int]): bool =
+    FORALL (index: int):
+      (0 <= index AND index < length(values) - 1)
+        IMPLIES
+          nth_default(values, int_to_nat(index)) - 1
+            <=
+          nth_default(values, int_to_nat(index + 1))
+
+  scanned_prefix(values: list[int], upper: int): bool =
+    FORALL (index: int):
+      (0 <= index AND index < upper)
+        IMPLIES
+          (index < length(values)
+            IMPLIES
+              nth_default(values, int_to_nat(index)) /= 0)
+
+  zero_free_before(values: list[int], upper: int): bool =
+    FORALL (index: int):
+      (0 <= index AND index < upper)
+        IMPLIES
+          nth_default(values, int_to_nat(index)) /= 0
+
+  search_vc: bool =
+    FORALL (values: list[int]):
+      decrease1(values)
+        IMPLIES
+          0 <= 0
+            AND scanned_prefix(values, 0)
+            AND
+              (FORALL (index: int):
+                (0 <= index AND scanned_prefix(values, index))
+                  IMPLIES
+                    IF index < length(values) THEN
+                      valid_index(values, index)
+                        AND
+                          IF nth_default(values, int_to_nat(index)) = 0 THEN
+                            (index = -1
+                              AND
+                                zero_free_before(
+                                  values, length(values)))
+                              OR
+                            (valid_index(values, index)
+                              AND
+                                nth_default(
+                                  values, int_to_nat(index)) = 0
+                              AND zero_free_before(values, index))
+                          ELSE
+                            valid_index(values, index)
+                              AND
+                                IF
+                                  0
+                                    <
+                                  nth_default(
+                                    values, int_to_nat(index))
+                                THEN
+                                  valid_index(values, index)
+                                    AND
+                                      (0 <= length(values) - index
+                                        AND
+                                          length(values)
+                                              -
+                                            (index
+                                              +
+                                            nth_default(
+                                              values,
+                                              int_to_nat(index)))
+                                            <
+                                          length(values) - index)
+                                    AND
+                                      0
+                                        <=
+                                      index
+                                        +
+                                      nth_default(
+                                        values, int_to_nat(index))
+                                    AND
+                                      scanned_prefix(
+                                        values,
+                                        index
+                                          +
+                                        nth_default(
+                                          values,
+                                          int_to_nat(index)))
+                                ELSE
+                                  (0 <= length(values) - index
+                                    AND
+                                      length(values) - (index + 1)
+                                        <
+                                      length(values) - index)
+                                    AND 0 <= index + 1
+                                    AND
+                                      scanned_prefix(
+                                        values, index + 1)
+                                ENDIF
+                          ENDIF
+                    ELSE
+                      zero_free_before(values, length(values))
+                        OR
+                          ((0 <= -1 AND -1 < length(values))
+                            AND
+                              nth_default(
+                                values, int_to_nat(-1)) = 0
+                            AND zero_free_before(values, -1))
+                    ENDIF)
+
+END decrease1_Decrease1_searchqtvc

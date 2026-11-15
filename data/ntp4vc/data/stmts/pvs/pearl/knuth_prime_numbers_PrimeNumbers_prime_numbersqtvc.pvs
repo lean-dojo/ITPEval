@@ -1,0 +1,382 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/knuth_prime_numbers_PrimeNumbers_prime_numbersqtvc: the integer-list
+% verification condition for constructing an initial segment of the prime
+% numbers by testing successive odd candidates and recording each next prime.
+% This file contains no proof.
+
+knuth_prime_numbers_PrimeNumbers_prime_numbersqtvc: THEORY
+BEGIN
+
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  nth_default(values: list[int], index: nat): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          nth_default(tail, index - 1)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  nth_int(values: list[int], index: int): int =
+    nth_default(values, int_to_nat(index))
+
+  list_set_nat(
+      values: list[int],
+      index: nat,
+      value: int): RECURSIVE list[int] =
+    CASES values OF
+      null:
+        null,
+      cons(head, tail):
+        IF index = 0 THEN
+          cons(value, tail)
+        ELSE
+          cons(head, list_set_nat(tail, index - 1, value))
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  list_set(values: list[int], index, value: int): list[int] =
+    list_set_nat(values, int_to_nat(index), value)
+
+  update_law(
+      new_values, old_values: list[int],
+      index, value: int): bool =
+    FORALL (argument: int):
+      (0 <= argument AND argument < length(old_values))
+        IMPLIES
+          nth_int(new_values, argument)
+            =
+          IF argument = index THEN
+            value
+          ELSE
+            nth_int(old_values, argument)
+          ENDIF
+
+  nat_divides(divisor, value: nat): bool =
+    EXISTS (quotient: nat): value = divisor * quotient
+
+  prime_nat(value: nat): bool =
+    2 <= value
+      AND
+    (FORALL (divisor: nat):
+      (1 <= divisor AND nat_divides(divisor, value))
+        IMPLIES divisor = 1 OR divisor = value)
+
+  prime_int(value: int): bool =
+    prime_nat(int_to_nat(value))
+
+  odd_int(value: int): bool =
+    EXISTS (witness: int): value = 2 * witness + 1
+
+  integer_divides(divisor, value: int): bool =
+    EXISTS (quotient: int): value = divisor * quotient
+
+  no_prime_in(lower, upper: int): bool =
+    FORALL (value: int):
+      (lower < value AND value < upper)
+        IMPLIES NOT prime_int(value)
+
+  first_primes(values: list[int], upper: int): bool =
+    nth_int(values, 0) = 2
+      AND
+    (FORALL (i, j: int):
+      (0 <= i AND i < j AND j < upper)
+        IMPLIES nth_int(values, i) < nth_int(values, j))
+      AND
+    (FORALL (i: int):
+      (0 <= i AND i < upper)
+        IMPLIES prime_int(nth_int(values, i)))
+      AND
+    (FORALL (i: int):
+      (0 <= i AND i < upper - 1)
+        IMPLIES
+          no_prime_in(
+            nth_int(values, i),
+            nth_int(values, i + 1)))
+
+  index_bound(values: list[int], index: int): bool =
+    0 <= index AND index < length(values)
+
+  last_value(values: list[int], upper: int): int =
+    nth_int(values, upper - 1)
+
+  candidate_range(
+      values: list[int],
+      upper, candidate: int): bool =
+    last_value(values, upper) < candidate
+      AND candidate < 2 * last_value(values, upper)
+
+  search_state(
+      values: list[int],
+      upper, candidate: int): bool =
+    first_primes(values, upper)
+      AND candidate_range(values, upper, candidate)
+      AND odd_int(candidate)
+      AND no_prime_in(last_value(values, upper), candidate)
+
+  no_divisor_before(
+      values: list[int],
+      bound, candidate: int): bool =
+    FORALL (i: int):
+      (0 <= i AND i < bound)
+        IMPLIES NOT integer_divides(nth_int(values, i), candidate)
+
+  j_invariant(
+      values: list[int],
+      upper, candidate, last_index: int): bool =
+    (2 <= upper AND upper <= last_index)
+      AND search_state(values, upper, candidate)
+
+  k_invariant(
+      values: list[int],
+      upper, candidate, divisor_index: int): bool =
+    (1 <= divisor_index AND divisor_index < upper)
+      AND search_state(values, upper, candidate)
+      AND no_divisor_before(values, divisor_index, candidate)
+
+  candidate_prime(
+      values: list[int],
+      upper, candidate: int): bool =
+    last_value(values, upper) < candidate
+      AND prime_int(candidate)
+      AND no_prime_in(last_value(values, upper), candidate)
+
+  reset_state(
+      values: list[int],
+      upper, candidate: int): bool =
+    (1 <= 1 AND 1 < upper)
+      AND search_state(values, upper, candidate)
+      AND no_divisor_before(values, 1, candidate)
+
+  trunc_div(numerator, denominator: int): int =
+    IF denominator = 0 THEN
+      0
+    ELSIF numerator * denominator >= 0 THEN
+      floor((numerator :: real) / (denominator :: real))
+    ELSE
+      -floor(-((numerator :: real) / (denominator :: real)))
+    ENDIF
+
+  trunc_mod(numerator, denominator: int): int =
+    numerator - denominator * trunc_div(numerator, denominator)
+
+  divisible_decrease(
+      values: list[int],
+      upper, candidate, divisor_index: int): bool =
+    LET distance: int =
+          2 * last_value(values, upper) - candidate,
+        next_distance: int =
+          2 * last_value(values, upper) - (candidate + 2)
+    IN
+      (0 <= distance AND next_distance < distance)
+        OR
+      (distance = next_distance
+        AND 0 <= upper - divisor_index
+        AND upper - 1 < upper - divisor_index)
+
+  advance_decrease(
+      values: list[int],
+      upper, candidate, divisor_index: int): bool =
+    LET distance: int =
+          2 * last_value(values, upper) - candidate,
+        next_index: int = divisor_index + 1
+    IN
+      (0 <= distance AND distance < distance)
+        OR
+      (0 <= upper - divisor_index
+        AND upper - next_index < upper - divisor_index)
+
+  divisible_branch(
+      values: list[int],
+      upper, candidate, divisor_index: int): bool =
+    divisible_decrease(values, upper, candidate, divisor_index)
+      AND reset_state(values, upper, candidate + 2)
+
+  advance_branch(
+      values: list[int],
+      upper, candidate, divisor_index: int): bool =
+    LET next_index: int = divisor_index + 1
+    IN
+      advance_decrease(values, upper, candidate, divisor_index)
+        AND
+      ((1 <= next_index AND next_index < upper)
+        AND search_state(values, upper, candidate)
+        AND no_divisor_before(values, next_index, candidate))
+
+  nondivisible_branch(
+      values: list[int],
+      upper, candidate, divisor_index: int): bool =
+    index_bound(values, divisor_index)
+      AND index_bound(values, divisor_index)
+      AND
+    (LET divisor: int = nth_int(values, divisor_index)
+     IN
+       divisor /= 0
+         AND
+       IF nth_int(values, divisor_index)
+            < trunc_div(candidate, divisor)
+       THEN
+         advance_branch(values, upper, candidate, divisor_index)
+       ELSE
+         candidate_prime(values, upper, candidate)
+       ENDIF)
+
+  k_branch(
+      values: list[int],
+      upper, candidate, divisor_index: int): bool =
+    LET divisor: int = nth_int(values, divisor_index)
+    IN
+      divisor /= 0
+        AND
+      IF trunc_mod(candidate, divisor) = 0 THEN
+        divisible_branch(values, upper, candidate, divisor_index)
+      ELSE
+        nondivisible_branch(values, upper, candidate, divisor_index)
+      ENDIF
+
+  k_loop(
+      values: list[int],
+      upper, candidate: int): bool =
+    FORALL (divisor_index: int):
+      k_invariant(values, upper, candidate, divisor_index)
+        IMPLIES
+          index_bound(values, divisor_index)
+            AND k_branch(
+              values, upper, candidate, divisor_index)
+
+  all_k_loops(reference_values: list[int], upper: int): bool =
+    FORALL (candidate: int):
+      FORALL (values: list[int]):
+        length(values) = length(reference_values)
+          IMPLIES k_loop(values, upper, candidate)
+
+  set_preserves_model(
+      values: list[int],
+      index, value: int): bool =
+    length(list_set(values, index, value)) = length(values)
+      AND
+    update_law(
+      list_set(values, index, value),
+      values,
+      index,
+      value)
+
+  candidate_insertion(values: list[int], upper: int): bool =
+    FORALL (candidate: int):
+      candidate_prime(values, upper, candidate)
+        IMPLIES
+          index_bound(values, upper)
+            AND
+          (set_preserves_model(values, upper, candidate)
+            IMPLIES
+              search_state(
+                list_set(values, upper, candidate),
+                upper + 1,
+                candidate + 2))
+
+  j_step(
+      values: list[int],
+      upper, candidate: int): bool =
+    all_k_loops(values, upper)
+      AND reset_state(values, upper, candidate)
+      AND candidate_insertion(values, upper)
+
+  all_j_steps(
+      prepared: list[int],
+      requested_length, last_index: int): bool =
+    FORALL (candidate: int):
+      FORALL (values: list[int]):
+        length(values) = length(prepared)
+          IMPLIES
+            (FORALL (upper: int):
+              j_invariant(
+                values, upper, candidate, last_index)
+                IMPLIES j_step(values, upper, candidate))
+              AND
+            (search_state(
+               values, last_index + 1, candidate)
+              IMPLIES
+                length(values) = requested_length
+                  AND first_primes(values, requested_length))
+
+  main_branch(
+      prepared: list[int],
+      requested_length, last_index: int): bool =
+    search_state(prepared, 2, 5)
+      AND all_j_steps(
+        prepared, requested_length, last_index)
+
+  small_branch(
+      prepared: list[int],
+      requested_length: int): bool =
+    length(prepared) = requested_length
+      AND first_primes(prepared, requested_length)
+
+  prepared_branches(
+      prepared: list[int],
+      requested_length: int): bool =
+    LET last_index: int = requested_length - 1
+    IN
+      (2 <= last_index + 1
+        IMPLIES
+          main_branch(
+            prepared, requested_length, last_index))
+        AND
+      (last_index + 1 < 2
+        IMPLIES small_branch(prepared, requested_length))
+
+  after_first_set(
+      values: list[int],
+      requested_length: int): bool =
+    LET after_two: list[int] = list_set(values, 0, 2),
+        prepared: list[int] = list_set(after_two, 1, 3)
+    IN
+      index_bound(after_two, 1)
+        AND
+      (set_preserves_model(after_two, 1, 3)
+        IMPLIES
+          prepared_branches(prepared, requested_length))
+
+  initialize_list(
+      values: list[int],
+      requested_length: int): bool =
+    index_bound(values, 0)
+      AND
+    (set_preserves_model(values, 0, 2)
+      IMPLIES after_first_set(values, requested_length))
+
+  initial_zero_list(
+      values: list[int],
+      requested_length: int): bool =
+    (FORALL (i: int):
+      (0 <= i AND i < requested_length)
+        IMPLIES nth_int(values, i) = 0)
+      AND length(values) = requested_length
+
+  bertrand_postulate: bool =
+    FORALL (prime_value: int):
+      prime_int(prime_value)
+        IMPLIES
+          NOT no_prime_in(prime_value, 2 * prime_value)
+
+  prime_numbers_vc: bool =
+    bertrand_postulate
+      IMPLIES
+        (FORALL (requested_length: int):
+          2 <= requested_length
+            IMPLIES
+              0 <= requested_length
+                AND
+              (FORALL (values: list[int]):
+                initial_zero_list(values, requested_length)
+                  IMPLIES
+                    initialize_list(values, requested_length)))
+
+END knuth_prime_numbers_PrimeNumbers_prime_numbersqtvc

@@ -1,0 +1,132 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1991_a6:
+% equality between counts of restricted positive-integer compositions and
+% recurrence-valued nonincreasing compositions. This file contains no proof.
+
+putnam_1991_a6: THEORY
+BEGIN
+  natural_sequence: TYPE = [nat -> nat]
+
+  composition: TYPE =
+    [# part_count: nat, parts: natural_sequence #]
+  composition_set: TYPE = [composition -> bool]
+  composition_enumeration: TYPE = [nat -> composition]
+
+  prefix_sum(values: natural_sequence, count: nat): RECURSIVE nat =
+    IF count = 0 THEN
+      0
+    ELSE
+      prefix_sum(values, count - 1) + values(count - 1)
+    ENDIF
+  MEASURE count
+
+  is_positive_sum(n: nat, value: composition): bool =
+    part_count(value) >= 1
+      AND
+        (FORALL (index: nat):
+          index < part_count(value) IMPLIES
+            parts(value)(index) > 0)
+      AND
+        (FORALL (index: nat):
+          index >= part_count(value) IMPLIES
+            parts(value)(index) = 0)
+      AND prefix_sum(parts(value), part_count(value)) = n
+
+  satisfies_a_inequalities(value: composition): bool =
+    (FORALL (index: nat):
+      index < part_count(value) - 2 IMPLIES
+        parts(value)(index)
+          > parts(value)(index + 1) + parts(value)(index + 2))
+      AND
+        (part_count(value) > 1 IMPLIES
+          parts(value)(part_count(value) - 2)
+            > parts(value)(part_count(value) - 1))
+
+  a_compositions(n: nat): composition_set =
+    LAMBDA (value: composition):
+      is_positive_sum(n, value)
+        AND satisfies_a_inequalities(value)
+
+  recurrence_sequence(g: natural_sequence): bool =
+    g(0) = 1
+      AND g(1) = 2
+      AND
+        (FORALL (index: nat):
+          index >= 2 IMPLIES
+            g(index) = g(index - 1) + g(index - 2) + 1)
+
+  is_nonincreasing(value: composition): bool =
+    FORALL (index: nat):
+      index < part_count(value) - 1 IMPLIES
+        parts(value)(index) >= parts(value)(index + 1)
+
+  uses_recurrence_values(
+      g: natural_sequence,
+      value: composition): bool =
+    FORALL (index: nat):
+      index < part_count(value) IMPLIES
+        EXISTS (sequence_index: nat):
+          parts(value)(index) = g(sequence_index)
+
+  contains_initial_recurrence_segment(
+      g: natural_sequence,
+      value: composition): bool =
+    EXISTS (largest_index: nat):
+      parts(value)(0) = g(largest_index)
+        AND
+          (FORALL (sequence_index: nat):
+            sequence_index <= largest_index IMPLIES
+              EXISTS (part_index: nat):
+                part_index < part_count(value)
+                  AND parts(value)(part_index) = g(sequence_index))
+
+  b_compositions(
+      g: natural_sequence,
+      n: nat): composition_set =
+    LAMBDA (value: composition):
+      is_positive_sum(n, value)
+        AND is_nonincreasing(value)
+        AND uses_recurrence_values(g, value)
+        AND contains_initial_recurrence_segment(g, value)
+
+  injective_below(
+      enumeration: composition_enumeration,
+      cardinality: nat): bool =
+    FORALL (left_index, right_index: nat):
+      left_index < cardinality
+        AND right_index < cardinality
+        AND enumeration(left_index) = enumeration(right_index)
+      IMPLIES left_index = right_index
+
+  enumerates_exactly(
+      enumeration: composition_enumeration,
+      values: composition_set,
+      cardinality: nat): bool =
+    FORALL (value: composition):
+      values(value)
+        IFF
+          EXISTS (position: nat):
+            position < cardinality
+              AND enumeration(position) = value
+
+  has_cardinality(
+      values: composition_set,
+      cardinality: nat): bool =
+    EXISTS (enumeration: composition_enumeration):
+      injective_below(enumeration, cardinality)
+        AND enumerates_exactly(enumeration, values, cardinality)
+
+  same_finite_cardinality(
+      left_values, right_values: composition_set): bool =
+    EXISTS (cardinality: nat):
+      has_cardinality(left_values, cardinality)
+        AND has_cardinality(right_values, cardinality)
+
+  putnam_1991_a6: bool =
+    FORALL (g: natural_sequence):
+      recurrence_sequence(g) IMPLIES
+        FORALL (n: nat):
+          n >= 1 IMPLIES
+            same_finite_cardinality(
+              a_compositions(n),
+              b_compositions(g, n))
+END putnam_1991_a6

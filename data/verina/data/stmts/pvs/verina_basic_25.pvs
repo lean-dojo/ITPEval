@@ -1,0 +1,259 @@
+% Statement-only formalization of the VERINA corpus artifact verina_basic_25,
+% catalog title "sumAndAverage": a positive natural below 2^53 is summed from
+% zero through n, then averaged using Lean's Nat.toFloat top-64-bit truncation,
+% UInt64 conversion, Float.scaleB, and binary64 division path, with the exact
+% executable computation connected to its closed-form contract. This file
+% contains no proof.
+
+verina_basic_25: THEORY
+BEGIN
+
+  two_to_52: nat = 4503599627370496
+  two_to_53: nat = 9007199254740992
+  two_to_63: nat = 9223372036854775808
+  two_to_64: nat = 18446744073709551616
+
+  % Lean Float values are IEEE-754 binary64 bit patterns.
+  float64: TYPE = {bits: nat | bits < two_to_64}
+
+  binary64_fraction(bits: float64): nat =
+    mod(bits, two_to_52)
+
+  binary64_exponent_field(bits: float64): nat =
+    mod(ndiv(bits, two_to_52), 2048)
+
+  binary64_finite_nonnegative(bits: float64): bool =
+    bits < two_to_63
+      AND binary64_exponent_field(bits) < 2047
+
+  % This is the exact real value of every nonnegative finite binary64
+  % encoding. Values outside that class are never decoded by the program.
+  binary64_value(bits: float64): real =
+    LET exponent: nat = binary64_exponent_field(bits),
+        fraction: nat = binary64_fraction(bits)
+    IN
+      IF exponent = 0 THEN
+        (fraction :: real) / ((2 :: real) ^ 1074)
+      ELSIF exponent <= 1075 THEN
+        ((two_to_52 + fraction) :: real)
+          / ((2 :: real) ^ (1075 - exponent))
+      ELSE
+        ((two_to_52 + fraction) :: real)
+          * ((2 :: real) ^ (exponent - 1075))
+      ENDIF
+
+  binary64_even(bits: float64): bool =
+    mod(bits, 2) = 0
+
+  % Nearest finite nonnegative binary64 encoding, with ties resolved by the
+  % even low significand bit. This covers UInt64-to-Float conversion and
+  % division on every value reached under the source precondition.
+  binary64_rounds(value: real, rounded: float64): bool =
+    binary64_finite_nonnegative(rounded)
+      AND
+        (FORALL (candidate: float64):
+          binary64_finite_nonnegative(candidate)
+            IMPLIES
+              abs(value - binary64_value(rounded))
+                <= abs(value - binary64_value(candidate)))
+      AND
+        ((EXISTS (candidate: float64):
+          binary64_finite_nonnegative(candidate)
+            AND candidate /= rounded
+            AND abs(value - binary64_value(rounded))
+                  = abs(value - binary64_value(candidate)))
+          IMPLIES binary64_even(rounded))
+
+  float64_positive_zero: float64 = 0
+
+  % This is the logical graph of Lean's Nat.log2.
+  nat_log2_graph(value, result: nat): bool =
+    IF value < 2 THEN
+      result = 0
+    ELSE
+      ((2 :: nat) ^ result) <= value
+        AND value < ((2 :: nat) ^ (result + 1))
+    ENDIF
+
+  % Lean's natural subtraction in m.log2 - 63 truncates at zero.
+  log2_minus_63(log2_value: nat): nat =
+    IF log2_value <= 63 THEN
+      0
+    ELSE
+      log2_value - 63
+    ENDIF
+
+  % Nat.shiftRight by s is exact natural division by 2^s.
+  nat_shift_right(value, shift: nat): nat =
+    ndiv(value, (2 :: nat) ^ shift)
+
+  % The C implementation of UInt64.toFloat converts the bounded unsigned
+  % integer to binary64 using the platform's IEEE nearest-even conversion.
+  uint64_to_float64_graph(
+      value: nat,
+      rounded: float64): bool =
+    value < two_to_64
+      AND binary64_rounds(value :: real, rounded)
+
+  % Float.scaleB(x, s) calls scalbn(x, s). On the nonnegative finite values
+  % reachable here, multiplying by 2^s is exact and remains finite.
+  float64_scaleB_graph(
+      input: float64,
+      shift: nat,
+      scaled: float64): bool =
+    binary64_finite_nonnegative(input)
+      AND binary64_finite_nonnegative(scaled)
+      AND
+        binary64_value(scaled)
+          = binary64_value(input) * ((2 :: real) ^ shift)
+
+  % Lean Nat.toFloat is Float.ofBinaryScientific(value, 0): compute
+  % s = value.log2 - 63, discard all but the top 64 bits with value >>> s,
+  % convert that UInt64 mantissa, and scale the resulting Float by 2^s.
+  lean_nat_to_float64_graph(
+      value: nat,
+      rounded: float64): bool =
+    EXISTS (log2_value, shift, mantissa: nat):
+      nat_log2_graph(value, log2_value)
+        AND shift = log2_minus_63(log2_value)
+        AND mantissa = nat_shift_right(value, shift)
+        AND
+          (EXISTS (mantissa_float: float64):
+            uint64_to_float64_graph(
+              mantissa,
+              mantissa_float)
+              AND float64_scaleB_graph(
+                    mantissa_float,
+                    shift,
+                    rounded))
+
+  safe_real_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  % Both operands produced by the valid source program are positive finite
+  % values, so IEEE division is exact rational division followed by one
+  % round-to-nearest, ties-to-even step.
+  positive_float64_div_graph(
+      numerator, denominator, rounded: float64): bool =
+    binary64_value(denominator) /= 0
+      AND
+        binary64_rounds(
+          safe_real_div(
+            binary64_value(numerator),
+            binary64_value(denominator)),
+          rounded)
+
+  binary64_is_nan(bits: float64): bool =
+    binary64_exponent_field(bits) = 2047
+      AND binary64_fraction(bits) /= 0
+
+  binary64_is_zero(bits: float64): bool =
+    binary64_exponent_field(bits) = 0
+      AND binary64_fraction(bits) = 0
+
+  % Lean Float BEq rejects NaNs, identifies the two signed zeros, and
+  % otherwise compares binary64 encodings exactly.
+  float64_beq(left, right: float64): bool =
+    NOT binary64_is_nan(left)
+      AND NOT binary64_is_nan(right)
+      AND
+        (left = right
+          OR (binary64_is_zero(left)
+            AND binary64_is_zero(right)))
+
+  sum_average_result: TYPE =
+    [# total: int,
+       average: float64 #]
+
+  sum_average_result_beq(
+      left, right: sum_average_result): bool =
+    total(left) = total(right)
+      AND float64_beq(average(left), average(right))
+
+  sumAndAverage_precond(n: nat): bool =
+    n > 0
+      AND n < two_to_53
+
+  % range_sum(count) is exactly List.range(count).sum: it adds the naturals
+  % zero through count - 1 in the same recursive order.
+  range_sum(count: nat): RECURSIVE nat =
+    IF count = 0 THEN
+      0
+    ELSE
+      range_sum(count - 1) + (count - 1)
+    ENDIF
+  MEASURE count
+
+  average_graph(
+      sum, n: nat,
+      result: float64): bool =
+    % This is exactly sum.toFloat / n.toFloat. In particular, a sum at least
+    % 2^64 follows the top-64-bit truncation and scaleB path above, while the
+    % precondition-bounded denominator has shift zero but still follows the
+    % same UInt64 conversion and scaleB computation.
+    EXISTS (sum_float, n_float: float64):
+      lean_nat_to_float64_graph(sum, sum_float)
+        AND lean_nat_to_float64_graph(n, n_float)
+        AND positive_float64_div_graph(
+              sum_float,
+              n_float,
+              result)
+
+  % The source precondition proof argument is computationally irrelevant.
+  % This graph admits exactly the result of the source conditional, recursive
+  % sum, natural conversions, binary64 division, and returned pair.
+  sumAndAverage_graph(
+      n: nat,
+      result: sum_average_result): bool =
+    IF n <= 0 THEN
+      result =
+        (# total := 0,
+           average := float64_positive_zero #)
+    ELSE
+      LET sum: nat = range_sum(n + 1)
+      IN
+        total(result) = (sum :: int)
+          AND average_graph(
+                sum,
+                n,
+                average(result))
+    ENDIF
+
+  closed_form_sum(n: nat): nat =
+    ndiv(n * (n + 1), 2)
+
+  sumAndAverage_postcond(
+      n: nat,
+      result: sum_average_result): bool =
+    (n = 0 IMPLIES
+      sum_average_result_beq(
+        result,
+        (# total := 0,
+           average := float64_positive_zero #)))
+      AND
+        (n > 0 IMPLIES
+          total(result) = (closed_form_sum(n) :: int)
+            AND
+              (EXISTS (expected_average: float64):
+                average_graph(
+                  closed_form_sum(n),
+                  n,
+                  expected_average)
+                  AND float64_beq(
+                        average(result),
+                        expected_average)))
+
+  sumAndAverage_spec_satisfied: bool =
+    FORALL (n: nat), (result: sum_average_result):
+      (sumAndAverage_precond(n)
+        AND sumAndAverage_graph(n, result))
+        IMPLIES
+          sumAndAverage_postcond(
+            n,
+            result)
+
+END verina_basic_25

@@ -1,0 +1,194 @@
+% Statement-only formalization of the Thousand Theorems corpus artifact Q282649,
+% "Pentagonal number theorem": over an arbitrary commutative ring, the
+% coefficientwise infinite product of 1 - X^(n+1) is the pentagonal power
+% series in the product topology. This file contains no proof.
+
+Q282649_pentagonal_number_theorem[
+  R: TYPE+,
+  zeroR, oneR: R,
+  negR: [R -> R],
+  addR, mulR: [R, R -> R],
+  openR: [[R -> bool] -> bool]
+]: THEORY
+BEGIN
+  coefficient_set: TYPE = [R -> bool]
+  coefficient_set_family: TYPE = [coefficient_set -> bool]
+  series: TYPE = [nat -> R]
+  factor_sequence: TYPE = [nat -> series]
+
+  empty_coefficient_set: coefficient_set =
+    LAMBDA (x: R): FALSE
+
+  full_coefficient_set: coefficient_set =
+    LAMBDA (x: R): TRUE
+
+  coefficient_intersection(
+      left, right: coefficient_set): coefficient_set =
+    LAMBDA (x: R):
+      left(x) AND right(x)
+
+  coefficient_union(
+      family: coefficient_set_family): coefficient_set =
+    LAMBDA (x: R):
+      EXISTS (U: coefficient_set):
+        family(U) AND U(x)
+
+  topology_laws: bool =
+    openR(empty_coefficient_set)
+      AND openR(full_coefficient_set)
+      AND
+        (FORALL (left, right: coefficient_set):
+          openR(left) AND openR(right)
+            IMPLIES openR(coefficient_intersection(left, right)))
+      AND
+        (FORALL (family: coefficient_set_family):
+          (FORALL (U: coefficient_set):
+            family(U) IMPLIES openR(U))
+          IMPLIES openR(coefficient_union(family)))
+
+  commutative_ring_laws: bool =
+    (FORALL (x, y, z: R):
+      addR(addR(x, y), z) = addR(x, addR(y, z)))
+      AND (FORALL (x, y: R):
+        addR(x, y) = addR(y, x))
+      AND (FORALL (x: R):
+        addR(x, zeroR) = x)
+      AND (FORALL (x: R):
+        addR(x, negR(x)) = zeroR)
+      AND (FORALL (x, y, z: R):
+        mulR(mulR(x, y), z) = mulR(x, mulR(y, z)))
+      AND (FORALL (x, y: R):
+        mulR(x, y) = mulR(y, x))
+      AND (FORALL (x: R):
+        mulR(x, oneR) = x)
+      AND (FORALL (x, y, z: R):
+        mulR(x, addR(y, z)) =
+          addR(mulR(x, y), mulR(x, z)))
+
+  ring_sum(values: [nat -> R], count: nat): RECURSIVE R =
+    IF count = 0 THEN
+      zeroR
+    ELSE
+      addR(
+        ring_sum(values, count - 1),
+        values(count - 1))
+    ENDIF
+  MEASURE count
+
+  series_zero: series =
+    LAMBDA (degree: nat): zeroR
+
+  series_one: series =
+    LAMBDA (degree: nat):
+      IF degree = 0 THEN oneR ELSE zeroR ENDIF
+
+  series_negate(value: series): series =
+    LAMBDA (degree: nat):
+      negR(value(degree))
+
+  series_add(left, right: series): series =
+    LAMBDA (degree: nat):
+      addR(left(degree), right(degree))
+
+  series_subtract(left, right: series): series =
+    series_add(left, series_negate(right))
+
+  series_multiply(left, right: series): series =
+    LAMBDA (degree: nat):
+      ring_sum(
+        (LAMBDA (index: nat):
+          IF index <= degree THEN
+            mulR(left(index), right(degree - index))
+          ELSE
+            zeroR
+          ENDIF),
+        degree + 1)
+
+  X_power(exponent: nat): series =
+    LAMBDA (degree: nat):
+      IF degree = exponent THEN oneR ELSE zeroR ENDIF
+
+  one_sub_X_pow(index: nat): series =
+    series_subtract(series_one, X_power(index + 1))
+
+  contains_index(index: nat, indices: list[nat]): RECURSIVE bool =
+    CASES indices OF
+      null: FALSE,
+      cons(head, tail):
+        index = head OR contains_index(index, tail)
+    ENDCASES
+  MEASURE indices BY <<
+
+  no_duplicate_indices(indices: list[nat]): RECURSIVE bool =
+    CASES indices OF
+      null: TRUE,
+      cons(head, tail):
+        NOT contains_index(head, tail)
+          AND no_duplicate_indices(tail)
+    ENDCASES
+  MEASURE indices BY <<
+
+  index_subset(left, right: list[nat]): bool =
+    FORALL (index: nat):
+      contains_index(index, left)
+        IMPLIES contains_index(index, right)
+
+  finite_series_product(
+      factors: factor_sequence,
+      indices: list[nat]): RECURSIVE series =
+    CASES indices OF
+      null: series_one,
+      cons(head, tail):
+        series_multiply(
+          factors(head),
+          finite_series_product(factors, tail))
+    ENDCASES
+  MEASURE indices BY <<
+
+  pentagonal_relation(k: int, degree: nat): bool =
+    2 * (degree :: int) = k * (3 * k - 1)
+
+  pentagonal_witness(degree: nat): int =
+    epsilon(
+      LAMBDA (k: int):
+        pentagonal_relation(k, degree))
+
+  integer_neg_one_pow(k: int): R =
+    IF EXISTS (j: int): k = 2 * j THEN
+      oneR
+    ELSE
+      negR(oneR)
+    ENDIF
+
+  pentagonal_series: series =
+    LAMBDA (degree: nat):
+      IF EXISTS (k: int):
+          pentagonal_relation(k, degree)
+      THEN
+        integer_neg_one_pow(pentagonal_witness(degree))
+      ELSE
+        zeroR
+      ENDIF
+
+  has_product(
+      factors: factor_sequence,
+      limit: series): bool =
+    FORALL (degree: nat), (U: coefficient_set):
+      (openR(U) AND U(limit(degree)))
+        IMPLIES
+          EXISTS (base: list[nat]):
+            no_duplicate_indices(base)
+              AND
+                (FORALL (indices: list[nat]):
+                  (no_duplicate_indices(indices)
+                    AND index_subset(base, indices))
+                  IMPLIES
+                    U(finite_series_product(
+                      factors,
+                      indices)(degree)))
+
+  hasProd_one_sub_X_pow: bool =
+    (commutative_ring_laws AND topology_laws)
+      IMPLIES
+        has_product(one_sub_X_pow, pentagonal_series)
+END Q282649_pentagonal_number_theorem

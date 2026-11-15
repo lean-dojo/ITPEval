@@ -1,0 +1,110 @@
+% Statement-only formalization of the Thousand Theorems corpus artifact Q472883,
+% "Quadratic reciprocity theorem": Legendre symbols of distinct odd primes and
+% Jacobi symbols of odd natural numbers satisfy the quadratic reciprocity sign
+% law. This file contains no proof.
+
+Q472883_quadratic_reciprocity_theorem: THEORY
+BEGIN
+
+  nat_divides(divisor, value: nat): bool =
+    EXISTS (quotient: nat):
+      value = divisor * quotient
+
+  prime_nat(value: nat): bool =
+    value >= 2
+      AND FORALL (divisor: posnat):
+        nat_divides(divisor, value)
+          IMPLIES divisor = 1 OR divisor = value
+
+  nat_congruent(left, right, modulus: nat): bool =
+    EXISTS (offset: int):
+      (left :: int) - (right :: int) = (modulus :: int) * offset
+
+  quadratic_residue(numerator, prime: nat): bool =
+    EXISTS (root: nat):
+      nat_congruent(root ^ 2, numerator, prime)
+
+  legendre_symbol(numerator, prime: nat): int =
+    IF nat_divides(prime, numerator) THEN
+      0
+    ELSIF quadratic_residue(numerator, prime) THEN
+      1
+    ELSE
+      -1
+    ENDIF
+
+  int_power(base: int, exponent: nat): RECURSIVE int =
+    IF exponent = 0 THEN
+      1
+    ELSE
+      base * int_power(base, exponent - 1)
+    ENDIF
+  MEASURE exponent
+
+  nat_quotient(numerator, denominator: nat): nat =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      ndiv(numerator, denominator)
+    ENDIF
+
+  prime_multiplicity(
+      prime, value, fuel: nat): RECURSIVE nat =
+    IF fuel = 0
+        OR prime < 2
+        OR NOT nat_divides(prime, value) THEN
+      0
+    ELSE
+      1 + prime_multiplicity(
+        prime,
+        nat_quotient(value, prime),
+        fuel - 1)
+    ENDIF
+  MEASURE fuel
+
+  jacobi_product(
+      numerator, denominator, bound: nat): RECURSIVE int =
+    IF bound < 2 THEN
+      1
+    ELSE
+      jacobi_product(numerator, denominator, bound - 1)
+        * IF prime_nat(bound) THEN
+            int_power(
+              legendre_symbol(numerator, bound),
+              prime_multiplicity(
+                bound,
+                denominator,
+                denominator + 1))
+          ELSE
+            1
+          ENDIF
+    ENDIF
+  MEASURE bound
+
+  jacobi_symbol(numerator, denominator: nat): int =
+    jacobi_product(numerator, denominator, denominator)
+
+  odd_nat(value: nat): bool =
+    EXISTS (half: nat):
+      value = 2 * half + 1
+
+  legendre_quadratic_reciprocity: bool =
+    FORALL (p, q: nat):
+      (prime_nat(p)
+        AND prime_nat(q)
+        AND p /= 2
+        AND q /= 2
+        AND p /= q)
+      IMPLIES
+        legendre_symbol(p, q) * legendre_symbol(q, p)
+          = int_power(-1, ndiv(p, 2) * ndiv(q, 2))
+
+  jacobi_quadratic_reciprocity: bool =
+    FORALL (a, b: nat):
+      (odd_nat(a) AND odd_nat(b))
+        IMPLIES
+          jacobi_symbol(a, b)
+            = int_power(-1, ndiv(a, 2) * ndiv(b, 2))
+                * jacobi_symbol(b, a)
+
+END Q472883_quadratic_reciprocity_theorem

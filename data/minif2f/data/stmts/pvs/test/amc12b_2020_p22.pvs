@@ -1,0 +1,52 @@
+% Statement-only formalization of miniF2F test artifact amc12b_2020_p22: the universal upper
+% bound 1/12 for ((2^t - 3*t)*t)/4^t over real t. This file contains no proof.
+
+amc12b_2020_p22: THEORY
+BEGIN
+  safe_div(x, y: real): real =
+    IF y = 0 THEN 0 ELSE x / y ENDIF
+
+  nat_factorial(n: nat): RECURSIVE nat =
+    IF n = 0 THEN
+      1
+    ELSE
+      n * nat_factorial(n - 1)
+    ENDIF
+  MEASURE n
+
+  exponential_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET j: nat = count - 1 IN
+        exponential_partial(x, count - 1)
+          + safe_div(x^j, nat_factorial(j) :: real)
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: [nat -> real], value: real): bool =
+    FORALL (eps: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < eps
+
+  exponential_value(x, value: real): bool =
+    converges_to(
+      (LAMBDA (count: nat): exponential_partial(x, count)),
+      value)
+
+  real_power_value(base, exponent, value: real): bool =
+    base > 0
+      AND EXISTS (log_base: real):
+        exponential_value(log_base, base)
+          AND exponential_value(exponent * log_base, value)
+
+  amc12b_2020_p22: bool =
+    FORALL (t, two_to_t, four_to_t: real):
+      (real_power_value(2, t, two_to_t)
+        AND real_power_value(4, t, four_to_t))
+        IMPLIES
+          safe_div((two_to_t - 3 * t) * t, four_to_t)
+            <= safe_div(1, 12)
+END amc12b_2020_p22

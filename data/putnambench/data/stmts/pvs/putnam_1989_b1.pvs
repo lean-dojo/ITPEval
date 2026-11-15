@@ -1,0 +1,168 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1989_b1:
+% the area probability that a point in the unit square is nearer its center
+% than every boundary point, expressed as (4 * sqrt(2) - 5) / 3.
+% This file contains no proof.
+
+putnam_1989_b1: THEORY
+BEGIN
+  point: TYPE = [# x_coord: real, y_coord: real #]
+  planar_region: TYPE = [point -> bool]
+  real_sequence: TYPE = [nat -> real]
+
+  box: TYPE =
+    [# left: real, right: real, bottom: real, top: real #]
+  box_sequence: TYPE = [nat -> box]
+
+  solution_quadruple: TYPE =
+    [# a: int, b: int, c: int, d: int #]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  squared_distance(p, q: point): real =
+    (x_coord(p) - x_coord(q)) ^ 2
+      + (y_coord(p) - y_coord(q)) ^ 2
+
+  unit_square: planar_region =
+    LAMBDA (p: point):
+      0 <= x_coord(p) AND x_coord(p) <= 1
+        AND 0 <= y_coord(p) AND y_coord(p) <= 1
+
+  boundary: planar_region =
+    LAMBDA (p: point):
+      unit_square(p)
+        AND (x_coord(p) = 0
+          OR x_coord(p) = 1
+          OR y_coord(p) = 0
+          OR y_coord(p) = 1)
+
+  center: point =
+    (# x_coord := 1 / 2, y_coord := 1 / 2 #)
+
+  closer_to_center: planar_region =
+    LAMBDA (p: point):
+      unit_square(p)
+        AND FORALL (q: point):
+          boundary(q) IMPLIES
+            squared_distance(p, center)
+              < squared_distance(p, q)
+
+  in_open_box(p: point, rectangle: box): bool =
+    left(rectangle) < x_coord(p)
+      AND x_coord(p) < right(rectangle)
+      AND bottom(rectangle) < y_coord(p)
+      AND y_coord(p) < top(rectangle)
+
+  box_area(rectangle: box): real =
+    IF left(rectangle) < right(rectangle)
+        AND bottom(rectangle) < top(rectangle)
+    THEN
+      (right(rectangle) - left(rectangle))
+        * (top(rectangle) - bottom(rectangle))
+    ELSE
+      0
+    ENDIF
+
+  partial_box_area(
+      boxes: box_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      partial_box_area(boxes, count - 1)
+        + box_area(boxes(count - 1))
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  covers(region: planar_region, boxes: box_sequence): bool =
+    FORALL (p: point):
+      region(p) IMPLIES
+        EXISTS (index: nat):
+          in_open_box(p, boxes(index))
+
+  cover_has_total_area(
+      region: planar_region,
+      boxes: box_sequence,
+      total: real): bool =
+    covers(region, boxes)
+      AND converges_to(
+        LAMBDA (count: nat):
+          partial_box_area(boxes, count),
+        total)
+
+  has_lebesgue_outer_area(
+      region: planar_region,
+      area: real): bool =
+    0 <= area
+      AND (FORALL (boxes: box_sequence), (total: real):
+        cover_has_total_area(region, boxes, total)
+          IMPLIES area <= total)
+      AND (FORALL (epsilon_value: posreal):
+        EXISTS (boxes: box_sequence), (total: real):
+          cover_has_total_area(region, boxes, total)
+            AND total < area + epsilon_value)
+
+  int_divides(divisor, value: int): bool =
+    EXISTS (quotient: int):
+      value = divisor * quotient
+
+  not_integer_square(value: int): bool =
+    NOT EXISTS (root: int):
+      root * root = value
+
+  no_nonunit_square_divisor(value: int): bool =
+    FORALL (root: int):
+      (root > 1 OR root < -1) IMPLIES
+        NOT int_divides(root * root, value)
+
+  coprime_triple(first, second, third: int): bool =
+    FORALL (common: int):
+      (int_divides(common, first)
+        AND int_divides(common, second)
+        AND int_divides(common, third))
+      IMPLIES common = 1 OR common = -1
+
+  putnam_1989_b1_solution: solution_quadruple =
+    (# a := 4, b := 2, c := -5, d := 3 #)
+
+  normalized_solution: bool =
+    b(putnam_1989_b1_solution) > 0
+      AND d(putnam_1989_b1_solution) > 0
+      AND not_integer_square(b(putnam_1989_b1_solution))
+      AND no_nonunit_square_divisor(
+        b(putnam_1989_b1_solution))
+      AND coprime_triple(
+        a(putnam_1989_b1_solution),
+        c(putnam_1989_b1_solution),
+        d(putnam_1989_b1_solution))
+
+  sqrt_value(root, radicand: real): bool =
+    0 <= root AND root * root = radicand
+
+  solution_value(sqrt_two: real): real =
+    safe_div(
+      (a(putnam_1989_b1_solution) :: real) * sqrt_two
+        + (c(putnam_1989_b1_solution) :: real),
+      d(putnam_1989_b1_solution) :: real)
+
+  putnam_1989_b1: bool =
+    EXISTS (square_area, closer_area, sqrt_two: real):
+      has_lebesgue_outer_area(unit_square, square_area)
+        AND has_lebesgue_outer_area(
+          closer_to_center, closer_area)
+        AND sqrt_value(sqrt_two, 2)
+        AND normalized_solution
+        AND safe_div(closer_area, square_area)
+          = solution_value(sqrt_two)
+END putnam_1989_b1

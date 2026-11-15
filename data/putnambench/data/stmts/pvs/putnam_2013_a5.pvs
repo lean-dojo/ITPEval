@@ -1,0 +1,168 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2013_a5:
+% every real coefficient family that is area definite for all configurations
+% of m points in the Euclidean plane is area definite in three-space. This file
+% contains no proof.
+
+putnam_2013_a5[m: {n: nat | n >= 3}]: THEORY
+BEGIN
+  index: TYPE = below(m)
+
+  point2: TYPE = [# x_coord: real, y_coord: real #]
+  point3: TYPE =
+    [# x_coord: real, y_coord: real, z_coord: real #]
+
+  coefficient_array: TYPE = [index, index, index -> real]
+  plane_configuration: TYPE = [index -> point2]
+  space_configuration: TYPE = [index -> point3]
+
+  plane_cross(A, B, C: point2): real =
+    (x_coord(B) - x_coord(A)) * (y_coord(C) - y_coord(A))
+      - (y_coord(B) - y_coord(A)) * (x_coord(C) - x_coord(A))
+
+  space_cross_x(A, B, C: point3): real =
+    (y_coord(B) - y_coord(A)) * (z_coord(C) - z_coord(A))
+      - (z_coord(B) - z_coord(A)) * (y_coord(C) - y_coord(A))
+
+  space_cross_y(A, B, C: point3): real =
+    (z_coord(B) - z_coord(A)) * (x_coord(C) - x_coord(A))
+      - (x_coord(B) - x_coord(A)) * (z_coord(C) - z_coord(A))
+
+  space_cross_z(A, B, C: point3): real =
+    (x_coord(B) - x_coord(A)) * (y_coord(C) - y_coord(A))
+      - (y_coord(B) - y_coord(A)) * (x_coord(C) - x_coord(A))
+
+  nonnegative_sqrt(x: real): real =
+    epsilon(
+      LAMBDA (root: real):
+        root >= 0 AND root * root = x)
+
+  triangle_area2(A, B, C: point2): real =
+    abs(plane_cross(A, B, C)) / 2
+
+  triangle_area3(A, B, C: point3): real =
+    nonnegative_sqrt(
+      space_cross_x(A, B, C) ^ 2
+        + space_cross_y(A, B, C) ^ 2
+        + space_cross_z(A, B, C) ^ 2) / 2
+
+  plane_k_sum(
+      coefficients: coefficient_array,
+      points: plane_configuration,
+      i, j: index,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      plane_k_sum(coefficients, points, i, j, count - 1)
+        + IF count <= m AND i < j AND j < count - 1 THEN
+            coefficients(i, j, count - 1)
+              * triangle_area2(
+                  points(i), points(j), points(count - 1))
+          ELSE
+            0
+          ENDIF
+    ENDIF
+  MEASURE count
+
+  plane_j_sum(
+      coefficients: coefficient_array,
+      points: plane_configuration,
+      i: index,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      plane_j_sum(coefficients, points, i, count - 1)
+        + IF count <= m THEN
+            plane_k_sum(
+              coefficients, points, i, count - 1, m)
+          ELSE
+            0
+          ENDIF
+    ENDIF
+  MEASURE count
+
+  plane_sum(
+      coefficients: coefficient_array,
+      points: plane_configuration,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      plane_sum(coefficients, points, count - 1)
+        + IF count <= m THEN
+            plane_j_sum(
+              coefficients, points, count - 1, m)
+          ELSE
+            0
+          ENDIF
+    ENDIF
+  MEASURE count
+
+  space_k_sum(
+      coefficients: coefficient_array,
+      points: space_configuration,
+      i, j: index,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      space_k_sum(coefficients, points, i, j, count - 1)
+        + IF count <= m AND i < j AND j < count - 1 THEN
+            coefficients(i, j, count - 1)
+              * triangle_area3(
+                  points(i), points(j), points(count - 1))
+          ELSE
+            0
+          ENDIF
+    ENDIF
+  MEASURE count
+
+  space_j_sum(
+      coefficients: coefficient_array,
+      points: space_configuration,
+      i: index,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      space_j_sum(coefficients, points, i, count - 1)
+        + IF count <= m THEN
+            space_k_sum(
+              coefficients, points, i, count - 1, m)
+          ELSE
+            0
+          ENDIF
+    ENDIF
+  MEASURE count
+
+  space_sum(
+      coefficients: coefficient_array,
+      points: space_configuration,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      space_sum(coefficients, points, count - 1)
+        + IF count <= m THEN
+            space_j_sum(
+              coefficients, points, count - 1, m)
+          ELSE
+            0
+          ENDIF
+    ENDIF
+  MEASURE count
+
+  area_definite2(coefficients: coefficient_array): bool =
+    FORALL (points: plane_configuration):
+      plane_sum(coefficients, points, m) >= 0
+
+  area_definite3(coefficients: coefficient_array): bool =
+    FORALL (points: space_configuration):
+      space_sum(coefficients, points, m) >= 0
+
+  putnam_2013_a5: bool =
+    FORALL (coefficients: coefficient_array):
+      area_definite2(coefficients)
+        IMPLIES area_definite3(coefficients)
+END putnam_2013_a5

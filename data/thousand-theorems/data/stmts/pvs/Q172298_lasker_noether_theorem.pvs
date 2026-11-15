@@ -1,0 +1,160 @@
+% Statement-only formalization of the Thousand Theorems artifact Q172298,
+% "Lasker–Noether theorem": a finite primary decomposition of a submodule can
+% be replaced by one with the same intersection whose colon-ideal radicals are
+% pairwise distinct. This file contains no proof.
+
+Q172298_lasker_noether_theorem[
+  R: TYPE+,
+  M: TYPE+,
+  zeroR, oneR: R,
+  addR, mulR: [R, R -> R],
+  zeroM: M,
+  addM: [M, M -> M],
+  smul: [R, M -> M]
+]: THEORY
+BEGIN
+  submodule: TYPE = [M -> bool]
+  ideal: TYPE = [R -> bool]
+
+  IMPORTING finite_sets[submodule]
+
+  commutative_semiring_laws: bool =
+    (FORALL (a, b: R):
+      addR(a, b) = addR(b, a))
+      AND
+    (FORALL (a, b, c: R):
+      addR(addR(a, b), c) = addR(a, addR(b, c)))
+      AND
+    (FORALL (a: R):
+      addR(zeroR, a) = a
+        AND addR(a, zeroR) = a)
+      AND
+    (FORALL (a, b: R):
+      mulR(a, b) = mulR(b, a))
+      AND
+    (FORALL (a, b, c: R):
+      mulR(mulR(a, b), c) = mulR(a, mulR(b, c)))
+      AND
+    (FORALL (a: R):
+      mulR(oneR, a) = a
+        AND mulR(a, oneR) = a)
+      AND
+    (FORALL (a, b, c: R):
+      mulR(a, addR(b, c)) =
+        addR(mulR(a, b), mulR(a, c))
+        AND
+      mulR(addR(a, b), c) =
+        addR(mulR(a, c), mulR(b, c)))
+      AND
+    (FORALL (a: R):
+      mulR(zeroR, a) = zeroR
+        AND mulR(a, zeroR) = zeroR)
+
+  additive_commutative_monoid_laws: bool =
+    (FORALL (x, y: M):
+      addM(x, y) = addM(y, x))
+      AND
+    (FORALL (x, y, z: M):
+      addM(addM(x, y), z) = addM(x, addM(y, z)))
+      AND
+    (FORALL (x: M):
+      addM(zeroM, x) = x
+        AND addM(x, zeroM) = x)
+
+  module_laws: bool =
+    additive_commutative_monoid_laws
+      AND
+    (FORALL (a: R), (x, y: M):
+      smul(a, addM(x, y)) =
+        addM(smul(a, x), smul(a, y)))
+      AND
+    (FORALL (a, b: R), (x: M):
+      smul(addR(a, b), x) =
+        addM(smul(a, x), smul(b, x)))
+      AND
+    (FORALL (a, b: R), (x: M):
+      smul(mulR(a, b), x) =
+        smul(a, smul(b, x)))
+      AND
+    (FORALL (x: M):
+      smul(oneR, x) = x)
+      AND
+    (FORALL (x: M):
+      smul(zeroR, x) = zeroM)
+      AND
+    (FORALL (a: R):
+      smul(a, zeroM) = zeroM)
+
+  is_submodule(N: submodule): bool =
+    N(zeroM)
+      AND
+    (FORALL (x, y: M):
+      N(x) AND N(y) IMPLIES N(addM(x, y)))
+      AND
+    (FORALL (a: R), (x: M):
+      N(x) IMPLIES N(smul(a, x)))
+
+  power(a: R, exponent: nat): RECURSIVE R =
+    IF exponent = 0 THEN
+      oneR
+    ELSE
+      mulR(power(a, exponent - 1), a)
+    ENDIF
+  MEASURE exponent
+
+  colon(N: submodule): ideal =
+    LAMBDA (a: R):
+      FORALL (x: M): N(smul(a, x))
+
+  radical(I: ideal): ideal =
+    LAMBDA (a: R):
+      EXISTS (exponent: nat):
+        I(power(a, exponent))
+
+  full_submodule: submodule =
+    LAMBDA (x: M): TRUE
+
+  is_primary(Q: submodule): bool =
+    is_submodule(Q)
+      AND Q /= full_submodule
+      AND
+    (FORALL (a: R), (x: M):
+      Q(smul(a, x)) IMPLIES
+        Q(x)
+          OR
+        (EXISTS (exponent: nat):
+          FORALL (y: M):
+            Q(smul(power(a, exponent), y))))
+
+  finite_infimum(family: finite_set[submodule]): submodule =
+    LAMBDA (x: M):
+      FORALL (Q: submodule):
+        member(Q, family) IMPLIES Q(x)
+
+  pairwise_distinct_colon_radicals(
+      family: finite_set[submodule]): bool =
+    FORALL (I, J: submodule):
+      member(I, family)
+        AND member(J, family)
+        AND I /= J
+      IMPLIES radical(colon(I)) /= radical(colon(J))
+
+  isPrimary_decomposition_pairwise_ne_radical: bool =
+    (commutative_semiring_laws AND module_laws)
+    IMPLIES
+      FORALL
+          (N: submodule),
+          (s: finite_set[submodule]):
+        is_submodule(N)
+          AND finite_infimum(s) = N
+          AND
+        (FORALL (Q: submodule):
+          member(Q, s) IMPLIES is_primary(Q))
+        IMPLIES
+          EXISTS (t: finite_set[submodule]):
+            finite_infimum(t) = N
+              AND
+            (FORALL (Q: submodule):
+              member(Q, t) IMPLIES is_primary(Q))
+              AND pairwise_distinct_colon_radicals(t)
+END Q172298_lasker_noether_theorem

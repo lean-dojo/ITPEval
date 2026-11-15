@@ -1,0 +1,80 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2012_b6:
+% the cubic permutation of residue classes modulo an odd prime p congruent to
+% 2 modulo 3 is even exactly when p is congruent to 3 modulo 4. This file
+% contains no proof.
+
+putnam_2012_b6: THEORY
+BEGIN
+  residue_function: TYPE = [nat -> nat]
+
+  nat_divides(divisor: posnat, value: nat): bool =
+    EXISTS (quotient: nat):
+      value = divisor * quotient
+
+  prime_nat(value: nat): bool =
+    value >= 2
+      AND FORALL (divisor: posnat):
+        nat_divides(divisor, value)
+          IMPLIES divisor = 1 OR divisor = value
+
+  residue_permutation(
+      p: nat,
+      P: residue_function): bool =
+    (FORALL (i: nat):
+      i < p IMPLIES P(i) < p)
+      AND
+        (FORALL (i, j: nat):
+          (i < p AND j < p AND P(i) = P(j))
+            IMPLIES i = j)
+      AND
+        (FORALL (j: nat):
+          j < p IMPLIES
+            EXISTS (i: nat):
+              i < p AND P(i) = j)
+
+  cubic_residue_permutation(
+      p: nat,
+      P: residue_function): bool =
+    residue_permutation(p, P)
+      AND
+        (FORALL (i: nat):
+          i < p IMPLIES
+            P(i) = mod(i * i * i, p))
+
+  inversions_before(
+      P: residue_function,
+      j, limit: nat): RECURSIVE nat =
+    IF limit = 0 THEN
+      0
+    ELSE
+      inversions_before(P, j, limit - 1)
+        + IF P(limit - 1) > P(j) THEN 1 ELSE 0 ENDIF
+    ENDIF
+  MEASURE limit
+
+  inversion_count(
+      P: residue_function,
+      limit: nat): RECURSIVE nat =
+    IF limit = 0 THEN
+      0
+    ELSE
+      inversion_count(P, limit - 1)
+        + inversions_before(P, limit - 1, limit - 1)
+    ENDIF
+  MEASURE limit
+
+  even_residue_permutation(
+      p: nat,
+      P: residue_function): bool =
+    mod(inversion_count(P, p), 2) = 0
+
+  putnam_2012_b6: bool =
+    FORALL (p: nat), (P: residue_function):
+      (mod(p, 2) = 1
+        AND prime_nat(p)
+        AND mod(p, 3) = 2
+        AND cubic_residue_permutation(p, P))
+      IMPLIES
+        (even_residue_permutation(p, P)
+          IFF mod(p, 4) = 3)
+END putnam_2012_b6

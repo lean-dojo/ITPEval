@@ -1,0 +1,682 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/multiprecision/powm_Powm_wmpn_redc_1qtvc: the verification condition
+% for one-limb Montgomery reduction of a double-width multiprecision integer,
+% including its loop invariant and final conditional subtraction.
+% This file contains no proof.
+
+powm_Powm_wmpn_redc_1qtvc[zone: TYPE+]: THEORY
+BEGIN
+
+  IMPORTING
+    bv[32], bv[64],
+    bv_nat[32], bv_nat[64]
+
+  word32: TYPE = bvec[32]
+  word64: TYPE = bvec[64]
+
+  ptr: TYPE =
+    [# contents: list[word64],
+       pointer_offset: int,
+       pointer_min: int,
+       pointer_max: int,
+       is_writable: bool,
+       pointer_zone: zone #]
+
+  radix: int = 18446744073709551616
+
+  zero64: word64 = fill[64](FALSE)
+
+  unsigned64(value1: word64): int =
+    bv2nat[64](value1)
+
+  signed32(value1: word32): int =
+    IF value1(31) THEN
+      bv2nat[32](value1) - 4294967296
+    ELSE
+      bv2nat[32](value1)
+    ENDIF
+
+  int32_in_bounds(value1: int): bool =
+    -2147483648 <= value1 AND value1 <= 2147483647
+
+  int_to_nat(value1: int): nat =
+    IF value1 < 0 THEN 0 ELSE value1 ENDIF
+
+  nat_power(base: int, exponent: nat): RECURSIVE int =
+    IF exponent = 0 THEN
+      1
+    ELSE
+      base * nat_power(base, exponent - 1)
+    ENDIF
+  MEASURE exponent
+
+  int_power(base, exponent: int): int =
+    nat_power(base, int_to_nat(exponent))
+
+  plength(p: ptr): int =
+    length(contents(p))
+
+  pelt(p: ptr, index: int): word64 =
+    LET natural_index: nat = int_to_nat(index)
+    IN
+      IF natural_index < length(contents(p)) THEN
+        nth(contents(p), natural_index)
+      ELSE
+        zero64
+      ENDIF
+
+  valid(p: ptr, size: int): bool =
+    int32_in_bounds(size)
+      AND 0 <= size
+      AND 0 <= pointer_min(p)
+      AND pointer_min(p) <= pointer_offset(p)
+      AND pointer_offset(p) + size <= pointer_max(p)
+      AND pointer_max(p) <= plength(p)
+
+  value_from(
+      p: ptr,
+      index: int,
+      count: nat): RECURSIVE int =
+    IF count = 0 THEN
+      0
+    ELSE
+      unsigned64(pelt(p, index))
+        + radix * value_from(p, index + 1, count - 1)
+    ENDIF
+  MEASURE count
+
+  value(p: ptr, size: int): int =
+    value_from(p, pointer_offset(p), int_to_nat(size))
+
+  redc(ur, u, n, modulus: int): bool =
+    mod(ur, modulus)
+      = mod(int_power(radix, n) * u, modulus)
+
+  same_pelts(left, right: ptr): bool =
+    FORALL (index: int):
+      pelt(left, index) = pelt(right, index)
+
+  same_metadata(left, right: ptr): bool =
+    plength(left) = plength(right)
+      AND pointer_offset(left) = pointer_offset(right)
+      AND pointer_min(left) = pointer_min(right)
+      AND pointer_max(left) = pointer_max(right)
+      AND is_writable(left) = is_writable(right)
+      AND pointer_zone(left) = pointer_zone(right)
+
+  shifted_pointer(
+      shifted, original: ptr,
+      displacement: int): bool =
+    pointer_offset(shifted)
+        = pointer_offset(original) + displacement
+      AND plength(shifted) = plength(original)
+      AND same_pelts(shifted, original)
+      AND contents(shifted) = contents(original)
+      AND pointer_min(shifted) = pointer_min(original)
+      AND pointer_max(shifted) = pointer_max(original)
+      AND pointer_zone(shifted) = pointer_zone(original)
+      AND is_writable(shifted) = is_writable(original)
+
+  frame(
+      newer, older: ptr,
+      start, size: int): bool =
+    FORALL (index: int):
+      index < start OR start + size <= index
+        IMPLIES pelt(newer, index) = pelt(older, index)
+
+  updated_pelts(
+      newer, older: ptr,
+      update_index: int,
+      update_value: word64): bool =
+    FORALL (index: int):
+      pelt(newer, index)
+        = IF index = update_index THEN
+            update_value
+          ELSE
+            pelt(older, index)
+          ENDIF
+
+  final_rp2_premise(
+      n: word32,
+      up, rp1, rp2: ptr,
+      o6: word64,
+      vm: int): bool =
+    mod(value(rp2, signed32(n)), vm)
+      =
+    mod(
+      value(rp1, signed32(n))
+        + int_power(radix, signed32(n)) * unsigned64(o6),
+      vm)
+      AND frame(
+        rp2, rp1,
+        pointer_offset(rp2), signed32(n))
+      AND
+      (value(up, 2 * signed32(n))
+          < int_power(radix, signed32(n)) * vm
+        IMPLIES
+          value(rp2, signed32(n)) < 2 * vm)
+
+  final_rp2_conclusion(
+      n: word32,
+      up, rp, mp, rp2: ptr): bool =
+    redc(
+      value(up, 2 * signed32(n)),
+      value(rp2, signed32(n)),
+      signed32(n),
+      value(mp, signed32(n)))
+      AND frame(
+        rp2, rp,
+        pointer_offset(rp2), signed32(n))
+      AND
+      (value(up, 2 * signed32(n))
+          <
+        int_power(radix, signed32(n))
+          * value(mp, signed32(n))
+        IMPLIES
+          value(rp2, signed32(n))
+            < 2 * value(mp, signed32(n)))
+
+  all_final_rp2(
+      n: word32,
+      up, rp, mp, rp1: ptr,
+      o6: word64,
+      vm: int): bool =
+    FORALL (rp2: ptr):
+      same_metadata(rp2, rp1)
+        IMPLIES
+      final_rp2_premise(n, up, rp1, rp2, o6, vm)
+        IMPLIES
+      final_rp2_conclusion(n, up, rp, mp, rp2)
+
+  all_sub_b(
+      n: word32,
+      up, mp, rp1, rp2: ptr,
+      o6: word64,
+      vm: int): bool =
+    FORALL (b: word64):
+      (value(rp2, signed32(n))
+          - int_power(radix, signed32(n)) * unsigned64(b)
+          =
+        value(rp1, signed32(n)) - value(mp, signed32(n))
+        AND 0 <= unsigned64(b)
+        AND unsigned64(b) <= 1
+        AND frame(
+          rp2, rp1,
+          pointer_offset(rp2), signed32(n)))
+        IMPLIES
+          final_rp2_premise(n, up, rp1, rp2, o6, vm)
+
+  all_sub_rp2(
+      n: word32,
+      up, mp, rp1: ptr,
+      o6: word64,
+      vm: int): bool =
+    FORALL (rp2: ptr):
+      same_metadata(rp2, rp1)
+        IMPLIES
+          all_sub_b(n, up, mp, rp1, rp2, o6, vm)
+
+  no_sub_result(
+      n: word32,
+      up, rp1: ptr,
+      o6: word64,
+      vm: int): bool =
+    mod(value(rp1, signed32(n)), vm)
+      =
+    mod(
+      value(rp1, signed32(n))
+        + int_power(radix, signed32(n)) * unsigned64(o6),
+      vm)
+      AND
+      (value(up, 2 * signed32(n))
+          < int_power(radix, signed32(n)) * vm
+        IMPLIES
+          value(rp1, signed32(n)) < 2 * vm)
+
+  all_o7(
+      n: word32,
+      up, rp, mp, rp1: ptr,
+      o6: word64,
+      vm: int): bool =
+    FORALL (o7: bool):
+      ((unsigned64(o6) = 0 IMPLIES o7 = TRUE)
+        AND (o7 = TRUE IMPLIES unsigned64(o6) = 0))
+        IMPLIES
+          ((IF NOT o7 THEN
+              0 <= signed32(n)
+                AND valid(rp1, signed32(n))
+                AND valid(mp, signed32(n))
+                AND is_writable(rp1) = TRUE
+                AND all_sub_rp2(
+                  n, up, mp, rp1, o6, vm)
+            ELSE
+              no_sub_result(n, up, rp1, o6, vm)
+            ENDIF)
+            AND all_final_rp2(
+              n, up, rp, mp, rp1, o6, vm))
+
+  all_o6(
+      n: word32,
+      up, rp, mp, base, o5, rp1: ptr,
+      vm: int): bool =
+    FORALL (o6: word64):
+      (0 <= unsigned64(o6)
+        AND unsigned64(o6) <= 1
+        AND
+          value(rp1, signed32(n))
+            + int_power(radix, signed32(n)) * unsigned64(o6)
+          =
+          value(base, signed32(n)) + value(o5, signed32(n))
+        AND frame(
+          rp1, rp,
+          pointer_offset(rp1), signed32(n)))
+        IMPLIES
+          all_o7(n, up, rp, mp, rp1, o6, vm)
+
+  all_rp1(
+      n: word32,
+      up, rp, mp, base, o5: ptr,
+      vm: int): bool =
+    FORALL (rp1: ptr):
+      same_metadata(rp1, rp)
+        IMPLIES
+          all_o6(n, up, rp, mp, base, o5, rp1, vm)
+
+  all_final_o5(
+      n: word32,
+      up, rp, mp, base: ptr,
+      vm: int,
+      o4: word32): bool =
+    FORALL (o5: ptr):
+      shifted_pointer(o5, base, signed32(o4))
+        IMPLIES
+          valid(base, signed32(n))
+            AND valid(o5, signed32(n))
+            AND valid(rp, signed32(n))
+            AND is_writable(rp) = TRUE
+            AND all_rp1(n, up, rp, mp, base, o5, vm)
+
+  all_negative_o4(
+      n: word32,
+      up, rp, mp, base: ptr,
+      vm: int): bool =
+    FORALL (o4: word32):
+      signed32(o4) = -signed32(n)
+        IMPLIES
+          pointer_min(base)
+              <= pointer_offset(base) + signed32(o4)
+            AND
+          pointer_offset(base) + signed32(o4)
+              <= pointer_max(base)
+            AND all_final_o5(
+              n, up, rp, mp, base, vm, o4)
+
+  all_uprime(
+      n: word32,
+      up, rp, mp, base: ptr,
+      vm: int,
+      o3: word32): bool =
+    FORALL (uprime: ptr):
+      shifted_pointer(uprime, base, signed32(o3))
+        IMPLIES
+          int32_in_bounds(-signed32(n))
+            AND all_negative_o4(
+              n, up, rp, mp, base, vm)
+
+  all_negative_o3(
+      n: word32,
+      up, rp, mp, base: ptr,
+      vm: int): bool =
+    FORALL (o3: word32):
+      signed32(o3) = -signed32(n)
+        IMPLIES
+          pointer_min(base)
+              <= pointer_offset(base) + signed32(o3)
+            AND
+          pointer_offset(base) + signed32(o3)
+              <= pointer_max(base)
+            AND all_uprime(
+              n, up, rp, mp, base, vm, o3)
+
+  final_stage(
+      n: word32,
+      up, rp, mp, base: ptr,
+      vm: int): bool =
+    int32_in_bounds(-signed32(n))
+      AND all_negative_o3(n, up, rp, mp, base, vm)
+
+  arithmetic_invariant(
+      n: word32,
+      up: ptr,
+      vm, added: int,
+      u, up1: ptr,
+      index: int): bool =
+    int_power(radix, index)
+        * value(u, signed32(n) + signed32(n) - index)
+      + int_power(radix, signed32(n)) * value(up1, index)
+      =
+    value(up, signed32(n) + signed32(n)) + vm * added
+      AND 0 <= added
+      AND added < int_power(radix, index)
+      AND
+      mod(
+        int_power(radix, index)
+            * value(u, signed32(n) + signed32(n) - index)
+          + int_power(radix, signed32(n)) * value(up1, index),
+        vm)
+        =
+      mod(value(up, signed32(n) + signed32(n)), vm)
+
+  loop_invariant(
+      n: word32,
+      up: ptr,
+      o2: word32,
+      vm, added: int,
+      u, up1: ptr,
+      j: word32): bool =
+    0 <= signed32(j)
+      AND signed32(j) <= signed32(o2)
+      AND pointer_offset(u)
+          = pointer_offset(up1) + signed32(j)
+      AND same_pelts(u, up1)
+      AND pointer_min(u) = pointer_min(up1)
+      AND pointer_max(u) = pointer_max(up1)
+      AND plength(u) = plength(up1)
+      AND is_writable(u) = TRUE
+      AND arithmetic_invariant(
+        n, up, vm, added, u, up1, signed32(j))
+
+  next_invariant(
+      n: word32,
+      up: ptr,
+      vm, added: int,
+      m: word64,
+      j: word32,
+      o5, up3: ptr): bool =
+    pointer_offset(o5)
+      = pointer_offset(up3) + signed32(j) + 1
+      AND same_pelts(o5, up3)
+      AND pointer_min(o5) = pointer_min(up3)
+      AND pointer_max(o5) = pointer_max(up3)
+      AND plength(o5) = plength(up3)
+      AND is_writable(o5) = TRUE
+      AND arithmetic_invariant(
+        n, up, vm,
+        added
+          + unsigned64(m) * int_power(radix, signed32(j)),
+        o5, up3, signed32(j) + 1)
+
+  exit_invariant(
+      n: word32,
+      up: ptr,
+      o2: word32,
+      vm, added: int,
+      u, up1: ptr): bool =
+    pointer_offset(u)
+      = pointer_offset(up1) + signed32(o2) + 1
+      AND same_pelts(u, up1)
+      AND pointer_min(u) = pointer_min(up1)
+      AND pointer_max(u) = pointer_max(up1)
+      AND plength(u) = plength(up1)
+      AND is_writable(u) = TRUE
+      AND arithmetic_invariant(
+        n, up, vm, added, u, up1, signed32(o2) + 1)
+
+  addmul_state(
+      copied, shared, original: ptr): bool =
+    contents(copied) = contents(shared)
+      AND plength(shared) = plength(original)
+      AND pointer_offset(copied) = pointer_offset(original)
+      AND pointer_min(copied) = pointer_min(original)
+      AND pointer_max(copied) = pointer_max(original)
+      AND is_writable(copied) = is_writable(original)
+      AND pointer_zone(copied) = pointer_zone(original)
+
+  all_next_o5(
+      n: word32,
+      up: ptr,
+      vm, added: int,
+      m: word64,
+      j: word32,
+      u2, up3: ptr): bool =
+    FORALL (o5: ptr):
+      shifted_pointer(o5, u2, 1)
+        IMPLIES
+          next_invariant(
+            n, up, vm, added, m, j, o5, up3)
+
+  all_u2_up3(
+      n: word32,
+      up: ptr,
+      vm, added: int,
+      m: word64,
+      j: word32,
+      u1, up2: ptr,
+      o4: word64): bool =
+    FORALL (u2, up3: ptr):
+      addmul_state(u2, up3, u1)
+        IMPLIES
+      addmul_state(u2, up3, u1)
+        IMPLIES
+      same_metadata(up3, up2)
+        IMPLIES
+      updated_pelts(u2, u1, pointer_offset(u2), o4)
+        IMPLIES
+          pointer_min(u2) <= pointer_offset(u2) + 1
+            AND pointer_offset(u2) + 1 <= pointer_max(u2)
+            AND all_next_o5(
+              n, up, vm, added, m, j, u2, up3)
+
+  all_o4(
+      n: word32,
+      up, mp: ptr,
+      vm, added: int,
+      u: ptr,
+      m: word64,
+      j: word32,
+      u1, up2: ptr): bool =
+    FORALL (o4: word64):
+      (value(u1, signed32(n))
+          + int_power(radix, signed32(n)) * unsigned64(o4)
+          =
+        value(u, signed32(n))
+          + value(mp, signed32(n)) * unsigned64(m)
+        AND frame(
+          u1, u,
+          pointer_offset(u1), signed32(n)))
+        IMPLIES
+          pointer_min(u1) <= pointer_offset(u1)
+            AND pointer_offset(u1) < pointer_max(u1)
+            AND is_writable(u1) = TRUE
+            AND all_u2_up3(
+              n, up, vm, added, m, j, u1, up2, o4)
+
+  all_u1_up2(
+      n: word32,
+      up, mp: ptr,
+      vm, added: int,
+      u, up1: ptr,
+      m: word64,
+      j: word32): bool =
+    FORALL (u1, up2: ptr):
+      addmul_state(u1, up2, u)
+        IMPLIES
+      addmul_state(u1, up2, u)
+        IMPLIES
+      same_metadata(up2, up1)
+        IMPLIES
+          all_o4(
+            n, up, mp, vm, added,
+            u, m, j, u1, up2)
+
+  all_nnj(
+      n: word32,
+      up, mp: ptr,
+      vm, added: int,
+      u, up1: ptr,
+      m: word64,
+      j, o3: word32): bool =
+    FORALL (nnj: word32):
+      signed32(nnj) = signed32(o3) - signed32(j)
+        IMPLIES
+          valid(mp, signed32(n))
+            AND valid(u, signed32(n))
+            AND is_writable(u) = TRUE
+            AND all_u1_up2(
+              n, up, mp, vm, added, u, up1, m, j)
+
+  all_positive_o3(
+      n: word32,
+      up, mp: ptr,
+      vm, added: int,
+      u, up1: ptr,
+      m: word64,
+      j: word32): bool =
+    FORALL (o3: word32):
+      signed32(o3) = signed32(n) + signed32(n)
+        IMPLIES
+          int32_in_bounds(signed32(o3) - signed32(j))
+            AND all_nnj(
+              n, up, mp, vm, added,
+              u, up1, m, j, o3)
+
+  all_m(
+      n: word32,
+      up, mp: ptr,
+      invm: word64,
+      vm, added: int,
+      u, up1: ptr,
+      j: word32): bool =
+    FORALL (m: word64):
+      unsigned64(m)
+        =
+      mod(
+        unsigned64(pelt(u, pointer_offset(u)))
+          * unsigned64(invm),
+        radix)
+        IMPLIES
+          int32_in_bounds(signed32(n) + signed32(n))
+            AND all_positive_o3(
+              n, up, mp, vm, added, u, up1, m, j)
+
+  all_j(
+      n: word32,
+      up, rp, mp: ptr,
+      invm: word64,
+      o2: word32,
+      vm, added: int,
+      u, up1: ptr): bool =
+    FORALL (j: word32):
+      (loop_invariant(
+          n, up, o2, vm, added, u, up1, j)
+        IMPLIES
+          pointer_min(u) <= pointer_offset(u)
+            AND pointer_offset(u) < pointer_max(u)
+            AND all_m(
+              n, up, mp, invm, vm, added, u, up1, j))
+        AND
+      (exit_invariant(
+          n, up, o2, vm, added, u, up1)
+        IMPLIES
+          final_stage(n, up, rp, mp, u, vm))
+
+  all_loop_states(
+      n: word32,
+      up, rp, mp: ptr,
+      invm: word64,
+      o2: word32,
+      vm: int): bool =
+    FORALL (added: int), (u, up1: ptr):
+      same_metadata(up1, up)
+        IMPLIES
+          all_j(
+            n, up, rp, mp, invm,
+            o2, vm, added, u, up1)
+
+  initial_invariant(
+      n: word32,
+      up, o1: ptr,
+      vm: int): bool =
+    pointer_offset(o1) = pointer_offset(up) + 0
+      AND same_pelts(o1, up)
+      AND pointer_min(o1) = pointer_min(up)
+      AND pointer_max(o1) = pointer_max(up)
+      AND plength(o1) = plength(up)
+      AND is_writable(o1) = TRUE
+      AND
+      int_power(radix, 0)
+          * value(o1, signed32(n) + signed32(n) - 0)
+        + int_power(radix, signed32(n)) * value(up, 0)
+        =
+      value(up, signed32(n) + signed32(n)) + vm * 0
+      AND 0 <= 0
+      AND 0 < int_power(radix, 0)
+      AND
+      mod(
+        int_power(radix, 0)
+            * value(o1, signed32(n) + signed32(n) - 0)
+          + int_power(radix, signed32(n)) * value(up, 0),
+        vm)
+        =
+      mod(value(up, signed32(n) + signed32(n)), vm)
+
+  all_o2(
+      n: word32,
+      up, rp, mp: ptr,
+      invm: word64,
+      o1: ptr,
+      vm: int): bool =
+    FORALL (o2: word32):
+      signed32(o2) = signed32(n) - 1
+        IMPLIES
+          ((0 <= signed32(o2) + 1
+            IMPLIES
+              initial_invariant(n, up, o1, vm)
+                AND all_loop_states(
+                  n, up, rp, mp, invm, o2, vm))
+            AND
+          (signed32(o2) + 1 < 0
+            IMPLIES
+              final_stage(n, up, rp, mp, o1, vm)))
+
+  all_o1(
+      n: word32,
+      up, rp, mp: ptr,
+      invm: word64): bool =
+    FORALL (o1: ptr):
+      shifted_pointer(o1, up, 0)
+        IMPLIES
+          int32_in_bounds(signed32(n) - 1)
+            AND all_o2(
+              n, up, rp, mp, invm,
+              o1, value(mp, signed32(n)))
+
+  wmpn_redc_1_vc: bool =
+    FORALL
+        (n: word32),
+        (mp, up, rp: ptr),
+        (invm: word64):
+      0 < signed32(n)
+        IMPLIES
+      valid(mp, signed32(n))
+        IMPLIES
+      valid(up, 2 * signed32(n))
+        IMPLIES
+      valid(rp, signed32(n))
+        IMPLIES
+      mod(value(mp, signed32(n)), 2) = 1
+        IMPLIES
+      mod(
+        value(mp, signed32(n)) * unsigned64(invm),
+        radix)
+        = radix - 1
+        IMPLIES
+      is_writable(up) = TRUE
+        IMPLIES
+      is_writable(rp) = TRUE
+        IMPLIES
+          pointer_min(up) <= pointer_offset(up) + 0
+            AND pointer_offset(up) + 0 <= pointer_max(up)
+            AND all_o1(n, up, rp, mp, invm)
+
+END powm_Powm_wmpn_redc_1qtvc

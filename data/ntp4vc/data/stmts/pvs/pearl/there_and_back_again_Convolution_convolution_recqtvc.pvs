@@ -1,0 +1,109 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/there_and_back_again_Convolution_convolution_recqtvc: the recursive
+% symbolic-convolution verification condition relating a consumed prefix,
+% its reversal, the paired result, and the unconsumed suffix. This file
+% contains no proof.
+
+there_and_back_again_Convolution_convolution_recqtvc[
+    Element: TYPE+]: THEORY
+BEGIN
+
+  pair: TYPE = [Element, Element]
+
+  list_reverse(values: list[Element]): RECURSIVE list[Element] =
+    CASES values OF
+      null:
+        null,
+      cons(head, tail):
+        append(list_reverse(tail), cons(head, null))
+    ENDCASES
+  MEASURE values BY <<
+
+  list_zip(
+      left, right: list[Element]): RECURSIVE list[pair] =
+    CASES left OF
+      null:
+        null,
+      cons(left_head, left_tail):
+        CASES right OF
+          null:
+            null,
+          cons(right_head, right_tail):
+            cons(
+              (left_head, right_head),
+              list_zip(left_tail, right_tail))
+        ENDCASES
+    ENDCASES
+  MEASURE left BY <<
+
+  prefix_relation(
+      source,
+      first,
+      suffix: list[Element],
+      pairs: list[pair]): bool =
+    EXISTS (prefix: list[Element]):
+      source = append(prefix, suffix)
+        AND length(prefix) = length(first)
+        AND pairs = list_zip(first, list_reverse(prefix))
+
+  recursive_call_obligation(
+      x, y: list[Element]): bool =
+    CASES x OF
+      null:
+        TRUE,
+      cons(x0, xs):
+        ((CASES x OF
+            null:
+              FALSE,
+            cons(ignored, actual_tail):
+              actual_tail = xs
+          ENDCASES)
+          AND length(xs) <= length(y))
+          AND
+        (FORALL
+            (o1: list[pair]),
+            (o2: list[Element]):
+          prefix_relation(y, xs, o2, o1)
+            IMPLIES
+              CASES o2 OF
+                null:
+                  FALSE,
+                cons(x1, x2):
+                  TRUE
+              ENDCASES)
+    ENDCASES
+
+  result_premise(
+      x, y: list[Element],
+      r: list[pair],
+      ys: list[Element]): bool =
+    CASES x OF
+      null:
+        r = null AND ys = y,
+      cons(x0, xs):
+        EXISTS
+            (r1: list[pair]),
+            (ys1: list[Element]):
+          prefix_relation(y, xs, ys1, r1)
+            AND
+          CASES ys1 OF
+            null:
+              FALSE,
+            cons(x1, x2):
+              r = cons((x0, x1), r1) AND ys = x2
+          ENDCASES
+    ENDCASES
+
+  convolution_rec_vc: bool =
+    FORALL (x, y: list[Element]):
+      length(x) <= length(y)
+        IMPLIES
+          recursive_call_obligation(x, y)
+            AND
+          (FORALL
+              (r: list[pair]),
+              (ys: list[Element]):
+            result_premise(x, y, r, ys)
+              IMPLIES prefix_relation(y, x, ys, r))
+
+END there_and_back_again_Convolution_convolution_recqtvc

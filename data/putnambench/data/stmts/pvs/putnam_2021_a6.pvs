@@ -1,0 +1,103 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2021_a6:
+% an integer polynomial with coefficients in {0, 1} that factors into two
+% nonconstant integer polynomials has a composite value at 2. This file
+% contains no proof.
+
+putnam_2021_a6: THEORY
+BEGIN
+  polynomial: TYPE = list[int]
+
+  coefficient(p: polynomial, degree: nat): RECURSIVE int =
+    CASES p OF
+      null: 0,
+      cons(head_coefficient, tail):
+        IF degree = 0 THEN
+          head_coefficient
+        ELSE
+          coefficient(tail, degree - 1)
+        ENDIF
+    ENDCASES
+  MEASURE p BY <<
+
+  polynomial_equal(left, right: polynomial): bool =
+    FORALL (degree: nat):
+      coefficient(left, degree) = coefficient(right, degree)
+
+  polynomial_add(left, right: polynomial): RECURSIVE polynomial =
+    CASES left OF
+      null: right,
+      cons(left_coefficient, left_tail):
+        CASES right OF
+          null: left,
+          cons(right_coefficient, right_tail):
+            cons(
+              left_coefficient + right_coefficient,
+              polynomial_add(left_tail, right_tail))
+        ENDCASES
+    ENDCASES
+  MEASURE left BY <<
+
+  polynomial_scale(
+      scalar: int,
+      p: polynomial): RECURSIVE polynomial =
+    CASES p OF
+      null: null,
+      cons(head_coefficient, tail):
+        cons(
+          scalar * head_coefficient,
+          polynomial_scale(scalar, tail))
+    ENDCASES
+  MEASURE p BY <<
+
+  polynomial_multiply(
+      left, right: polynomial): RECURSIVE polynomial =
+    CASES left OF
+      null: null,
+      cons(head_coefficient, tail):
+        polynomial_add(
+          polynomial_scale(head_coefficient, right),
+          cons(0, polynomial_multiply(tail, right)))
+    ENDCASES
+  MEASURE left BY <<
+
+  polynomial_value(p: polynomial, x: int): RECURSIVE int =
+    CASES p OF
+      null: 0,
+      cons(head_coefficient, tail):
+        head_coefficient + x * polynomial_value(tail, x)
+    ENDCASES
+  MEASURE p BY <<
+
+  has_zero_one_coefficients(p: polynomial): bool =
+    FORALL (degree: nat):
+      coefficient(p, degree) = 0
+        OR coefficient(p, degree) = 1
+
+  nonconstant(p: polynomial): bool =
+    EXISTS (degree: nat):
+      degree > 0 AND coefficient(p, degree) /= 0
+
+  int_divides(divisor, value: int): bool =
+    EXISTS (quotient: int):
+      value = divisor * quotient
+
+  prime_int(value: int): bool =
+    value > 1
+      AND FORALL (divisor: int):
+        divisor > 0
+          AND int_divides(divisor, value)
+          IMPLIES divisor = 1 OR divisor = value
+
+  putnam_2021_a6: bool =
+    FORALL (P: polynomial):
+      (has_zero_one_coefficients(P)
+        AND EXISTS (Q, R: polynomial):
+          nonconstant(Q)
+            AND nonconstant(R)
+            AND polynomial_equal(
+              P, polynomial_multiply(Q, R)))
+      IMPLIES
+        polynomial_value(P, 2) /= 0
+          AND polynomial_value(P, 2) /= 1
+          AND NOT prime_int(polynomial_value(P, 2))
+END putnam_2021_a6

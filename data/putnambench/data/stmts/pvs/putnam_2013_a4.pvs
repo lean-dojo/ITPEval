@@ -1,0 +1,87 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2013_a4:
+% balanced zero counts on equal-length arcs of a finite binary circle force
+% integer average zero and one counts to occur on one arc. This file contains no proof.
+
+putnam_2013_a4[n, k: posnat]: THEORY
+BEGIN
+  position: TYPE = below(n)
+  arc_length: TYPE = upto(n)
+  digit: TYPE = below(2)
+  arc: TYPE = [# start: position, length: arc_length #]
+  circle_type: TYPE = [position -> digit]
+  arc_integer_value: TYPE = [arc -> int]
+  arc_sequence: TYPE = [below(k) -> arc]
+
+  zero_count(
+      circle: circle_type,
+      first: position,
+      count: nat): RECURSIVE nat =
+    IF count = 0 THEN
+      0
+    ELSE
+      zero_count(circle, first, count - 1)
+        + IF circle(mod(first + count - 1, n)) = 0
+            THEN 1
+            ELSE 0
+          ENDIF
+    ENDIF
+  MEASURE count
+
+  one_count(
+      circle: circle_type,
+      first: position,
+      count: nat): RECURSIVE nat =
+    IF count = 0 THEN
+      0
+    ELSE
+      one_count(circle, first, count - 1)
+        + IF circle(mod(first + count - 1, n)) = 1
+            THEN 1
+            ELSE 0
+          ENDIF
+    ENDIF
+  MEASURE count
+
+  integer_prefix_sum(
+      values: [below(k) -> int],
+      count: nat): RECURSIVE int =
+    IF count = 0 THEN
+      0
+    ELSE
+      integer_prefix_sum(values, count - 1)
+        + IF count <= k THEN values(count - 1) ELSE 0 ENDIF
+    ENDIF
+  MEASURE count
+
+  putnam_2013_a4: bool =
+    FORALL
+        (circle: circle_type),
+        (Z, N: arc_integer_value),
+        (ws: arc_sequence),
+        (Zsum, Nsum: int):
+      ((FORALL (w: arc):
+          Z(w) = (zero_count(circle, start(w), length(w)) :: int))
+        AND
+          (FORALL (w: arc):
+            N(w) = (one_count(circle, start(w), length(w)) :: int))
+        AND
+          (FORALL (w, w_prime: arc):
+            length(w) = length(w_prime)
+              IMPLIES abs(Z(w) - Z(w_prime)) <= 1)
+        AND
+          (Zsum :: real)
+            = (1 / (k :: real))
+                * (integer_prefix_sum(
+                    (LAMBDA (j: below(k)): Z(ws(j))),
+                    k) :: real)
+        AND
+          (Nsum :: real)
+            = (1 / (k :: real))
+                * (integer_prefix_sum(
+                    (LAMBDA (j: below(k)): N(ws(j))),
+                    k) :: real))
+      IMPLIES
+        EXISTS (w: arc):
+          Z(w) = Zsum
+            AND N(w) = Nsum
+END putnam_2013_a4

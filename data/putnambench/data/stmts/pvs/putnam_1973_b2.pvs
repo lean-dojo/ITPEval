@@ -1,0 +1,80 @@
+% Statement-only formalization of PutnamBench artifact putnam_1973_b2:
+% a unit complex number with rational real and imaginary parts has rational
+% distance from one after every even integer power. This file contains no proof.
+
+putnam_1973_b2: THEORY
+BEGIN
+  complex: TYPE = [# real_part: real, imag_part: real #]
+
+  complex_one: complex =
+    (# real_part := 1, imag_part := 0 #)
+
+  complex_neg(z: complex): complex =
+    (# real_part := -real_part(z),
+       imag_part := -imag_part(z) #)
+
+  complex_add(z, w: complex): complex =
+    (# real_part := real_part(z) + real_part(w),
+       imag_part := imag_part(z) + imag_part(w) #)
+
+  complex_sub(z, w: complex): complex =
+    complex_add(z, complex_neg(w))
+
+  complex_mul(z, w: complex): complex =
+    (# real_part := real_part(z) * real_part(w)
+                       - imag_part(z) * imag_part(w),
+       imag_part := real_part(z) * imag_part(w)
+                       + imag_part(z) * real_part(w) #)
+
+  complex_power(z: complex, exponent: nat): RECURSIVE complex =
+    IF exponent = 0 THEN
+      complex_one
+    ELSE
+      complex_mul(complex_power(z, exponent - 1), z)
+    ENDIF
+  MEASURE exponent
+
+  integer_power_value(
+      z: complex,
+      exponent: int,
+      value: complex): bool =
+    (exponent >= 0
+      AND EXISTS (power: nat):
+        exponent = (power :: int)
+          AND value = complex_power(z, power))
+      OR
+    (exponent < 0
+      AND EXISTS (power: posnat):
+        exponent = -(power :: int)
+          AND complex_mul(value, complex_power(z, power))
+            = complex_one)
+
+  nonnegative_square_root(value: real): real =
+    IF 0 <= value THEN
+      epsilon(
+        LAMBDA (root: real):
+          0 <= root AND root * root = value)
+    ELSE
+      0
+    ENDIF
+
+  squared_modulus(z: complex): real =
+    real_part(z) ^ 2 + imag_part(z) ^ 2
+
+  complex_modulus(z: complex): real =
+    nonnegative_square_root(squared_modulus(z))
+
+  rational_coordinates(z: complex): bool =
+    rational?(real_part(z)) AND rational?(imag_part(z))
+
+  putnam_1973_b2: bool =
+    FORALL (z: complex):
+      (rational_coordinates(z) AND complex_modulus(z) = 1)
+      IMPLIES
+        FORALL (n: int):
+          EXISTS (power_value: complex), (q: real):
+            integer_power_value(z, 2 * n, power_value)
+              AND rational?(q)
+              AND complex_modulus(
+                complex_sub(power_value, complex_one)) = q
+END putnam_1973_b2

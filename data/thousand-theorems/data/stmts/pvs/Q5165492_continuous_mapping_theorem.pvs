@@ -1,0 +1,768 @@
+% Statement-only formalization of the Thousand Theorems artifact Q5165492,
+% "Continuous mapping theorem": continuous composition preserves convergence
+% in distribution of random variables. This file contains no proof.
+%
+% The varying source types are represented as disjoint fibers of a common
+% carrier; every type family has this representation through its disjoint sum.
+
+continuous_mapping_theorem_Q5165492[
+  Index: TYPE,
+  Source: TYPE,
+  LimitSource: TYPE,
+  E: TYPE,
+  F: TYPE,
+  fiber: [Index -> [Source -> bool]],
+  source_sigma: [Index -> [[Source -> bool] -> bool]],
+  limit_sigma: [[LimitSource -> bool] -> bool],
+  e_sigma: [[E -> bool] -> bool],
+  f_sigma: [[F -> bool] -> bool],
+  source_measure:
+    [Index -> [[Source -> bool] ->
+      [# infinite_flag: bool, finite_part: real #]]],
+  limit_measure:
+    [[LimitSource -> bool] ->
+      [# infinite_flag: bool, finite_part: real #]],
+  source_integral: [Index, [Source -> real] -> real],
+  limit_integral: [[LimitSource -> real] -> real],
+  e_open: [[E -> bool] -> bool],
+  f_open: [[F -> bool] -> bool],
+  index_filter: [[Index -> bool] -> bool],
+  X: [Index -> [Source -> E]],
+  Z: [LimitSource -> E],
+  g: [E -> F]
+]: THEORY
+BEGIN
+  source_event: TYPE = [Source -> bool]
+  source_event_sequence: TYPE = [nat -> source_event]
+  limit_event: TYPE = [LimitSource -> bool]
+  limit_event_sequence: TYPE = [nat -> limit_event]
+  e_event: TYPE = [E -> bool]
+  f_event: TYPE = [F -> bool]
+  real_event: TYPE = [real -> bool]
+
+  measure_value: TYPE =
+    [# infinite_flag: bool, finite_part: real #]
+  measure_value_sequence: TYPE = [nat -> measure_value]
+  real_sequence: TYPE = [nat -> real]
+
+  zero_measure_value: measure_value =
+    (# infinite_flag := FALSE, finite_part := 0 #)
+
+  finite_measure_value(value: real): measure_value =
+    (# infinite_flag := FALSE, finite_part := value #)
+
+  infinite_measure_value: measure_value =
+    (# infinite_flag := TRUE, finite_part := 0 #)
+
+  canonical_measure_value(value: measure_value): bool =
+    IF infinite_flag(value) THEN
+      finite_part(value) = 0
+    ELSE
+      finite_part(value) >= 0
+    ENDIF
+
+  measure_value_is_zero(value: measure_value): bool =
+    NOT infinite_flag(value) AND finite_part(value) = 0
+
+  finite_real_sum(values: real_sequence, count: nat):
+      RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      finite_real_sum(values, count - 1)
+        + values(count - 1)
+    ENDIF
+  MEASURE count
+
+  partial_measure_sum(
+      values: measure_value_sequence,
+      count: nat): real =
+    finite_real_sum(
+      LAMBDA (index: nat):
+        finite_part(values(index)),
+      count)
+
+  converges_real_sequence(
+      values: real_sequence,
+      limit: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(values(index) - limit) < epsilon_value
+
+  unbounded_above(values: real_sequence): bool =
+    FORALL (bound: real):
+      EXISTS (index: nat):
+        bound < values(index)
+
+  extended_nonnegative_sum(
+      values: measure_value_sequence,
+      total: measure_value): bool =
+    canonical_measure_value(total)
+      AND (FORALL (index: nat):
+        canonical_measure_value(values(index)))
+      AND IF infinite_flag(total) THEN
+        (EXISTS (index: nat):
+          infinite_flag(values(index)))
+          OR ((FORALL (index: nat):
+                NOT infinite_flag(values(index)))
+            AND unbounded_above(
+              LAMBDA (count: nat):
+                partial_measure_sum(values, count)))
+      ELSE
+        (FORALL (index: nat):
+          NOT infinite_flag(values(index)))
+          AND converges_real_sequence(
+            LAMBDA (count: nat):
+              partial_measure_sum(values, count),
+            finite_part(total))
+      ENDIF
+
+  fibers_form_disjoint_sum: bool =
+    (FORALL (source_point: Source):
+      EXISTS (index: Index):
+        fiber(index)(source_point))
+      AND (FORALL
+          (left_index, right_index: Index),
+          (source_point: Source):
+        fiber(left_index)(source_point)
+          AND fiber(right_index)(source_point)
+          IMPLIES left_index = right_index)
+
+  source_empty: source_event =
+    LAMBDA (source_point: Source): FALSE
+
+  source_full(index: Index): source_event =
+    LAMBDA (source_point: Source):
+      fiber(index)(source_point)
+
+  source_complement(
+      index: Index,
+      event_value: source_event): source_event =
+    LAMBDA (source_point: Source):
+      fiber(index)(source_point)
+        AND NOT event_value(source_point)
+
+  source_countable_union(
+      index: Index,
+      events: source_event_sequence): source_event =
+    LAMBDA (source_point: Source):
+      fiber(index)(source_point)
+        AND EXISTS (number: nat):
+          events(number)(source_point)
+
+  source_pairwise_disjoint(
+      index: Index,
+      events: source_event_sequence): bool =
+    FORALL (left_number, right_number: nat):
+      left_number /= right_number IMPLIES
+        FORALL (source_point: Source):
+          fiber(index)(source_point) IMPLIES
+            NOT (events(left_number)(source_point)
+              AND events(right_number)(source_point))
+
+  source_sigma_algebra(index: Index): bool =
+    source_sigma(index)(source_full(index))
+      AND (FORALL (event_value: source_event):
+        source_sigma(index)(event_value) IMPLIES
+          (FORALL (source_point: Source):
+            event_value(source_point) IMPLIES
+              fiber(index)(source_point))
+          AND source_sigma(index)(
+            source_complement(index, event_value)))
+      AND (FORALL (events: source_event_sequence):
+        (FORALL (number: nat):
+          source_sigma(index)(events(number)))
+        IMPLIES
+          source_sigma(index)(
+            source_countable_union(index, events)))
+
+  source_measure_laws(index: Index): bool =
+    source_sigma_algebra(index)
+      AND measure_value_is_zero(
+        source_measure(index)(source_empty))
+      AND (FORALL (event_value: source_event):
+        source_sigma(index)(event_value) IMPLIES
+          canonical_measure_value(
+            source_measure(index)(event_value)))
+      AND (FORALL (events: source_event_sequence):
+        ((FORALL (number: nat):
+            source_sigma(index)(events(number)))
+          AND source_pairwise_disjoint(index, events))
+        IMPLIES
+          extended_nonnegative_sum(
+            LAMBDA (number: nat):
+              source_measure(index)(events(number)),
+            source_measure(index)(
+              source_countable_union(index, events))))
+
+  source_probability_measure(index: Index): bool =
+    source_measure_laws(index)
+      AND source_measure(index)(source_full(index))
+        = finite_measure_value(1)
+
+  limit_empty: limit_event =
+    LAMBDA (source_point: LimitSource): FALSE
+
+  limit_full: limit_event =
+    LAMBDA (source_point: LimitSource): TRUE
+
+  limit_complement(event_value: limit_event): limit_event =
+    LAMBDA (source_point: LimitSource):
+      NOT event_value(source_point)
+
+  limit_countable_union(
+      events: limit_event_sequence): limit_event =
+    LAMBDA (source_point: LimitSource):
+      EXISTS (number: nat):
+        events(number)(source_point)
+
+  limit_pairwise_disjoint(
+      events: limit_event_sequence): bool =
+    FORALL (left_number, right_number: nat):
+      left_number /= right_number IMPLIES
+        FORALL (source_point: LimitSource):
+          NOT (events(left_number)(source_point)
+            AND events(right_number)(source_point))
+
+  limit_sigma_algebra: bool =
+    limit_sigma(limit_full)
+      AND (FORALL (event_value: limit_event):
+        limit_sigma(event_value) IMPLIES
+          limit_sigma(limit_complement(event_value)))
+      AND (FORALL (events: limit_event_sequence):
+        (FORALL (number: nat):
+          limit_sigma(events(number)))
+        IMPLIES
+          limit_sigma(limit_countable_union(events)))
+
+  limit_measure_laws: bool =
+    limit_sigma_algebra
+      AND measure_value_is_zero(limit_measure(limit_empty))
+      AND (FORALL (event_value: limit_event):
+        limit_sigma(event_value) IMPLIES
+          canonical_measure_value(limit_measure(event_value)))
+      AND (FORALL (events: limit_event_sequence):
+        ((FORALL (number: nat):
+            limit_sigma(events(number)))
+          AND limit_pairwise_disjoint(events))
+        IMPLIES
+          extended_nonnegative_sum(
+            LAMBDA (number: nat):
+              limit_measure(events(number)),
+            limit_measure(limit_countable_union(events))))
+
+  limit_probability_measure: bool =
+    limit_measure_laws
+      AND limit_measure(limit_full) = finite_measure_value(1)
+
+  e_empty: e_event =
+    LAMBDA (value: E): FALSE
+
+  e_full: e_event =
+    LAMBDA (value: E): TRUE
+
+  e_complement(event_value: e_event): e_event =
+    LAMBDA (value: E): NOT event_value(value)
+
+  e_countable_union(events: [nat -> e_event]): e_event =
+    LAMBDA (value: E):
+      EXISTS (number: nat): events(number)(value)
+
+  e_sigma_algebra: bool =
+    e_sigma(e_full)
+      AND (FORALL (event_value: e_event):
+        e_sigma(event_value) IMPLIES
+          e_sigma(e_complement(event_value)))
+      AND (FORALL (events: [nat -> e_event]):
+        (FORALL (number: nat):
+          e_sigma(events(number)))
+        IMPLIES e_sigma(e_countable_union(events)))
+
+  f_empty: f_event =
+    LAMBDA (value: F): FALSE
+
+  f_full: f_event =
+    LAMBDA (value: F): TRUE
+
+  f_complement(event_value: f_event): f_event =
+    LAMBDA (value: F): NOT event_value(value)
+
+  f_countable_union(events: [nat -> f_event]): f_event =
+    LAMBDA (value: F):
+      EXISTS (number: nat): events(number)(value)
+
+  is_f_sigma_algebra(candidate: [f_event -> bool]): bool =
+    candidate(f_full)
+      AND (FORALL (event_value: f_event):
+        candidate(event_value) IMPLIES
+          candidate(f_complement(event_value)))
+      AND (FORALL (events: [nat -> f_event]):
+        (FORALL (number: nat):
+          candidate(events(number)))
+        IMPLIES candidate(f_countable_union(events)))
+
+  f_sigma_algebra: bool =
+    is_f_sigma_algebra(f_sigma)
+
+  e_union(family: [e_event -> bool]): e_event =
+    LAMBDA (value: E):
+      EXISTS (event_value: e_event):
+        family(event_value) AND event_value(value)
+
+  f_union(family: [f_event -> bool]): f_event =
+    LAMBDA (value: F):
+      EXISTS (event_value: f_event):
+        family(event_value) AND event_value(value)
+
+  e_intersection(left, right: e_event): e_event =
+    LAMBDA (value: E):
+      left(value) AND right(value)
+
+  f_intersection(left, right: f_event): f_event =
+    LAMBDA (value: F):
+      left(value) AND right(value)
+
+  e_topology_laws: bool =
+    e_open(e_empty)
+      AND e_open(e_full)
+      AND (FORALL (left, right: e_event):
+        e_open(left) AND e_open(right) IMPLIES
+          e_open(e_intersection(left, right)))
+      AND (FORALL (family: [e_event -> bool]):
+        (FORALL (event_value: e_event):
+          family(event_value) IMPLIES e_open(event_value))
+        IMPLIES e_open(e_union(family)))
+
+  f_topology_laws: bool =
+    f_open(f_empty)
+      AND f_open(f_full)
+      AND (FORALL (left, right: f_event):
+        f_open(left) AND f_open(right) IMPLIES
+          f_open(f_intersection(left, right)))
+      AND (FORALL (family: [f_event -> bool]):
+        (FORALL (event_value: f_event):
+          family(event_value) IMPLIES f_open(event_value))
+        IMPLIES f_open(f_union(family)))
+
+  opens_measurable_e: bool =
+    e_sigma_algebra
+      AND (FORALL (event_value: e_event):
+        e_open(event_value) IMPLIES e_sigma(event_value))
+
+  borel_space_f: bool =
+    f_sigma_algebra
+      AND (FORALL (event_value: f_event):
+        f_open(event_value) IMPLIES f_sigma(event_value))
+      AND (FORALL (candidate: [f_event -> bool]):
+        (is_f_sigma_algebra(candidate)
+          AND (FORALL (event_value: f_event):
+            f_open(event_value) IMPLIES candidate(event_value)))
+        IMPLIES
+          (FORALL (event_value: f_event):
+            f_sigma(event_value) IMPLIES
+              candidate(event_value)))
+
+  real_open(event_value: real_event): bool =
+    FORALL (value: real):
+      event_value(value) IMPLIES
+        EXISTS (radius: posreal):
+          FORALL (other: real):
+            abs(other - value) < radius IMPLIES
+              event_value(other)
+
+  continuous_e_to_real(function_value: [E -> real]): bool =
+    FORALL (event_value: real_event):
+      real_open(event_value) IMPLIES
+        e_open(
+          LAMBDA (value: E):
+            event_value(function_value(value)))
+
+  continuous_f_to_real(function_value: [F -> real]): bool =
+    FORALL (event_value: real_event):
+      real_open(event_value) IMPLIES
+        f_open(
+          LAMBDA (value: F):
+            event_value(function_value(value)))
+
+  bounded_e(function_value: [E -> real]): bool =
+    EXISTS (bound: real):
+      0 <= bound
+        AND FORALL (value: E):
+          abs(function_value(value)) <= bound
+
+  bounded_f(function_value: [F -> real]): bool =
+    EXISTS (bound: real):
+      0 <= bound
+        AND FORALL (value: F):
+          abs(function_value(value)) <= bound
+
+  continuous_map_g: bool =
+    FORALL (event_value: f_event):
+      f_open(event_value) IMPLIES
+        e_open(
+          LAMBDA (value: E):
+            event_value(g(value)))
+
+  source_preimage_e(
+      index: Index,
+      function_value: [Source -> E],
+      event_value: e_event): source_event =
+    LAMBDA (source_point: Source):
+      fiber(index)(source_point)
+        AND event_value(function_value(source_point))
+
+  source_preimage_f(
+      index: Index,
+      function_value: [Source -> F],
+      event_value: f_event): source_event =
+    LAMBDA (source_point: Source):
+      fiber(index)(source_point)
+        AND event_value(function_value(source_point))
+
+  limit_preimage_e(
+      function_value: [LimitSource -> E],
+      event_value: e_event): limit_event =
+    LAMBDA (source_point: LimitSource):
+      event_value(function_value(source_point))
+
+  limit_preimage_f(
+      function_value: [LimitSource -> F],
+      event_value: f_event): limit_event =
+    LAMBDA (source_point: LimitSource):
+      event_value(function_value(source_point))
+
+  source_preimage_real(
+      index: Index,
+      function_value: [Source -> real],
+      event_value: real_event): source_event =
+    LAMBDA (source_point: Source):
+      fiber(index)(source_point)
+        AND event_value(function_value(source_point))
+
+  limit_preimage_real(
+      function_value: [LimitSource -> real],
+      event_value: real_event): limit_event =
+    LAMBDA (source_point: LimitSource):
+      event_value(function_value(source_point))
+
+  source_measurable_e(
+      index: Index,
+      function_value: [Source -> E]): bool =
+    FORALL (event_value: e_event):
+      e_sigma(event_value) IMPLIES
+        source_sigma(index)(
+          source_preimage_e(index, function_value, event_value))
+
+  source_measurable_f(
+      index: Index,
+      function_value: [Source -> F]): bool =
+    FORALL (event_value: f_event):
+      f_sigma(event_value) IMPLIES
+        source_sigma(index)(
+          source_preimage_f(index, function_value, event_value))
+
+  limit_measurable_e(
+      function_value: [LimitSource -> E]): bool =
+    FORALL (event_value: e_event):
+      e_sigma(event_value) IMPLIES
+        limit_sigma(limit_preimage_e(function_value, event_value))
+
+  limit_measurable_f(
+      function_value: [LimitSource -> F]): bool =
+    FORALL (event_value: f_event):
+      f_sigma(event_value) IMPLIES
+        limit_sigma(limit_preimage_f(function_value, event_value))
+
+  source_measurable_real(
+      index: Index,
+      function_value: [Source -> real]): bool =
+    FORALL (event_value: real_event):
+      real_open(event_value) IMPLIES
+        source_sigma(index)(
+          source_preimage_real(
+            index, function_value, event_value))
+
+  limit_measurable_real(
+      function_value: [LimitSource -> real]): bool =
+    FORALL (event_value: real_event):
+      real_open(event_value) IMPLIES
+        limit_sigma(
+          limit_preimage_real(function_value, event_value))
+
+  source_null_event(
+      index: Index,
+      event_value: source_event): bool =
+    EXISTS (cover: source_event):
+      source_sigma(index)(cover)
+        AND (FORALL (source_point: Source):
+          fiber(index)(source_point)
+            AND event_value(source_point)
+            IMPLIES cover(source_point))
+        AND measure_value_is_zero(
+          source_measure(index)(cover))
+
+  limit_null_event(event_value: limit_event): bool =
+    EXISTS (cover: limit_event):
+      limit_sigma(cover)
+        AND (FORALL (source_point: LimitSource):
+          event_value(source_point) IMPLIES
+            cover(source_point))
+        AND measure_value_is_zero(limit_measure(cover))
+
+  source_almost_everywhere(
+      index: Index,
+      property: [Source -> bool]): bool =
+    source_null_event(
+      index,
+      LAMBDA (source_point: Source):
+        fiber(index)(source_point)
+          AND NOT property(source_point))
+
+  limit_almost_everywhere(
+      property: [LimitSource -> bool]): bool =
+    limit_null_event(
+      LAMBDA (source_point: LimitSource):
+        NOT property(source_point))
+
+  source_ae_measurable_e(
+      index: Index,
+      function_value: [Source -> E]): bool =
+    EXISTS (version: [Source -> E]):
+      source_measurable_e(index, version)
+        AND source_almost_everywhere(
+          index,
+          LAMBDA (source_point: Source):
+            function_value(source_point)
+              = version(source_point))
+
+  source_ae_measurable_f(
+      index: Index,
+      function_value: [Source -> F]): bool =
+    EXISTS (version: [Source -> F]):
+      source_measurable_f(index, version)
+        AND source_almost_everywhere(
+          index,
+          LAMBDA (source_point: Source):
+            function_value(source_point)
+              = version(source_point))
+
+  limit_ae_measurable_e(
+      function_value: [LimitSource -> E]): bool =
+    EXISTS (version: [LimitSource -> E]):
+      limit_measurable_e(version)
+        AND limit_almost_everywhere(
+          LAMBDA (source_point: LimitSource):
+            function_value(source_point)
+              = version(source_point))
+
+  limit_ae_measurable_f(
+      function_value: [LimitSource -> F]): bool =
+    EXISTS (version: [LimitSource -> F]):
+      limit_measurable_f(version)
+        AND limit_almost_everywhere(
+          LAMBDA (source_point: LimitSource):
+            function_value(source_point)
+              = version(source_point))
+
+  source_ae_measurable_real(
+      index: Index,
+      function_value: [Source -> real]): bool =
+    EXISTS (version: [Source -> real]):
+      source_measurable_real(index, version)
+        AND source_almost_everywhere(
+          index,
+          LAMBDA (source_point: Source):
+            function_value(source_point)
+              = version(source_point))
+
+  limit_ae_measurable_real(
+      function_value: [LimitSource -> real]): bool =
+    EXISTS (version: [LimitSource -> real]):
+      limit_measurable_real(version)
+        AND limit_almost_everywhere(
+          LAMBDA (source_point: LimitSource):
+            function_value(source_point)
+              = version(source_point))
+
+  source_bounded_real(
+      index: Index,
+      function_value: [Source -> real]): bool =
+    EXISTS (bound: nonneg_real):
+      FORALL (source_point: Source):
+        fiber(index)(source_point) IMPLIES
+          abs(function_value(source_point)) <= bound
+
+  limit_bounded_real(
+      function_value: [LimitSource -> real]): bool =
+    EXISTS (bound: nonneg_real):
+      FORALL (source_point: LimitSource):
+        abs(function_value(source_point)) <= bound
+
+  filter_laws: bool =
+    index_filter(LAMBDA (index: Index): TRUE)
+      AND (FORALL (left, right: [Index -> bool]):
+        index_filter(left) AND index_filter(right) IMPLIES
+          index_filter(
+            LAMBDA (index: Index):
+              left(index) AND right(index)))
+      AND (FORALL (left, right: [Index -> bool]):
+        index_filter(left)
+          AND (FORALL (index: Index):
+            left(index) IMPLIES right(index))
+          IMPLIES index_filter(right))
+
+  tendsto_real_along_filter(
+      values: [Index -> real],
+      limit: real): bool =
+    FORALL (epsilon_value: posreal):
+      index_filter(
+        LAMBDA (index: Index):
+          abs(values(index) - limit) < epsilon_value)
+
+  source_integral_standard: bool =
+    FORALL (index: Index):
+      (FORALL (left, right: [Source -> real]):
+        source_almost_everywhere(
+          index,
+          LAMBDA (source_point: Source):
+            left(source_point) = right(source_point))
+        IMPLIES
+          source_integral(index, left)
+            = source_integral(index, right))
+      AND (FORALL (event_value: source_event):
+        source_sigma(index)(event_value) IMPLIES
+          source_integral(
+            index,
+            LAMBDA (source_point: Source):
+              IF event_value(source_point) THEN 1 ELSE 0 ENDIF)
+            = finite_part(
+              source_measure(index)(event_value)))
+      AND (FORALL
+          (left, right: [Source -> real]),
+          (a, b: real):
+        (source_ae_measurable_real(index, left)
+          AND source_ae_measurable_real(index, right)
+          AND source_bounded_real(index, left)
+          AND source_bounded_real(index, right))
+        IMPLIES
+          source_integral(
+            index,
+            LAMBDA (source_point: Source):
+              a * left(source_point)
+                + b * right(source_point))
+            =
+              a * source_integral(index, left)
+                + b * source_integral(index, right))
+      AND (FORALL
+          (function_value: [Source -> real]),
+          (bound: nonneg_real):
+        (source_ae_measurable_real(index, function_value)
+          AND (FORALL (source_point: Source):
+            fiber(index)(source_point) IMPLIES
+              abs(function_value(source_point)) <= bound))
+        IMPLIES
+          abs(source_integral(index, function_value)) <= bound)
+
+  limit_integral_standard: bool =
+    (FORALL (left, right: [LimitSource -> real]):
+      limit_almost_everywhere(
+        LAMBDA (source_point: LimitSource):
+          left(source_point) = right(source_point))
+      IMPLIES limit_integral(left) = limit_integral(right))
+      AND (FORALL (event_value: limit_event):
+        limit_sigma(event_value) IMPLIES
+          limit_integral(
+            LAMBDA (source_point: LimitSource):
+              IF event_value(source_point) THEN 1 ELSE 0 ENDIF)
+            = finite_part(limit_measure(event_value)))
+      AND (FORALL
+          (left, right: [LimitSource -> real]),
+          (a, b: real):
+        (limit_ae_measurable_real(left)
+          AND limit_ae_measurable_real(right)
+          AND limit_bounded_real(left)
+          AND limit_bounded_real(right))
+        IMPLIES
+          limit_integral(
+            LAMBDA (source_point: LimitSource):
+              a * left(source_point)
+                + b * right(source_point))
+            =
+              a * limit_integral(left)
+                + b * limit_integral(right))
+      AND (FORALL
+          (function_value: [LimitSource -> real]),
+          (bound: nonneg_real):
+        (limit_ae_measurable_real(function_value)
+          AND (FORALL (source_point: LimitSource):
+            abs(function_value(source_point)) <= bound))
+        IMPLIES abs(limit_integral(function_value)) <= bound)
+
+  tendsto_in_distribution_e: bool =
+    (FORALL (index: Index):
+      source_ae_measurable_e(index, X(index)))
+      AND limit_ae_measurable_e(Z)
+      AND (FORALL (test: [E -> real]):
+        bounded_e(test)
+          AND continuous_e_to_real(test)
+          IMPLIES
+            tendsto_real_along_filter(
+              LAMBDA (index: Index):
+                source_integral(
+                  index,
+                  LAMBDA (source_point: Source):
+                    test(X(index)(source_point))),
+              limit_integral(
+                LAMBDA (source_point: LimitSource):
+                  test(Z(source_point)))))
+
+  composed_source(index: Index): [Source -> F] =
+    LAMBDA (source_point: Source):
+      g(X(index)(source_point))
+
+  composed_limit: [LimitSource -> F] =
+    LAMBDA (source_point: LimitSource):
+      g(Z(source_point))
+
+  tendsto_in_distribution_f_after_composition: bool =
+    (FORALL (index: Index):
+      source_ae_measurable_f(
+        index, composed_source(index)))
+      AND limit_ae_measurable_f(composed_limit)
+      AND (FORALL (test: [F -> real]):
+        bounded_f(test)
+          AND continuous_f_to_real(test)
+          IMPLIES
+            tendsto_real_along_filter(
+              LAMBDA (index: Index):
+                source_integral(
+                  index,
+                  LAMBDA (source_point: Source):
+                    test(composed_source(index)(source_point))),
+              limit_integral(
+                LAMBDA (source_point: LimitSource):
+                  test(composed_limit(source_point)))))
+
+  probability_context: bool =
+    fibers_form_disjoint_sum
+      AND filter_laws
+      AND e_topology_laws
+      AND f_topology_laws
+      AND opens_measurable_e
+      AND borel_space_f
+      AND (FORALL (index: Index):
+        source_probability_measure(index))
+      AND limit_probability_measure
+      AND source_integral_standard
+      AND limit_integral_standard
+
+  continuous_mapping_theorem: bool =
+    probability_context
+      IMPLIES
+        ((continuous_map_g
+          AND tendsto_in_distribution_e)
+        IMPLIES
+          tendsto_in_distribution_f_after_composition)
+END continuous_mapping_theorem_Q5165492

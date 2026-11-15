@@ -1,0 +1,444 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/skew_heaps_HeapSort_heapsortqtvc: the skew-heap heapsort verification
+% condition for heap construction, extraction-loop invariants, sortedness,
+% and preservation of element occurrences. This file contains no proof.
+
+skew_heaps_HeapSort_heapsortqtvc[
+  elt: TYPE+,
+  elt_default: elt
+]: THEORY
+BEGIN
+
+  elt_array: TYPE =
+    [# array_length: nat,
+       array_values: [int -> elt] #]
+
+  array_update(
+      values: elt_array,
+      index: int,
+      value: elt): elt_array =
+    (# array_length := array_length(values),
+       array_values :=
+         array_values(values) WITH [(index) := value] #)
+
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  count_equal_span(
+      values: [int -> elt],
+      element: elt,
+      lower: int,
+      span: nat): RECURSIVE int =
+    IF span = 0 THEN
+      0
+    ELSE
+      (IF values(lower) = element THEN 1 ELSE 0 ENDIF)
+        + count_equal_span(values, element, lower + 1, span - 1)
+    ENDIF
+  MEASURE span
+
+  map_occ(
+      element: elt,
+      values: [int -> elt],
+      lower, upper: int): int =
+    count_equal_span(
+      values,
+      element,
+      lower,
+      int_to_nat(upper - lower))
+
+  array_permutation(left, right: elt_array): bool =
+    array_length(left) = array_length(right)
+      AND
+    (FORALL (element: elt):
+      map_occ(
+        element,
+        array_values(left),
+        0,
+        array_length(left))
+      =
+      map_occ(
+        element,
+        array_values(right),
+        0,
+        array_length(right)))
+
+  tree: DATATYPE
+  BEGIN
+    Empty: Empty?
+    Node(
+      left_subtree: tree,
+      root_element: elt,
+      right_subtree: tree): Node?
+  END tree
+
+  tree_size(values: tree): RECURSIVE int =
+    CASES values OF
+      Empty:
+        0,
+      Node(left, root, right):
+        1 + tree_size(left) + tree_size(right)
+    ENDCASES
+  MEASURE values BY <<
+
+  tree_occ(element: elt, values: tree): RECURSIVE int =
+    CASES values OF
+      Empty:
+        0,
+      Node(left, root, right):
+        (IF root = element THEN 1 ELSE 0 ENDIF)
+          + tree_occ(element, left)
+          + tree_occ(element, right)
+    ENDCASES
+  MEASURE values BY <<
+
+  tree_mem(element: elt, values: tree): bool =
+    0 < tree_occ(element, values)
+
+  preorder_laws(leq: [elt, elt -> bool]): bool =
+    (FORALL (x: elt): leq(x, x))
+      AND
+    (FORALL (x, y, z: elt):
+      (leq(x, y) AND leq(y, z)) IMPLIES leq(x, z))
+      AND
+    (FORALL (x, y: elt): leq(x, y) OR leq(y, x))
+
+  le_root(
+      leq: [elt, elt -> bool],
+      element: elt,
+      values: tree): bool =
+    CASES values OF
+      Empty:
+        TRUE,
+      Node(left, root, right):
+        leq(element, root)
+    ENDCASES
+
+  heap(
+      leq: [elt, elt -> bool],
+      values: tree): RECURSIVE bool =
+    CASES values OF
+      Empty:
+        TRUE,
+      Node(left, root, right):
+        le_root(leq, root, left)
+          AND heap(leq, left)
+          AND le_root(leq, root, right)
+          AND heap(leq, right)
+    ENDCASES
+  MEASURE values BY <<
+
+  minimum(values: tree): elt =
+    CASES values OF
+      Empty:
+        elt_default,
+      Node(left, root, right):
+        root
+    ENDCASES
+
+  sorted_sub(
+      leq: [elt, elt -> bool],
+      values: elt_array,
+      lower, upper: int): bool =
+    FORALL (i1, i2: int):
+      (lower <= i1 AND i1 < i2 AND i2 < upper)
+        IMPLIES
+          leq(array_values(values)(i1), array_values(values)(i2))
+
+  sorted(
+      leq: [elt, elt -> bool],
+      values: elt_array): bool =
+    sorted_sub(leq, values, 0, array_length(values))
+
+  occurrence_balance(
+      original, current: elt_array,
+      values: tree,
+      prefix, total: int): bool =
+    FORALL (element: elt):
+      map_occ(
+        element,
+        array_values(current),
+        0,
+        prefix)
+        + tree_occ(element, values)
+      =
+      map_occ(
+        element,
+        array_values(original),
+        0,
+        total)
+
+  built_prefix_balance(
+      original: elt_array,
+      values: tree,
+      lower, total: int): bool =
+    FORALL (element: elt):
+      map_occ(
+        element,
+        array_values(original),
+        lower,
+        total)
+        + tree_occ(element, values)
+      =
+      map_occ(
+        element,
+        array_values(original),
+        0,
+        total)
+
+  prefix_below_heap(
+      leq: [elt, elt -> bool],
+      values: elt_array,
+      prefix: int,
+      h: tree): bool =
+    FORALL (j: int):
+      (0 <= j AND j < prefix)
+        IMPLIES
+          (FORALL (element: elt):
+            tree_mem(element, h)
+              IMPLIES
+                leq(array_values(values)(j), element))
+
+  add_result_condition(
+      leq: [elt, elt -> bool],
+      original: elt_array,
+      before, after: tree,
+      inserted: elt,
+      total: int): bool =
+    (heap(leq, after)
+      AND tree_occ(inserted, after)
+            = tree_occ(inserted, before) + 1
+      AND
+        (FORALL (element: elt):
+          element /= inserted
+            IMPLIES
+              tree_occ(element, after)
+                = tree_occ(element, before))
+      AND tree_size(after) = tree_size(before) + 1)
+      IMPLIES
+        (heap(leq, after)
+          AND tree_size(after) = tree_size(before) + 1)
+          AND
+        built_prefix_balance(
+          original,
+          after,
+          tree_size(before) + 1,
+          total)
+
+  build_iteration(
+      leq: [elt, elt -> bool],
+      original: elt_array,
+      values: tree,
+      total: int): bool =
+    ((0 <= tree_size(values)
+        AND tree_size(values) < array_length(original))
+      AND
+    LET inserted: elt =
+      array_values(original)(tree_size(values))
+    IN
+      heap(leq, values)
+        AND
+      (FORALL (after: tree):
+        add_result_condition(
+          leq,
+          original,
+          values,
+          after,
+          inserted,
+          total)))
+
+  extraction_result(
+      leq: [elt, elt -> bool],
+      original, current, updated: elt_array,
+      before, after: tree,
+      index, total: int): bool =
+    (heap(leq, after)
+      AND tree_occ(minimum(before), after)
+            = tree_occ(minimum(before), before) - 1
+      AND
+        (FORALL (element: elt):
+          element /= minimum(before)
+            IMPLIES
+              tree_occ(element, after)
+                = tree_occ(element, before))
+      AND tree_size(after) = tree_size(before) - 1)
+      IMPLIES
+        sorted_sub(leq, updated, 0, index + 1)
+          AND
+        (heap(leq, after)
+          AND tree_size(after) = total - (index + 1))
+          AND prefix_below_heap(leq, updated, index + 1, after)
+          AND occurrence_balance(
+            original,
+            updated,
+            after,
+            index + 1,
+            total)
+
+  extraction_iteration(
+      leq: [elt, elt -> bool],
+      original, current: elt_array,
+      values: tree,
+      index, total: int): bool =
+    (heap(leq, values) AND 0 < tree_size(values))
+      AND
+    LET selected: elt = minimum(values),
+        updated: elt_array =
+          array_update(current, index, selected)
+    IN
+      (0 <= index AND index < array_length(current))
+        AND
+      (array_length(updated) = array_length(current)
+        IMPLIES
+      array_values(updated)
+        = array_values(current) WITH [(index) := selected]
+        IMPLIES
+          (heap(leq, values) AND 0 < tree_size(values))
+            AND
+          (FORALL (after: tree):
+            extraction_result(
+              leq,
+              original,
+              current,
+              updated,
+              values,
+              after,
+              index,
+              total)))
+
+  extraction_loop_obligations(
+      leq: [elt, elt -> bool],
+      original: elt_array,
+      initial_heap: tree,
+      total, last: int): bool =
+    (sorted_sub(leq, original, 0, 0)
+      AND
+    (heap(leq, initial_heap)
+      AND tree_size(initial_heap) = total - 0)
+      AND prefix_below_heap(leq, original, 0, initial_heap)
+      AND occurrence_balance(
+        original,
+        original,
+        initial_heap,
+        0,
+        total))
+      AND
+    (FORALL (values: tree), (current: elt_array):
+      array_length(current) = array_length(original)
+        IMPLIES
+          ((FORALL (index: int):
+            ((0 <= index AND index <= last)
+              AND sorted_sub(leq, current, 0, index)
+              AND
+                (heap(leq, values)
+                  AND tree_size(values) = total - index)
+              AND prefix_below_heap(leq, current, index, values)
+              AND occurrence_balance(
+                original,
+                current,
+                values,
+                index,
+                total))
+              IMPLIES
+                extraction_iteration(
+                  leq,
+                  original,
+                  current,
+                  values,
+                  index,
+                  total))
+            AND
+          ((sorted_sub(leq, current, 0, last + 1)
+            AND
+              (heap(leq, values)
+                AND tree_size(values) = total - (last + 1))
+            AND prefix_below_heap(leq, current, last + 1, values)
+            AND occurrence_balance(
+              original,
+              current,
+              values,
+              last + 1,
+              total))
+            IMPLIES
+              (sorted(leq, current)
+                AND array_permutation(original, current)))))
+
+  extraction_phase(
+      leq: [elt, elt -> bool],
+      original: elt_array,
+      initial_heap: tree,
+      total: int): bool =
+    LET last: int = total - 1
+    IN
+      (0 <= last + 1
+        IMPLIES
+          extraction_loop_obligations(
+            leq,
+            original,
+            initial_heap,
+            total,
+            last))
+        AND
+      (last + 1 < 0
+        IMPLIES
+          sorted(leq, original)
+            AND array_permutation(original, original))
+
+  build_loop_obligations(
+      leq: [elt, elt -> bool],
+      original: elt_array,
+      total, last: int): bool =
+    ((heap(leq, Empty) AND tree_size(Empty) = 0)
+      AND built_prefix_balance(original, Empty, 0, total))
+      AND
+    (FORALL (values: tree):
+      (((0 <= tree_size(values) AND tree_size(values) <= last)
+        AND heap(leq, values)
+        AND built_prefix_balance(
+          original,
+          values,
+          tree_size(values),
+          total))
+        IMPLIES
+          build_iteration(leq, original, values, total))
+        AND
+      (((heap(leq, values)
+          AND tree_size(values) = last + 1)
+        AND built_prefix_balance(
+          original,
+          values,
+          last + 1,
+          total))
+        IMPLIES
+          extraction_phase(
+            leq,
+            original,
+            values,
+            total)))
+
+  heapsort_vc: bool =
+    FORALL
+        (leq: [elt, elt -> bool]),
+        (original: elt_array):
+      preorder_laws(leq)
+        IMPLIES
+          LET total: int = array_length(original),
+              last: int = total - 1
+          IN
+            (0 <= last + 1
+              IMPLIES
+                build_loop_obligations(
+                  leq,
+                  original,
+                  total,
+                  last))
+              AND
+            (last + 1 < 0
+              IMPLIES
+                extraction_phase(
+                  leq,
+                  original,
+                  Empty,
+                  total))
+
+END skew_heaps_HeapSort_heapsortqtvc

@@ -1,0 +1,266 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/braun_trees_BraunHeaps_replace_minqtvc: the Braun-heap minimum
+% replacement verification condition for recursive applicability, heap order,
+% Braun balance, element occurrences, and tree size. This file contains no proof.
+
+braun_trees_BraunHeaps_replace_minqtvc[
+  elt: TYPE+
+]: THEORY
+BEGIN
+
+  tree: DATATYPE
+  BEGIN
+    Empty: Empty?
+    Node(
+      left_subtree: tree,
+      root_element: elt,
+      right_subtree: tree): Node?
+  END tree
+
+  preorder_laws(leq: [elt, elt -> bool]): bool =
+    (FORALL (x: elt): leq(x, x))
+      AND
+    (FORALL (x, y, z: elt):
+      (leq(x, y) AND leq(y, z)) IMPLIES leq(x, z))
+      AND
+    (FORALL (x, y: elt): leq(x, y) OR leq(y, x))
+
+  tree_size(values: tree): RECURSIVE int =
+    CASES values OF
+      Empty:
+        0,
+      Node(left, root, right):
+        1 + tree_size(left) + tree_size(right)
+    ENDCASES
+  MEASURE values BY <<
+
+  occ(element: elt, values: tree): RECURSIVE int =
+    CASES values OF
+      Empty:
+        0,
+      Node(left, root, right):
+        (IF root = element THEN 1 ELSE 0 ENDIF)
+          + occ(element, left)
+          + occ(element, right)
+    ENDCASES
+  MEASURE values BY <<
+
+  le_root(
+      leq: [elt, elt -> bool],
+      element: elt,
+      values: tree): bool =
+    CASES values OF
+      Empty:
+        TRUE,
+      Node(left, root, right):
+        leq(element, root)
+    ENDCASES
+
+  heap(
+      leq: [elt, elt -> bool],
+      values: tree): RECURSIVE bool =
+    CASES values OF
+      Empty:
+        TRUE,
+      Node(left, root, right):
+        le_root(leq, root, left)
+          AND heap(leq, left)
+          AND le_root(leq, root, right)
+          AND heap(leq, right)
+    ENDCASES
+  MEASURE values BY <<
+
+  inv(values: tree): RECURSIVE bool =
+    CASES values OF
+      Empty:
+        TRUE,
+      Node(left, root, right):
+        (tree_size(left) = tree_size(right)
+          OR tree_size(left) = tree_size(right) + 1)
+          AND inv(left)
+          AND inv(right)
+    ENDCASES
+  MEASURE values BY <<
+
+  minimum_value(
+      empty_minimum: elt,
+      values: tree): elt =
+    CASES values OF
+      Empty:
+        empty_minimum,
+      Node(left, root, right):
+        root
+    ENDCASES
+
+  is_child(values, expected_child: tree): bool =
+    CASES values OF
+      Empty:
+        FALSE,
+      Node(left, root, right):
+        left = expected_child OR right = expected_child
+    ENDCASES
+
+  replacement_summary(
+      leq: [elt, elt -> bool],
+      empty_minimum: elt,
+      inserted: elt,
+      original, replacement: tree): bool =
+    heap(leq, replacement)
+      AND inv(replacement)
+      AND
+        (IF inserted = minimum_value(empty_minimum, original) THEN
+           occ(inserted, replacement) = occ(inserted, original)
+         ELSE
+           occ(inserted, replacement) = occ(inserted, original) + 1
+             AND
+           occ(minimum_value(empty_minimum, original), replacement)
+             = occ(minimum_value(empty_minimum, original), original) - 1
+         ENDIF)
+      AND
+        (FORALL (element: elt):
+          element /= inserted
+            IMPLIES
+              (element /= minimum_value(empty_minimum, original)
+                IMPLIES
+                  occ(element, replacement) = occ(element, original)))
+      AND tree_size(replacement) = tree_size(original)
+
+  recursive_call_obligation(
+      leq: [elt, elt -> bool],
+      empty_minimum: elt,
+      values: tree,
+      inserted: elt): bool =
+    CASES values OF
+      Empty:
+        FALSE,
+      Node(left, root, right):
+        FORALL (both_roots_ordered: bool):
+          (IF le_root(leq, inserted, left) THEN
+             both_roots_ordered = le_root(leq, inserted, right)
+           ELSE
+             both_roots_ordered = FALSE
+           ENDIF)
+          IMPLIES
+          both_roots_ordered /= TRUE
+          IMPLIES
+            (heap(leq, left) AND 0 < tree_size(left))
+              AND
+            (IF le_root(
+                  leq,
+                  minimum_value(empty_minimum, left),
+                  right)
+             THEN
+               is_child(values, left)
+                 AND heap(leq, left)
+                 AND inv(left)
+                 AND 0 < tree_size(left)
+             ELSE
+               (is_child(values, right)
+                 AND heap(leq, right)
+                 AND inv(right)
+                 AND 0 < tree_size(right))
+               AND
+               (FORALL (recursive_result: tree):
+                 replacement_summary(
+                   leq,
+                   empty_minimum,
+                   inserted,
+                   right,
+                   recursive_result)
+                 IMPLIES
+                   heap(leq, right)
+                     AND 0 < tree_size(right))
+             ENDIF)
+    ENDCASES
+
+  result_antecedent(
+      leq: [elt, elt -> bool],
+      empty_minimum: elt,
+      values: tree,
+      inserted: elt,
+      result: tree): bool =
+    CASES values OF
+      Empty:
+        FALSE,
+      Node(left, root, right):
+        EXISTS (both_roots_ordered: bool):
+          (IF le_root(leq, inserted, left) THEN
+             both_roots_ordered = le_root(leq, inserted, right)
+           ELSE
+             both_roots_ordered = FALSE
+           ENDIF)
+          AND
+          (IF both_roots_ordered = TRUE THEN
+             result = Node(left, inserted, right)
+           ELSE
+             LET left_minimum: elt =
+                   minimum_value(empty_minimum, left)
+             IN
+               IF le_root(leq, left_minimum, right) THEN
+                 EXISTS (recursive_result: tree):
+                   replacement_summary(
+                     leq,
+                     empty_minimum,
+                     inserted,
+                     left,
+                     recursive_result)
+                     AND
+                   result =
+                     Node(recursive_result, left_minimum, right)
+               ELSE
+                 EXISTS (recursive_result: tree):
+                   replacement_summary(
+                     leq,
+                     empty_minimum,
+                     inserted,
+                     right,
+                     recursive_result)
+                     AND
+                   result =
+                     Node(
+                       left,
+                       minimum_value(empty_minimum, right),
+                       recursive_result)
+               ENDIF
+           ENDIF)
+    ENDCASES
+
+  result_postcondition(
+      leq: [elt, elt -> bool],
+      empty_minimum: elt,
+      original: tree,
+      inserted: elt,
+      result: tree): bool =
+    replacement_summary(
+      leq, empty_minimum, inserted, original, result)
+
+  replace_min_vc: bool =
+    FORALL
+        (leq: [elt, elt -> bool]),
+        (empty_minimum: elt),
+        (values: tree),
+        (inserted: elt):
+      (preorder_laws(leq)
+        AND heap(leq, values)
+        AND inv(values)
+        AND 0 < tree_size(values))
+      IMPLIES
+        (recursive_call_obligation(
+           leq, empty_minimum, values, inserted)
+          AND
+            (FORALL (result: tree):
+              result_antecedent(
+                leq,
+                empty_minimum,
+                values,
+                inserted,
+                result)
+              IMPLIES
+                result_postcondition(
+                  leq,
+                  empty_minimum,
+                  values,
+                  inserted,
+                  result)))
+
+END braun_trees_BraunHeaps_replace_minqtvc

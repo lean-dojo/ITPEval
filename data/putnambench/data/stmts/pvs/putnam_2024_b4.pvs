@@ -1,0 +1,286 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2024_b4
+% (putnambench__pvs__putnam_2024_b4): the normalized expected position of the
+% independent uniform integer-driven walk converges to (1 - exp(-2))/2.
+% This file contains no proof.
+
+putnam_2024_b4: THEORY
+BEGIN
+  sample_space: TYPE+
+
+  event: TYPE = [sample_space -> bool]
+  event_sequence: TYPE = [nat -> event]
+  sigma_algebra: TYPE = [event -> bool]
+  probability_measure: TYPE = [event -> real]
+  real_sequence: TYPE = [nat -> real]
+  integer_set: TYPE = [int -> bool]
+  integer_set_sequence: TYPE = [nat -> integer_set]
+  integer_random_variable: TYPE = [sample_space -> int]
+  random_array: TYPE = [nat, nat -> integer_random_variable]
+  natural_sequence: TYPE = [nat -> nat]
+
+  full_event: event =
+    LAMBDA (omega: sample_space): TRUE
+
+  empty_event: event =
+    LAMBDA (omega: sample_space): FALSE
+
+  event_complement(A: event): event =
+    LAMBDA (omega: sample_space):
+      NOT A(omega)
+
+  event_intersection(A, B: event): event =
+    LAMBDA (omega: sample_space):
+      A(omega) AND B(omega)
+
+  countable_union(events: event_sequence): event =
+    LAMBDA (omega: sample_space):
+      EXISTS (index: nat): events(index)(omega)
+
+  pairwise_disjoint(events: event_sequence): bool =
+    FORALL (left_index, right_index: nat):
+      left_index /= right_index IMPLIES
+        FORALL (omega: sample_space):
+          NOT (events(left_index)(omega)
+            AND events(right_index)(omega))
+
+  finite_sum(values: real_sequence, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      finite_sum(values, count - 1) + values(count - 1)
+    ENDIF
+  MEASURE count
+
+  converges_to(values: real_sequence, limit_value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(values(index) - limit_value) < epsilon_value
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  is_sigma_algebra(Sigma: sigma_algebra): bool =
+    Sigma(full_event)
+      AND (FORALL (A: event):
+        Sigma(A) IMPLIES Sigma(event_complement(A)))
+      AND (FORALL (events: event_sequence):
+        (FORALL (index: nat): Sigma(events(index)))
+          IMPLIES Sigma(countable_union(events)))
+
+  is_probability_measure(
+      M: probability_measure,
+      Sigma: sigma_algebra): bool =
+    is_sigma_algebra(Sigma)
+      AND M(empty_event) = 0
+      AND M(full_event) = 1
+      AND (FORALL (A: event):
+        Sigma(A) IMPLIES 0 <= M(A))
+      AND (FORALL (events: event_sequence):
+        ((FORALL (index: nat): Sigma(events(index)))
+          AND pairwise_disjoint(events))
+        IMPLIES
+          converges_to(
+            LAMBDA (count: nat):
+              finite_sum(
+                LAMBDA (index: nat): M(events(index)),
+                count),
+            M(countable_union(events))))
+
+  preimage_event(
+      X: integer_random_variable,
+      values: integer_set): event =
+    LAMBDA (omega: sample_space):
+      values(X(omega))
+
+  value_event(
+      X: integer_random_variable,
+      value: int): event =
+    LAMBDA (omega: sample_space):
+      X(omega) = value
+
+  measurable_integer_variable(
+      Sigma: sigma_algebra,
+      X: integer_random_variable): bool =
+    FORALL (values: integer_set):
+      Sigma(preimage_event(X, values))
+
+  integer_interval_contains(n: nat, value: int): bool =
+    1 <= value AND value <= (n :: int)
+
+  uniform_integer_choice(
+      M: probability_measure,
+      Sigma: sigma_algebra,
+      n: nat,
+      X: integer_random_variable): bool =
+    measurable_integer_variable(Sigma, X)
+      AND M(
+        LAMBDA (omega: sample_space):
+          integer_interval_contains(n, X(omega))) = 1
+      AND (FORALL (value: int):
+        M(value_event(X, value))
+          = IF integer_interval_contains(n, value) THEN
+              safe_div(1, n :: real)
+            ELSE
+              0
+            ENDIF)
+
+  distinct_index_pairs(
+      rows, steps: natural_sequence,
+      count: nat): bool =
+    FORALL (left_position, right_position: nat):
+      (left_position < count
+        AND right_position < count
+        AND rows(left_position) = rows(right_position)
+        AND steps(left_position) = steps(right_position))
+      IMPLIES left_position = right_position
+
+  finite_preimage_intersection(
+      X: random_array,
+      rows, steps: natural_sequence,
+      values: integer_set_sequence,
+      count: nat): RECURSIVE event =
+    IF count = 0 THEN
+      full_event
+    ELSE
+      event_intersection(
+        finite_preimage_intersection(
+          X, rows, steps, values, count - 1),
+        preimage_event(
+          X(rows(count - 1), steps(count - 1)),
+          values(count - 1)))
+    ENDIF
+  MEASURE count
+
+  finite_probability_product(
+      M: probability_measure,
+      X: random_array,
+      rows, steps: natural_sequence,
+      values: integer_set_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      1
+    ELSE
+      finite_probability_product(
+        M, X, rows, steps, values, count - 1)
+        * M(preimage_event(
+            X(rows(count - 1), steps(count - 1)),
+            values(count - 1)))
+    ENDIF
+  MEASURE count
+
+  mutually_independent(
+      M: probability_measure,
+      Sigma: sigma_algebra,
+      X: random_array): bool =
+    (FORALL (row, step: nat):
+      measurable_integer_variable(Sigma, X(row, step)))
+      AND
+    (FORALL
+        (rows, steps: natural_sequence),
+        (values: integer_set_sequence),
+        (count: nat):
+      distinct_index_pairs(rows, steps, count)
+        IMPLIES
+          M(finite_preimage_intersection(
+            X, rows, steps, values, count))
+            = finite_probability_product(
+                M, X, rows, steps, values, count))
+
+  integer_expectation_sum(
+      M: probability_measure,
+      X: integer_random_variable,
+      bound, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1,
+          value: int = (index :: int) - (bound :: int)
+      IN
+        integer_expectation_sum(M, X, bound, count - 1)
+          + (value :: real) * M(value_event(X, value))
+    ENDIF
+  MEASURE count
+
+  bounded_integer_expectation(
+      M: probability_measure,
+      X: integer_random_variable,
+      bound: nat): real =
+    integer_expectation_sum(M, X, bound, 2 * bound + 1)
+
+  nat_factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * nat_factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  exponential_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        exponential_partial(x, count - 1)
+          + safe_div(
+              x ^ index,
+              nat_factorial(index) :: real)
+    ENDIF
+  MEASURE count
+
+  real_exponential(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat):
+            exponential_partial(x, count),
+          value))
+
+  putnam_2024_b4_solution: real =
+    safe_div(1 - real_exponential(-2), 2)
+
+  normalized_expected_position(
+      M: probability_measure,
+      a: random_array,
+      n: nat): real =
+    safe_div(
+      bounded_integer_expectation(M, a(n, n), n + 1),
+      n :: real)
+
+  putnam_2024_b4_statement: bool =
+    FORALL
+        (M: probability_measure),
+        (Sigma: sigma_algebra),
+        (m, a: random_array):
+      (is_probability_measure(M, Sigma)
+        AND (FORALL (n: nat):
+          n > 0 IMPLIES
+            FORALL (omega: sample_space):
+              a(n, 0)(omega) = 1)
+        AND (FORALL (n, k: nat):
+          n > 0 IMPLIES
+            uniform_integer_choice(M, Sigma, n, m(n, k)))
+        AND (FORALL
+            (n, k: nat),
+            (omega: sample_space):
+          n > 0 IMPLIES
+            a(n, k + 1)(omega)
+              = IF m(n, k)(omega) > a(n, k)(omega) THEN
+                  a(n, k)(omega) + 1
+                ELSIF m(n, k)(omega) = a(n, k)(omega) THEN
+                  a(n, k)(omega)
+                ELSE
+                  a(n, k)(omega) - 1
+                ENDIF)
+        AND mutually_independent(M, Sigma, m))
+      IMPLIES
+        converges_to(
+          LAMBDA (n: nat):
+            normalized_expected_position(M, a, n),
+          putnam_2024_b4_solution)
+END putnam_2024_b4

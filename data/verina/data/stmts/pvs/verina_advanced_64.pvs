@@ -1,0 +1,106 @@
+% Statement-only formalization of the VERINA corpus artifact
+% verina_advanced_64, catalog title "removeElement": removing every occurrence
+% of a target natural number while preserving the order of all remaining list
+% elements, with the exact recursive program and correctness contract.
+% This file contains no proof.
+
+verina_advanced_64: THEORY
+BEGIN
+
+  removeElement_precond(
+      lst: list[nat],
+      target: nat): bool =
+    TRUE
+
+  removeElement_helper(
+      lst: list[nat],
+      target: nat): RECURSIVE list[nat] =
+    CASES lst OF
+      null:
+        null[nat],
+      cons(head, tail):
+        LET rest: list[nat] =
+              removeElement_helper(tail, target)
+        IN
+          IF head = target THEN
+            rest
+          ELSE
+            cons(head, rest)
+          ENDIF
+    ENDCASES
+  MEASURE lst BY <<
+
+  % The Lean precondition proof argument is computationally irrelevant. This
+  % definition is its exact proof-erased recursive computation.
+  removeElement(
+      lst: list[nat],
+      target: nat): list[nat] =
+    removeElement_helper(lst, target)
+
+  filter_not_target(
+      lst: list[nat],
+      target: nat): RECURSIVE list[nat] =
+    CASES lst OF
+      null:
+        null[nat],
+      cons(head, tail):
+        IF head = target THEN
+          filter_not_target(tail, target)
+        ELSE
+          cons(
+            head,
+            filter_not_target(tail, target))
+        ENDIF
+    ENDCASES
+  MEASURE lst BY <<
+
+  nat_list_length(lst: list[nat]): RECURSIVE nat =
+    CASES lst OF
+      null:
+        0,
+      cons(head, tail):
+        nat_list_length(tail) + 1
+    ENDCASES
+  MEASURE lst BY <<
+
+  % This recursively states the source zipIdx.all comparison: every result
+  % entry equals the specification-side filtered entry at the same index.
+  pointwise_filter_prefix(
+      result: list[nat],
+      filtered: list[nat]): RECURSIVE bool =
+    CASES result OF
+      null:
+        TRUE,
+      cons(result_head, result_tail):
+        CASES filtered OF
+          null:
+            FALSE,
+          cons(filtered_head, filtered_tail):
+            result_head = filtered_head
+              AND pointwise_filter_prefix(
+                result_tail,
+                filtered_tail)
+        ENDCASES
+    ENDCASES
+  MEASURE result BY <<
+
+  removeElement_postcond(
+      lst: list[nat],
+      target: nat,
+      result: list[nat]): bool =
+    LET filtered: list[nat] =
+          filter_not_target(lst, target)
+    IN
+      pointwise_filter_prefix(result, filtered)
+        AND nat_list_length(result) = nat_list_length(filtered)
+
+  removeElement_spec_satisfied: bool =
+    FORALL (lst: list[nat], target: nat):
+      removeElement_precond(lst, target)
+        IMPLIES
+          removeElement_postcond(
+            lst,
+            target,
+            removeElement(lst, target))
+
+END verina_advanced_64

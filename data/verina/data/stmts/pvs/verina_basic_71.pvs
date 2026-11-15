@@ -1,0 +1,176 @@
+% Statement-only formalization of the VERINA corpus artifact verina_basic_71
+% (verina__pvs__verina_basic_71), catalog title "LongestCommonPrefix": the
+% exact bounded index scan computes the maximal common prefix of two finite
+% Unicode-scalar character lists and satisfies its full correctness contract.
+% This file contains no proof.
+
+verina_basic_71: THEORY
+BEGIN
+
+  % Lean Char values are exactly Unicode scalar values.
+  lean_char: TYPE =
+    {codepoint: nat |
+      codepoint < 1114112
+        AND (codepoint < 55296 OR codepoint >= 57344)}
+
+  lean_char_option: DATATYPE
+  BEGIN
+    NoLeanChar: NoLeanChar?
+    SomeLeanChar(option_value: lean_char): SomeLeanChar?
+  END lean_char_option
+
+  lean_char_list_length(
+      values: list[lean_char]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        lean_char_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  lean_char_list_get_option(
+      index: nat,
+      values: list[lean_char]): RECURSIVE lean_char_option =
+    CASES values OF
+      null:
+        NoLeanChar,
+      cons(head, tail):
+        IF index = 0 THEN
+          SomeLeanChar(head)
+        ELSE
+          lean_char_list_get_option(index - 1, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  lean_char_list_append(
+      first, second: list[lean_char]): RECURSIVE list[lean_char] =
+    CASES first OF
+      null:
+        second,
+      cons(head, tail):
+        cons(
+          head,
+          lean_char_list_append(tail, second))
+    ENDCASES
+  MEASURE first BY <<
+
+  lean_char_list_take(
+      count: nat,
+      values: list[lean_char]): RECURSIVE list[lean_char] =
+    IF count = 0 THEN
+      null[lean_char]
+    ELSE
+      CASES values OF
+        null:
+          null[lean_char],
+        cons(head, tail):
+          cons(
+            head,
+            lean_char_list_take(count - 1, tail))
+      ENDCASES
+    ENDIF
+  MEASURE count
+
+  nat_min(first, second: nat): nat =
+    IF first <= second THEN first ELSE second ENDIF
+
+  LongestCommonPrefix_precond(
+      str1, str2: list[lean_char]): bool =
+    TRUE
+
+  % At the public call, minLength + 1 supplies one step for every possible
+  % successful comparison and the final bounds check. The fuel-zero branch is
+  % therefore unreachable and only makes the source's local recursion total
+  % in PVS.
+  LongestCommonPrefix_aux(
+      str1, str2: list[lean_char],
+      minLength, idx, fuel: nat,
+      acc: list[lean_char]): RECURSIVE list[lean_char] =
+    IF fuel = 0 THEN
+      acc
+    ELSIF idx < minLength THEN
+      CASES lean_char_list_get_option(idx, str1) OF
+        NoLeanChar:
+          acc,
+        SomeLeanChar(c1):
+          CASES lean_char_list_get_option(idx, str2) OF
+            NoLeanChar:
+              acc,
+            SomeLeanChar(c2):
+              IF c1 /= c2 THEN
+                acc
+              ELSE
+                LongestCommonPrefix_aux(
+                  str1,
+                  str2,
+                  minLength,
+                  idx + 1,
+                  fuel - 1,
+                  lean_char_list_append(
+                    acc,
+                    cons(c1, null[lean_char])))
+              ENDIF
+          ENDCASES
+      ENDCASES
+    ELSE
+      acc
+    ENDIF
+  MEASURE fuel
+
+  % The source precondition proof argument is computationally irrelevant.
+  % This retains its minimum-length bound, option-valued indexed accesses,
+  % mismatch stop, and accumulator append exactly.
+  LongestCommonPrefix(
+      str1, str2: list[lean_char]): list[lean_char] =
+    LET minLength: nat =
+          nat_min(
+            lean_char_list_length(str1),
+            lean_char_list_length(str2))
+    IN
+      LongestCommonPrefix_aux(
+        str1,
+        str2,
+        minLength,
+        0,
+        minLength + 1,
+        null[lean_char])
+
+  % The source proof argument to the postcondition is logically irrelevant.
+  LongestCommonPrefix_postcond(
+      str1, str2, result: list[lean_char]): bool =
+    lean_char_list_length(result) <= lean_char_list_length(str1)
+      AND
+        result =
+          lean_char_list_take(
+            lean_char_list_length(result),
+            str1)
+      AND lean_char_list_length(result) <= lean_char_list_length(str2)
+      AND
+        result =
+          lean_char_list_take(
+            lean_char_list_length(result),
+            str2)
+      AND
+        (lean_char_list_length(result) = lean_char_list_length(str1)
+          OR lean_char_list_length(result) = lean_char_list_length(str2)
+          OR
+            lean_char_list_get_option(
+              lean_char_list_length(result),
+              str1)
+              /=
+            lean_char_list_get_option(
+              lean_char_list_length(result),
+              str2))
+
+  LongestCommonPrefix_spec_satisfied: bool =
+    FORALL (str1, str2: list[lean_char]):
+      LongestCommonPrefix_precond(str1, str2)
+        IMPLIES
+          LongestCommonPrefix_postcond(
+            str1,
+            str2,
+            LongestCommonPrefix(str1, str2))
+
+END verina_basic_71

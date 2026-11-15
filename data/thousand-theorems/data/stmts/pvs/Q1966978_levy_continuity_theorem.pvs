@@ -1,0 +1,450 @@
+% Statement-only formalization of the Thousand Theorems corpus artifact Q1966978,
+% "Lévy continuity theorem": weak convergence of Borel probability measures on a
+% finite-dimensional real inner-product space is equivalent to pointwise
+% convergence of their characteristic functions. This file contains no proof.
+
+Q1966978_levy_continuity_theorem[
+  E: TYPE+,
+  zeroE: E,
+  addE: [E, E -> E],
+  negE: [E -> E],
+  smulE: [real, E -> E],
+  innerE: [E, E -> real],
+  normE: [E -> real]
+]: THEORY
+BEGIN
+  event: TYPE = [E -> bool]
+  event_sequence: TYPE = [nat -> event]
+  sigma_algebra: TYPE = [event -> bool]
+  probability_measure: TYPE = [event -> real]
+  probability_measure_sequence: TYPE =
+    [nat -> probability_measure]
+  real_sequence: TYPE = [nat -> real]
+  real_function: TYPE = [E -> real]
+  coefficient_sequence: TYPE = [nat -> real]
+  vector_sequence: TYPE = [nat -> E]
+
+  complex: TYPE =
+    [# real_part: real, imaginary_part: real #]
+  complex_sequence: TYPE = [nat -> complex]
+
+  subE(x, y: E): E =
+    addE(x, negE(y))
+
+  finite_linear_combination(
+      basis: vector_sequence,
+      coefficients: coefficient_sequence,
+      count: nat): RECURSIVE E =
+    IF count = 0 THEN
+      zeroE
+    ELSE
+      addE(
+        finite_linear_combination(
+          basis, coefficients, count - 1),
+        smulE(
+          coefficients(count - 1),
+          basis(count - 1)))
+    ENDIF
+  MEASURE count
+
+  real_inner_product_space: bool =
+    (FORALL (x, y: E):
+      addE(x, y) = addE(y, x))
+      AND (FORALL (x, y, z: E):
+        addE(addE(x, y), z) = addE(x, addE(y, z)))
+      AND (FORALL (x: E):
+        addE(x, zeroE) = x)
+      AND (FORALL (x: E):
+        addE(x, negE(x)) = zeroE)
+      AND (FORALL (x: E):
+        smulE(1, x) = x)
+      AND (FORALL (a, b: real), (x: E):
+        smulE(a * b, x) = smulE(a, smulE(b, x)))
+      AND (FORALL (a, b: real), (x: E):
+        smulE(a + b, x) =
+          addE(smulE(a, x), smulE(b, x)))
+      AND (FORALL (a: real), (x, y: E):
+        smulE(a, addE(x, y)) =
+          addE(smulE(a, x), smulE(a, y)))
+      AND (FORALL (x: E):
+        smulE(0, x) = zeroE)
+      AND (FORALL (a: real):
+        smulE(a, zeroE) = zeroE)
+      AND (FORALL (x: E):
+        negE(x) = smulE(-1, x))
+      AND (FORALL (x, y: E):
+        innerE(x, y) = innerE(y, x))
+      AND (FORALL (x, y, z: E):
+        innerE(addE(x, y), z) =
+          innerE(x, z) + innerE(y, z))
+      AND (FORALL (a: real), (x, y: E):
+        innerE(smulE(a, x), y) =
+          a * innerE(x, y))
+      AND (FORALL (x: E):
+        0 <= innerE(x, x))
+      AND (FORALL (x: E):
+        innerE(x, x) = 0 IFF x = zeroE)
+      AND (FORALL (x: E):
+        0 <= normE(x))
+      AND (FORALL (x: E):
+        normE(x) * normE(x) = innerE(x, x))
+
+  finite_dimensional: bool =
+    EXISTS (dimension: nat), (basis: vector_sequence):
+      FORALL (x: E):
+        EXISTS (coefficients: coefficient_sequence):
+          finite_linear_combination(
+            basis, coefficients, dimension) = x
+
+  open_event(event_value: event): bool =
+    FORALL (x: E):
+      event_value(x) IMPLIES
+        EXISTS (epsilon_value: posreal):
+          FORALL (y: E):
+            normE(subE(y, x)) < epsilon_value IMPLIES
+              event_value(y)
+
+  full_event: event =
+    LAMBDA (x: E): TRUE
+
+  empty_event: event =
+    LAMBDA (x: E): FALSE
+
+  event_complement(event_value: event): event =
+    LAMBDA (x: E): NOT event_value(x)
+
+  countable_union(events: event_sequence): event =
+    LAMBDA (x: E):
+      EXISTS (index: nat): events(index)(x)
+
+  is_sigma_algebra(Sigma: sigma_algebra): bool =
+    Sigma(full_event)
+      AND (FORALL (event_value: event):
+        Sigma(event_value) IMPLIES
+          Sigma(event_complement(event_value)))
+      AND (FORALL (events: event_sequence):
+        (FORALL (index: nat): Sigma(events(index)))
+          IMPLIES Sigma(countable_union(events)))
+
+  contains_open_events(Sigma: sigma_algebra): bool =
+    FORALL (event_value: event):
+      open_event(event_value) IMPLIES Sigma(event_value)
+
+  borel_event(event_value: event): bool =
+    FORALL (Sigma: sigma_algebra):
+      (is_sigma_algebra(Sigma)
+        AND contains_open_events(Sigma))
+      IMPLIES Sigma(event_value)
+
+  pairwise_disjoint(events: event_sequence): bool =
+    FORALL (left_index, right_index: nat):
+      left_index /= right_index IMPLIES
+        FORALL (x: E):
+          NOT (events(left_index)(x)
+            AND events(right_index)(x))
+
+  pairwise_disjoint_below(
+      events: event_sequence,
+      count: nat): bool =
+    FORALL (left_index, right_index: nat):
+      left_index < count
+        AND right_index < count
+        AND left_index /= right_index
+      IMPLIES
+        FORALL (x: E):
+          NOT (events(left_index)(x)
+            AND events(right_index)(x))
+
+  finite_sum(
+      values: real_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      finite_sum(values, count - 1)
+        + values(count - 1)
+    ENDIF
+  MEASURE count
+
+  converges_to_real(
+      values: real_sequence,
+      limit: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(values(index) - limit) < epsilon_value
+
+  is_probability_measure(
+      measure_value: probability_measure): bool =
+    measure_value(empty_event) = 0
+      AND measure_value(full_event) = 1
+      AND (FORALL (event_value: event):
+        borel_event(event_value) IMPLIES
+          0 <= measure_value(event_value))
+      AND (FORALL (events: event_sequence):
+        ((FORALL (index: nat):
+            borel_event(events(index)))
+          AND pairwise_disjoint(events))
+        IMPLIES
+          converges_to_real(
+            LAMBDA (count: nat):
+              finite_sum(
+                LAMBDA (index: nat):
+                  measure_value(events(index)),
+                count),
+            measure_value(countable_union(events))))
+
+  simple_value(
+      coefficients: coefficient_sequence,
+      pieces: event_sequence,
+      count: nat,
+      x: E): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      simple_value(
+        coefficients, pieces, count - 1, x)
+        + IF pieces(count - 1)(x) THEN
+            coefficients(count - 1)
+          ELSE
+            0
+          ENDIF
+    ENDIF
+  MEASURE count
+
+  nonnegative_simple_minorant(
+      function_value: real_function,
+      coefficients: coefficient_sequence,
+      pieces: event_sequence,
+      count: nat): bool =
+    pairwise_disjoint_below(pieces, count)
+      AND (FORALL (index: nat):
+        index < count IMPLIES
+          coefficients(index) >= 0
+            AND borel_event(pieces(index)))
+      AND (FORALL (x: E):
+        0 <= simple_value(
+          coefficients, pieces, count, x)
+          AND simple_value(
+            coefficients, pieces, count, x)
+            <= function_value(x))
+
+  simple_integral(
+      measure_value: probability_measure,
+      coefficients: coefficient_sequence,
+      pieces: event_sequence,
+      count: nat): real =
+    finite_sum(
+      LAMBDA (index: nat):
+        coefficients(index)
+          * measure_value(pieces(index)),
+      count)
+
+  nonnegative_integral_upper_bound(
+      measure_value: probability_measure,
+      function_value: real_function,
+      upper: real): bool =
+    FORALL
+        (coefficients: coefficient_sequence),
+        (pieces: event_sequence),
+        (count: nat):
+      nonnegative_simple_minorant(
+        function_value, coefficients, pieces, count)
+      IMPLIES
+        simple_integral(
+          measure_value, coefficients, pieces, count)
+          <= upper
+
+  has_nonnegative_integral(
+      measure_value: probability_measure,
+      function_value: real_function,
+      value: real): bool =
+    (FORALL (x: E): 0 <= function_value(x))
+      AND 0 <= value
+      AND nonnegative_integral_upper_bound(
+        measure_value, function_value, value)
+      AND (FORALL (upper: real):
+        nonnegative_integral_upper_bound(
+          measure_value, function_value, upper)
+        IMPLIES value <= upper)
+
+  positive_part(function_value: real_function):
+      real_function =
+    LAMBDA (x: E):
+      IF 0 <= function_value(x) THEN
+        function_value(x)
+      ELSE
+        0
+      ENDIF
+
+  negative_part(function_value: real_function):
+      real_function =
+    LAMBDA (x: E):
+      IF function_value(x) <= 0 THEN
+        -function_value(x)
+      ELSE
+        0
+      ENDIF
+
+  has_integral(
+      measure_value: probability_measure,
+      function_value: real_function,
+      value: real): bool =
+    EXISTS (positive_integral, negative_integral: real):
+      has_nonnegative_integral(
+        measure_value,
+        positive_part(function_value),
+        positive_integral)
+      AND has_nonnegative_integral(
+        measure_value,
+        negative_part(function_value),
+        negative_integral)
+      AND value = positive_integral - negative_integral
+
+  integral(
+      measure_value: probability_measure,
+      function_value: real_function): real =
+    epsilon(
+      LAMBDA (value: real):
+        has_integral(
+          measure_value, function_value, value))
+
+  continuous(function_value: real_function): bool =
+    FORALL (x: E), (epsilon_value: posreal):
+      EXISTS (delta_value: posreal):
+        FORALL (y: E):
+          normE(subE(y, x)) < delta_value IMPLIES
+            abs(function_value(y) - function_value(x))
+              < epsilon_value
+
+  bounded(function_value: real_function): bool =
+    EXISTS (bound: real):
+      0 <= bound
+        AND (FORALL (x: E):
+          abs(function_value(x)) <= bound)
+
+  bounded_continuous(
+      function_value: real_function): bool =
+    bounded(function_value)
+      AND continuous(function_value)
+
+  weakly_converges(
+      measures: probability_measure_sequence,
+      limit_measure: probability_measure): bool =
+    FORALL (function_value: real_function):
+      bounded_continuous(function_value) IMPLIES
+        converges_to_real(
+          LAMBDA (index: nat):
+            integral(measures(index), function_value),
+          integral(limit_measure, function_value))
+
+  factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  alternating_sign(index: nat): RECURSIVE real =
+    IF index = 0 THEN
+      1
+    ELSE
+      -alternating_sign(index - 1)
+    ENDIF
+  MEASURE index
+
+  sine_partial_sum(
+      count: nat,
+      x: real): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        sine_partial_sum(count - 1, x)
+          + alternating_sign(index)
+            * x ^ (2 * index + 1)
+            / (factorial(2 * index + 1) :: real)
+    ENDIF
+  MEASURE count
+
+  cosine_partial_sum(
+      count: nat,
+      x: real): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        cosine_partial_sum(count - 1, x)
+          + alternating_sign(index)
+            * x ^ (2 * index)
+            / (factorial(2 * index) :: real)
+    ENDIF
+  MEASURE count
+
+  sine(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to_real(
+          LAMBDA (count: nat):
+            sine_partial_sum(count, x),
+          value))
+
+  cosine(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to_real(
+          LAMBDA (count: nat):
+            cosine_partial_sum(count, x),
+          value))
+
+  characteristic_function(
+      measure_value: probability_measure,
+      t: E): complex =
+    (#
+      real_part :=
+        integral(
+          measure_value,
+          LAMBDA (x: E):
+            cosine(innerE(t, x))),
+      imaginary_part :=
+        integral(
+          measure_value,
+          LAMBDA (x: E):
+            sine(innerE(t, x)))
+    #)
+
+  converges_to_complex(
+      values: complex_sequence,
+      limit: complex): bool =
+    converges_to_real(
+      LAMBDA (index: nat):
+        real_part(values(index)),
+      real_part(limit))
+      AND converges_to_real(
+        LAMBDA (index: nat):
+          imaginary_part(values(index)),
+        imaginary_part(limit))
+
+  levy_continuity_theorem: bool =
+    (real_inner_product_space
+      AND finite_dimensional)
+    IMPLIES
+      (FORALL
+          (measures: probability_measure_sequence),
+          (limit_measure: probability_measure):
+        ((FORALL (index: nat):
+            is_probability_measure(measures(index)))
+          AND is_probability_measure(limit_measure))
+        IMPLIES
+          (weakly_converges(measures, limit_measure)
+            IFF
+              (FORALL (t: E):
+                converges_to_complex(
+                  LAMBDA (index: nat):
+                    characteristic_function(
+                      measures(index), t),
+                  characteristic_function(
+                    limit_measure, t)))))
+END Q1966978_levy_continuity_theorem

@@ -88,6 +88,7 @@ def command_eval(args: argparse.Namespace) -> int:
     prefix = Path(args.prefix).expanduser().resolve()
     code_path = Path(args.file).expanduser().resolve() if args.file else None
     task_dir = Path(args.task_dir).expanduser().resolve() if args.task_dir else None
+    task_file = Path(args.task_file).expanduser() if args.task_file else None
 
     try:
         result = run_itp(
@@ -95,6 +96,7 @@ def command_eval(args: argparse.Namespace) -> int:
             code=args.code,
             code_path=code_path,
             task_dir=task_dir,
+            task_file=task_file,
             mode=args.mode,
             prefix=prefix,
             timeout_s=args.timeout_s,
@@ -197,6 +199,8 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="pre-built task directory to run (must match the prover's check.sh expectations)",
     )
+    eval_parser.add_argument("--task-file", default=None,
+                             help="file inside --task-dir selected for the prover adapter")
     eval_parser.set_defaults(func=command_eval)
 
     return parser

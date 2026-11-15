@@ -1,0 +1,141 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1975_a5:
+% positive linearly independent solutions of y'' = f(x)y on a real interval
+% yield a scaled geometric mean satisfying z'' + 1/z^3 = f(x)z there. This
+% file contains no proof.
+
+putnam_1975_a5: THEORY
+BEGIN
+  real_function: TYPE = [real -> real]
+  real_set: TYPE = [real -> bool]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  continuous(f: real_function): bool =
+    FORALL (x: real), (epsilon_value: posreal):
+      EXISTS (delta: posreal):
+        FORALL (y: real):
+          abs(y - x) < delta IMPLIES
+            abs(f(y) - f(x)) < epsilon_value
+
+  has_derivative_at(
+      f: real_function,
+      derivative, x: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (delta: posreal):
+        FORALL (h: real):
+          (NOT (h = 0) AND abs(h) < delta)
+            IMPLIES
+              abs(
+                f(x + h) - f(x)
+                  - derivative * h)
+                < epsilon_value * abs(h)
+
+  differentiable_at(f: real_function, x: real): bool =
+    EXISTS (derivative: real):
+      has_derivative_at(f, derivative, x)
+
+  derivative_value(f: real_function, x: real): real =
+    IF differentiable_at(f, x) THEN
+      epsilon(
+        LAMBDA (derivative: real):
+          has_derivative_at(f, derivative, x))
+    ELSE
+      0
+    ENDIF
+
+  derivative_function(f: real_function): real_function =
+    LAMBDA (x: real): derivative_value(f, x)
+
+  second_derivative_value(
+      f: real_function,
+      x: real): real =
+    derivative_value(derivative_function(f), x)
+
+  continuously_differentiable(f: real_function): bool =
+    (FORALL (x: real): differentiable_at(f, x))
+      AND continuous(derivative_function(f))
+
+  continuously_twice_differentiable(
+      f: real_function): bool =
+    continuously_differentiable(f)
+      AND continuously_differentiable(
+        derivative_function(f))
+
+  empty_set(I: real_set): bool =
+    FORALL (x: real): NOT I(x)
+
+  closed_interval_set(
+      I: real_set,
+      left, right: real): bool =
+    left <= right
+      AND FORALL (x: real):
+        I(x) IFF (left <= x AND x <= right)
+
+  real_interval(I: real_set): bool =
+    empty_set(I)
+      OR EXISTS (left, right: real):
+        closed_interval_set(I, left, right)
+
+  nonnegative_square_root(value: real): real =
+    IF 0 <= value THEN
+      epsilon(
+        LAMBDA (root: real):
+          0 <= root AND root * root = value)
+    ELSE
+      0
+    ENDIF
+
+  scaled_geometric_mean(
+      c: real,
+      y1, y2: real_function): real_function =
+    LAMBDA (x: real):
+      c * nonnegative_square_root(y1(x) * y2(x))
+
+  linearly_independent(
+      y1, y2: real_function): bool =
+    FORALL (c1, c2: real):
+      (FORALL (x: real):
+        c1 * y1(x) + c2 * y2(x) = 0)
+      IMPLIES (c1 = 0 AND c2 = 0)
+
+  positive_on(
+      I: real_set,
+      y: real_function): bool =
+    FORALL (x: real):
+      I(x) IMPLIES y(x) > 0
+
+  solves_linear_equation(
+      f, y: real_function): bool =
+    FORALL (x: real):
+      second_derivative_value(y, x) = f(x) * y(x)
+
+  putnam_1975_a5: bool =
+    FORALL
+        (I: real_set),
+        (f, y1, y2: real_function):
+      (real_interval(I)
+        AND continuous(f)
+        AND continuously_twice_differentiable(y1)
+        AND continuously_twice_differentiable(y2)
+        AND solves_linear_equation(f, y1)
+        AND solves_linear_equation(f, y2)
+        AND linearly_independent(y1, y2)
+        AND positive_on(I, y1)
+        AND positive_on(I, y2))
+      IMPLIES
+        EXISTS (c: real):
+          c > 0
+            AND LET z: real_function =
+              scaled_geometric_mean(c, y1, y2)
+            IN
+              FORALL (x: real):
+                I(x) IMPLIES
+                  second_derivative_value(z, x)
+                      + safe_div(1, z(x) ^ 3)
+                    = f(x) * z(x)
+END putnam_1975_a5

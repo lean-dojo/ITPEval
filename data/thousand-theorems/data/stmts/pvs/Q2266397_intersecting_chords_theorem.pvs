@@ -1,0 +1,96 @@
+% Statement-only formalization of the Thousand Theorems corpus artifact Q2266397
+% (thousand-theorems__pvs__Q2266397), "Intersecting chords theorem": four
+% cospherical points whose two pairs subtend angle pi at a common point have
+% equal products of their distances from that point. This file contains no proof.
+
+Q2266397_intersecting_chords_theorem[
+  V: TYPE+,
+  P: TYPE+,
+  zero: V,
+  vadd: [V, V -> V],
+  vneg: [V -> V],
+  scale: [real, V -> V],
+  inner: [V, V -> real],
+  point_vadd: [V, P -> P],
+  vsub: [P, P -> V]
+]: THEORY
+BEGIN
+  vector_space_laws: bool =
+    (FORALL (u, v: V): vadd(u, v) = vadd(v, u))
+      AND (FORALL (u, v, w: V):
+        vadd(vadd(u, v), w) = vadd(u, vadd(v, w)))
+      AND (FORALL (u: V): vadd(u, zero) = u)
+      AND (FORALL (u: V): vadd(u, vneg(u)) = zero)
+      AND (FORALL (a: real), (u, v: V):
+        scale(a, vadd(u, v)) = vadd(scale(a, u), scale(a, v)))
+      AND (FORALL (a, b: real), (u: V):
+        scale(a + b, u) = vadd(scale(a, u), scale(b, u)))
+      AND (FORALL (a, b: real), (u: V):
+        scale(a * b, u) = scale(a, scale(b, u)))
+      AND (FORALL (u: V): scale(1, u) = u)
+      AND (FORALL (u: V): scale(0, u) = zero)
+      AND (FORALL (u: V): vneg(u) = scale(-1, u))
+
+  inner_product_laws: bool =
+    (FORALL (u, v, w: V):
+      inner(vadd(u, v), w) = inner(u, w) + inner(v, w))
+      AND (FORALL (a: real), (u, v: V):
+        inner(scale(a, u), v) = a * inner(u, v))
+      AND (FORALL (u, v: V): inner(u, v) = inner(v, u))
+      AND (FORALL (u: V): 0 <= inner(u, u))
+      AND (FORALL (u: V): inner(u, u) = 0 IFF u = zero)
+
+  affine_torsor_laws: bool =
+    (FORALL (p: P): point_vadd(zero, p) = p)
+      AND (FORALL (u, v: V), (p: P):
+        point_vadd(vadd(u, v), p) =
+          point_vadd(u, point_vadd(v, p)))
+      AND (FORALL (p, q: P):
+        point_vadd(vsub(p, q), q) = p)
+      AND (FORALL (u: V), (p: P):
+        vsub(point_vadd(u, p), p) = u)
+
+  euclidean_affine_space: bool =
+    vector_space_laws AND inner_product_laws AND affine_torsor_laws
+
+  squared_distance(p, q: P): real =
+    inner(vsub(p, q), vsub(p, q))
+
+  distance_value(length: real, p, q: P): bool =
+    0 <= length
+      AND length * length = squared_distance(p, q)
+
+  on_sphere(p, center: P, radius: real): bool =
+    distance_value(radius, p, center)
+
+  cospherical(a, b, c, d: P): bool =
+    EXISTS (center: P), (radius: real):
+      on_sphere(a, center, radius)
+        AND on_sphere(b, center, radius)
+        AND on_sphere(c, center, radius)
+        AND on_sphere(d, center, radius)
+
+  angle_at_is_pi(a, p, b: P): bool =
+    EXISTS (pa, pb: real):
+      distance_value(pa, p, a)
+        AND distance_value(pb, p, b)
+        AND 0 < pa
+        AND 0 < pb
+        AND inner(vsub(a, p), vsub(b, p)) = -(pa * pb)
+
+  distance_product_identity(a, b, c, d, p: P): bool =
+    EXISTS (ap, bp, cp, dp: real):
+      distance_value(ap, a, p)
+        AND distance_value(bp, b, p)
+        AND distance_value(cp, c, p)
+        AND distance_value(dp, d, p)
+        AND ap * bp = cp * dp
+
+  intersecting_chords_theorem: bool =
+    euclidean_affine_space IMPLIES
+      FORALL (a, b, c, d, p: P):
+        (cospherical(a, b, c, d)
+          AND angle_at_is_pi(a, p, b)
+          AND angle_at_is_pi(c, p, d))
+        IMPLIES distance_product_identity(a, b, c, d, p)
+END Q2266397_intersecting_chords_theorem

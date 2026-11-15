@@ -1,0 +1,303 @@
+% Statement-only formalization of the VERINA corpus artifact
+% verina_advanced_29, catalog title "longestGoodSubarray": computing the
+% longest contiguous natural-number subarray whose element frequencies are at
+% most a positive bound, using the specified sliding window. This file contains no proof.
+
+verina_advanced_29: THEORY
+BEGIN
+
+  frequency_map: TYPE = [nat -> nat]
+
+  window_state: TYPE =
+    [# left: nat, frequencies: frequency_map #]
+
+  longestGoodSubarray_precond(
+      nums: list[nat],
+      k: nat): bool =
+    k > 0
+
+  nat_list_length(values: list[nat]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        nat_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  nat_list_get_bang(
+      index: nat,
+      values: list[nat]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          nat_list_get_bang(index - 1, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  empty_frequency_map: frequency_map =
+    LAMBDA (value: nat): 0
+
+  frequency_get(
+      value: nat,
+      frequencies: frequency_map): nat =
+    frequencies(value)
+
+  frequency_insert(
+      value, count: nat,
+      frequencies: frequency_map): frequency_map =
+    LAMBDA (query: nat):
+      IF query = value THEN
+        count
+      ELSE
+        frequencies(query)
+      ENDIF
+
+  frequency_erase(
+      value: nat,
+      frequencies: frequency_map): frequency_map =
+    LAMBDA (query: nat):
+      IF query = value THEN
+        0
+      ELSE
+        frequencies(query)
+      ENDIF
+
+  nat_sub(first, second: nat): nat =
+    IF first >= second THEN first - second ELSE 0 ENDIF
+
+  % Every key ever inserted into the source HashMap is drawn from nums.
+  % Since k is positive, testing these values is extensionally equal to
+  % HashMap.toList.any after erased keys are represented by count zero.
+  any_frequency_over(
+      values: list[nat],
+      k: nat,
+      frequencies: frequency_map): RECURSIVE bool =
+    CASES values OF
+      null:
+        FALSE,
+      cons(head, tail):
+        frequency_get(head, frequencies) > k
+          OR any_frequency_over(
+            tail,
+            k,
+            frequencies)
+    ENDCASES
+  MEASURE values BY <<
+
+  longestGoodSubarray_shrink_loop(
+      nums: list[nat],
+      k, remaining: nat,
+      state: window_state): RECURSIVE window_state =
+    IF remaining = 0 THEN
+      state
+    ELSIF any_frequency_over(
+        nums,
+        k,
+        frequencies(state))
+    THEN
+      LET left_number: nat =
+            nat_list_get_bang(left(state), nums),
+          left_count: nat =
+            frequency_get(
+              left_number,
+              frequencies(state)),
+          next_frequencies: frequency_map =
+            IF left_count = 1 THEN
+              frequency_erase(
+                left_number,
+                frequencies(state))
+            ELSE
+              frequency_insert(
+                left_number,
+                nat_sub(left_count, 1),
+                frequencies(state))
+            ENDIF
+      IN
+        longestGoodSubarray_shrink_loop(
+          nums,
+          k,
+          remaining - 1,
+          (# left := left(state) + 1,
+             frequencies := next_frequencies #))
+    ELSE
+      state
+    ENDIF
+  MEASURE remaining
+
+  nat_max(first, second: nat): nat =
+    IF first >= second THEN first ELSE second ENDIF
+
+  longestGoodSubarray_outer_loop(
+      nums: list[nat],
+      k, right, remaining, current_max: nat,
+      state: window_state): RECURSIVE nat =
+    IF remaining = 0 THEN
+      current_max
+    ELSE
+      LET number: nat =
+            nat_list_get_bang(right, nums),
+          count: nat =
+            frequency_get(
+              number,
+              frequencies(state)),
+          inserted_state: window_state =
+            (# left := left(state),
+               frequencies :=
+                 frequency_insert(
+                   number,
+                   count + 1,
+                   frequencies(state)) #),
+          shrunk_state: window_state =
+            longestGoodSubarray_shrink_loop(
+              nums,
+              k,
+              nat_list_length(nums),
+              inserted_state),
+          next_max: nat =
+            nat_max(
+              current_max,
+              nat_sub(right, left(shrunk_state)) + 1)
+      IN
+        longestGoodSubarray_outer_loop(
+          nums,
+          k,
+          right + 1,
+          remaining - 1,
+          next_max,
+          shrunk_state)
+    ENDIF
+  MEASURE remaining
+
+  longestGoodSubarray(
+      nums: list[nat],
+      k: nat): nat =
+    longestGoodSubarray_outer_loop(
+      nums,
+      k,
+      0,
+      nat_list_length(nums),
+      0,
+      (# left := 0,
+         frequencies := empty_frequency_map #))
+
+  nat_list_drop(
+      count: nat,
+      values: list[nat]): RECURSIVE list[nat] =
+    IF count = 0 THEN
+      values
+    ELSE
+      CASES values OF
+        null:
+          null,
+        cons(head, tail):
+          nat_list_drop(count - 1, tail)
+      ENDCASES
+    ENDIF
+  MEASURE count
+
+  nat_list_take(
+      count: nat,
+      values: list[nat]): RECURSIVE list[nat] =
+    IF count = 0 THEN
+      null
+    ELSE
+      CASES values OF
+        null:
+          null,
+        cons(head, tail):
+          cons(
+            head,
+            nat_list_take(count - 1, tail))
+      ENDCASES
+    ENDIF
+  MEASURE count
+
+  nat_list_extract(
+      start, count: nat,
+      values: list[nat]): list[nat] =
+    nat_list_take(
+      count,
+      nat_list_drop(start, values))
+
+  nat_list_count(
+      requested: nat,
+      values: list[nat]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        (IF head = requested THEN 1 ELSE 0 ENDIF)
+          + nat_list_count(requested, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  all_element_counts_at_most(
+      remaining, whole: list[nat],
+      k: nat): RECURSIVE bool =
+    CASES remaining OF
+      null:
+        TRUE,
+      cons(head, tail):
+        nat_list_count(head, whole) <= k
+          AND all_element_counts_at_most(
+            tail,
+            whole,
+            k)
+    ENDCASES
+  MEASURE remaining BY <<
+
+  good_subarray(
+      values: list[nat],
+      k: nat): bool =
+    all_element_counts_at_most(values, values, k)
+
+  % The Lean range/flatMap/map construction generates exactly the extracts
+  % with 0 <= start <= length and 0 <= sublength <= length - start,
+  % including its empty subarrays.
+  longestGoodSubarray_postcond(
+      nums: list[nat],
+      k, result: nat): bool =
+    LET length: nat = nat_list_length(nums)
+    IN
+      (nums = null AND result = 0)
+        OR
+      (nums /= null
+        AND
+        (EXISTS (start, sublength: nat):
+          start <= length
+            AND sublength <= nat_sub(length, start)
+            AND good_subarray(
+              nat_list_extract(
+                start,
+                sublength,
+                nums),
+              k)
+            AND sublength = result)
+        AND
+        (FORALL (start, sublength: nat):
+          (start <= length
+            AND sublength <= nat_sub(length, start)
+            AND good_subarray(
+              nat_list_extract(
+                start,
+                sublength,
+                nums),
+              k))
+          IMPLIES
+            sublength <= result))
+
+  longestGoodSubarray_spec_satisfied: bool =
+    FORALL (nums: list[nat], k: nat):
+      longestGoodSubarray_precond(nums, k) IMPLIES
+        longestGoodSubarray_postcond(
+          nums,
+          k,
+          longestGoodSubarray(nums, k))
+
+END verina_advanced_29

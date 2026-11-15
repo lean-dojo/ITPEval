@@ -1,0 +1,174 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2009_a2:
+% the local solution for the first component of a coupled real differential
+% system with specified initial values. This file contains no proof.
+
+putnam_2009_a2: THEORY
+BEGIN
+  real_function: TYPE = [real -> real]
+  real_sequence: TYPE = [nat -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  nat_factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * nat_factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  sine_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        sine_partial(x, count - 1)
+          + safe_div(
+              ((-1 :: real) ^ index) * x ^ (2 * index + 1),
+              nat_factorial(2 * index + 1) :: real)
+    ENDIF
+  MEASURE count
+
+  cosine_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        cosine_partial(x, count - 1)
+          + safe_div(
+              ((-1 :: real) ^ index) * x ^ (2 * index),
+              nat_factorial(2 * index) :: real)
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  sine_value(argument, value: real): bool =
+    converges_to(
+      LAMBDA (count: nat): sine_partial(argument, count),
+      value)
+
+  cosine_value(argument, value: real): bool =
+    converges_to(
+      LAMBDA (count: nat): cosine_partial(argument, count),
+      value)
+
+  sine(argument: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        sine_value(argument, value))
+
+  cosine(argument: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        cosine_value(argument, value))
+
+  pi_value(value: real): bool =
+    3 < value
+      AND value < 4
+      AND cosine_value(value / 2, 0)
+
+  pi: real =
+    epsilon(
+      LAMBDA (value: real):
+        pi_value(value))
+
+  has_derivative_at(
+      function_value: real_function,
+      derivative, point: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (delta: posreal):
+        FORALL (increment: real):
+          (increment /= 0 AND abs(increment) < delta)
+            IMPLIES
+              abs(
+                function_value(point + increment)
+                  - function_value(point)
+                  - derivative * increment)
+                < epsilon_value * abs(increment)
+
+  differentiable_at(
+      function_value: real_function,
+      point: real): bool =
+    EXISTS (derivative: real):
+      has_derivative_at(function_value, derivative, point)
+
+  differentiable_on_open_interval(
+      function_value: real_function,
+      left_endpoint, right_endpoint: real): bool =
+    FORALL (point: real):
+      (left_endpoint < point AND point < right_endpoint)
+        IMPLIES differentiable_at(function_value, point)
+
+  derivative_value(
+      function_value: real_function,
+      point: real): real =
+    IF differentiable_at(function_value, point) THEN
+      epsilon(
+        LAMBDA (derivative: real):
+          has_derivative_at(
+            function_value, derivative, point))
+    ELSE
+      0
+    ENDIF
+
+  putnam_2009_a2_solution_value(x, value: real): bool =
+    EXISTS
+        (sinusoid, cosinusoid, twelfth_root, sixth_root: real):
+      sine_value(6 * x + pi / 4, sinusoid)
+        AND cosine_value(6 * x + pi / 4, cosinusoid)
+        AND twelfth_root > 0
+        AND twelfth_root ^ 12 = 2
+        AND sixth_root >= 0
+        AND sixth_root ^ 6 =
+          safe_div(sinusoid, cosinusoid ^ 2)
+        AND value = safe_div(sixth_root, twelfth_root)
+
+  putnam_2009_a2_solution(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        putnam_2009_a2_solution_value(x, value))
+
+  putnam_2009_a2: bool =
+    FORALL (f, g, h: real_function), (a, b: real):
+      (a < 0
+        AND 0 < b
+        AND differentiable_on_open_interval(f, a, b)
+        AND differentiable_on_open_interval(g, a, b)
+        AND differentiable_on_open_interval(h, a, b)
+        AND (FORALL (x: real):
+          (a < x AND x < b) IMPLIES
+            derivative_value(f, x)
+              = 2 * f(x) ^ 2 * g(x) * h(x)
+                + safe_div(1, g(x) * h(x)))
+        AND f(0) = 1
+        AND (FORALL (x: real):
+          (a < x AND x < b) IMPLIES
+            derivative_value(g, x)
+              = f(x) * g(x) ^ 2 * h(x)
+                + safe_div(4, f(x) * h(x)))
+        AND g(0) = 1
+        AND (FORALL (x: real):
+          (a < x AND x < b) IMPLIES
+            derivative_value(h, x)
+              = 3 * f(x) * g(x) * h(x) ^ 2
+                + safe_div(1, f(x) * g(x)))
+        AND h(0) = 1)
+      IMPLIES
+        EXISTS (c, d: real):
+          c < 0
+            AND 0 < d
+            AND (FORALL (x: real):
+              (c < x AND x < d) IMPLIES
+                f(x) = putnam_2009_a2_solution(x))
+END putnam_2009_a2

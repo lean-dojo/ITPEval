@@ -1,0 +1,49 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1996_b5:
+% the number of length-n Boolean strings whose every consecutive substring has
+% symbol imbalance between -2 and 2 has the stated formula. This file contains
+% no proof.
+
+putnam_1996_b5: THEORY
+BEGIN
+  bit_string: TYPE = [nat -> bool]
+
+  IMPORTING finite_sets[bit_string]
+
+  interval_delta(
+      S: bit_string,
+      start, count: nat): RECURSIVE int =
+    IF count = 0 THEN
+      0
+    ELSE
+      interval_delta(S, start, count - 1)
+        + IF S(start + count - 1) THEN 1 ELSE -1 ENDIF
+    ENDIF
+  MEASURE count
+
+  zero_extended_to_length(S: bit_string, n: nat): bool =
+    FORALL (index: nat):
+      index >= n IMPLIES NOT S(index)
+
+  balanced_to_length(S: bit_string, n: nat): bool =
+    FORALL (first, last: nat):
+      first <= last AND last < n IMPLIES
+        -2 <= interval_delta(S, first, last - first + 1)
+          AND interval_delta(S, first, last - first + 1) <= 2
+
+  nat_subtract(n, k: nat): nat =
+    IF n >= k THEN n - k ELSE 0 ENDIF
+
+  putnam_1996_b5_solution(n: nat): nat =
+    nat_subtract(
+      2 ^ ndiv(n + 2, 2) + 2 ^ ndiv(n + 1, 2),
+      2)
+
+  putnam_1996_b5: bool =
+    FORALL (n: nat):
+      EXISTS (solutions: finite_set[bit_string]):
+        card(solutions) = putnam_1996_b5_solution(n)
+          AND (FORALL (S: bit_string):
+            solutions(S) IFF
+              balanced_to_length(S, n)
+                AND zero_extended_to_length(S, n))
+END putnam_1996_b5

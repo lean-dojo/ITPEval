@@ -1,0 +1,88 @@
+-- Statement-only formalization of Logipedia corpus artifact
+-- gcd.prime_to_gcd_1 (catalog title "gcd.prime_to_gcd_1"): if a prime
+-- natural number does not divide another natural number, then their greatest
+-- common divisor is one. This file contains no proof.
+
+{-# OPTIONS --safe #-}
+
+module prime-to-gcd-1 where
+
+open import Agda.Builtin.Bool using (Bool; false; true)
+open import Agda.Builtin.Equality using (_≡_)
+open import Agda.Builtin.Nat using (Nat; zero; suc; _-_; _*_)
+open import Agda.Builtin.Sigma using (Σ)
+
+infixr 2 _∧_
+infix 4 _≤_ _<_ Divides
+
+data Empty : Set where
+
+Not : Set -> Set
+Not A = A -> Empty
+
+data _∧_ (A B : Set) : Set where
+  _,_ : A -> B -> A ∧ B
+
+data _≤_ : Nat -> Nat -> Set where
+  zero≤ : {n : Nat} -> zero ≤ n
+  suc≤suc : {m n : Nat} -> m ≤ n -> suc m ≤ suc n
+
+_<_ : Nat -> Nat -> Set
+m < n = suc m ≤ n
+
+Divides : Nat -> Nat -> Set
+Divides divisor dividend =
+  Σ Nat (\ quotient -> dividend ≡ divisor * quotient)
+
+Prime : Nat -> Set
+Prime p =
+  (suc zero < p) ∧
+  ((d : Nat) -> Divides d p -> suc zero < d -> d ≡ p)
+
+leb : Nat -> Nat -> Bool
+leb zero n = true
+leb (suc m) zero = false
+leb (suc m) (suc n) = leb m n
+
+eqb : Nat -> Nat -> Bool
+eqb zero zero = true
+eqb zero (suc n) = false
+eqb (suc m) zero = false
+eqb (suc m) (suc n) = eqb m n
+
+match-bool-type : {A : Set} -> A -> A -> Bool -> A
+match-bool-type case-true case-false true = case-true
+match-bool-type case-true case-false false = case-false
+
+mod-aux : Nat -> Nat -> Nat -> Nat
+mod-aux zero n m = n
+mod-aux (suc p) n m with leb n m
+... | true = n
+... | false = mod-aux p (n - suc m) m
+
+naturalMod : Nat -> Nat -> Nat
+naturalMod n zero = n
+naturalMod n (suc m) = mod-aux n n m
+
+dividesb : Nat -> Nat -> Bool
+dividesb n m = eqb (naturalMod m n) zero
+
+gcd-aux : Nat -> Nat -> Nat -> Nat
+gcd-aux zero m n = m
+gcd-aux (suc p) m n with dividesb n m
+... | true = n
+... | false = gcd-aux p n (naturalMod m n)
+
+gcd : Nat -> Nat -> Nat
+gcd n m =
+  match-bool-type
+    (gcd-aux n m n)
+    (gcd-aux m n m)
+    (leb n m)
+
+prime-to-gcd-1 : Set
+prime-to-gcd-1 =
+  (n m : Nat) ->
+  Prime n ->
+  Not (Divides n m) ->
+  gcd n m ≡ suc zero

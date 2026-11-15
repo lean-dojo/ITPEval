@@ -1,0 +1,10 @@
+theory dyck_Check_is_dyck_recqtvc
+  imports "NTP4Verif.NTP4Verif" "Why3STD.Ref_Ref" "./dyck_Dyck"
+begin
+definition fall :: "paren list \<Rightarrow> paren list \<Rightarrow> _"
+  where "fall p s \<longleftrightarrow> dyck p \<and> (case s of Cons L _ \<Rightarrow> False | _ \<Rightarrow> True)" for p s
+theorem is_dyck_rec'vc:
+  fixes w :: "paren list"
+  shows "case w of Cons L w0 \<Rightarrow> ((0 :: int) \<le> int (length w) \<and> length w0 < length w) \<and> (\<forall>(p0 :: paren list). (\<forall>(o1 :: paren list). w0 = p0 @ o1 \<and> fall p0 o1 \<and> (\<forall>(p2 :: paren list) (s :: paren list). w0 = p2 @ s \<and> fall p2 s \<longrightarrow> p2 = p0 \<and> s = o1) \<longrightarrow> (case o1 of Cons _ w1 \<Rightarrow> ((0 :: int) \<le> int (length w) \<and> length w1 < length w) \<and> (\<forall>(p1 :: paren list). (\<forall>(w2 :: paren list). w1 = p1 @ w2 \<and> fall p1 w2 \<and> (\<forall>(p2 :: paren list) (s :: paren list). w1 = p2 @ s \<and> fall p2 s \<longrightarrow> p2 = p1 \<and> s = w2) \<longrightarrow> w = Cons L (p0 @ Cons R p1) @ w2 \<and> fall (Cons L (p0 @ Cons R p1)) w2 \<and> (\<forall>(p2 :: paren list) (s :: paren list). w = p2 @ s \<and> fall p2 s \<longrightarrow> p2 = Cons L (p0 @ Cons R p1) \<and> s = w2)) \<and> ((\<forall>(p :: paren list) (s :: paren list). w1 = p @ s \<longrightarrow> \<not>fall p s) \<longrightarrow> (\<forall>(p :: paren list) (s :: paren list). w = p @ s \<longrightarrow> \<not>fall p s))) | _ \<Rightarrow> (\<forall>(p :: paren list) (s :: paren list). w = p @ s \<longrightarrow> \<not>fall p s))) \<and> ((\<forall>(p :: paren list) (s :: paren list). w0 = p @ s \<longrightarrow> \<not>fall p s) \<longrightarrow> (\<forall>(p :: paren list) (s :: paren list). w = p @ s \<longrightarrow> \<not>fall p s))) | _ \<Rightarrow> w = (Nil :: paren list) @ w \<and> fall (Nil :: paren list) w \<and> (\<forall>(p2 :: paren list) (s :: paren list). w = p2 @ s \<and> fall p2 s \<longrightarrow> p2 = (Nil :: paren list) \<and> s = w)"
+  sorry
+end

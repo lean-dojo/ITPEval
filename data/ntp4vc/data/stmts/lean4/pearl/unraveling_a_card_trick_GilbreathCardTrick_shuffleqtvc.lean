@@ -1,0 +1,243 @@
+import Mathlib
+
+open Classical
+
+namespace Lean4Why3
+
+instance {n : Nat} : HShiftLeft (BitVec n) Int (BitVec n) where
+  hShiftLeft x k := x <<< k.toNat
+
+instance {n : Nat} : HShiftRight (BitVec n) Int (BitVec n) where
+  hShiftRight x k := x >>> k.toNat
+
+abbrev sshiftRight'i {n : ℕ} (a : BitVec n) (s : Int) : BitVec n := a.sshiftRight s.toNat
+
+abbrev make_str_i (size : Int) := String.mk (List.replicate (Int.toNat size) 'a')
+abbrev _root_.List.create_i {α} (n : ℤ) (f : ℤ -> α) := (List.range n.toNat).map f
+abbrev _root_.List.create {α} (n : ℕ) (f : ℕ -> α) := (List.range n).map f
+
+abbrev _root_.Bool.imp (a b : Bool) : Bool := !a || b
+
+abbrev _root_.List.replicate_i {α} (n : ℤ) (x : α) := List.replicate (Int.toNat n) x
+
+abbrev take_i {α : Type} (n : ℤ) (l : List α) := List.take n.toNat l
+abbrev drop_i {α : Type} (n : ℤ) (l : List α) := List.drop n.toNat l
+
+abbrev getElem_i! {α : Type} [Inhabited α] (l : List α) (i : Int) := l[i.toNat]!
+abbrev getElem_i? {α : Type} (l : List α) (i : Int) := l[i.toNat]?
+
+abbrev length_i {α : Type} (l : List α) := Int.ofNat l.length
+abbrev slice {α : Type} (l : List α) (i j : Nat) : List α :=
+  (l.drop i).take (j - i)
+abbrev slice_i {α : Type} (l : List α) (i j : Int) : List α :=
+  (l.drop i.toNat).take (j.toNat - i.toNat)
+
+abbrev Sorted {α : Type} [LE α] (l : List α) := List.Sorted LE.le l
+abbrev _root_.List.set_i {α : Type} (l : List α) (n : ℤ) (a : α) :=
+  List.set l n.toNat a
+
+abbrev implication (P : Prop) (Q : Prop) := P -> Q
+
+noncomputable def map_occ {α : Type} (v : α) (m : Int -> α) (l u : Int)
+  := {n | l ≤ n ∧ n < u ∧ m n = v }.ncard
+noncomputable abbrev map_occ_i {α : Type} (v : α) (m : Int -> α) (l u : Int)
+  := Int.ofNat (map_occ (v : α) (m : Int -> α) (l : Int) u)
+
+abbrev _root_.BitVec.toUInt {n : Nat} (x : BitVec n) := Int.ofNat x.toNat
+
+abbrev int'16_max : BitVec 16 := 32767
+abbrev int'16_min : BitVec 16 := -32768
+abbrev int'31_max : BitVec 31 := 1073741823
+abbrev int'31_min : BitVec 31 := -1073741824
+abbrev int'32_max : BitVec 32 := 2147483647
+abbrev int'32_min : BitVec 32 := -2147483648
+abbrev int'63_max : BitVec 63 := 4611686018427387903
+abbrev int'63_min : BitVec 63 := -4611686018427387904
+abbrev int'64_max : BitVec 64 := 9223372036854775807
+abbrev int'64_min : BitVec 64 := -9223372036854775808
+abbrev uint'16_max : BitVec 16 := 65535
+abbrev uint'16_min : BitVec 16 := 0
+abbrev uint'31_max : BitVec 31 := 2147483647
+abbrev uint'31_min : BitVec 31 := 0
+abbrev uint'32_max : BitVec 32 := 4294967295
+abbrev uint'32_min : BitVec 32 := 0
+abbrev uint'63_max : BitVec 63 := 9223372036854775807
+abbrev uint'63_min : BitVec 63 := 0
+abbrev uint'64_max : BitVec 64 := 18446744073709551615
+abbrev uint'64_min : BitVec 64 := 0
+
+abbrev int'16_in_bounds (x : Int) := int'16_min.toInt ≤ x ∧ x ≤ int'16_max.toInt
+abbrev int'31_in_bounds (x : Int) := int'31_min.toInt ≤ x ∧ x ≤ int'31_max.toInt
+abbrev int'32_in_bounds (x : Int) := int'32_min.toInt ≤ x ∧ x ≤ int'32_max.toInt
+abbrev int'63_in_bounds (x : Int) := int'63_min.toInt ≤ x ∧ x ≤ int'63_max.toInt
+abbrev int'64_in_bounds (x : Int) := int'64_min.toInt ≤ x ∧ x ≤ int'64_max.toInt
+abbrev uint'8_in_bounds (x : Int) := 0 ≤ x ∧ x ≤ 256
+abbrev uint'16_in_bounds (x : Int) := 0 ≤ x ∧ x ≤ int'16_max.toUInt
+abbrev uint'31_in_bounds (x : Int) := 0 ≤ x ∧ x ≤ int'31_max.toUInt
+abbrev uint'32_in_bounds (x : Int) := 0 ≤ x ∧ x ≤ int'32_max.toUInt
+abbrev uint'63_in_bounds (x : Int) := 0 ≤ x ∧ x ≤ int'63_max.toUInt
+abbrev uint'64_in_bounds (x : Int) := 0 ≤ x ∧ x ≤ int'64_max.toUInt
+
+axiom array31 : Type -> Type
+axiom array32 : Type -> Type
+axiom array63 : Type -> Type
+
+axiom array31_elts : {α : Type} -> array31 α -> Int -> α
+axiom array32_elts : {α : Type} -> array32 α -> Int -> α
+axiom array63_elts : {α : Type} -> array63 α -> List α
+
+noncomputable abbrev array63_nth {α : Type} [Inhabited α] (a : array63 α) (i : Int) := (array63_elts a)[i.toNat]!
+
+axiom array31_length : {α : Type} -> array31 α -> BitVec 31
+axiom array32_length : {α : Type} -> array32 α -> BitVec 32
+axiom array63_length : {α : Type} -> array63 α -> BitVec 63
+
+abbrev is_none {α : Type} (x : Option α) := x = none
+abbrev is_nil {α : Type} (x : List α) := x = []
+
+abbrev _root_.List.rev_append {α : Type} (a : List α) (b : List α) := a.reverse ++ b
+abbrev _root_.Finset.is_empty {α : Type} (s : Finset α) := s = ∅
+abbrev _root_.Finset.filter' {α : Type} (s : Finset α) (p : α → Prop) [DecidablePred p] : Finset α
+  := Finset.filter p s
+
+abbrev _root_.Finset.card_i {α : Type} (s : Finset α) := Int.ofNat s.card
+
+abbrev int_power (x : Int) (n : Int) := x ^ n.toNat
+abbrev bv2_power (n : Int) := Int.ofNat (2 ^ n.toNat)
+
+abbrev take_bit_i {n : Nat} (x : BitVec n) (i : Int) := x[i.toNat]!
+abbrev take_bit_bv {n m : Nat} (x : BitVec n) (i : BitVec m) := x[i.toNat]!
+
+noncomputable def _root_.Finset.pick! {α} [Inhabited α] (s : Finset α) : α :=
+  if h : s.Nonempty then Classical.choose h else default
+noncomputable def _root_.Set.pick! {α} [Inhabited α] (s : Finset α) : α :=
+  if h : s.Nonempty then Classical.choose h else default
+
+noncomputable abbrev _root_.BitVec.eq_sub {m : Nat} (a b : BitVec m) (i n : Nat) :=
+  BitVec.extractLsb (i+n-1) i a = BitVec.extractLsb (i+n-1) i b
+
+noncomputable abbrev _root_.BitVec.eq_sub_i {m : Nat} (a b : BitVec m) (i n : Int) :=
+  BitVec.eq_sub a b i.toNat n.toNat
+
+noncomputable abbrev _root_.BitVec.eq_sub_bv {m : Nat} {m1 : Nat} {m2 : Nat} (a b : BitVec m) (i : BitVec m1) (n : BitVec m2) :=
+  BitVec.eq_sub a b i.toNat n.toNat
+
+abbrev w8_size_bv := (8 : BitVec 8)
+abbrev w16_size_bv := (16 : BitVec 16)
+abbrev w32_size_bv := (32 : BitVec 32)
+abbrev w64_size_bv := (64 : BitVec 64)
+abbrev w128_size_bv := (128 : BitVec 128)
+abbrev w256_size_bv := (256 : BitVec 256)
+abbrev w8_size_i := (8 : Int)
+abbrev w16_size_i := (16 : Int)
+abbrev w32_size_i := (32 : Int)
+abbrev w64_size_i := (64 : Int)
+abbrev w128_size_i := (128 : Int)
+abbrev w256_size_i := (256 : Int)
+
+abbrev _root_.Finset.erase' {α : Type} [DecidableEq α] (a : α) (s : Finset α) : Finset α
+  := Finset.erase s a
+
+abbrev _root_.BitVec.sge {n : ℕ} (x y : BitVec n) := BitVec.sle y x
+abbrev _root_.BitVec.sgt {n : ℕ} (x y : BitVec n) := BitVec.slt y x
+
+abbrev _root_.BitVec.sshiftRight_i {n : ℕ} (x : BitVec n) (s : ℤ) := BitVec.sshiftRight x s.toNat
+abbrev _root_.BitVec.sshiftRight_bv {n m : ℕ} (x : BitVec n) (s : BitVec m)
+  := BitVec.sshiftRight x s.toNat
+
+abbrev _root_.BitVec.rotateLeft_i {w : ℕ} (x : BitVec w) (n : ℤ) := BitVec.rotateLeft x n.toNat
+abbrev _root_.BitVec.rotateLeft_nv {w w2 : ℕ} (x : BitVec w) (n : BitVec w2)
+  := BitVec.rotateLeft x n.toNat
+
+abbrev _root_.BitVec.rotateRight_i {w : ℕ} (x : BitVec w) (n : ℤ) := BitVec.rotateRight x n.toNat
+abbrev _root_.BitVec.rotateRight_nv {w w2 : ℕ} (x : BitVec w) (n : BitVec w2)
+  := BitVec.rotateRight x n.toNat
+
+abbrev _root_.Multiset.count_i {α : Type} [DecidableEq α] (a : α) (s : Multiset α)
+  := Int.ofNat (s.count a)
+
+abbrev _root_.Multiset.card_i {α : Type} (S : Multiset α) := Int.ofNat S.card
+
+abbrev _root_.Int.gcd_i (a : ℤ) (b : ℤ) := Int.ofNat (Int.gcd a b)
+
+abbrev _root_.Int.Prime (p : ℤ) := Nat.Prime p.toNat
+abbrev _root_.Int.Coprime (a b : ℤ) := Nat.Coprime a.toNat b.toNat
+
+abbrev _root_.Set.remove {α : Type} (x : α) (A : Set α) := A \ {x}
+abbrev _root_.Set.filter {α : Type} (S : Set α) (P : α -> Bool) := {x ∈ S | P x }
+
+abbrev _root_.Option.the {α : Type} [Inhabited α] (opt : Option α) := opt.getD default
+
+noncomputable abbrev _root_.Finmap.lookup! {K : Type} {V : Type} [Inhabited V] (m : Finmap (fun _ : K => V)) (k : K) :=
+  (Finmap.lookup k m).getD default
+
+noncomputable abbrev _root_.Finmap.mapsto {K V : Type} (k : K) (v : V) (m : Finmap (fun _ : K => V))
+  := Finmap.lookup k m = some v
+
+abbrev _root_.Finmap.is_empty {K V : Type} (m : Finmap (fun _ : K => V)) := m = ∅
+abbrev _root_.Finmap.size {K V : Type} (m : Finmap (fun _ : K => V)) := m.keys.card
+
+abbrev _root_.Finset.min'' {α} [Inhabited α] [LinearOrder α] (s : Finset α) : α :=
+  match s.min with
+  | ⊤        => default
+  | .some a  => a
+
+abbrev _root_.Finset.max'' {α} [Inhabited α] [LinearOrder α] (s : Finset α) : α :=
+  match s.max with
+  | ⊥        => default
+  | .some a  => a
+
+abbrev arrayExchange {α} [Inhabited α] (a1 a2 : List α) (i j : Int) : Prop :=
+  let i' := i.toNat
+  let j' := j.toNat
+  a1 = (a2.set i' a1[j']!).set j' (a1[i']!)
+
+abbrev _root_.List.permut_sub {α} (a1 a2 : List α) (l u : ℕ) : Prop :=
+  a1.length = a2.length ∧ (0 ≤ l ∧ l ≤ a1.length) ∧ (0 ≤ u ∧ u ≤ a1.length) ∧
+  List.Perm (slice a1 l u) (slice a2 l u)
+
+abbrev _root_.List.permut_sub' {α} (a1 a2 : List α) (l u : ℕ) : Prop :=
+  a1.length = a2.length ∧ slice a1 0 l = slice a2 0 l ∧
+  slice a1 u a1.length = slice a2 u a1.length ∧
+  List.Perm (slice a1 l u) (slice a2 l u)
+
+abbrev _root_.List.foldr' {α β} (f : α -> β -> β) (l : List α) (x : β) := List.foldr f x l
+
+abbrev _root_.Int.to_Real (z : ℤ) : ℝ := z
+
+abbrev _root_.List.mem' {α} (eq : α -> α -> Bool) (x : α) (l : List α) := List.all l (eq x)
+
+noncomputable abbrev _root_.Real.truncate (x : ℝ) : ℤ := if 0 ≤ x then Int.floor x  else Int.ceil x
+
+alias _root_.Math.abs := abs
+
+end Lean4Why3
+
+open Classical
+open Lean4Why3
+
+namespace GilbreathCardTrickPure
+axiom m : ℤ
+axiom m_positive : (0 : ℤ) < m
+axiom n : ℤ
+axiom n_nonnegative : (0 : ℤ) ≤ n
+inductive shuffle { α : Type} : List α -> List α -> List α -> Prop where
+ | Shuffle_nil_left (l : List α) : shuffle l ([] : List α) l
+ | Shuffle_nil_right (l : List α) : shuffle ([] : List α) l l
+ | Shuffle_cons_left (a : List α) (b : List α) (c : List α) (x : α) : shuffle a b c → shuffle (List.cons x a) b (List.cons x c)
+ | Shuffle_cons_right (a : List α) (b : List α) (c : List α) (x : α) : shuffle a b c → shuffle a (List.cons x b) (List.cons x c)
+noncomputable def suit_ordered (l : List ℤ) := ∀(i : ℤ) (j : ℤ), (0 : ℤ) ≤ i ∧ i < n → (0 : ℤ) ≤ j ∧ j < m → getElem_i? l (i * m + j) = Option.some j
+noncomputable def suit_sorted (l : List ℤ) := (∀(i : ℤ) (v : ℤ), getElem_i? l i = Option.some v → (0 : ℤ) ≤ v ∧ v < m) ∧ (∀(i : ℤ) (j1 : ℤ) (j2 : ℤ), (0 : ℤ) ≤ i ∧ i < n → (0 : ℤ) ≤ j1 ∧ j1 < m → (0 : ℤ) ≤ j2 ∧ j2 < m → ¬getElem_i? l (i * m + j1) = getElem_i? l (i * m + j2))
+axiom gilbreath_card_trick (a : List ℤ) (c : List ℤ) (d : List ℤ) (b : List ℤ) (fact0 : Int.ofNat (List.length a) = n * m) (fact1 : suit_ordered a) (fact2 : a = c ++ d) (fact3 : shuffle c (List.reverse d) b) : suit_sorted b
+end GilbreathCardTrickPure
+namespace Stack
+axiom t : Type -> Type
+axiom inhabited_axiom_t {α : Type} [Inhabited α] : Inhabited (t α)
+attribute [instance] inhabited_axiom_t
+axiom elts :  {α : Type} -> [Inhabited α] -> t α -> List α
+noncomputable def length {α : Type} [Inhabited α] (s : t α) := Int.ofNat (List.length (elts s))
+end Stack
+namespace unraveling_a_card_trick_GilbreathCardTrick_shuffleqtvc
+theorem shuffle'vc (c : Stack.t ℤ) (a' : Stack.t ℤ) (b' : Stack.t ℤ) (a : Stack.t ℤ) (b : Stack.t ℤ) (fact0 : Stack.elts c = ([] : List ℤ)) (fact1 : Stack.elts a' = ([] : List ℤ)) (fact2 : Stack.elts b' = ([] : List ℤ)) : List.reverse (Stack.elts a) = List.reverse (Stack.elts a) ++ Stack.elts a' ∧ List.reverse (Stack.elts b) = List.reverse (Stack.elts b) ++ Stack.elts b' ∧ GilbreathCardTrickPure.shuffle (Stack.elts a') (Stack.elts b') (Stack.elts c) ∧ (∀(b'1 : Stack.t ℤ) (a'1 : Stack.t ℤ) (c1 : Stack.t ℤ) (b1 : Stack.t ℤ) (a1 : Stack.t ℤ), List.reverse (Stack.elts a) = List.reverse (Stack.elts a1) ++ Stack.elts a'1 ∧ List.reverse (Stack.elts b) = List.reverse (Stack.elts b1) ++ Stack.elts b'1 ∧ GilbreathCardTrickPure.shuffle (Stack.elts a'1) (Stack.elts b'1) (Stack.elts c1) → (∀(o1 : Bool), (if Stack.elts a1 = ([] : List ℤ) then o1 = (if Stack.elts b1 = ([] : List ℤ) then true else false) else o1 = false) → (if ¬o1 = true then ∀(o2 : Bool), (if ¬Stack.elts a1 = ([] : List ℤ) then Stack.elts b1 = ([] : List ℤ) → o2 = true else o2 = false) → (if o2 = true then ¬Stack.elts a1 = ([] : List ℤ) ∧ (∀(o3 : ℤ), (match Stack.elts a1 with | ([] : List ℤ) => False | List.cons x _ => o3 = x) → (∀(a'2 : Stack.t ℤ), Stack.elts a'2 = List.cons o3 (Stack.elts a'1) → ¬Stack.elts a1 = ([] : List ℤ) ∧ (∀(a2 : Stack.t ℤ) (o4 : ℤ), (match Stack.elts a1 with | ([] : List ℤ) => False | List.cons x t => o4 = x ∧ Stack.elts a2 = t) → (∀(c2 : Stack.t ℤ), Stack.elts c2 = List.cons o4 (Stack.elts c1) → ((0 : ℤ) ≤ Stack.length a1 + Stack.length b1 ∧ Stack.length a2 + Stack.length b1 < Stack.length a1 + Stack.length b1) ∧ List.reverse (Stack.elts a) = List.reverse (Stack.elts a2) ++ Stack.elts a'2 ∧ List.reverse (Stack.elts b) = List.reverse (Stack.elts b1) ++ Stack.elts b'1 ∧ GilbreathCardTrickPure.shuffle (Stack.elts a'2) (Stack.elts b'1) (Stack.elts c2))))) else ¬Stack.elts b1 = ([] : List ℤ) ∧ (∀(o3 : ℤ), (match Stack.elts b1 with | ([] : List ℤ) => False | List.cons x _ => o3 = x) → (∀(b'2 : Stack.t ℤ), Stack.elts b'2 = List.cons o3 (Stack.elts b'1) → ¬Stack.elts b1 = ([] : List ℤ) ∧ (∀(b2 : Stack.t ℤ) (o4 : ℤ), (match Stack.elts b1 with | ([] : List ℤ) => False | List.cons x t => o4 = x ∧ Stack.elts b2 = t) → (∀(c2 : Stack.t ℤ), Stack.elts c2 = List.cons o4 (Stack.elts c1) → ((0 : ℤ) ≤ Stack.length a1 + Stack.length b1 ∧ Stack.length a1 + Stack.length b2 < Stack.length a1 + Stack.length b1) ∧ List.reverse (Stack.elts a) = List.reverse (Stack.elts a1) ++ Stack.elts a'1 ∧ List.reverse (Stack.elts b) = List.reverse (Stack.elts b2) ++ Stack.elts b'2 ∧ GilbreathCardTrickPure.shuffle (Stack.elts a'1) (Stack.elts b'2) (Stack.elts c2)))))) else Stack.elts a1 = ([] : List ℤ) ∧ Stack.elts b1 = ([] : List ℤ) ∧ GilbreathCardTrickPure.shuffle (List.reverse (Stack.elts a)) (List.reverse (Stack.elts b)) (Stack.elts c1))))
+  := sorry
+end unraveling_a_card_trick_GilbreathCardTrick_shuffleqtvc

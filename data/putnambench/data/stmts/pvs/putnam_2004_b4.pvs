@@ -1,0 +1,152 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2004_b4:
+% composing the rotations through angle 2*pi/n about (k,0), for k from 1
+% through n, translates every complex point z to z + n. This file contains no proof.
+
+putnam_2004_b4: THEORY
+BEGIN
+  complex: TYPE = [# real_part: real, imag_part: real #]
+  complex_function: TYPE = [complex -> complex]
+  complex_function_sequence: TYPE = [nat -> complex_function]
+  real_sequence: TYPE = [nat -> real]
+
+  complex_of_nat(value: nat): complex =
+    (# real_part := value, imag_part := 0 #)
+
+  complex_neg(value: complex): complex =
+    (# real_part := -real_part(value),
+       imag_part := -imag_part(value) #)
+
+  complex_add(left, right: complex): complex =
+    (# real_part := real_part(left) + real_part(right),
+       imag_part := imag_part(left) + imag_part(right) #)
+
+  complex_sub(left, right: complex): complex =
+    complex_add(left, complex_neg(right))
+
+  complex_mul(left, right: complex): complex =
+    (# real_part :=
+         real_part(left) * real_part(right)
+           - imag_part(left) * imag_part(right),
+       imag_part :=
+         real_part(left) * imag_part(right)
+           + imag_part(left) * real_part(right) #)
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  alternating_sign(index: nat): RECURSIVE real =
+    IF index = 0 THEN
+      1
+    ELSE
+      -alternating_sign(index - 1)
+    ENDIF
+  MEASURE index
+
+  sine_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        sine_partial(x, count - 1)
+          + safe_div(
+              alternating_sign(index) * x ^ (2 * index + 1),
+              factorial(2 * index + 1) :: real)
+    ENDIF
+  MEASURE count
+
+  cosine_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        cosine_partial(x, count - 1)
+          + safe_div(
+              alternating_sign(index) * x ^ (2 * index),
+              factorial(2 * index) :: real)
+    ENDIF
+  MEASURE count
+
+  leibniz_partial_sum(count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        leibniz_partial_sum(count - 1)
+          + safe_div(
+              alternating_sign(index),
+              (2 * index + 1) :: real)
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  sine(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat): sine_partial(x, count),
+          value))
+
+  cosine(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat): cosine_partial(x, count),
+          value))
+
+  pi: real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat):
+            4 * leibniz_partial_sum(count),
+          value))
+
+  rotation_angle(n: nat): real =
+    safe_div(2 * pi, n :: real)
+
+  rotation_multiplier(n: nat): complex =
+    (# real_part := cosine(rotation_angle(n)),
+       imag_part := sine(rotation_angle(n)) #)
+
+  rotation_map(n, k: nat, point: complex): complex =
+    complex_add(
+      complex_of_nat(k),
+      complex_mul(
+        rotation_multiplier(n),
+        complex_sub(point, complex_of_nat(k))))
+
+  putnam_2004_b4_solution(n: nat): complex_function =
+    LAMBDA (point: complex):
+      complex_add(point, complex_of_nat(n))
+
+  putnam_2004_b4: bool =
+    FORALL (n: nat),
+      (R, Rk: complex_function_sequence):
+      (n >= 2
+        AND (FORALL (k: nat), (point: complex):
+          Rk(k)(point) = rotation_map(n, k, point))
+        AND (FORALL (point: complex):
+          R(0)(point) = point)
+        AND (FORALL (k: nat), (point: complex):
+          R(k + 1)(point) = Rk(k + 1)(R(k)(point))))
+      IMPLIES
+        R(n) = putnam_2004_b4_solution(n)
+END putnam_2004_b4

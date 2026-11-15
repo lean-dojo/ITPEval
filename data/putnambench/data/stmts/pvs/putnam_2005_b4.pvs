@@ -1,0 +1,78 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2005_b4:
+% for positive integers m and n, the number of integer n-tuples whose sum of
+% coordinate absolute values is at most m is symmetric in m and n. This file
+% contains no proof.
+
+putnam_2005_b4: THEORY
+BEGIN
+  integer_sequence: TYPE = [nat -> int]
+  integer_sequence_set: TYPE = [integer_sequence -> bool]
+  sequence_enumeration: TYPE = [nat -> integer_sequence]
+  count_function: TYPE = [posnat, posnat -> nat]
+
+  absolute_prefix_sum(
+      values: integer_sequence,
+      count: nat): RECURSIVE int =
+    IF count = 0 THEN
+      0
+    ELSE
+      absolute_prefix_sum(values, count - 1)
+        + abs(values(count - 1))
+    ENDIF
+  MEASURE count
+
+  canonical_tuple(
+      values: integer_sequence,
+      length: posnat): bool =
+    FORALL (index: nat):
+      length <= index IMPLIES values(index) = 0
+
+  admissible_tuple(
+      values: integer_sequence,
+      bound, length: posnat): bool =
+    canonical_tuple(values, length)
+      AND absolute_prefix_sum(values, length) <= bound
+
+  admissible_tuples(
+      bound, length: posnat): integer_sequence_set =
+    LAMBDA (values: integer_sequence):
+      admissible_tuple(values, bound, length)
+
+  injective_below(
+      enumeration: sequence_enumeration,
+      cardinality: nat): bool =
+    FORALL (i, j: nat):
+      i < cardinality
+        AND j < cardinality
+        AND enumeration(i) = enumeration(j)
+      IMPLIES i = j
+
+  enumerates_exactly(
+      enumeration: sequence_enumeration,
+      set_value: integer_sequence_set,
+      cardinality: nat): bool =
+    FORALL (values: integer_sequence):
+      set_value(values)
+        IFF EXISTS (position: nat):
+          position < cardinality
+            AND enumeration(position) = values
+
+  has_cardinality(
+      set_value: integer_sequence_set,
+      cardinality: nat): bool =
+    EXISTS (enumeration: sequence_enumeration):
+      injective_below(enumeration, cardinality)
+        AND enumerates_exactly(
+          enumeration, set_value, cardinality)
+
+  counts_admissible_tuples(f: count_function): bool =
+    FORALL (bound, length: posnat):
+      has_cardinality(
+        admissible_tuples(bound, length),
+        f(bound, length))
+
+  putnam_2005_b4: bool =
+    FORALL (m, n: posnat), (f: count_function):
+      counts_admissible_tuples(f)
+        IMPLIES f(m, n) = f(n, m)
+END putnam_2005_b4

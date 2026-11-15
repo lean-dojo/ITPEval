@@ -1,0 +1,102 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1994_b3:
+% the real exponents k for which every positive globally differentiable real
+% function satisfying f'(x) > f(x) eventually dominates exp(k*x) are exactly
+% those below 1. This file contains no proof.
+
+putnam_1994_b3: THEORY
+BEGIN
+  real_function: TYPE = [real -> real]
+  real_sequence: TYPE = [nat -> real]
+
+  has_derivative_at(
+      f: real_function,
+      derivative, x: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (delta: posreal):
+        FORALL (h: real):
+          (NOT (h = 0) AND abs(h) < delta)
+            IMPLIES
+              abs(
+                f(x + h) - f(x)
+                  - derivative * h)
+                < epsilon_value * abs(h)
+
+  differentiable_at(f: real_function, x: real): bool =
+    EXISTS (derivative: real):
+      has_derivative_at(f, derivative, x)
+
+  differentiable(f: real_function): bool =
+    FORALL (x: real):
+      differentiable_at(f, x)
+
+  derivative_value(f: real_function, x: real): real =
+    IF differentiable_at(f, x) THEN
+      epsilon(
+        LAMBDA (derivative: real):
+          has_derivative_at(f, derivative, x))
+    ELSE
+      0
+    ENDIF
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  nat_factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * nat_factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  exponential_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        exponential_partial(x, count - 1)
+          + safe_div(
+              x ^ index,
+              nat_factorial(index) :: real)
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  real_exponential(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat):
+            exponential_partial(x, count),
+          value))
+
+  eventual_domination_property(k: real): bool =
+    FORALL (f: real_function):
+      (((FORALL (x: real):
+          0 < f(x)
+            AND f(x) < derivative_value(f, x))
+        AND differentiable(f))
+      IMPLIES
+        EXISTS (cutoff: real):
+          FORALL (x: real):
+            cutoff < x IMPLIES
+              real_exponential(k * x) < f(x))
+
+  putnam_1994_b3_solution(k: real): bool =
+    k < 1
+
+  putnam_1994_b3: bool =
+    FORALL (k: real):
+      eventual_domination_property(k)
+        IFF putnam_1994_b3_solution(k)
+END putnam_1994_b3

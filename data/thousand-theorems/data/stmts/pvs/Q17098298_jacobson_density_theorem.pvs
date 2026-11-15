@@ -1,0 +1,152 @@
+% Statement-only formalization of the Thousand Theorems corpus artifact
+% Q17098298 (thousand-theorems__pvs__Q17098298), "Jacobson density theorem":
+% on a semisimple module, an endomorphism-linear self-map agrees on every
+% finite subset with scalar multiplication by some ring element. This file
+% contains no proof.
+
+Q17098298_jacobson_density_theorem[
+  R, M: TYPE+,
+  zero_R, one_R: R,
+  neg_R: [R -> R],
+  add_R, mul_R: [R, R -> R],
+  zero_M: M,
+  neg_M: [M -> M],
+  add_M: [M, M -> M],
+  smul_R: [R, M -> M]
+]: THEORY
+BEGIN
+
+  submodule: TYPE = [M -> bool]
+
+  IMPORTING finite_sets[M]
+
+  ring_laws: bool =
+    (FORALL (a, b: R):
+      add_R(a, b) = add_R(b, a))
+      AND
+    (FORALL (a, b, c: R):
+      add_R(add_R(a, b), c) = add_R(a, add_R(b, c)))
+      AND
+    (FORALL (a: R):
+      add_R(zero_R, a) = a
+        AND add_R(a, zero_R) = a)
+      AND
+    (FORALL (a: R):
+      add_R(neg_R(a), a) = zero_R
+        AND add_R(a, neg_R(a)) = zero_R)
+      AND
+    (FORALL (a, b, c: R):
+      mul_R(mul_R(a, b), c) = mul_R(a, mul_R(b, c)))
+      AND
+    (FORALL (a: R):
+      mul_R(one_R, a) = a
+        AND mul_R(a, one_R) = a)
+      AND
+    (FORALL (a, b, c: R):
+      mul_R(a, add_R(b, c))
+        = add_R(mul_R(a, b), mul_R(a, c)))
+      AND
+    (FORALL (a, b, c: R):
+      mul_R(add_R(a, b), c)
+        = add_R(mul_R(a, c), mul_R(b, c)))
+
+  additive_commutative_group_laws_M: bool =
+    (FORALL (x, y: M):
+      add_M(x, y) = add_M(y, x))
+      AND
+    (FORALL (x, y, z: M):
+      add_M(add_M(x, y), z) = add_M(x, add_M(y, z)))
+      AND
+    (FORALL (x: M):
+      add_M(zero_M, x) = x
+        AND add_M(x, zero_M) = x)
+      AND
+    (FORALL (x: M):
+      add_M(neg_M(x), x) = zero_M
+        AND add_M(x, neg_M(x)) = zero_M)
+
+  module_laws: bool =
+    additive_commutative_group_laws_M
+      AND
+    (FORALL (a: R), (x, y: M):
+      smul_R(a, add_M(x, y))
+        = add_M(smul_R(a, x), smul_R(a, y)))
+      AND
+    (FORALL (a, b: R), (x: M):
+      smul_R(add_R(a, b), x)
+        = add_M(smul_R(a, x), smul_R(b, x)))
+      AND
+    (FORALL (a, b: R), (x: M):
+      smul_R(mul_R(a, b), x)
+        = smul_R(a, smul_R(b, x)))
+      AND
+    (FORALL (x: M):
+      smul_R(one_R, x) = x)
+      AND
+    (FORALL (x: M):
+      smul_R(zero_R, x) = zero_M)
+      AND
+    (FORALL (a: R):
+      smul_R(a, zero_M) = zero_M)
+
+  is_submodule(N: submodule): bool =
+    N(zero_M)
+      AND
+    (FORALL (x, y: M):
+      N(x) AND N(y) IMPLIES N(add_M(x, y)))
+      AND
+    (FORALL (x: M):
+      N(x) IMPLIES N(neg_M(x)))
+      AND
+    (FORALL (a: R), (x: M):
+      N(x) IMPLIES N(smul_R(a, x)))
+
+  direct_complements(N, C: submodule): bool =
+    is_submodule(N)
+      AND is_submodule(C)
+      AND
+    (FORALL (x: M):
+      N(x) AND C(x) IMPLIES x = zero_M)
+      AND
+    (FORALL (x: M):
+      EXISTS (n, c: M):
+        N(n) AND C(c) AND x = add_M(n, c))
+
+  semisimple_module: bool =
+    FORALL (N: submodule):
+      is_submodule(N) IMPLIES
+        EXISTS (C: submodule):
+          direct_complements(N, C)
+
+  is_R_linear(g: [M -> M]): bool =
+    g(zero_M) = zero_M
+      AND
+    (FORALL (x, y: M):
+      g(add_M(x, y)) = add_M(g(x), g(y)))
+      AND
+    (FORALL (a: R), (x: M):
+      g(smul_R(a, x)) = smul_R(a, g(x)))
+
+  is_endomorphism_ring_linear(f: [M -> M]): bool =
+    f(zero_M) = zero_M
+      AND
+    (FORALL (x, y: M):
+      f(add_M(x, y)) = add_M(f(x), f(y)))
+      AND
+    (FORALL (g: [M -> M]):
+      is_R_linear(g) IMPLIES
+        (FORALL (x: M):
+          f(g(x)) = g(f(x))))
+
+  jacobson_density: bool =
+    (ring_laws AND module_laws AND semisimple_module)
+      IMPLIES
+        FORALL (f: [M -> M]), (s: finite_set[M]):
+          is_endomorphism_ring_linear(f)
+            IMPLIES
+              EXISTS (r: R):
+                FORALL (m: M):
+                  member(m, s) IMPLIES
+                    f(m) = smul_R(r, m)
+
+END Q17098298_jacobson_density_theorem

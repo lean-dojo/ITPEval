@@ -1,0 +1,523 @@
+% Statement-only formalization of NTP4VC corpus artifact
+% pearl/verifythis_2021_shearsort_modified_Top_shearsortqtvc: the
+% verification condition for alternating snake-ordered row sorts and
+% sorted column passes while preserving matrix multiplicities and
+% decreasing the inversion count. This file contains no proof.
+
+verifythis_2021_shearsort_modified_Top_shearsortqtvc: THEORY
+BEGIN
+
+  matrix: TYPE =
+    [# rows: nat,
+       columns: nat,
+       elts: [int, int -> int] #]
+
+  nat_sum(
+      f: [nat -> int],
+      count: nat): RECURSIVE int =
+    IF count = 0 THEN
+      0
+    ELSE
+      nat_sum(f, count - 1) + f(count - 1)
+    ENDIF
+  MEASURE count
+
+  snake_lt(i, j, k, l: int): bool =
+    i < k
+      OR
+    (i = k
+      AND
+        IF mod(i, 2) = 0 THEN
+          j < l
+        ELSE
+          l < j
+        ENDIF)
+
+  mocc(value: int, m: matrix): int =
+    nat_sum(
+      LAMBDA (row: nat):
+        nat_sum(
+          LAMBDA (column: nat):
+            IF elts(m)(row, column) = value THEN
+              1
+            ELSE
+              0
+            ENDIF,
+          columns(m)),
+      rows(m))
+
+  inversions(m: matrix): int =
+    nat_sum(
+      LAMBDA (i: nat):
+        nat_sum(
+          LAMBDA (j: nat):
+            nat_sum(
+              LAMBDA (k: nat):
+                nat_sum(
+                  LAMBDA (l: nat):
+                    IF snake_lt(i, j, k, l)
+                         AND elts(m)(k, l) < elts(m)(i, j)
+                    THEN
+                      1
+                    ELSE
+                      0
+                    ENDIF,
+                  columns(m)),
+              rows(m)),
+          columns(m)),
+      rows(m))
+
+  same_dimensions(left, right: matrix): bool =
+    rows(left) = rows(right)
+      AND columns(left) = columns(right)
+
+  mocc_preserved(current, original: matrix): bool =
+    FORALL (value: int):
+      mocc(value, current) = mocc(value, original)
+
+  sorted_row(
+      m: matrix,
+      row: int,
+      ascending: bool): bool =
+    0 <= row
+      AND row < rows(m)
+      AND
+        IF ascending THEN
+          FORALL (j, l: int):
+            0 <= j AND j <= l AND l < columns(m)
+              IMPLIES elts(m)(row, j) <= elts(m)(row, l)
+        ELSE
+          FORALL (j, l: int):
+            0 <= j AND j <= l AND l < columns(m)
+              IMPLIES elts(m)(row, l) <= elts(m)(row, j)
+        ENDIF
+
+  sorted_column(
+      m: matrix,
+      column: int): bool =
+    0 <= column
+      AND column < columns(m)
+      AND
+        (FORALL (i, k: int):
+          0 <= i AND i <= k AND k < rows(m)
+            IMPLIES elts(m)(i, column) <= elts(m)(k, column))
+
+  rows_sorted_before(
+      m: matrix,
+      upper: int): bool =
+    FORALL (row: int):
+      0 <= row AND row < upper
+        IMPLIES sorted_row(m, row, mod(row, 2) = 0)
+
+  columns_sorted_before(
+      m: matrix,
+      upper: int): bool =
+    FORALL (column: int):
+      0 <= column AND column < upper
+        IMPLIES sorted_column(m, column)
+
+  snake_order(m: matrix): bool =
+    FORALL (i, j, k, l: int):
+      0 <= i AND i < rows(m)
+        IMPLIES
+          0 <= j AND j < columns(m)
+            IMPLIES
+              0 <= k AND k < rows(m)
+                IMPLIES
+                  0 <= l AND l < columns(m)
+                    IMPLIES
+                      snake_lt(i, j, k, l)
+                        IMPLIES elts(m)(i, j) <= elts(m)(k, l)
+
+  square_order(
+      m: matrix,
+      bound: int): bool =
+    FORALL (i, j, k, l: int):
+      (0 <= i AND i < bound)
+        AND (0 <= j AND j < bound)
+        AND (0 <= k AND k < bound)
+        AND (0 <= l AND l < bound)
+        AND snake_lt(i, j, k, l)
+          IMPLIES elts(m)(i, j) <= elts(m)(k, l)
+
+  row_frame(
+      after, before: matrix,
+      selected_row: int): bool =
+    FORALL (row, column: int):
+      0 <= row AND row < rows(after)
+        IMPLIES
+          0 <= column AND column < columns(after)
+            IMPLIES
+              row /= selected_row
+                IMPLIES
+                  elts(after)(row, column)
+                    = elts(before)(row, column)
+
+  column_frame(
+      after, before: matrix,
+      selected_column: int): bool =
+    FORALL (row, column: int):
+      0 <= row AND row < rows(after)
+        IMPLIES
+          0 <= column AND column < columns(after)
+            IMPLIES
+              column /= selected_column
+                IMPLIES
+                  elts(after)(row, column)
+                    = elts(before)(row, column)
+
+  matrices_equal_on_range(
+      left, right: matrix): bool =
+    FORALL (row, column: int):
+      0 <= row AND row < rows(left)
+        IMPLIES
+          0 <= column AND column < columns(left)
+            IMPLIES
+              elts(left)(row, column)
+                = elts(right)(row, column)
+
+  selected_column_unchanged(
+      after, before: matrix,
+      selected_column: int): bool =
+    FORALL (row: int):
+      0 <= row AND row < rows(after)
+        IMPLIES
+          elts(after)(row, selected_column)
+            = elts(before)(row, selected_column)
+
+  column_sort_post(
+      after, before: matrix,
+      selected_column: int,
+      nochange: bool): bool =
+    column_frame(after, before, selected_column)
+      AND mocc_preserved(after, before)
+      AND
+        (nochange
+          IMPLIES
+            selected_column_unchanged(
+              after,
+              before,
+              selected_column))
+      AND sorted_column(after, selected_column)
+      AND inversions(after) <= inversions(before)
+      AND
+        (NOT nochange
+          IMPLIES inversions(after) < inversions(before))
+
+  column_updated_state(
+      original, phase_start: matrix,
+      new_nochange: bool,
+      after: matrix,
+      next_column: int): bool =
+    (new_nochange
+      IMPLIES matrices_equal_on_range(after, phase_start))
+      AND columns_sorted_before(after, next_column)
+      AND mocc_preserved(after, original)
+      AND inversions(after) <= inversions(phase_start)
+      AND
+        (NOT new_nochange
+          IMPLIES inversions(after) < inversions(phase_start))
+
+  all_column_return_flags(
+      original, phase_start: matrix,
+      old_nochange: bool,
+      before, after: matrix,
+      selected_column: int): bool =
+    FORALL (returned_nochange: bool):
+      column_sort_post(
+        after,
+        before,
+        selected_column,
+        returned_nochange)
+        IMPLIES
+          column_updated_state(
+            original,
+            phase_start,
+            IF NOT returned_nochange THEN
+              FALSE
+            ELSE
+              old_nochange
+            ENDIF,
+            after,
+            selected_column + 1)
+
+  all_column_sort_results(
+      original, phase_start: matrix,
+      old_nochange: bool,
+      before: matrix,
+      selected_column: int): bool =
+    FORALL (after: matrix):
+      same_dimensions(after, before)
+        IMPLIES
+          all_column_return_flags(
+            original,
+            phase_start,
+            old_nochange,
+            before,
+            after,
+            selected_column)
+
+  column_loop_state(
+      original, phase_start: matrix,
+      nochange: bool,
+      current: matrix,
+      column, last_column: int): bool =
+    0 <= column
+      AND column <= last_column
+      AND
+        (nochange
+          IMPLIES matrices_equal_on_range(current, phase_start))
+      AND columns_sorted_before(current, column)
+      AND mocc_preserved(current, original)
+      AND inversions(current) <= inversions(phase_start)
+      AND
+        (NOT nochange
+          IMPLIES inversions(current) < inversions(phase_start))
+
+  column_index_obligation(
+      original, phase_start: matrix,
+      nochange: bool,
+      current: matrix,
+      column: int): bool =
+    0 <= column
+      AND column < columns(current)
+      AND
+        all_column_sort_results(
+          original,
+          phase_start,
+          nochange,
+          current,
+          column)
+
+  all_column_indices(
+      original, phase_start: matrix,
+      nochange: bool,
+      current: matrix,
+      last_column: int): bool =
+    FORALL (column: int):
+      column_loop_state(
+        original,
+        phase_start,
+        nochange,
+        current,
+        column,
+        last_column)
+        IMPLIES
+          column_index_obligation(
+            original,
+            phase_start,
+            nochange,
+            current,
+            column)
+
+  column_loop_exit_state(
+      original, phase_start: matrix,
+      nochange: bool,
+      current: matrix,
+      upper: int): bool =
+    (nochange
+      IMPLIES matrices_equal_on_range(current, phase_start))
+      AND columns_sorted_before(current, upper)
+      AND mocc_preserved(current, original)
+      AND inversions(current) <= inversions(phase_start)
+      AND
+        (NOT nochange
+          IMPLIES inversions(current) < inversions(phase_start))
+
+  column_loop_exit_result(
+      original, outer_baseline: matrix,
+      nochange: bool,
+      current: matrix): bool =
+    IF nochange THEN
+      square_order(current, columns(original))
+        AND snake_order(current)
+        AND mocc_preserved(current, original)
+    ELSE
+      0 <= inversions(outer_baseline)
+        AND inversions(current) < inversions(outer_baseline)
+        AND mocc_preserved(current, original)
+    ENDIF
+
+  all_column_loop_states(
+      original, outer_baseline, phase_start: matrix,
+      last_column: int): bool =
+    FORALL (nochange: bool), (current: matrix):
+      same_dimensions(current, phase_start)
+        IMPLIES
+          all_column_indices(
+            original,
+            phase_start,
+            nochange,
+            current,
+            last_column)
+          AND
+            (column_loop_exit_state(
+              original,
+              phase_start,
+              nochange,
+              current,
+              last_column + 1)
+              IMPLIES
+                column_loop_exit_result(
+                  original,
+                  outer_baseline,
+                  nochange,
+                  current))
+
+  column_phase(
+      original, outer_baseline, phase_start: matrix): bool =
+    LET last_column: int = columns(original) - 1
+    IN
+      (0 <= last_column + 1
+        IMPLIES
+          (columns_sorted_before(phase_start, 0)
+            AND mocc_preserved(phase_start, original)
+            AND inversions(phase_start) <= inversions(phase_start))
+          AND
+            all_column_loop_states(
+              original,
+              outer_baseline,
+              phase_start,
+              last_column))
+      AND
+        (last_column + 1 < 0
+          IMPLIES
+            square_order(phase_start, columns(original))
+              AND snake_order(phase_start)
+              AND mocc_preserved(phase_start, original))
+
+  row_sort_post(
+      after, before: matrix,
+      selected_row: int): bool =
+    row_frame(after, before, selected_row)
+      AND mocc_preserved(after, before)
+      AND sorted_row(
+        after,
+        selected_row,
+        mod(selected_row, 2) = 0)
+      AND inversions(after) <= inversions(before)
+
+  row_updated_state(
+      original, row_baseline, after: matrix,
+      next_row: int): bool =
+    rows_sorted_before(after, next_row)
+      AND mocc_preserved(after, original)
+      AND inversions(after) <= inversions(row_baseline)
+
+  all_row_sort_results(
+      original, row_baseline, before: matrix,
+      selected_row: int): bool =
+    FORALL (after: matrix):
+      same_dimensions(after, before)
+        IMPLIES
+          row_sort_post(after, before, selected_row)
+            IMPLIES
+              row_updated_state(
+                original,
+                row_baseline,
+                after,
+                selected_row + 1)
+
+  row_loop_state(
+      original, row_baseline, current: matrix,
+      row, last_row: int): bool =
+    0 <= row
+      AND row <= last_row
+      AND rows_sorted_before(current, row)
+      AND mocc_preserved(current, original)
+      AND inversions(current) <= inversions(row_baseline)
+
+  row_index_obligation(
+      original, row_baseline, current: matrix,
+      row: int): bool =
+    2 /= 0
+      AND 0 <= row
+      AND row < rows(current)
+      AND
+        all_row_sort_results(
+          original,
+          row_baseline,
+          current,
+          row)
+
+  all_row_indices(
+      original, row_baseline, current: matrix,
+      last_row: int): bool =
+    FORALL (row: int):
+      row_loop_state(
+        original,
+        row_baseline,
+        current,
+        row,
+        last_row)
+        IMPLIES
+          row_index_obligation(
+            original,
+            row_baseline,
+            current,
+            row)
+
+  row_loop_exit_state(
+      original, row_baseline, current: matrix,
+      upper: int): bool =
+    rows_sorted_before(current, upper)
+      AND mocc_preserved(current, original)
+      AND inversions(current) <= inversions(row_baseline)
+
+  all_row_loop_states(
+      original, row_baseline: matrix,
+      last_row: int): bool =
+    FORALL (current: matrix):
+      same_dimensions(current, row_baseline)
+        IMPLIES
+          all_row_indices(
+            original,
+            row_baseline,
+            current,
+            last_row)
+          AND
+            (row_loop_exit_state(
+              original,
+              row_baseline,
+              current,
+              last_row + 1)
+              IMPLIES
+                column_phase(
+                  original,
+                  row_baseline,
+                  current))
+
+  shearsort_vc(
+      original, row_baseline: matrix): bool =
+    LET last_row: int = columns(original) - 1
+    IN
+      (0 <= last_row + 1
+        IMPLIES
+          (rows_sorted_before(row_baseline, 0)
+            AND mocc_preserved(row_baseline, original)
+            AND inversions(row_baseline) <= inversions(row_baseline))
+          AND
+            all_row_loop_states(
+              original,
+              row_baseline,
+              last_row))
+      AND
+        (last_row + 1 < 0
+          IMPLIES
+            column_phase(
+              original,
+              row_baseline,
+              row_baseline))
+
+  shearsortqtvc: bool =
+    FORALL (original, row_baseline: matrix):
+      rows(original) = columns(original)
+        IMPLIES
+          rows(row_baseline) = rows(original)
+            IMPLIES
+              columns(row_baseline) = columns(original)
+                IMPLIES
+                  mocc_preserved(row_baseline, original)
+                    IMPLIES shearsort_vc(original, row_baseline)
+
+END verifythis_2021_shearsort_modified_Top_shearsortqtvc

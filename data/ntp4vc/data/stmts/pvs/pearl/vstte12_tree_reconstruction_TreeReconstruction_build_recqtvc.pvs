@@ -1,0 +1,86 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/vstte12_tree_reconstruction_TreeReconstruction_build_recqtvc: the
+% recursive verification condition for reconstructing a binary tree from its
+% list of leaf depths, including success, failure, and termination branches.
+% This file contains no proof.
+
+vstte12_tree_reconstruction_TreeReconstruction_build_recqtvc: THEORY
+BEGIN
+
+  tree: DATATYPE
+  BEGIN
+    Leaf: Leaf?
+    Node(left_subtree, right_subtree: tree): Node?
+  END tree
+
+  depths(root_depth: int, value: tree): RECURSIVE list[int] =
+    CASES value OF
+      Leaf:
+        cons(root_depth, null),
+      Node(left, right):
+        append(
+          depths(root_depth + 1, left),
+          depths(root_depth + 1, right))
+    ENDCASES
+  MEASURE value BY <<
+
+  head_default(values: list[int]): int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        head
+    ENDCASES
+
+  no_decomposition(depth: int, values: list[int]): bool =
+    FORALL (value: tree), (suffix: list[int]):
+      NOT append(depths(depth, value), suffix) = values
+
+  build_rec_vc: bool =
+    FORALL (s: list[int]), (d: int):
+      CASES s OF
+        null:
+          no_decomposition(d, s),
+        cons(h, t):
+          IF h < d THEN
+            no_decomposition(d, s)
+          ELSIF h = d THEN
+            s = append(depths(d, Leaf), t)
+          ELSE
+            LET o1: int = d + 1
+            IN
+              (0 <= head_default(s) - d
+                AND
+               head_default(s) - o1 < head_default(s) - d)
+              AND
+              (FORALL (l: tree), (s1: list[int]):
+                s = append(depths(o1, l), s1)
+                  IMPLIES
+                    LET o2: int = d + 1
+                    IN
+                      (((0 <= (length(s) :: int)
+                          AND length(s1) < length(s))
+                        OR
+                        (length(s) = length(s1)
+                          AND 0 <= head_default(s) - d
+                          AND
+                            head_default(s1) - o2
+                              < head_default(s) - d))
+                       AND
+                       (FORALL (r: tree), (s2: list[int]):
+                         s1 = append(depths(o2, r), s2)
+                           IMPLIES
+                             s =
+                               append(
+                                 depths(d, Node(l, r)),
+                                 s2))
+                       AND
+                       (no_decomposition(o2, s1)
+                         IMPLIES no_decomposition(d, s))))
+              AND
+              (no_decomposition(o1, s)
+                IMPLIES no_decomposition(d, s))
+          ENDIF
+      ENDCASES
+
+END vstte12_tree_reconstruction_TreeReconstruction_build_recqtvc

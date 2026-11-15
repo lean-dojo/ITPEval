@@ -1,0 +1,135 @@
+% Statement-only formalization of the VERINA corpus artifact
+% verina_advanced_56, catalog title "moveZeroes": stably moving all zeroes in
+% an integer list to the end while preserving the full executable computation
+% and correctness contract. This file contains no proof.
+
+verina_advanced_56: THEORY
+BEGIN
+
+  moveZeroes_precond(xs: list[int]): bool =
+    TRUE
+
+  filter_nonzero(values: list[int]): RECURSIVE list[int] =
+    CASES values OF
+      null:
+        null[int],
+      cons(head, tail):
+        IF head /= 0 THEN
+          cons(head, filter_nonzero(tail))
+        ELSE
+          filter_nonzero(tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  filter_zero(values: list[int]): RECURSIVE list[int] =
+    CASES values OF
+      null:
+        null[int],
+      cons(head, tail):
+        IF head = 0 THEN
+          cons(head, filter_zero(tail))
+        ELSE
+          filter_zero(tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  append_int_lists(
+      first, second: list[int]): RECURSIVE list[int] =
+    CASES first OF
+      null:
+        second,
+      cons(head, tail):
+        cons(head, append_int_lists(tail, second))
+    ENDCASES
+  MEASURE first BY <<
+
+  % The Lean precondition proof argument is computationally irrelevant. This
+  % definition is its exact proof-erased executable computation.
+  moveZeroes(xs: list[int]): list[int] =
+    append_int_lists(
+      filter_nonzero(xs),
+      filter_zero(xs))
+
+  countVal(
+      value: int,
+      values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        LET rest: nat = countVal(value, tail)
+        IN
+          IF head = value THEN rest + 1 ELSE rest ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  isSubsequence(
+      xs, ys: list[int]): RECURSIVE bool =
+    CASES xs OF
+      null:
+        TRUE,
+      cons(x, xt):
+        CASES ys OF
+          null:
+            FALSE,
+          cons(y, yt):
+            IF x = y THEN
+              isSubsequence(xt, yt)
+            ELSE
+              isSubsequence(xs, yt)
+            ENDIF
+        ENDCASES
+    ENDCASES
+  MEASURE ys BY <<
+
+  drop_while_nonzero(
+      values: list[int]): RECURSIVE list[int] =
+    CASES values OF
+      null:
+        null[int],
+      cons(head, tail):
+        IF head /= 0 THEN
+          drop_while_nonzero(tail)
+        ELSE
+          cons(head, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  all_zero(values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        head = 0 AND all_zero(tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  int_list_length(values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        int_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  moveZeroes_postcond(
+      xs: list[int],
+      result: list[int]): bool =
+    isSubsequence(filter_nonzero(xs), result)
+      AND all_zero(drop_while_nonzero(result))
+      AND countVal(0, xs) = countVal(0, result)
+      AND int_list_length(xs) = int_list_length(result)
+
+  moveZeroes_spec_satisfied: bool =
+    FORALL (xs: list[int]):
+      moveZeroes_precond(xs)
+        IMPLIES
+          moveZeroes_postcond(
+            xs,
+            moveZeroes(xs))
+
+END verina_advanced_56

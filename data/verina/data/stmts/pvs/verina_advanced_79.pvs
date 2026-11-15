@@ -1,0 +1,216 @@
+% Statement-only formalization of the VERINA corpus artifact
+% verina_advanced_79, catalog title "twoSum": deterministically finding the
+% lexicographically first pair of indices whose integer entries sum to a
+% target, with the exact executable search and correctness contract. This
+% file contains no proof.
+
+verina_advanced_79: THEORY
+BEGIN
+
+  nat_pair: TYPE =
+    [# first_index: nat,
+       second_index: nat #]
+
+  nat_option: DATATYPE
+  BEGIN
+    NoNat: NoNat?
+    SomeNat(option_value: nat): SomeNat?
+  END nat_option
+
+  nat_pair_option: DATATYPE
+  BEGIN
+    NoPair: NoPair?
+    SomePair(pair_value: nat_pair): SomePair?
+  END nat_pair_option
+
+  int_list_length(values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        int_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  int_list_get_bang(
+      index: nat,
+      values: list[int]): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          int_list_get_bang(index - 1, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  int_list_drop(
+      count: nat,
+      values: list[int]): RECURSIVE list[int] =
+    IF count = 0 THEN
+      values
+    ELSE
+      CASES values OF
+        null:
+          null[int],
+        cons(head, tail):
+          int_list_drop(count - 1, tail)
+      ENDCASES
+    ENDIF
+  MEASURE values BY <<
+
+  int_list_take(
+      count: nat,
+      values: list[int]): RECURSIVE list[int] =
+    IF count = 0 THEN
+      null[int]
+    ELSE
+      CASES values OF
+        null:
+          null[int],
+        cons(head, tail):
+          cons(head, int_list_take(count - 1, tail))
+      ENDCASES
+    ENDIF
+  MEASURE values BY <<
+
+  all_later_sums_differ(
+      first: int,
+      later: list[int],
+      target: int): RECURSIVE bool =
+    CASES later OF
+      null:
+        TRUE,
+      cons(second, rest):
+        first + second /= target
+          AND all_later_sums_differ(first, rest, target)
+    ENDCASES
+  MEASURE later BY <<
+
+  pairwise_sums_differ(
+      values: list[int],
+      target: int): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(first, later):
+        all_later_sums_differ(first, later, target)
+          AND pairwise_sums_differ(later, target)
+    ENDCASES
+  MEASURE values BY <<
+
+  % For each of the first `count` positions, this checks its sum with every
+  % strictly later entry. It is the source take/zipIdx/drop/all condition.
+  no_pair_before_index(
+      values: list[int],
+      target: int,
+      count: nat): RECURSIVE bool =
+    IF count = 0 THEN
+      TRUE
+    ELSE
+      CASES values OF
+        null:
+          TRUE,
+        cons(first, later):
+          all_later_sums_differ(first, later, target)
+            AND no_pair_before_index(later, target, count - 1)
+      ENDCASES
+    ENDIF
+  MEASURE values BY <<
+
+  twoSum_precond(
+      nums: list[int],
+      target: int): bool =
+    TRUE
+
+  inner_search(
+      remaining: list[int],
+      target, first_value: int,
+      next_index: nat): RECURSIVE nat_option =
+    CASES remaining OF
+      null:
+        NoNat,
+      cons(candidate, rest):
+        IF first_value + candidate = target THEN
+          SomeNat(next_index)
+        ELSE
+          inner_search(
+            rest,
+            target,
+            first_value,
+            next_index + 1)
+        ENDIF
+    ENDCASES
+  MEASURE remaining BY <<
+
+  outer_search(
+      remaining: list[int],
+      target: int,
+      first_index_value: nat): RECURSIVE nat_pair_option =
+    CASES remaining OF
+      null:
+        NoPair,
+      cons(first_value, rest):
+        CASES inner_search(
+            rest,
+            target,
+            first_value,
+            first_index_value + 1) OF
+          NoNat:
+            outer_search(
+              rest,
+              target,
+              first_index_value + 1),
+          SomeNat(found_index):
+            SomePair(
+              (# first_index := first_index_value,
+                 second_index := found_index #))
+        ENDCASES
+    ENDCASES
+  MEASURE remaining BY <<
+
+  % The source precondition proof argument is computationally irrelevant.
+  % This is exactly the proof-erased nested first-match recursive search.
+  twoSum(
+      nums: list[int],
+      target: int): nat_pair_option =
+    outer_search(nums, target, 0)
+
+  twoSum_postcond(
+      nums: list[int],
+      target: int,
+      result: nat_pair_option): bool =
+    CASES result OF
+      NoPair:
+        pairwise_sums_differ(nums, target),
+      SomePair(found_pair):
+        LET i: nat = first_index(found_pair),
+            j: nat = second_index(found_pair)
+        IN
+          i < j
+            AND j < int_list_length(nums)
+            AND int_list_get_bang(i, nums)
+                  + int_list_get_bang(j, nums)
+                = target
+            AND no_pair_before_index(nums, target, i)
+            AND all_later_sums_differ(
+                  int_list_get_bang(i, nums),
+                  int_list_take(
+                    j - i - 1,
+                    int_list_drop(i + 1, nums)),
+                  target)
+    ENDCASES
+
+  twoSum_spec_satisfied: bool =
+    FORALL (nums: list[int], target: int):
+      twoSum_precond(nums, target)
+        IMPLIES
+          twoSum_postcond(
+            nums,
+            target,
+            twoSum(nums, target))
+
+END verina_advanced_79

@@ -1,0 +1,376 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/multiprecision/div_Div_div3by2_invqtvc: the verification condition
+% for reciprocal-based division of a three-limb unsigned integer by a
+% normalized two-limb 64-bit divisor, including carry and borrow
+% reconstruction, quotient corrections, and the final remainder bound.
+% This file contains no proof.
+
+div_Div_div3by2_invqtvc: THEORY
+BEGIN
+
+  IMPORTING
+    bv[64],
+    bv_nat[64]
+
+  word64: TYPE = bvec[64]
+
+  radix: int = 18446744073709551616
+
+  unsigned64(value: word64): int =
+    bv2nat[64](value)
+
+  euclidean_div_positive(
+      numerator, denominator: int): int =
+    IF denominator <= 0 THEN
+      0
+    ELSE
+      floor((numerator :: real) / (denominator :: real))
+    ENDIF
+
+  carry_bounds(carry: word64): bool =
+    0 <= unsigned64(carry)
+      AND unsigned64(carry) <= 1
+
+  trivial_bounds: bool =
+    0 <= 0 AND 0 <= 1
+
+  reciprocal_3by2(v, dh, dl: word64): bool =
+    unsigned64(v)
+      =
+    euclidean_div_positive(
+      radix * radix * radix - 1,
+      unsigned64(dl) + radix * unsigned64(dh))
+      - radix
+
+  result_condition(
+      quotient, remainder_low, remainder_high,
+      dl, dh, ul, um, uh: word64): bool =
+    unsigned64(quotient) * unsigned64(dl)
+        + radix * unsigned64(quotient) * unsigned64(dh)
+        + unsigned64(remainder_low)
+        + radix * unsigned64(remainder_high)
+      =
+    unsigned64(ul)
+        + radix * unsigned64(um)
+        + radix * radix * unsigned64(uh)
+      AND
+        0
+          <= unsigned64(remainder_low)
+               + radix * unsigned64(remainder_high)
+      AND
+        unsigned64(remainder_low)
+            + radix * unsigned64(remainder_high)
+          <
+        unsigned64(dl) + radix * unsigned64(dh)
+
+  first_quotient_after_increment(
+      dl, dh, ul, um, uh, o3, bl1, bh1: word64): bool =
+    FORALL (o5: word64):
+      unsigned64(o5) = mod(unsigned64(o3) + 1, radix)
+        IMPLIES
+          result_condition(o5, bl1, bh1, dl, dh, ul, um, uh)
+
+  first_high_subtraction(
+      dl, dh, ul, um, uh, o3, rh, bl1, b1: word64): bool =
+    FORALL (bh1, b_prime: word64):
+      unsigned64(bh1) - radix * unsigned64(b_prime)
+          =
+        unsigned64(rh) - unsigned64(dh) - unsigned64(b1)
+        AND carry_bounds(b_prime)
+      IMPLIES
+        first_quotient_after_increment(
+          dl, dh, ul, um, uh, o3, bl1, bh1)
+
+  first_low_subtraction(
+      dl, dh, ul, um, uh, o3, rl, rh: word64): bool =
+    FORALL (bl1, b1: word64):
+      unsigned64(bl1) - radix * unsigned64(b1)
+          =
+        unsigned64(rl) - unsigned64(dl) - 0
+        AND carry_bounds(b1)
+      IMPLIES
+        carry_bounds(b1)
+          AND
+            first_high_subtraction(
+              dl, dh, ul, um, uh, o3, rh, bl1, b1)
+
+  first_flag_premise(
+      dh, dl, rh, rl: word64,
+      decision: bool): bool =
+    IF unsigned64(dh) < unsigned64(rh) THEN
+      decision = TRUE
+    ELSE
+      EXISTS (equal_flag: bool):
+        ((unsigned64(rh) = unsigned64(dh)
+            IMPLIES equal_flag = TRUE)
+          AND
+            (equal_flag = TRUE IMPLIES rh = dh))
+          AND
+            decision
+              =
+            (IF equal_flag = TRUE THEN
+               IF unsigned64(dl) <= unsigned64(rl) THEN
+                 TRUE
+               ELSE
+                 FALSE
+               ENDIF
+             ELSE
+               FALSE
+             ENDIF)
+    ENDIF
+
+  first_flag_obligation(
+      dl, dh, ul, um, uh, o3, rl, rh: word64): bool =
+    FORALL (decision: bool):
+      first_flag_premise(dh, dl, rh, rl, decision)
+        IMPLIES
+          IF decision = TRUE THEN
+            trivial_bounds
+              AND
+                first_low_subtraction(
+                  dl, dh, ul, um, uh, o3, rl, rh)
+          ELSE
+            result_condition(o3, rl, rh, dl, dh, ul, um, uh)
+          ENDIF
+
+  first_high_addition(
+      dl, dh, ul, um, uh, o3, bh, rl, c1: word64): bool =
+    FORALL (rh, c_prime: word64):
+      unsigned64(rh) + radix * unsigned64(c_prime)
+          =
+        unsigned64(bh) + unsigned64(dh) + unsigned64(c1)
+        AND carry_bounds(c_prime)
+      IMPLIES
+        first_flag_obligation(dl, dh, ul, um, uh, o3, rl, rh)
+
+  first_low_addition(
+      dl, dh, ul, um, uh, o3, bl, bh: word64): bool =
+    FORALL (rl, c1: word64):
+      unsigned64(rl) + radix * unsigned64(c1)
+          =
+        unsigned64(bl) + unsigned64(dl) + 0
+        AND carry_bounds(c1)
+      IMPLIES
+        carry_bounds(c1)
+          AND
+            first_high_addition(
+              dl, dh, ul, um, uh, o3, bh, rl, c1)
+
+  first_correction(
+      dl, dh, ul, um, uh, o1, bl, bh: word64): bool =
+    FORALL (o3: word64):
+      unsigned64(o3) = mod(unsigned64(o1) - 1, radix)
+        IMPLIES
+          trivial_bounds
+            AND
+              first_low_addition(
+                dl, dh, ul, um, uh, o3, bl, bh)
+
+  second_quotient_after_increment(
+      dl, dh, ul, um, uh, o1, bl1, bh1: word64): bool =
+    FORALL (o4: word64):
+      unsigned64(o4) = mod(unsigned64(o1) + 1, radix)
+        IMPLIES
+          result_condition(o4, bl1, bh1, dl, dh, ul, um, uh)
+
+  second_high_subtraction(
+      dl, dh, ul, um, uh, o1, bh, bl1, b3: word64): bool =
+    FORALL (bh1, b_prime: word64):
+      unsigned64(bh1) - radix * unsigned64(b_prime)
+          =
+        unsigned64(bh) - unsigned64(dh) - unsigned64(b3)
+        AND carry_bounds(b_prime)
+      IMPLIES
+        second_quotient_after_increment(
+          dl, dh, ul, um, uh, o1, bl1, bh1)
+
+  second_low_subtraction(
+      dl, dh, ul, um, uh, o1, bl, bh: word64): bool =
+    FORALL (bl1, b3: word64):
+      unsigned64(bl1) - radix * unsigned64(b3)
+          =
+        unsigned64(bl) - unsigned64(dl) - 0
+        AND carry_bounds(b3)
+      IMPLIES
+        carry_bounds(b3)
+          AND
+            second_high_subtraction(
+              dl, dh, ul, um, uh, o1, bh, bl1, b3)
+
+  second_flag_premise(
+      dh, dl, bh, bl: word64,
+      decision: bool): bool =
+    IF unsigned64(dh) < unsigned64(bh) THEN
+      decision = TRUE
+    ELSE
+      EXISTS (equal_flag: bool):
+        ((unsigned64(bh) = unsigned64(dh)
+            IMPLIES equal_flag = TRUE)
+          AND
+            (equal_flag = TRUE IMPLIES bh = dh))
+          AND
+            decision
+              =
+            (IF equal_flag = TRUE THEN
+               IF unsigned64(dl) <= unsigned64(bl) THEN
+                 TRUE
+               ELSE
+                 FALSE
+               ENDIF
+             ELSE
+               FALSE
+             ENDIF)
+    ENDIF
+
+  second_flag_obligation(
+      dl, dh, ul, um, uh, o1, bl, bh: word64): bool =
+    FORALL (decision: bool):
+      second_flag_premise(dh, dl, bh, bl, decision)
+        IMPLIES
+          IF decision = TRUE THEN
+            trivial_bounds
+              AND
+                second_low_subtraction(
+                  dl, dh, ul, um, uh, o1, bl, bh)
+          ELSE
+            result_condition(o1, bl, bh, dl, dh, ul, um, uh)
+          ENDIF
+
+  correction_branches(
+      dl, dh, ul, um, uh, sl, o1, bl, bh: word64): bool =
+    IF unsigned64(sl) <= unsigned64(bh) THEN
+      first_correction(dl, dh, ul, um, uh, o1, bl, bh)
+    ELSE
+      second_flag_obligation(dl, dh, ul, um, uh, o1, bl, bh)
+    ENDIF
+
+  after_second_high_borrow(
+      dl, dh, ul, um, uh, sl, o1, ih, bl, b2: word64): bool =
+    FORALL (bh, b2_prime: word64):
+      unsigned64(bh) - radix * unsigned64(b2_prime)
+          =
+        unsigned64(ih) - unsigned64(dh) - unsigned64(b2)
+        AND carry_bounds(b2_prime)
+      IMPLIES
+        correction_branches(
+          dl, dh, ul, um, uh, sl, o1, bl, bh)
+
+  after_second_low_borrow(
+      dl, dh, ul, um, uh, sl, o1, il, ih: word64): bool =
+    FORALL (bl, b2: word64):
+      unsigned64(bl) - radix * unsigned64(b2)
+          =
+        unsigned64(il) - unsigned64(dl) - 0
+        AND carry_bounds(b2)
+      IMPLIES
+        carry_bounds(b2)
+          AND
+            after_second_high_borrow(
+              dl, dh, ul, um, uh, sl, o1, ih, bl, b2)
+
+  after_first_high_borrow(
+      dl, dh, ul, um, uh, sl, o1, o2, th, il, b: word64): bool =
+    FORALL (ih, b_prime: word64):
+      unsigned64(ih) - radix * unsigned64(b_prime)
+          =
+        unsigned64(o2) - unsigned64(th) - unsigned64(b)
+        AND carry_bounds(b_prime)
+      IMPLIES
+        trivial_bounds
+          AND
+            after_second_low_borrow(
+              dl, dh, ul, um, uh, sl, o1, il, ih)
+
+  after_first_low_borrow(
+      dl, dh, ul, um, uh, sl, o1, o2, tl, th: word64): bool =
+    FORALL (il, b: word64):
+      unsigned64(il) - radix * unsigned64(b)
+          =
+        unsigned64(ul) - unsigned64(tl) - 0
+        AND carry_bounds(b)
+      IMPLIES
+        carry_bounds(b)
+          AND
+            after_first_high_borrow(
+              dl, dh, ul, um, uh, sl, o1, o2, th, il, b)
+
+  after_low_product(
+      dl, dh, ul, um, uh, sl, sh, o1, o2: word64): bool =
+    FORALL (tl, th: word64):
+      unsigned64(tl) + radix * unsigned64(th)
+          =
+        unsigned64(sh) * unsigned64(dl)
+      IMPLIES
+        trivial_bounds
+          AND
+            after_first_low_borrow(
+              dl, dh, ul, um, uh, sl, o1, o2, tl, th)
+
+  after_o2(
+      dl, dh, ul, um, uh, sl, sh, o1, p: word64): bool =
+    FORALL (o2: word64):
+      unsigned64(o2)
+          =
+        mod(unsigned64(um) - unsigned64(p), radix)
+      IMPLIES
+        NOT radix = 0
+          AND
+            after_low_product(
+              dl, dh, ul, um, uh, sl, sh, o1, o2)
+
+  after_p(
+      dl, dh, ul, um, uh, sl, sh, o1: word64): bool =
+    FORALL (p: word64):
+      unsigned64(p)
+          =
+        mod(unsigned64(dh) * unsigned64(sh), radix)
+      IMPLIES
+        after_o2(dl, dh, ul, um, uh, sl, sh, o1, p)
+
+  after_o1(
+      dl, dh, ul, um, uh, sl, sh: word64): bool =
+    FORALL (o1: word64):
+      unsigned64(o1) = mod(unsigned64(sh) + 1, radix)
+        IMPLIES
+          after_p(dl, dh, ul, um, uh, sl, sh, o1)
+
+  high_add_obligation(
+      dl, dh, ul, um, uh, h, sl, c: word64): bool =
+    FORALL (sh, c_prime: word64):
+      unsigned64(sh) + radix * unsigned64(c_prime)
+          =
+        unsigned64(uh) + unsigned64(h) + unsigned64(c)
+        AND carry_bounds(c_prime)
+      IMPLIES
+        after_o1(dl, dh, ul, um, uh, sl, sh)
+
+  low_add_obligation(
+      dl, dh, ul, um, uh, l, h: word64): bool =
+    FORALL (sl, c: word64):
+      unsigned64(sl) + radix * unsigned64(c)
+          =
+        unsigned64(um) + unsigned64(l) + 0
+        AND carry_bounds(c)
+      IMPLIES
+        carry_bounds(c)
+          AND
+            high_add_obligation(
+              dl, dh, ul, um, uh, h, sl, c)
+
+  div3by2_inv_vc: bool =
+    FORALL (dh, v, dl, um, uh, l, h, ul: word64):
+      euclidean_div_positive(radix, 2) <= unsigned64(dh)
+        IMPLIES
+          reciprocal_3by2(v, dh, dl)
+        IMPLIES
+          unsigned64(um) + radix * unsigned64(uh)
+            < unsigned64(dl) + radix * unsigned64(dh)
+        IMPLIES
+          unsigned64(l) + radix * unsigned64(h)
+            = unsigned64(v) * unsigned64(uh)
+        IMPLIES
+          0 <= 0
+            AND 0 <= 1
+            AND low_add_obligation(dl, dh, ul, um, uh, l, h)
+
+END div_Div_div3by2_invqtvc

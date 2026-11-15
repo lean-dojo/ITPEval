@@ -1,0 +1,199 @@
+% Statement-only formalization of the Thousand Theorems artifact Q1144897,
+% "Brouwer fixed-point theorem": every continuous self-map of a nonempty
+% compact convex subset of a finite-dimensional real normed vector space has
+% a fixed point. This file contains no proof.
+
+Q1144897_brouwer_fixed_point_theorem[
+  V: TYPE+,
+  zeroV: V,
+  addV: [V, V -> V],
+  negV: [V -> V],
+  smulV: [real, V -> V],
+  normV: [V -> real]
+]: THEORY
+BEGIN
+  point_set: TYPE = [V -> bool]
+  set_family: TYPE = [point_set -> bool]
+  set_sequence: TYPE = [nat -> point_set]
+  vector_sequence: TYPE = [nat -> V]
+  coordinate_vector: TYPE = [nat -> real]
+  coordinate_map: TYPE = [V -> coordinate_vector]
+  reconstruction_map: TYPE = [coordinate_vector -> V]
+  self_map: TYPE = [V -> V]
+
+  subV(x, y: V): V =
+    addV(x, negV(y))
+
+  coordinate_zero: coordinate_vector =
+    LAMBDA (index: nat): 0
+
+  coordinate_add(
+      left, right: coordinate_vector): coordinate_vector =
+    LAMBDA (index: nat):
+      left(index) + right(index)
+
+  coordinate_scale(
+      scalar: real,
+      value: coordinate_vector): coordinate_vector =
+    LAMBDA (index: nat):
+      scalar * value(index)
+
+  supported(
+      value: coordinate_vector,
+      dimension: nat): bool =
+    FORALL (index: nat):
+      dimension <= index IMPLIES value(index) = 0
+
+  normed_real_vector_space: bool =
+    (FORALL (x, y: V):
+      addV(x, y) = addV(y, x))
+      AND (FORALL (x, y, z: V):
+        addV(addV(x, y), z) =
+          addV(x, addV(y, z)))
+      AND (FORALL (x: V):
+        addV(x, zeroV) = x)
+      AND (FORALL (x: V):
+        addV(x, negV(x)) = zeroV)
+      AND (FORALL (a: real), (x, y: V):
+        smulV(a, addV(x, y)) =
+          addV(smulV(a, x), smulV(a, y)))
+      AND (FORALL (a, b: real), (x: V):
+        smulV(a + b, x) =
+          addV(smulV(a, x), smulV(b, x)))
+      AND (FORALL (a, b: real), (x: V):
+        smulV(a * b, x) =
+          smulV(a, smulV(b, x)))
+      AND (FORALL (x: V):
+        smulV(1, x) = x)
+      AND normV(zeroV) = 0
+      AND (FORALL (x: V):
+        0 <= normV(x))
+      AND (FORALL (x: V):
+        normV(x) = 0 IFF x = zeroV)
+      AND (FORALL (a: real), (x: V):
+        normV(smulV(a, x)) =
+          abs(a) * normV(x))
+      AND (FORALL (x, y: V):
+        normV(addV(x, y)) <=
+          normV(x) + normV(y))
+
+  finite_dimensional: bool =
+    EXISTS
+        (dimension: nat),
+        (coordinates: coordinate_map),
+        (reconstruct: reconstruction_map):
+      (FORALL (x: V):
+        supported(coordinates(x), dimension))
+        AND (FORALL (x, y: V):
+          coordinates(addV(x, y)) =
+            coordinate_add(
+              coordinates(x), coordinates(y)))
+        AND (FORALL (a: real), (x: V):
+          coordinates(smulV(a, x)) =
+            coordinate_scale(a, coordinates(x)))
+        AND (FORALL (x: V):
+          reconstruct(coordinates(x)) = x)
+        AND (FORALL (value: coordinate_vector):
+          supported(value, dimension) IMPLIES
+            coordinates(reconstruct(value)) = value)
+
+  open_set(U: point_set): bool =
+    FORALL (x: V):
+      U(x) IMPLIES
+        EXISTS (radius: real):
+          0 < radius
+            AND FORALL (y: V):
+              normV(subV(y, x)) < radius IMPLIES U(y)
+
+  open_cover(
+      cover: set_family,
+      S: point_set): bool =
+    (FORALL (U: point_set):
+      cover(U) IMPLIES open_set(U))
+      AND (FORALL (x: V):
+        S(x) IMPLIES
+          EXISTS (U: point_set):
+            cover(U) AND U(x))
+
+  finite_subcover(
+      cover: set_family,
+      S: point_set): bool =
+    EXISTS
+        (count: nat),
+        (chosen: set_sequence):
+      (FORALL (index: nat):
+        index < count IMPLIES cover(chosen(index)))
+        AND (FORALL (x: V):
+          S(x) IMPLIES
+            EXISTS (index: nat):
+              index < count AND chosen(index)(x))
+
+  compact_set(S: point_set): bool =
+    FORALL (cover: set_family):
+      open_cover(cover, S) IMPLIES
+        finite_subcover(cover, S)
+
+  affine_combination(
+      parameter: real,
+      x, y: V): V =
+    addV(
+      smulV(parameter, x),
+      smulV(1 - parameter, y))
+
+  convex_set(S: point_set): bool =
+    FORALL (x, y: V), (parameter: real):
+      (S(x)
+        AND S(y)
+        AND 0 <= parameter
+        AND parameter <= 1)
+      IMPLIES
+        S(affine_combination(parameter, x, y))
+
+  nonempty_set(S: point_set): bool =
+    EXISTS (x: V):
+      S(x)
+
+  maps_into(
+      function_value: self_map,
+      S: point_set): bool =
+    FORALL (x: V):
+      S(x) IMPLIES S(function_value(x))
+
+  continuous_on(
+      function_value: self_map,
+      S: point_set): bool =
+    FORALL (x: V):
+      S(x) IMPLIES
+        FORALL (epsilon_value: real):
+          0 < epsilon_value IMPLIES
+            EXISTS (delta: real):
+              0 < delta
+                AND FORALL (y: V):
+                  (S(y)
+                    AND normV(subV(y, x)) < delta)
+                  IMPLIES
+                    normV(
+                      subV(
+                        function_value(y),
+                        function_value(x)))
+                      < epsilon_value
+
+  has_fixed_point_on(
+      function_value: self_map,
+      S: point_set): bool =
+    EXISTS (x: V):
+      S(x) AND function_value(x) = x
+
+  brouwer_fixed_point: bool =
+    (normed_real_vector_space
+      AND finite_dimensional)
+    IMPLIES
+      FORALL (S: point_set), (function_value: self_map):
+        (convex_set(S)
+          AND compact_set(S)
+          AND nonempty_set(S)
+          AND maps_into(function_value, S)
+          AND continuous_on(function_value, S))
+        IMPLIES
+          has_fixed_point_on(function_value, S)
+END Q1144897_brouwer_fixed_point_theorem

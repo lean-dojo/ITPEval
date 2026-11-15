@@ -1,0 +1,142 @@
+% Statement-only formalization of PutnamBench artifact putnam_1973_b4:
+% an integral inequality for real C1 functions with derivative in (0, 1],
+% together with the identity function as an equality case. This file contains no proof.
+
+putnam_1973_b4: THEORY
+BEGIN
+  real_function: TYPE = [real -> real]
+  real_sequence: TYPE = [nat -> real]
+
+  continuous(f: real_function): bool =
+    FORALL (x: real), (epsilon_value: posreal):
+      EXISTS (delta: posreal):
+        FORALL (y: real):
+          abs(y - x) < delta IMPLIES
+            abs(f(y) - f(x)) < epsilon_value
+
+  has_derivative_at(
+      f: real_function,
+      derivative, x: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (delta: posreal):
+        FORALL (h: real):
+          (NOT (h = 0) AND abs(h) < delta)
+            IMPLIES
+              abs(
+                f(x + h) - f(x)
+                  - derivative * h)
+                < epsilon_value * abs(h)
+
+  differentiable_at(f: real_function, x: real): bool =
+    EXISTS (derivative: real):
+      has_derivative_at(f, derivative, x)
+
+  derivative_value(f: real_function, x: real): real =
+    IF differentiable_at(f, x) THEN
+      epsilon(
+        LAMBDA (derivative: real):
+          has_derivative_at(f, derivative, x))
+    ELSE
+      0
+    ENDIF
+
+  derivative_function(f: real_function): real_function =
+    LAMBDA (x: real): derivative_value(f, x)
+
+  continuously_differentiable(f: real_function): bool =
+    (FORALL (x: real): differentiable_at(f, x))
+      AND continuous(derivative_function(f))
+
+  admissible(f: real_function): bool =
+    continuously_differentiable(f)
+      AND (FORALL (x: real):
+        0 < derivative_value(f, x)
+          AND derivative_value(f, x) <= 1)
+      AND f(0) = 0
+
+  valid_partition(
+      points: real_sequence,
+      count: nat): bool =
+    count > 0
+      AND points(0) = 0
+      AND points(count) = 1
+      AND FORALL (index: nat):
+        index < count IMPLIES
+          points(index) < points(index + 1)
+
+  valid_tags(
+      points, tags: real_sequence,
+      count: nat): bool =
+    FORALL (index: nat):
+      index < count IMPLIES
+        points(index) <= tags(index)
+          AND tags(index) <= points(index + 1)
+
+  mesh_less_than(
+      points: real_sequence,
+      count: nat,
+      bound: real): bool =
+    FORALL (index: nat):
+      index < count IMPLIES
+        points(index + 1) - points(index) < bound
+
+  riemann_sum(
+      f: real_function,
+      points, tags: real_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      riemann_sum(f, points, tags, count - 1)
+        + f(tags(count - 1))
+            * (points(count) - points(count - 1))
+    ENDIF
+  MEASURE count
+
+  has_unit_interval_integral(
+      f: real_function,
+      integral_value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (mesh_bound: posreal):
+        FORALL
+            (points, tags: real_sequence),
+            (count: nat):
+          (valid_partition(points, count)
+            AND valid_tags(points, tags, count)
+            AND mesh_less_than(points, count, mesh_bound))
+          IMPLIES
+            abs(
+              riemann_sum(f, points, tags, count)
+                - integral_value)
+              < epsilon_value
+
+  unit_interval_integral(f: real_function): real =
+    IF EXISTS (integral_value: real):
+        has_unit_interval_integral(f, integral_value)
+    THEN
+      epsilon(
+        LAMBDA (integral_value: real):
+          has_unit_interval_integral(
+            f, integral_value))
+    ELSE
+      0
+    ENDIF
+
+  cubed(f: real_function): real_function =
+    LAMBDA (x: real): f(x) ^ 3
+
+  putnam_1973_b4_solution: real_function =
+    LAMBDA (x: real): x
+
+  putnam_1973_b4: bool =
+    FORALL (f: real_function):
+      admissible(f)
+      IMPLIES
+        unit_interval_integral(f) ^ 2
+            >= unit_interval_integral(cubed(f))
+          AND admissible(putnam_1973_b4_solution)
+          AND unit_interval_integral(
+                putnam_1973_b4_solution) ^ 2
+              = unit_interval_integral(
+                  cubed(putnam_1973_b4_solution))
+END putnam_1973_b4

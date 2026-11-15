@@ -1,0 +1,84 @@
+% Statement-only formalization of the Thousand Theorems artifact Q1082910,
+% "Euler's partition theorem": for every natural n, partitions of n into odd parts and
+% partitions of n into distinct parts have equal cardinality. This file contains no proof.
+
+Q1082910_euler_s_partition_theorem: THEORY
+BEGIN
+  % For a fixed n, the n base-(n + 1) digits of code are the
+  % multiplicities of the parts 1 through n.
+  partition_sum(
+      code, n, next_part, remaining_parts: nat): RECURSIVE nat =
+    IF remaining_parts = 0 THEN
+      0
+    ELSE
+      mod(code, n + 1) * next_part
+        + partition_sum(
+            ndiv(code, n + 1),
+            n,
+            next_part + 1,
+            remaining_parts - 1)
+    ENDIF
+  MEASURE remaining_parts
+
+  distinct_digits(
+      code, n, remaining_parts: nat): RECURSIVE bool =
+    IF remaining_parts = 0 THEN
+      TRUE
+    ELSE
+      mod(code, n + 1) <= 1
+        AND distinct_digits(
+            ndiv(code, n + 1),
+            n,
+            remaining_parts - 1)
+    ENDIF
+  MEASURE remaining_parts
+
+  odd_part_digits(
+      code, n, next_part, remaining_parts: nat): RECURSIVE bool =
+    IF remaining_parts = 0 THEN
+      TRUE
+    ELSE
+      (mod(next_part, 2) = 1 OR mod(code, n + 1) = 0)
+        AND odd_part_digits(
+            ndiv(code, n + 1),
+            n,
+            next_part + 1,
+            remaining_parts - 1)
+    ENDIF
+  MEASURE remaining_parts
+
+  partition_code(code, n: nat): bool =
+    code < (n + 1) ^ n
+      AND partition_sum(code, n, 1, n) = n
+
+  distinct_partition_code(code, n: nat): bool =
+    partition_code(code, n)
+      AND distinct_digits(code, n, n)
+
+  odd_partition_code(code, n: nat): bool =
+    partition_code(code, n)
+      AND odd_part_digits(code, n, 1, n)
+
+  count_below(limit: nat, property: [nat -> bool]): RECURSIVE nat =
+    IF limit = 0 THEN
+      0
+    ELSE
+      count_below(limit - 1, property)
+        + IF property(limit - 1) THEN 1 ELSE 0 ENDIF
+    ENDIF
+  MEASURE limit
+
+  distinct_partition_count(n: nat): nat =
+    count_below(
+      (n + 1) ^ n,
+      (LAMBDA (code: nat): distinct_partition_code(code, n)))
+
+  odd_partition_count(n: nat): nat =
+    count_below(
+      (n + 1) ^ n,
+      (LAMBDA (code: nat): odd_partition_code(code, n)))
+
+  euler_partition_theorem: bool =
+    FORALL (n: nat):
+      odd_partition_count(n) = distinct_partition_count(n)
+END Q1082910_euler_s_partition_theorem

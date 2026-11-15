@@ -1,0 +1,78 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2012_b4:
+% the recursively defined real sequence a(0) = 1,
+% a(n + 1) = a(n) + exp(-a(n)) has a(n) - ln(n) converge to a finite real
+% limit. This file contains no proof.
+
+putnam_2012_b4: THEORY
+BEGIN
+  real_sequence: TYPE = [nat -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  nat_factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * nat_factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  exponential_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        exponential_partial(x, count - 1)
+          + safe_div(
+              x ^ index,
+              nat_factorial(index) :: real)
+    ENDIF
+  MEASURE count
+
+  real_exponential(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat):
+            exponential_partial(x, count),
+          value))
+
+  natural_log(x: real): real =
+    IF x > 0 THEN
+      epsilon(
+        LAMBDA (value: real):
+          real_exponential(value) = x)
+    ELSE
+      0
+    ENDIF
+
+  has_finite_log_adjusted_limit(a: real_sequence): bool =
+    EXISTS (limit_value: real):
+      converges_to(
+        LAMBDA (n: nat):
+          a(n) - natural_log(n :: real),
+        limit_value)
+
+  putnam_2012_b4_solution: bool = TRUE
+
+  putnam_2012_b4: bool =
+    FORALL (a: real_sequence):
+      (a(0) = 1
+        AND (FORALL (n: nat):
+          a(n + 1) = a(n) + real_exponential(-a(n))))
+      IMPLIES
+        (has_finite_log_adjusted_limit(a)
+          IFF putnam_2012_b4_solution)
+END putnam_2012_b4

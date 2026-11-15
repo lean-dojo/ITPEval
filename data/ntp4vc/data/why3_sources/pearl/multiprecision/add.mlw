@@ -1,0 +1,505 @@
+module Add
+
+  use mach.c.C
+  use lemmas.Lemmas
+  use int.Int
+  use mach.int.Int32
+  use import mach.int.UInt64GMP as Limb
+  use types.Types
+  use types.Int32Eq
+  use types.UInt64Eq
+  use array.Array
+  use map.Map
+  use int.Power
+  use map.MapEq
+  use ptralias.Alias
+
+  (** `wmpn_add_n r x y sz` adds `x[0..sz-1]` and `y[0..sz-1]` and writes the
+      result in `r`. Returns the carry, either `0` or `1`.
+      Corresponds to the function `mpn_add_n`. *)
+  let wmpn_add_n (r x y:ptr limb) (sz:int32) : limb
+    requires { 0 <= sz }
+    requires { valid r sz /\ valid x sz /\ valid y sz }
+    requires { offset r = offset x
+               \/ offset r + sz <= offset x
+               \/ offset x + sz <= offset r }
+    requires { offset r = offset y
+               \/ offset r + sz <= offset y
+               \/ offset y + sz <= offset r }
+    requires { r.data = x.data = y.data }
+    requires { writable r }
+    alias    { r.data with x.data }
+    alias    { r.data with y.data }
+    alias    { x.data with y.data }
+    ensures  { value r sz + power radix sz * result
+               = old (value x sz + value y sz) }
+    ensures  { 0 <= result <= 1 }
+    ensures  { forall j. (j < offset r \/ offset r + sz <= j)
+                         -> (pelts r)[j] = old (pelts r)[j] }
+    ensures  { offset r = offset x \/ map_eq_sub (pelts x) (old pelts x)
+                                                 (offset x) (offset x + sz) }
+    ensures  { offset r = offset y \/ map_eq_sub (pelts y) (old pelts y)
+                                                 (offset y) (offset y + sz) }
+    writes { r.data.elts }
+  =
+    label Start in
+    let ref lx = 0 in
+    let ref ly = 0 in
+    let ref c = 0 in
+    let ref i = 0 in
+    let ghost ox = pure { x } in
+    let ghost oy = pure { y } in
+    while i < sz do
+      variant { sz - i }
+      invariant { 0 <= i <= sz }
+      invariant { value r i + power radix i * c
+                  = value ox i + value oy i }
+      invariant { forall j. (j < offset r \/ offset r + i <= j)
+                            -> (pelts r)[j] = old (pelts r)[j] }
+      invariant { pelts x = pelts r }
+      invariant { pelts y = pelts r }
+      invariant { offset r = offset x \/ map_eq_sub (pelts x) (old pelts x)
+                                                    (offset x) (offset x + sz) }
+      invariant { offset r = offset y \/ map_eq_sub (pelts y) (old pelts y)
+                                                    (offset y) (offset y + sz) }
+      invariant { 0 <= c <= 1 }
+      label StartLoop in
+      lx <- get_ofs x i;
+      ly <- get_ofs y i;
+      let ghost olx = get_ofs ox i in
+      let ghost oly = get_ofs oy i in
+      let res, carry = add_with_carry lx ly c in
+      set_ofs r i res;
+      c <- carry;
+      i <- i+1;
+    done;
+    c
+
+  (** `wmpn_add r x sx y sy` adds `(x, sx)` to `(y, sy)` and writes the
+      result in `(r, sx)`.  `sx` must be greater than or equal to
+      `sy`. Returns carry, either 0 or 1. Corresponds to `mpn_add`. *)
+  let wmpn_add (r x:ptr limb) (sx:int32) (y:ptr limb) (sy:int32) : limb
+    requires { 0 <= sy <= sx }
+    requires { valid r sx /\ valid x sx /\ valid y sy }
+    requires { offset r = offset x
+               \/ offset r + sx <= offset x
+               \/ offset x + sx <= offset r }
+    requires { offset r = offset y
+               \/ offset r + sx <= offset y
+               \/ offset y + sy <= offset r }
+    requires { r.data = x.data = y.data }
+    requires { writable r }
+    alias    { r.data with x.data }
+    alias    { r.data with y.data }
+    alias    { x.data with y.data }
+    ensures  { value r sx + power radix sx * result
+               = old (value x sx + value y sy) }
+    ensures  { 0 <= result <= 1 }
+    ensures  { forall j. (j < offset r \/ offset r + sx <= j)
+                         -> (pelts r)[j] = old (pelts r)[j] }
+    ensures  { offset r = offset x \/ map_eq_sub (pelts x) (old pelts x)
+                                                 (offset x) (offset x + sx) }
+    ensures  { offset r = offset y \/ map_eq_sub (pelts y) (old pelts y)
+                                                 (offset y) (offset y + sy) }
+    writes { r.data.elts }
+  =
+    label Start in
+    let ref lx = 0 in
+    let ox = pure { x } in
+    let oy = pure { y } in
+    let ref c = wmpn_add_n r x y sy in
+    let ref i = sy in
+    if (c <> 0)
+    then begin
+      while i < sx do
+        variant { sx - i }
+        invariant { sy <= i <= sx }
+        invariant { value r i + power radix i * c
+                    = value ox i + value oy sy }
+        invariant { forall j. (j < offset r \/ offset r + i <= j)
+                              -> (pelts r)[j] = old (pelts r)[j] }
+        invariant { pelts x = pelts r }
+        invariant { pelts y = pelts r }
+        invariant { offset r = offset x \/ map_eq_sub (pelts x) (old pelts x)
+                                                   (offset x) (offset x + sx) }
+        invariant { offset r = offset y \/ map_eq_sub (pelts y) (old pelts y)
+                                                   (offset y) (offset y + sy) }
+        invariant { 0 <= c <= 1 }
+        invariant { i = sx \/ c = 1 }
+        label StartLoop in
+        lx <- get_ofs x i;
+        let ghost olx = get_ofs ox i in
+        let res = add_mod lx 1 in
+        set_ofs r i res;
+        i <- i+1;
+        if res <> 0
+        then begin
+          c <- 0;
+          break
+        end
+        else begin
+        end
+      done
+    end;
+    while i < sx do
+        variant { sx - i }
+        invariant { sy <= i <= sx }
+        invariant { i = sx \/ c = 0 }
+        invariant { value r i + power radix i * c
+                    = value ox i + value oy sy }
+        invariant { forall j. (j < offset r \/ offset r + i <= j)
+                              -> (pelts r)[j] = old (pelts r)[j] }
+        invariant { pelts x = pelts r }
+        invariant { pelts y = pelts r }
+        invariant { offset r = offset x \/ map_eq_sub (pelts x) (old pelts x)
+                                                   (offset x) (offset x + sx) }
+        invariant { offset r = offset y \/ map_eq_sub (pelts y) (old pelts y)
+                                                   (offset y) (offset y + sy) }
+        invariant { 0 <= c <= 1 }
+        label StartLoop2 in
+        lx <- get_ofs x i;
+        let ghost olx = get_ofs ox i in
+        set_ofs r i lx;
+        i <- i+1
+     done;
+     c
+
+  let add_n [@extraction:inline] (r x y:ptr limb) (sz:int32) : limb
+    requires { 0 <= sz }
+    requires { valid r sz /\ valid x sz /\ valid y sz }
+    requires { writable r }
+    ensures  { value r sz + power radix sz * result
+               = old (value x sz + value y sz) }
+    ensures  { 0 <= result <= 1 }
+    ensures { forall j. (j < offset r \/ offset r + sz <= j)
+              -> (pelts r)[j] = old (pelts r)[j] }
+    ensures { forall j. (pelts x)[j] = old (pelts x)[j] }
+    ensures { forall j. (pelts y)[j] = old (pelts y)[j] }
+    ensures { value x sz = old value x sz }
+    ensures { value y sz = old value y sz }
+    ensures  { min x = old min x /\ max x = old max x
+               /\ plength x = old plength x }
+    ensures  { min y = old min y /\ max y = old max y
+               /\ plength y = old plength y }
+    ensures  { min r = old min r /\ max r = old max r
+               /\ plength r = old plength r }
+  =
+    let ghost ox = pure { x } in
+    let ghost oy = pure { y } in
+    let nr, nx, ny, m = open_sep r x sz y sz in
+    label Add in
+    let res = wmpn_add_n nr nx ny sz in
+    let ghost onx = pure { nx } in
+    let ghost ony = pure { ny } in
+    close_sep r x sz y sz nr nx ny m;
+    res
+
+  let add_n_rx [@extraction:inline] (x y:ptr limb) (sz:int32) : limb
+    requires { 0 <= sz }
+    requires { valid x sz /\ valid y sz }
+    requires { writable x }
+    ensures  { value x sz + power radix sz * result
+               = old (value x sz + value y sz) }
+    ensures  { 0 <= result <= 1 }
+    ensures  { forall j. (j < offset x \/ offset x + sz <= j)
+                      -> (pelts x)[j] = old (pelts x)[j] }
+    ensures  { forall j. (pelts y)[j] = old (pelts y)[j] }
+    ensures  { value y sz = old value y sz }
+    ensures  { min x = old min x /\ max x = old max x
+               /\ plength x = old plength x }
+    ensures  { min y = old min y /\ max y = old max y
+               /\ plength y = old plength y }
+  = let ghost oy = pure { y } in
+    let nr, nx, ny, m = open_rx x sz y sz in
+    label Add in
+    let res = wmpn_add_n nr nx ny sz in
+    let ghost ony = pure { ny } in
+    close_rx x sz y sz nr nx ny m;
+    res
+
+  let add [@extraction:inline] (r x:ptr limb) (sx:int32) (y:ptr limb) (sy:int32) : limb
+    requires { 0 <= sy <= sx }
+    requires { valid r sx /\ valid x sx /\ valid y sy }
+    requires { writable r }
+    ensures  { value r sx + power radix sx * result
+               = old (value x sx + value y sy) }
+    ensures  { 0 <= result <= 1 }
+    ensures { forall j. (j < offset r \/ offset r + sx <= j)
+              -> (pelts r)[j] = old (pelts r)[j] }
+    ensures { forall j. (pelts x)[j] = old (pelts x)[j] }
+    ensures { forall j. (pelts y)[j] = old (pelts y)[j] }
+    ensures { value x sx = old value x sx }
+    ensures { value y sy = old value y sy }
+    ensures  { min x = old min x /\ max x = old max x
+               /\ plength x = old plength x }
+    ensures  { min y = old min y /\ max y = old max y
+               /\ plength y = old plength y }
+    ensures  { min r = old min r /\ max r = old max r
+               /\ plength r = old plength r }
+  =
+    let ghost ox = pure { x } in
+    let ghost oy = pure { y } in
+    let nr, nx, ny, m = open_sep r x sx y sy in
+    label Add in
+    let res = wmpn_add nr nx sx ny sy in
+    let ghost onx = pure { nx } in
+    let ghost ony = pure { ny } in
+    close_sep r x sx y sy nr nx ny m;
+    res
+
+  let add_rx [@extraction:inline] (x:ptr limb) (sx:int32) (y:ptr limb) (sy:int32) : limb
+    requires { 0 <= sy <= sx }
+    requires { valid x sx /\ valid y sy }
+    requires { writable x }
+    ensures  { value x sx + power radix sx * result
+               = old (value x sx + value y sy) }
+    ensures  { 0 <= result <= 1 }
+    ensures  { forall j. (j < offset x \/ offset x + sx <= j)
+               -> (pelts x)[j] = old (pelts x)[j] }
+    ensures  { forall j. (pelts y)[j] = (old pelts y)[j] }
+    ensures  { value y sy = old value y sy }
+    ensures  { min x = old min x /\ max x = old max x
+               /\ plength x = old plength x }
+    ensures  { min y = old min y /\ max y = old max y
+               /\ plength y = old plength y }
+  =
+    let ghost oy = pure { y } in
+    let nr, nx, ny, m = open_rx x sx y sy in
+    label Add in
+    let res = wmpn_add nr nx sx ny sy in
+    let ghost ony = pure { ny } in
+    close_rx x sx y sy nr nx ny m;
+    res
+
+  let add_ry [@extraction:inline] (x:ptr limb) (sx:int32) (y:ptr limb) (sy:int32) : limb
+    requires { 0 <= sy <= sx }
+    requires { valid x sx /\ valid y sx }
+    requires { writable y }
+    ensures  { value y sx + power radix sx * result
+               = old (value x sx + value y sy) }
+    ensures  { 0 <= result <= 1 }
+    ensures  { forall j. (j < offset y \/ offset y + sx <= j)
+               -> (pelts y)[j] = old (pelts y)[j] }
+    ensures  { forall j. (pelts x)[j] = (old pelts x)[j] }
+    ensures  { value x sx = old value x sx }
+    ensures  { min x = old min x /\ max x = old max x
+               /\ plength x = old plength x }
+    ensures  { min y = old min y /\ max y = old max y
+               /\ plength y = old plength y }
+  =
+    let ghost ox = pure { x } in
+    let ghost oy = pure { y } in
+    let nr, ny, nx, m = open_rx y sx x sx in
+    label Add in
+    let res = wmpn_add nr nx sx ny sy in
+    let ghost onx = pure { nx } in
+    close_rx y sx x sx nr ny nx m;
+    res
+
+  let add_n_rxy [@extraction:inline] (x:ptr limb) (sx:int32) : limb
+    requires { 0 <= sx }
+    requires { writable x }
+    requires { valid x sx }
+    ensures  { value x sx + power radix sx * result
+               = old (value x sx + value x sx) }
+    ensures  { 0 <= result <= 1 }
+    ensures  { forall j. (j < offset x \/ offset x + sx <= j)
+                      -> (pelts x)[j] = old (pelts x)[j] }
+    ensures  { min x = old min x /\ max x = old max x
+               /\ plength x = old plength x }
+  =
+    wmpn_add_n x x x sx
+
+
+end
+
+(* TODO: Temporary, remove when new addition can be used everywhere instead *)
+module AddOld
+
+  use mach.c.C
+  use lemmas.Lemmas
+  use int.Int
+  use mach.int.Int32
+  use import mach.int.UInt64GMP as Limb
+  use types.Types
+  use types.Int32Eq
+  use types.UInt64Eq
+  use array.Array
+  use map.Map
+  use int.Power
+  use map.MapEq
+  use ptralias.Alias
+  use ref.Ref
+
+  let wmpn_add_n (r x y:t) (sz:int32) : limb
+    requires { valid x sz }
+    requires { valid y sz }
+    requires { valid r sz }
+    requires { writable r }
+    ensures { 0 <= result <= 1 }
+    ensures { value r sz + (power radix sz) * result =
+            value x sz + value y sz }
+    ensures { forall j. (j < offset r \/ offset r + sz <= j)
+              -> (pelts r)[j] = old (pelts r)[j] }
+    writes { r.data.elts }
+    =
+    let lx = ref 0 in
+    let ly = ref 0 in
+    let c = ref 0 in
+    let i = ref 0 in
+    while !i < sz do
+      variant { sz - !i }
+      invariant { 0 <= !i <= sz }
+      invariant { value r !i + (power radix !i) * !c =
+                value x !i + value y !i }
+      invariant { 0 <= !c <= 1 }
+      invariant { forall j. (j < offset r \/ offset r + sz <= j)
+                -> (pelts r)[j] = old (pelts r)[j] }
+      label StartLoop in
+      lx := get_ofs x !i;
+      ly := get_ofs y !i;
+      let res, carry = add_with_carry !lx !ly !c in
+      set_ofs r !i res;
+      c := carry;
+      i := !i + 1;
+    done;
+    !c
+
+  (** `wmpn_add r x sx y sy` adds `(x, sx)` to `(y, sy)` and writes the
+      result in `(r, sx)`.  `sx` must be greater than or equal to
+      `sy`. Returns carry, either 0 or 1. Corresponds to `mpn_add`. *)
+  let wmpn_add (r x:t) (sx:int32) (y:t) (sy:int32) : limb
+    requires { 0 <= sy <= sx }
+    requires { valid x sx }
+    requires { valid y sy }
+    requires { valid r sx }
+    requires { writable r }
+    ensures { value r sx + (power radix sx) * result =
+              value x sx + value y sy }
+    ensures { forall j. (j < offset r \/ offset r + sx <= j)
+              -> (pelts r)[j] = old (pelts r)[j] }
+    ensures { 0 <= result <= 1 }
+    writes { r.data.elts }
+ =
+    let ref lx = 0 in
+    let ref c = wmpn_add_n r x y sy in
+    let ref i = sy in
+    if (c <> 0)
+    then begin
+      while i < sx do
+        variant { sx - i }
+        invariant { sy <= i <= sx }
+        invariant { value r i + (power radix i) * c =
+                    value x i + value y sy }
+        invariant { 0 <= c <= 1 }
+        invariant { i = sx \/ c = 1 }
+        invariant { forall j. (j < offset r \/ offset r + sx <= j)
+                -> (pelts r)[j] = old (pelts r)[j] }
+        lx <- get_ofs x i;
+        let res = add_mod lx (1:limb) in
+        set_ofs r i res;
+        i <- i + 1;
+        if res <> 0
+        then begin
+          c <- 0;
+          break
+        end
+        else begin
+        end
+      done
+    end;
+    while i < sx do
+      variant { sx - i }
+      invariant { sy <= i <= sx }
+      invariant { i = sx \/ c = 0 }
+      invariant { value r i + power radix i * c =
+                value x i + value y sy }
+      invariant { forall j. (j < offset r \/ offset r + sx <= j)
+                -> (pelts r)[j] = old (pelts r)[j] }
+      lx <- get_ofs x i;
+      set_ofs r i lx;
+      i <- i + 1;
+    done;
+    c
+
+  let wmpn_add_n_in_place (x y:t) (sz:int32) : limb
+    requires { valid x sz }
+    requires { valid y sz }
+    requires { writable x }
+    ensures  { 0 <= result <= 1 }
+    ensures  { value x sz + (power radix sz) * result
+               = value (old x) sz + value y sz }
+    ensures { forall j. j < x.offset \/ x.offset + sz <= j ->
+              (pelts x)[j] = (pelts (old x))[j] }
+    writes   { x.data.elts }
+  =
+    let ghost ox = pure { x } in
+    let ref lx = 0 in
+    let ref ly = 0 in
+    let ref c = 0 in
+    let ref i = 0 in
+    while i < sz do
+      variant { sz - i }
+      invariant { 0 <= i <= sz }
+      invariant { value x i + (power radix i) * c =
+                  value ox i + value y i }
+      invariant { 0 <= c <= 1 }
+      invariant { forall j. i <= j < sz ->
+                  (pelts x)[x.offset + j] = (pelts ox)[x.offset + j] }
+      invariant { forall j. j < x.offset \/ x.offset + sz <= j ->
+                  (pelts x)[j] = (pelts (old x))[j] }
+      label StartLoop in
+      lx <- get_ofs x i;
+      ly <- get_ofs y i;
+      let res, carry = add_with_carry lx ly c in
+      set_ofs x i res;
+      c <- carry;
+      i <- i+1;
+    done;
+    c
+
+  let wmpn_add_in_place (x:t) (sx:int32) (y:t) (sy:int32) : limb
+    requires { 0 <= sy <= sx }
+    requires { valid x sx }
+    requires { valid y sy }
+    requires { writable x }
+    ensures  { value x sx + (power radix sx) * result
+               = value (old x) sx + value y sy }
+    ensures  { 0 <= result <= 1 }
+    ensures { forall j. j < x.offset \/ x.offset + sx <= j ->
+              (pelts x)[j] = (pelts (old x))[j] }
+    writes   { x.data.elts }
+  =
+    let ghost ox = { x } in
+    let ref lx = 0 in
+    let ref c = wmpn_add_n_in_place x y sy in
+    let ref i = sy in
+    if (c <> 0)
+    then begin
+      while i < sx do
+        variant   { sx - i }
+        invariant { sy <= i <= sx }
+        invariant { value x i + (power radix i) * c =
+                    value ox i + value y sy }
+        invariant { 0 <= c <= 1 }
+        invariant { i = sx \/ c = 1 }
+        invariant { forall j. i <= j < sx ->
+                    (pelts x)[x.offset + j] = (pelts ox) [x.offset + j] }
+        invariant { forall j. j < x.offset \/ x.offset + sx <= j ->
+                    (pelts x)[j] = (pelts (old x))[j] }
+        lx <- get_ofs x i;
+        let res = add_mod lx 1 in
+        set_ofs x i res;
+        i <- i + 1;
+        if (res <> 0)
+        then begin
+          c <- 0;
+          break;
+        end
+        else begin
+        end
+      done
+    end;
+    c
+
+end

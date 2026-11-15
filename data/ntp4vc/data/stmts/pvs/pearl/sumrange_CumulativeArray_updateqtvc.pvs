@@ -1,0 +1,260 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/sumrange_CumulativeArray_updateqtvc: the cumulative-array update
+% verification condition, including index guards, source and cumulative
+% array updates, loop-invariant preservation, and the final update
+% specification. This file contains no proof.
+
+sumrange_CumulativeArray_updateqtvc: THEORY
+BEGIN
+
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  nth_default(values: list[int], index: nat): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          nth_default(tail, index - 1)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  list_set(
+      values: list[int],
+      index: nat,
+      value: int): RECURSIVE list[int] =
+    CASES values OF
+      null:
+        null,
+      cons(head, tail):
+        IF index = 0 THEN
+          cons(value, tail)
+        ELSE
+          cons(head, list_set(tail, index - 1, value))
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  sum_from(
+      values: list[int],
+      start, count: nat): RECURSIVE int =
+    IF count = 0 THEN
+      0
+    ELSE
+      nth_default(values, start)
+        + sum_from(values, start + 1, count - 1)
+    ENDIF
+  MEASURE count
+
+  array_sum(
+      values: list[int],
+      lower, upper: int): int =
+    sum_from(
+      values,
+      int_to_nat(lower),
+      int_to_nat(upper - lower))
+
+  nth_function(values: list[int]): [int -> int] =
+    LAMBDA (index: int):
+      IF index < 0 THEN
+        0
+      ELSE
+        nth_default(values, int_to_nat(index))
+      ENDIF
+
+  function_update(
+      values: [int -> int],
+      index, value: int): [int -> int] =
+    values WITH [(index) := value]
+
+  is_cumulative_array_for(
+      cumulative, source: list[int]): bool =
+    length(cumulative) = length(source) + 1
+      AND
+    (FORALL (index: int):
+      (0 <= index AND index < length(cumulative))
+        IMPLIES
+          nth_default(cumulative, int_to_nat(index))
+            = array_sum(source, 0, index))
+
+  prefix_correct(
+      cumulative, source: list[int],
+      upper: int): bool =
+    FORALL (k: int):
+      (0 <= k AND k < upper)
+        IMPLIES
+          nth_default(cumulative, int_to_nat(k))
+            = array_sum(source, 0, k)
+
+  suffix_shifted(
+      cumulative, source: list[int],
+      lower, increment: int): bool =
+    FORALL (k: int):
+      (lower <= k AND k < length(cumulative))
+        IMPLIES
+          nth_default(cumulative, int_to_nat(k))
+            = array_sum(source, 0, k) - increment
+
+  source_update_post(
+      cumulative, original_source, updated_source: list[int],
+      index, value: int): bool =
+    is_cumulative_array_for(cumulative, updated_source)
+      AND
+    nth_default(updated_source, int_to_nat(index)) = value
+      AND
+    (FORALL (k: int):
+      ((0 <= k AND k < length(updated_source))
+        AND NOT (k = index))
+        IMPLIES
+          nth_default(updated_source, int_to_nat(k))
+            = nth_default(original_source, int_to_nat(k)))
+
+  cumulative_update_step(
+      current, updated_source: list[int],
+      j, increment: int): bool =
+    (0 <= j AND j < length(current))
+      AND
+    (LET new_value: int =
+       nth_default(current, int_to_nat(j)) + increment
+     IN
+       (0 <= j AND j < length(current))
+         AND
+       (LET updated_current: list[int] =
+          list_set(current, int_to_nat(j), new_value)
+        IN
+          length(updated_current) = length(current)
+            IMPLIES
+          nth_function(updated_current)
+            = function_update(nth_function(current), j, new_value)
+            IMPLIES
+          suffix_shifted(
+            updated_current,
+            updated_source,
+            j + 1,
+            increment)
+            AND
+          prefix_correct(
+            updated_current,
+            updated_source,
+            j + 1)))
+
+  loop_state_obligations(
+      current, original_source, updated_source: list[int],
+      index, value, o2, o3, increment: int): bool =
+    (FORALL (j: int):
+      ((o3 <= j AND j <= o2)
+        AND
+       suffix_shifted(current, updated_source, j, increment)
+        AND
+       prefix_correct(current, updated_source, j))
+        IMPLIES
+          cumulative_update_step(
+            current,
+            updated_source,
+            j,
+            increment))
+      AND
+    ((suffix_shifted(
+        current,
+        updated_source,
+        o2 + 1,
+        increment)
+        AND
+      prefix_correct(current, updated_source, o2 + 1))
+      IMPLIES
+        source_update_post(
+          current,
+          original_source,
+          updated_source,
+          index,
+          value))
+
+  loop_obligations(
+      cumulative, original_source, updated_source: list[int],
+      index, value, o2, o3, increment: int): bool =
+    (o3 <= o2 + 1)
+      IMPLIES
+        (suffix_shifted(
+          cumulative,
+          updated_source,
+          o3,
+          increment)
+          AND
+         prefix_correct(cumulative, updated_source, o3))
+          AND
+        (FORALL (current: list[int]):
+          length(current) = length(cumulative)
+            IMPLIES
+              loop_state_obligations(
+                current,
+                original_source,
+                updated_source,
+                index,
+                value,
+                o2,
+                o3,
+                increment))
+
+  update_vc: bool =
+    FORALL
+      (cumulative, source: list[int]),
+      (index, value: int):
+      is_cumulative_array_for(cumulative, source)
+        IMPLIES
+      0 <= index
+        IMPLIES
+      index < length(source)
+        IMPLIES
+          0 <= index
+            AND
+          index < length(cumulative)
+            AND
+          (LET o1: int = index + 1
+           IN
+             (0 <= o1 AND o1 < length(cumulative))
+               AND
+             (LET increment: int =
+                value
+                  - nth_default(cumulative, int_to_nat(o1))
+                  + nth_default(cumulative, int_to_nat(index))
+              IN
+                (0 <= index AND index < length(source))
+                  AND
+                (LET updated_source: list[int] =
+                   list_set(source, int_to_nat(index), value)
+                 IN
+                   length(updated_source) = length(source)
+                     IMPLIES
+                   nth_function(updated_source)
+                     = function_update(
+                         nth_function(source),
+                         index,
+                         value)
+                     IMPLIES
+                   (LET o2: int = length(cumulative) - 1,
+                        o3: int = index + 1
+                    IN
+                      loop_obligations(
+                        cumulative,
+                        source,
+                        updated_source,
+                        index,
+                        value,
+                        o2,
+                        o3,
+                        increment)
+                        AND
+                      ((o2 + 1 < o3)
+                        IMPLIES
+                          source_update_post(
+                            cumulative,
+                            source,
+                            updated_source,
+                            index,
+                            value))))))
+
+END sumrange_CumulativeArray_updateqtvc

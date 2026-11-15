@@ -1,0 +1,80 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2017_b6:
+% the ordered 64-tuples of distinct integers from 1 through 2017 whose stated
+% weighted sum is divisible by 2017 have the specified factorial count. This
+% file contains no proof.
+
+putnam_2017_b6: THEORY
+BEGIN
+  tuple_index: TYPE = below(64)
+  tuple_entry: TYPE = {value: nat | 1 <= value AND value <= 2017}
+  ordered_tuple: TYPE = [tuple_index -> tuple_entry]
+
+  IMPORTING finite_sets[ordered_tuple]
+
+  nat_factorial(n: nat): RECURSIVE nat =
+    IF n = 0 THEN
+      1
+    ELSE
+      n * nat_factorial(n - 1)
+    ENDIF
+  MEASURE n
+
+  weighted_term(
+      values: ordered_tuple,
+      index: tuple_index): nat =
+    IF index <= 1 THEN
+      values(index)
+    ELSE
+      (index :: nat) * (values(index) :: nat)
+    ENDIF
+
+  weighted_sum(
+      values: ordered_tuple,
+      count: upto(64)): RECURSIVE nat =
+    IF count = 0 THEN
+      0
+    ELSE
+      weighted_sum(values, count - 1)
+        + weighted_term(values, count - 1)
+    ENDIF
+  MEASURE count
+
+  pairwise_distinct(values: ordered_tuple): bool =
+    FORALL (left, right: tuple_index):
+      values(left) = values(right) IMPLIES left = right
+
+  nat_divides(divisor, value: nat): bool =
+    EXISTS (quotient: nat):
+      value = divisor * quotient
+
+  qualifying(values: ordered_tuple): bool =
+    pairwise_distinct(values)
+      AND nat_divides(2017, weighted_sum(values, 64))
+
+  nat_quotient(numerator, denominator: nat): nat =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      ndiv(numerator, denominator)
+    ENDIF
+
+  nat_subtract(minuend, subtrahend: nat): nat =
+    IF subtrahend <= minuend THEN
+      minuend - subtrahend
+    ELSE
+      0
+    ENDIF
+
+  putnam_2017_b6_solution: nat =
+    nat_subtract(
+      nat_quotient(
+        nat_factorial(2016),
+        nat_factorial(1953)),
+      nat_factorial(63) * 2016)
+
+  putnam_2017_b6: bool =
+    EXISTS (solutions: finite_set[ordered_tuple]):
+      card(solutions) = putnam_2017_b6_solution
+        AND (FORALL (values: ordered_tuple):
+          solutions(values) IFF qualifying(values))
+END putnam_2017_b6

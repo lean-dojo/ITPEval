@@ -1,0 +1,108 @@
+% Statement-only formalization of the VERINA corpus artifact verina_basic_70
+% (verina__pvs__verina_basic_70), catalog title "LinearSearch3": assuming an
+% arbitrary Boolean predicate holds somewhere in a finite integer array, the
+% exact recursive left-to-right search returns its first satisfying index.
+% This file contains no proof.
+
+verina_basic_70: THEORY
+BEGIN
+
+  % Finite PVS lists preserve exactly the contents and order of Lean arrays.
+  int_list_length(
+      values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        int_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  % Lean Array.get! on integer arrays returns zero outside the array.
+  int_list_get_bang(
+      index: nat,
+      values: list[int]): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          int_list_get_bang(index - 1, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  % Lean natural-number subtraction is truncated at zero.
+  nat_subtract(first, second: nat): nat =
+    IF first >= second THEN first - second ELSE 0 ENDIF
+
+  LinearSearch3_precond(
+      a: list[int],
+      P: [int -> bool]): bool =
+    EXISTS (i: nat):
+      i < int_list_length(a)
+        AND P(int_list_get_bang(i, a))
+
+  LinearSearch3_loop_steps(
+      a: list[int],
+      P: [int -> bool],
+      n, fuel: nat): RECURSIVE nat =
+    IF fuel = 0 THEN
+      0
+    ELSIF n < int_list_length(a) THEN
+      IF P(int_list_get_bang(n, a)) THEN
+        n
+      ELSE
+        LinearSearch3_loop_steps(
+          a,
+          P,
+          n + 1,
+          fuel - 1)
+      ENDIF
+    ELSE
+      0
+    ENDIF
+  MEASURE fuel
+
+  % The distance to the array boundary plus one covers every source recursive
+  % call and its final bounds check, so the fuel-zero fallback is unreachable.
+  LinearSearch3_loop(
+      a: list[int],
+      P: [int -> bool],
+      n: nat): nat =
+    LinearSearch3_loop_steps(
+      a,
+      P,
+      n,
+      nat_subtract(int_list_length(a), n) + 1)
+
+  % The source precondition proof argument is computationally irrelevant.
+  LinearSearch3(
+      a: list[int],
+      P: [int -> bool]): nat =
+    LinearSearch3_loop(a, P, 0)
+
+  % The source proof argument to the postcondition is logically irrelevant.
+  LinearSearch3_postcond(
+      a: list[int],
+      P: [int -> bool],
+      result: nat): bool =
+    result < int_list_length(a)
+      AND P(int_list_get_bang(result, a))
+      AND
+        (FORALL (k: nat):
+          k < result
+            IMPLIES NOT P(int_list_get_bang(k, a)))
+
+  LinearSearch3_spec_satisfied: bool =
+    FORALL (a: list[int]), (P: [int -> bool]):
+      LinearSearch3_precond(a, P)
+        IMPLIES
+          LinearSearch3_postcond(
+            a,
+            P,
+            LinearSearch3(a, P))
+
+END verina_basic_70

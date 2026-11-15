@@ -1,0 +1,131 @@
+% Statement-only formalization of the VERINA corpus artifact
+% verina_advanced_18, "isArmstrong": deciding whether a natural number equals
+% the sum of its decimal digits raised to the number of its decimal digits.
+% This file contains no proof.
+
+verina_advanced_18: THEORY
+BEGIN
+
+  countDigits_go(
+      n, accumulator, fuel: nat): RECURSIVE nat =
+    IF n = 0 THEN
+      accumulator
+    ELSIF fuel = 0 THEN
+      accumulator
+    ELSE
+      countDigits_go(
+        ndiv(n, 10),
+        accumulator + 1,
+        fuel - 1)
+    ENDIF
+  MEASURE fuel
+
+  countDigits(n: nat): nat =
+    countDigits_go(
+      n,
+      IF n = 0 THEN 1 ELSE 0 ENDIF,
+      n)
+
+  isArmstrong_precond(n: nat): bool =
+    TRUE
+
+  sumPowers_go(
+      n, k, accumulator, fuel: nat): RECURSIVE nat =
+    IF n = 0 THEN
+      accumulator
+    ELSIF fuel = 0 THEN
+      accumulator
+    ELSE
+      LET digit: nat = mod(n, 10)
+      IN
+        sumPowers_go(
+          ndiv(n, 10),
+          k,
+          accumulator + digit ^ k,
+          fuel - 1)
+    ENDIF
+  MEASURE fuel
+
+  sumPowers(n, k: nat): nat =
+    sumPowers_go(n, k, 0, n)
+
+  isArmstrong(n: nat): bool =
+    LET k: nat = countDigits(n)
+    IN
+      sumPowers(n, k) = n
+
+  decimal_digits_reversed_fuel(
+      n, fuel: nat): RECURSIVE list[nat] =
+    IF n = 0 THEN
+      null
+    ELSIF fuel = 0 THEN
+      null
+    ELSE
+      cons(
+        mod(n, 10),
+        decimal_digits_reversed_fuel(
+          ndiv(n, 10),
+          fuel - 1))
+    ENDIF
+  MEASURE fuel
+
+  decimal_digits_reversed(n: nat): list[nat] =
+    IF n = 0 THEN
+      cons(0, null[nat])
+    ELSE
+      decimal_digits_reversed_fuel(n, n)
+    ENDIF
+
+  reverse_nat_list_acc(
+      values, accumulator: list[nat]): RECURSIVE list[nat] =
+    CASES values OF
+      null:
+        accumulator,
+      cons(head, tail):
+        reverse_nat_list_acc(
+          tail,
+          cons(head, accumulator))
+    ENDCASES
+  MEASURE values BY <<
+
+  decimal_digits(n: nat): list[nat] =
+    reverse_nat_list_acc(
+      decimal_digits_reversed(n),
+      null)
+
+  fold_digit_powers(
+      values: list[nat],
+      k, accumulator: nat): RECURSIVE nat =
+    CASES values OF
+      null:
+        accumulator,
+      cons(digit, rest):
+        fold_digit_powers(
+          rest,
+          k,
+          accumulator + digit ^ k)
+    ENDCASES
+  MEASURE values BY <<
+
+  decimal_string_power_sum(n: nat): nat =
+    fold_digit_powers(
+      decimal_digits(n),
+      countDigits(n),
+      0)
+
+  isArmstrong_postcond(
+      n: nat,
+      result: bool): bool =
+    LET n_prime: nat = decimal_string_power_sum(n)
+    IN
+      (result IMPLIES n = n_prime)
+        AND (NOT result IMPLIES n /= n_prime)
+
+  isArmstrong_spec_satisfied: bool =
+    FORALL (n: nat):
+      isArmstrong_precond(n) IMPLIES
+        isArmstrong_postcond(
+          n,
+          isArmstrong(n))
+
+END verina_advanced_18

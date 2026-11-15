@@ -1,0 +1,92 @@
+% Statement-only formalization of PutnamBench artifact putnam_1972_b6:
+% a polynomial with constant term one and strictly increasing positive integer
+% exponents has no complex root in the specified open disk. This file contains
+% no proof.
+
+putnam_1972_b6: THEORY
+BEGIN
+  complex: TYPE = [# real_part: real, imag_part: real #]
+  exponent_sequence: TYPE = [nat -> nat]
+
+  complex_zero: complex =
+    (# real_part := 0, imag_part := 0 #)
+
+  complex_one: complex =
+    (# real_part := 1, imag_part := 0 #)
+
+  complex_add(x, y: complex): complex =
+    (# real_part := real_part(x) + real_part(y),
+       imag_part := imag_part(x) + imag_part(y) #)
+
+  complex_mul(x, y: complex): complex =
+    (# real_part := real_part(x) * real_part(y)
+                       - imag_part(x) * imag_part(y),
+       imag_part := real_part(x) * imag_part(y)
+                       + imag_part(x) * real_part(y) #)
+
+  complex_power(z: complex, exponent: nat): RECURSIVE complex =
+    IF exponent = 0 THEN
+      complex_one
+    ELSE
+      complex_mul(complex_power(z, exponent - 1), z)
+    ENDIF
+  MEASURE exponent
+
+  polynomial_value(
+      exponents: exponent_sequence,
+      z: complex,
+      count: nat): RECURSIVE complex =
+    IF count = 0 THEN
+      complex_one
+    ELSE
+      complex_add(
+        polynomial_value(exponents, z, count - 1),
+        complex_power(z, exponents(count - 1)))
+    ENDIF
+  MEASURE count
+
+  nonnegative_square_root(value: real): real =
+    IF 0 <= value THEN
+      epsilon(
+        LAMBDA (root: real):
+          0 <= root AND root * root = value)
+    ELSE
+      0
+    ENDIF
+
+  squared_modulus(z: complex): real =
+    real_part(z) ^ 2 + imag_part(z) ^ 2
+
+  complex_modulus(z: complex): real =
+    nonnegative_square_root(squared_modulus(z))
+
+  disk_radius: real =
+    (nonnegative_square_root(5) - 1) / 2
+
+  positive_exponents_below(
+      exponents: exponent_sequence,
+      count: nat): bool =
+    FORALL (index: nat):
+      index < count IMPLIES exponents(index) > 0
+
+  strictly_increasing_below(
+      exponents: exponent_sequence,
+      count: nat): bool =
+    FORALL (left_index, right_index: nat):
+      (left_index < count
+        AND right_index < count
+        AND left_index < right_index)
+      IMPLIES
+        exponents(left_index) < exponents(right_index)
+
+  putnam_1972_b6: bool =
+    FORALL (k: nat), (exponents: exponent_sequence):
+      (k >= 1
+        AND positive_exponents_below(exponents, k)
+        AND strictly_increasing_below(exponents, k))
+      IMPLIES
+        FORALL (z: complex):
+          complex_modulus(z) < disk_radius
+            IMPLIES
+              polynomial_value(exponents, z, k) /= complex_zero
+END putnam_1972_b6

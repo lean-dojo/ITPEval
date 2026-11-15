@@ -1,0 +1,60 @@
+% Statement-only formalization of the Thousand Theorems corpus artifact Q810431
+% (thousand-theorems__pvs__Q810431), "Basel problem": the real reciprocal-square
+% series over the natural numbers converges to pi squared divided by six.
+% This file contains no proof.
+
+Q810431_basel_problem: THEORY
+BEGIN
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN 0 ELSE numerator / denominator ENDIF
+
+  alternating_sign(index: nat): RECURSIVE real =
+    IF index = 0 THEN
+      1
+    ELSE
+      -alternating_sign(index - 1)
+    ENDIF
+  MEASURE index
+
+  leibniz_partial_sum(count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        leibniz_partial_sum(count - 1)
+          + safe_div(
+              alternating_sign(index),
+              (2 * index + 1) :: real)
+    ENDIF
+  MEASURE count
+
+  reciprocal_square_partial_sum(count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        reciprocal_square_partial_sum(count - 1)
+          + safe_div(1, (index :: real) ^ 2)
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: [nat -> real], value: real): bool =
+    FORALL (eps: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (count: nat):
+          cutoff <= count IMPLIES
+            abs(sequence(count) - value) < eps
+
+  is_pi(value: real): bool =
+    converges_to(
+      (LAMBDA (count: nat): 4 * leibniz_partial_sum(count)),
+      value)
+
+  pi: real =
+    epsilon(LAMBDA (value: real): is_pi(value))
+
+  hasSum_zeta_two: bool =
+    converges_to(
+      (LAMBDA (count: nat): reciprocal_square_partial_sum(count)),
+      pi ^ 2 / 6)
+END Q810431_basel_problem

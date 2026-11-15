@@ -1,12 +1,19 @@
 # Provers
 
-Each prover lives in `itpeval/provers/<name>/` and should provide:
-- `install.sh` (best-effort local install under `ITPEVAL_PREFIX`)
-- `check.sh` (smoke test that runs the prover on a minimal artifact)
-- `hello/` (the minimal artifact)
+This release has ten native adapters:
 
-Current adapters:
-- `hol-light`
-- `isabelle`
-- `lean4`
-- `rocq`
+- [lean4](lean4/)
+- [rocq](rocq/)
+- [isabelle](isabelle/)
+- [hol-light](hol-light/)
+- [acl2](acl2/)
+- [agda](agda/)
+- [hol4](hol4/)
+- [metamath](metamath/)
+- [mizar](mizar/)
+- [pvs](pvs/)
+
+Each directory provides `adapter.json`, `install.sh`, `check.sh`, `version.sh`,
+and source files under `hello/`. See [the harness guide](../README.md) for
+installation, platform limitations, and one-file evaluation. Native statement
+acceptance is separate from BEq; the public BEq implementation remains Lean-only.

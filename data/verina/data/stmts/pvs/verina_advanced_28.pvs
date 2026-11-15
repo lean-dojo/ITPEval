@@ -1,0 +1,263 @@
+% Statement-only formalization of the VERINA corpus artifact
+% verina_advanced_28, catalog title "longestConsecutive": computing the
+% longest consecutive-integer streak with the specified HashSet construction
+% and bounded scans, under the exhaustive sorted-sublist contract. This file
+% contains no proof.
+
+verina_advanced_28: THEORY
+BEGIN
+
+  int_list_length(values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        int_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  int_member(
+      value: int,
+      values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        FALSE,
+      cons(head, tail):
+        head = value OR int_member(value, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  no_duplicates(values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        NOT int_member(head, tail)
+          AND no_duplicates(tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  longestConsecutive_precond(nums: list[int]): bool =
+    no_duplicates(nums)
+
+  % The Lean HashSet is observed only through insertion and membership.
+  % This duplicate-free list state is its exact extensional representation
+  % for those operations.
+  hashset_insert(
+      value: int,
+      state: list[int]): list[int] =
+    IF int_member(value, state) THEN
+      state
+    ELSE
+      cons(value, state)
+    ENDIF
+
+  hashset_build_fold(
+      remaining, state: list[int]): RECURSIVE list[int] =
+    CASES remaining OF
+      null:
+        state,
+      cons(head, tail):
+        hashset_build_fold(
+          tail,
+          hashset_insert(head, state))
+    ENDCASES
+  MEASURE remaining BY <<
+
+  hashset_build(nums: list[int]): list[int] =
+    hashset_build_fold(nums, null)
+
+  hashset_contains(
+      value: int,
+      state: list[int]): bool =
+    int_member(value, state)
+
+  nat_max(left, right: nat): nat =
+    IF left >= right THEN left ELSE right ENDIF
+
+  longestConsecutive_inner_loop(
+      state: list[int],
+      current: int,
+      current_length, remaining: nat): RECURSIVE nat =
+    IF remaining = 0 THEN
+      current_length
+    ELSIF hashset_contains(current + 1, state) THEN
+      longestConsecutive_inner_loop(
+        state,
+        current + 1,
+        current_length + 1,
+        remaining - 1)
+    ELSE
+      current_length
+    ENDIF
+  MEASURE remaining
+
+  longestConsecutive_outer_loop(
+      remaining_values, state: list[int],
+      scan_length, max_length: nat): RECURSIVE nat =
+    CASES remaining_values OF
+      null:
+        max_length,
+      cons(x, rest):
+        LET updated_max: nat =
+          IF NOT hashset_contains(x - 1, state) THEN
+            nat_max(
+              max_length,
+              longestConsecutive_inner_loop(
+                state,
+                x,
+                1,
+                scan_length))
+          ELSE
+            max_length
+          ENDIF
+        IN
+          longestConsecutive_outer_loop(
+            rest,
+            state,
+            scan_length,
+            updated_max)
+    ENDCASES
+  MEASURE remaining_values BY <<
+
+  longestConsecutive(nums: list[int]): nat =
+    LET state: list[int] = hashset_build(nums),
+        length: nat = int_list_length(nums)
+    IN
+      longestConsecutive_outer_loop(
+        nums,
+        state,
+        length,
+        0)
+
+  insert_sorted_int(
+      value: int,
+      values: list[int]): RECURSIVE list[int] =
+    CASES values OF
+      null:
+        cons(value, null),
+      cons(head, tail):
+        IF value <= head THEN
+          cons(value, cons(head, tail))
+        ELSE
+          cons(
+            head,
+            insert_sorted_int(value, tail))
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  % Integer sorting has a unique nondecreasing result, so this insertion-sort
+  % definition is extensionally equal to Lean's List.mergeSort result.
+  mergeSort_int(values: list[int]): RECURSIVE list[int] =
+    CASES values OF
+      null:
+        null,
+      cons(head, tail):
+        insert_sorted_int(
+          head,
+          mergeSort_int(tail))
+    ENDCASES
+  MEASURE values BY <<
+
+  int_list_drop(
+      count: nat,
+      values: list[int]): RECURSIVE list[int] =
+    IF count = 0 THEN
+      values
+    ELSE
+      CASES values OF
+        null:
+          null,
+        cons(head, tail):
+          int_list_drop(count - 1, tail)
+      ENDCASES
+    ENDIF
+  MEASURE count
+
+  int_list_take(
+      count: nat,
+      values: list[int]): RECURSIVE list[int] =
+    IF count = 0 THEN
+      null
+    ELSE
+      CASES values OF
+        null:
+          null,
+        cons(head, tail):
+          cons(
+            head,
+            int_list_take(count - 1, tail))
+      ENDCASES
+    ENDIF
+  MEASURE count
+
+  int_list_extract(
+      start, count: nat,
+      values: list[int]): list[int] =
+    int_list_take(
+      count,
+      int_list_drop(start, values))
+
+  isConsecutive_tail(
+      values: list[int],
+      expected: int): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        head = expected
+          AND isConsecutive_tail(
+            tail,
+            expected + 1)
+    ENDCASES
+  MEASURE values BY <<
+
+  isConsecutive(seq: list[int]): bool =
+    CASES seq OF
+      null:
+        TRUE,
+      cons(head, tail):
+        isConsecutive_tail(tail, head + 1)
+    ENDCASES
+
+  % This is the exact extensional form of the source range/flatMap/filter/map
+  % construction: generated lengths are precisely the lengths below whose
+  % extracted sorted sublists satisfy isConsecutive.
+  longestConsecutive_postcond(
+      nums: list[int],
+      result: nat): bool =
+    LET sorted_nums: list[int] = mergeSort_int(nums),
+        length: nat = int_list_length(nums)
+    IN
+      (nums = null IMPLIES result = 0)
+        AND
+      (nums /= null IMPLIES
+        (EXISTS (start, sublength: nat):
+          start < length
+            AND sublength <= length - start
+            AND result = sublength
+            AND isConsecutive(
+              int_list_extract(
+                start,
+                sublength,
+                sorted_nums)))
+          AND
+        (FORALL (start, sublength: nat):
+          (start < length
+            AND sublength <= length - start
+            AND isConsecutive(
+              int_list_extract(
+                start,
+                sublength,
+                sorted_nums)))
+            IMPLIES sublength <= result))
+
+  longestConsecutive_spec_satisfied: bool =
+    FORALL (nums: list[int]):
+      longestConsecutive_precond(nums) IMPLIES
+        longestConsecutive_postcond(
+          nums,
+          longestConsecutive(nums))
+
+END verina_advanced_28

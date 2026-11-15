@@ -1,0 +1,102 @@
+% Statement-only formalization of Thousand Theorems corpus artifact Q470877
+% (thousand-theorems__pvs__Q470877), "Stirling's theorem": the
+% factorial-normalized Stirling sequence converges to the nonnegative square
+% root of pi. This file contains no proof.
+
+Q470877_stirling_s_theorem: THEORY
+BEGIN
+  real_sequence: TYPE = [nat -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  exponential_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        exponential_partial(x, count - 1)
+          + safe_div(
+              x ^ index,
+              factorial(index) :: real)
+    ENDIF
+  MEASURE count
+
+  real_exponential(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat):
+            exponential_partial(x, count),
+          value))
+
+  e: real = real_exponential(1)
+
+  alternating_sign(index: nat): RECURSIVE real =
+    IF index = 0 THEN
+      1
+    ELSE
+      -alternating_sign(index - 1)
+    ENDIF
+  MEASURE index
+
+  leibniz_partial(count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        leibniz_partial(count - 1)
+          + safe_div(
+              alternating_sign(index),
+              (2 * index + 1) :: real)
+    ENDIF
+  MEASURE count
+
+  pi: real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat):
+            4 * leibniz_partial(count),
+          value))
+
+  nonnegative_square_root(x: real): real =
+    IF x >= 0 THEN
+      epsilon(
+        LAMBDA (root: real):
+          root >= 0 AND root * root = x)
+    ELSE
+      0
+    ENDIF
+
+  stirling_sequence(index: nat): real =
+    safe_div(
+      factorial(index) :: real,
+      nonnegative_square_root(2 * (index :: real))
+        * safe_div(index :: real, e) ^ index)
+
+  tendsto_stirling_sequence_sqrt_pi: bool =
+    converges_to(
+      LAMBDA (index: nat):
+        stirling_sequence(index),
+      nonnegative_square_root(pi))
+END Q470877_stirling_s_theorem

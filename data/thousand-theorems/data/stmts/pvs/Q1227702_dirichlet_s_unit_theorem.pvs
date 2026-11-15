@@ -1,0 +1,380 @@
+% Statement-only formalization of thousand-theorems corpus artifact Q1227702
+% (thousand-theorems__pvs__Q1227702), "Dirichlet's unit theorem": the units of
+% a number field's ring of integers modulo torsion have an integer basis of
+% rank one less than the number of infinite places, and every unit has a unique
+% torsion-times-fundamental-units decomposition. This file contains no proof.
+
+Q1227702_dirichlet_s_unit_theorem[
+  K: TYPE+,
+  Unit: TYPE+,
+  zeroK, oneK: K,
+  negK: [K -> K],
+  addK, mulK: [K, K -> K],
+  invK: [K -> K],
+  rational_map: [rat -> K],
+  oneU: Unit,
+  mulU: [Unit, Unit -> Unit],
+  invU: [Unit -> Unit],
+  unit_value: [Unit -> K]
+]: THEORY
+BEGIN
+
+  rational_sequence: TYPE = [nat -> rat]
+  k_sequence: TYPE = [nat -> K]
+  integer_polynomial: TYPE = [nat -> int]
+  unit_sequence: TYPE = [nat -> Unit]
+  integer_sequence: TYPE = [nat -> int]
+
+  complex_number: TYPE =
+    [# real_part: real, imaginary_part: real #]
+  complex_embedding: TYPE = [K -> complex_number]
+  infinite_place: TYPE = [complex_embedding -> bool]
+  place_sequence: TYPE = [nat -> infinite_place]
+
+  complex_zero: complex_number =
+    (# real_part := 0, imaginary_part := 0 #)
+
+  complex_one: complex_number =
+    (# real_part := 1, imaginary_part := 0 #)
+
+  complex_add(left, right: complex_number): complex_number =
+    (# real_part :=
+         real_part(left) + real_part(right),
+       imaginary_part :=
+         imaginary_part(left) + imaginary_part(right) #)
+
+  complex_multiply(left, right: complex_number): complex_number =
+    (# real_part :=
+         real_part(left) * real_part(right)
+           - imaginary_part(left) * imaginary_part(right),
+       imaginary_part :=
+         real_part(left) * imaginary_part(right)
+           + imaginary_part(left) * real_part(right) #)
+
+  complex_conjugate(value: complex_number): complex_number =
+    (# real_part := real_part(value),
+       imaginary_part := -imaginary_part(value) #)
+
+  field_laws: bool =
+    oneK /= zeroK
+      AND (FORALL (x, y: K): addK(x, y) = addK(y, x))
+      AND (FORALL (x, y, z: K):
+        addK(addK(x, y), z) = addK(x, addK(y, z)))
+      AND (FORALL (x: K): addK(x, zeroK) = x)
+      AND (FORALL (x: K): addK(x, negK(x)) = zeroK)
+      AND (FORALL (x, y: K): mulK(x, y) = mulK(y, x))
+      AND (FORALL (x, y, z: K):
+        mulK(mulK(x, y), z) = mulK(x, mulK(y, z)))
+      AND (FORALL (x: K): mulK(x, oneK) = x)
+      AND (FORALL (x, y, z: K):
+        mulK(x, addK(y, z)) =
+          addK(mulK(x, y), mulK(x, z)))
+      AND (FORALL (x: K):
+        x /= zeroK IMPLIES mulK(x, invK(x)) = oneK)
+
+  rational_map_laws: bool =
+    rational_map(0) = zeroK
+      AND rational_map(1) = oneK
+      AND (FORALL (a, b: rat):
+        rational_map(a + b) =
+          addK(rational_map(a), rational_map(b)))
+      AND (FORALL (a, b: rat):
+        rational_map(a * b) =
+          mulK(rational_map(a), rational_map(b)))
+
+  scalar_multiply(q: rat, x: K): K =
+    mulK(rational_map(q), x)
+
+  finite_linear_combination(
+      coefficients: rational_sequence,
+      vectors: k_sequence,
+      count: nat): RECURSIVE K =
+    IF count = 0 THEN
+      zeroK
+    ELSE
+      addK(
+        finite_linear_combination(
+          coefficients, vectors, count - 1),
+        scalar_multiply(
+          coefficients(count - 1),
+          vectors(count - 1)))
+    ENDIF
+  MEASURE count
+
+  rational_coordinates_supported_below(
+      dimension: nat,
+      coordinates: rational_sequence): bool =
+    FORALL (index: nat):
+      dimension <= index IMPLIES coordinates(index) = 0
+
+  unique_rational_coordinates(
+      dimension: nat,
+      basis: k_sequence,
+      x: K,
+      coordinates: rational_sequence): bool =
+    rational_coordinates_supported_below(dimension, coordinates)
+      AND x =
+        finite_linear_combination(
+          coordinates, basis, dimension)
+      AND (FORALL (other: rational_sequence):
+        (rational_coordinates_supported_below(dimension, other)
+          AND x =
+            finite_linear_combination(
+              other, basis, dimension))
+        IMPLIES other = coordinates)
+
+  finite_dimensional_over_rationals: bool =
+    EXISTS (dimension: posnat), (basis: k_sequence):
+      FORALL (x: K):
+        EXISTS (coordinates: rational_sequence):
+          unique_rational_coordinates(
+            dimension, basis, x, coordinates)
+
+  k_power(x: K, exponent: nat): RECURSIVE K =
+    IF exponent = 0 THEN
+      oneK
+    ELSE
+      mulK(k_power(x, exponent - 1), x)
+    ENDIF
+  MEASURE exponent
+
+  integer_polynomial_value(
+      coefficients: integer_polynomial,
+      x: K,
+      count: nat): RECURSIVE K =
+    IF count = 0 THEN
+      zeroK
+    ELSE
+      addK(
+        integer_polynomial_value(
+          coefficients, x, count - 1),
+        mulK(
+          rational_map(coefficients(count - 1) :: rat),
+          k_power(x, count - 1)))
+    ENDIF
+  MEASURE count
+
+  monic_integer_polynomial(
+      coefficients: integer_polynomial,
+      degree: nat): bool =
+    coefficients(degree) = 1
+      AND (FORALL (index: nat):
+        degree < index IMPLIES coefficients(index) = 0)
+
+  algebraic_integer(x: K): bool =
+    EXISTS (degree: nat),
+           (coefficients: integer_polynomial):
+      monic_integer_polynomial(coefficients, degree)
+        AND integer_polynomial_value(
+          coefficients, x, degree + 1) = zeroK
+
+  is_complex_embedding(embedding: complex_embedding): bool =
+    embedding(zeroK) = complex_zero
+      AND embedding(oneK) = complex_one
+      AND (FORALL (x, y: K):
+        embedding(addK(x, y)) =
+          complex_add(embedding(x), embedding(y)))
+      AND (FORALL (x, y: K):
+        embedding(mulK(x, y)) =
+          complex_multiply(embedding(x), embedding(y)))
+      AND (FORALL (x, y: K):
+        embedding(x) = embedding(y) IMPLIES x = y)
+
+  conjugate_complex_embedding(
+      embedding: complex_embedding): complex_embedding =
+    LAMBDA (x: K): complex_conjugate(embedding(x))
+
+  infinite_place_of_embedding(
+      embedding: complex_embedding): infinite_place =
+    LAMBDA (candidate: complex_embedding):
+      is_complex_embedding(candidate)
+        AND (candidate = embedding
+          OR candidate = conjugate_complex_embedding(embedding))
+
+  is_infinite_place(place: infinite_place): bool =
+    EXISTS (embedding: complex_embedding):
+      is_complex_embedding(embedding)
+        AND place = infinite_place_of_embedding(embedding)
+
+  unit_group_laws: bool =
+    (FORALL (x, y, z: Unit):
+      mulU(mulU(x, y), z) = mulU(x, mulU(y, z)))
+      AND (FORALL (x, y: Unit):
+        mulU(x, y) = mulU(y, x))
+      AND (FORALL (x: Unit):
+        mulU(oneU, x) = x
+          AND mulU(x, oneU) = x)
+      AND (FORALL (x: Unit):
+        mulU(invU(x), x) = oneU
+          AND mulU(x, invU(x)) = oneU)
+
+  unit_representation_laws: bool =
+    unit_value(oneU) = oneK
+      AND (FORALL (x, y: Unit):
+        unit_value(mulU(x, y)) =
+          mulK(unit_value(x), unit_value(y)))
+      AND (FORALL (x: Unit):
+        unit_value(invU(x)) = invK(unit_value(x)))
+      AND (FORALL (x, y: Unit):
+        unit_value(x) = unit_value(y) IMPLIES x = y)
+      AND (FORALL (x: K):
+        (EXISTS (u: Unit): unit_value(u) = x)
+          IFF
+            algebraic_integer(x)
+              AND x /= zeroK
+              AND algebraic_integer(invK(x)))
+
+  number_field_context: bool =
+    field_laws
+      AND rational_map_laws
+      AND finite_dimensional_over_rationals
+      AND unit_group_laws
+      AND unit_representation_laws
+
+  unit_power(x: Unit, exponent: nat): RECURSIVE Unit =
+    IF exponent = 0 THEN
+      oneU
+    ELSE
+      mulU(unit_power(x, exponent - 1), x)
+    ENDIF
+  MEASURE exponent
+
+  torsion_unit(x: Unit): bool =
+    EXISTS (order: posnat):
+      unit_power(x, order) = oneU
+
+  integer_power_value(
+      base: Unit,
+      exponent: int,
+      value: Unit): bool =
+    (exponent >= 0
+      AND EXISTS (power: nat):
+        exponent = (power :: int)
+          AND value = unit_power(base, power))
+      OR
+    (exponent < 0
+      AND EXISTS (power: posnat):
+        exponent = -(power :: int)
+          AND value = unit_power(invU(base), power))
+
+  integer_coordinates_supported_below(
+      rank: nat,
+      coordinates: integer_sequence): bool =
+    FORALL (index: nat):
+      rank <= index IMPLIES coordinates(index) = 0
+
+  product_of_integer_powers(
+      basis: unit_sequence,
+      coordinates: integer_sequence,
+      rank: nat,
+      value: Unit): bool =
+    EXISTS (powers, partial_products: unit_sequence):
+      partial_products(0) = oneU
+        AND partial_products(rank) = value
+        AND (FORALL (index: nat):
+          index < rank IMPLIES
+            integer_power_value(
+              basis(index),
+              coordinates(index),
+              powers(index))
+              AND partial_products(index + 1) =
+                mulU(partial_products(index), powers(index)))
+
+  equal_modulo_torsion(x, y: Unit): bool =
+    torsion_unit(mulU(x, invU(y)))
+
+  quotient_coordinates(
+      rank: nat,
+      basis: unit_sequence,
+      x: Unit,
+      coordinates: integer_sequence): bool =
+    integer_coordinates_supported_below(rank, coordinates)
+      AND EXISTS (product: Unit):
+        product_of_integer_powers(
+          basis, coordinates, rank, product)
+          AND equal_modulo_torsion(x, product)
+
+  basis_mod_torsion(
+      rank: nat,
+      basis: unit_sequence): bool =
+    FORALL (x: Unit):
+      EXISTS (coordinates: integer_sequence):
+        quotient_coordinates(rank, basis, x, coordinates)
+          AND (FORALL (other: integer_sequence):
+            quotient_coordinates(rank, basis, x, other)
+              IMPLIES other = coordinates)
+
+  unit_decomposition(
+      rank: nat,
+      fundamental_units: unit_sequence,
+      x, torsion_factor: Unit,
+      exponents: integer_sequence): bool =
+    torsion_unit(torsion_factor)
+      AND integer_coordinates_supported_below(rank, exponents)
+      AND EXISTS (product: Unit):
+        product_of_integer_powers(
+          fundamental_units, exponents, rank, product)
+          AND x = mulU(torsion_factor, product)
+
+  unique_unit_decomposition(
+      rank: nat,
+      fundamental_units: unit_sequence,
+      x, torsion_factor: Unit,
+      exponents: integer_sequence): bool =
+    unit_decomposition(
+      rank, fundamental_units, x, torsion_factor, exponents)
+      AND (FORALL (other_torsion_factor: Unit),
+                  (other_exponents: integer_sequence):
+        unit_decomposition(
+          rank,
+          fundamental_units,
+          x,
+          other_torsion_factor,
+          other_exponents)
+        IMPLIES
+          other_torsion_factor = torsion_factor
+            AND other_exponents = exponents)
+
+  fundamental_system(
+      rank: nat,
+      fundamental_units: unit_sequence): bool =
+    FORALL (x: Unit):
+      EXISTS (torsion_factor: Unit),
+             (exponents: integer_sequence):
+        unique_unit_decomposition(
+          rank,
+          fundamental_units,
+          x,
+          torsion_factor,
+          exponents)
+
+  exact_place_enumeration(
+      places: place_sequence,
+      count: nat): bool =
+    (FORALL (index: nat):
+      index < count IMPLIES is_infinite_place(places(index)))
+      AND (FORALL (place: infinite_place):
+        is_infinite_place(place) IMPLIES
+          EXISTS (index: nat):
+            index < count AND places(index) = place)
+      AND (FORALL (left, right: nat):
+        left < count
+          AND right < count
+          AND places(left) = places(right)
+        IMPLIES left = right)
+
+  dirichlet_rank(rank: nat): bool =
+    EXISTS (place_count: posnat),
+           (places: place_sequence):
+      exact_place_enumeration(places, place_count)
+        AND rank = place_count - 1
+
+  dirichlets_unit_theorem: bool =
+    number_field_context IMPLIES
+      EXISTS (rank: nat),
+             (fundamental_units: unit_sequence):
+        dirichlet_rank(rank)
+          AND basis_mod_torsion(rank, fundamental_units)
+          AND fundamental_system(rank, fundamental_units)
+
+END Q1227702_dirichlet_s_unit_theorem

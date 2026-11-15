@@ -1,0 +1,93 @@
+% Statement-only formalization of PutnamBench artifact putnam_2018_b5:
+% a continuously differentiable map from the real plane to itself, with all
+% partial derivatives positive and the stated strict derivative inequality
+% everywhere, is injective. This file contains no proof.
+
+putnam_2018_b5: THEORY
+BEGIN
+  point: TYPE = [# x_coord: real, y_coord: real #]
+  vector_field: TYPE = [point -> point]
+
+  jacobian: TYPE =
+    [# j11: real, j12: real, j21: real, j22: real #]
+  jacobian_field: TYPE = [point -> jacobian]
+
+  squared_distance(p, q: point): real =
+    (x_coord(p) - x_coord(q)) ^ 2
+      + (y_coord(p) - y_coord(q)) ^ 2
+
+  derivative_error_squared(
+      f: vector_field,
+      derivative: jacobian,
+      p, q: point): real =
+    (x_coord(f(q)) - x_coord(f(p))
+      - j11(derivative) * (x_coord(q) - x_coord(p))
+      - j12(derivative) * (y_coord(q) - y_coord(p))) ^ 2
+      + (y_coord(f(q)) - y_coord(f(p))
+        - j21(derivative) * (x_coord(q) - x_coord(p))
+        - j22(derivative) * (y_coord(q) - y_coord(p))) ^ 2
+
+  has_frechet_derivative_at(
+      f: vector_field,
+      derivative: jacobian,
+      p: point): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (delta: posreal):
+        FORALL (q: point):
+          (q /= p
+            AND squared_distance(q, p) < delta ^ 2)
+          IMPLIES
+            derivative_error_squared(f, derivative, p, q)
+              < epsilon_value ^ 2 * squared_distance(q, p)
+
+  jacobian_distance_squared(
+      first, second: jacobian): real =
+    (j11(first) - j11(second)) ^ 2
+      + (j12(first) - j12(second)) ^ 2
+      + (j21(first) - j21(second)) ^ 2
+      + (j22(first) - j22(second)) ^ 2
+
+  continuous_jacobian(derivative: jacobian_field): bool =
+    FORALL (p: point), (epsilon_value: posreal):
+      EXISTS (delta: posreal):
+        FORALL (q: point):
+          squared_distance(q, p) < delta ^ 2
+            IMPLIES
+              jacobian_distance_squared(
+                derivative(q), derivative(p))
+                < epsilon_value ^ 2
+
+  continuously_differentiable_with(
+      f: vector_field,
+      derivative: jacobian_field): bool =
+    (FORALL (p: point):
+      has_frechet_derivative_at(f, derivative(p), p))
+      AND continuous_jacobian(derivative)
+
+  all_partial_derivatives_positive(
+      derivative: jacobian_field): bool =
+    FORALL (p: point):
+      j11(derivative(p)) > 0
+        AND j12(derivative(p)) > 0
+        AND j21(derivative(p)) > 0
+        AND j22(derivative(p)) > 0
+
+  derivative_inequality(derivative: jacobian_field): bool =
+    FORALL (p: point):
+      j11(derivative(p)) * j22(derivative(p))
+        - (1 / 4)
+            * (j12(derivative(p)) + j21(derivative(p))) ^ 2
+        > 0
+
+  injective(f: vector_field): bool =
+    FORALL (p, q: point):
+      f(p) = f(q) IMPLIES p = q
+
+  putnam_2018_b5: bool =
+    FORALL (f: vector_field):
+      (EXISTS (derivative: jacobian_field):
+        continuously_differentiable_with(f, derivative)
+          AND all_partial_derivatives_positive(derivative)
+          AND derivative_inequality(derivative))
+      IMPLIES injective(f)
+END putnam_2018_b5

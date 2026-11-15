@@ -1,0 +1,415 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/counting_sort_InPlaceCountingSort_in_place_counting_sortqtvc: an
+% in-place counting-sort verification condition covering counting and output
+% loop invariants, list updates, sortedness, and permutation. This file contains
+% no proof.
+
+counting_sort_InPlaceCountingSort_in_place_counting_sortqtvc: THEORY
+BEGIN
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  nth_default(values: list[int], index: nat): RECURSIVE int =
+    CASES values OF
+      null: 0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          nth_default(tail, index - 1)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  list_set(
+      values: list[int],
+      index: nat,
+      value: int): RECURSIVE list[int] =
+    CASES values OF
+      null: null,
+      cons(head, tail):
+        IF index = 0 THEN
+          cons(value, tail)
+        ELSE
+          cons(head, list_set(tail, index - 1, value))
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  count_equal_span(
+      values: list[int],
+      value, lower: int,
+      span: nat): RECURSIVE int =
+    IF span = 0 THEN
+      0
+    ELSE
+      (IF nth_default(values, int_to_nat(lower)) = value THEN 1 ELSE 0 ENDIF)
+        + count_equal_span(values, value, lower + 1, span - 1)
+    ENDIF
+  MEASURE span
+
+  count_less_span(
+      values: list[int],
+      value, lower: int,
+      span: nat): RECURSIVE int =
+    IF span = 0 THEN
+      0
+    ELSE
+      (IF nth_default(values, int_to_nat(lower)) < value THEN 1 ELSE 0 ENDIF)
+        + count_less_span(values, value, lower + 1, span - 1)
+    ENDIF
+  MEASURE span
+
+  numeq(
+      values: list[int],
+      value, lower, upper: int): int =
+    count_equal_span(
+      values, value, lower, int_to_nat(upper - lower))
+
+  numlt(
+      values: list[int],
+      value, lower, upper: int): int =
+    count_less_span(
+      values, value, lower, int_to_nat(upper - lower))
+
+  sorted_sub1(values: list[int], lower, upper: int): bool =
+    FORALL (i1, i2: int):
+      (lower <= i1 AND i1 <= i2 AND i2 < upper)
+        IMPLIES
+          nth_default(values, int_to_nat(i1))
+            <= nth_default(values, int_to_nat(i2))
+
+  sorted(values: list[int]): bool =
+    sorted_sub1(values, 0, length(values))
+
+  k_values(values: list[int], k: int): bool =
+    FORALL (i: int):
+      (0 <= i AND i < length(values))
+        IMPLIES
+          0 <= nth_default(values, int_to_nat(i))
+            AND nth_default(values, int_to_nat(i)) < k
+
+  permut(left, right: list[int], k: int): bool =
+    length(left) = length(right)
+      AND
+    (FORALL (value: int):
+      (0 <= value AND value < k)
+        IMPLIES
+          numeq(left, value, 0, length(left))
+            = numeq(right, value, 0, length(right)))
+
+  count_update_vc(
+      k: int,
+      original, counts: list[int],
+      i: int): bool =
+    (0 <= i AND i < length(original))
+      AND
+    (LET value: int =
+       nth_default(original, int_to_nat(i))
+     IN
+       (0 <= value AND value < length(counts))
+         AND
+       (LET next_count: int =
+          nth_default(counts, int_to_nat(value)) + 1
+        IN
+          (0 <= value AND value < length(counts))
+            AND
+          (length(
+             list_set(counts, int_to_nat(value), next_count))
+             = length(counts)
+            IMPLIES
+          (FORALL (value1: int):
+            (0 <= value1 AND value1 < k)
+              IMPLIES
+                nth_default(
+                  list_set(counts, int_to_nat(value), next_count),
+                  int_to_nat(value1))
+                  = numeq(original, value1, 0, i + 1)))))
+
+  initial_output_invariant(original: list[int]): bool =
+    0 = numlt(original, 0, 0, length(original))
+      AND sorted_sub1(original, 0, 0)
+      AND
+    (FORALL (e: int):
+      (0 <= e AND e < 0)
+        IMPLIES
+          0 <= nth_default(original, int_to_nat(e))
+            AND nth_default(original, int_to_nat(e)) < 0)
+      AND
+    (FORALL (f: int):
+      (0 <= f AND f < 0)
+        IMPLIES
+          numeq(original, f, 0, 0)
+            = numeq(original, f, 0, length(original)))
+
+  outer_invariant(
+      original, current: list[int],
+      upper_value, j, value: int): bool =
+    (0 <= value AND value <= upper_value)
+      AND j = numlt(original, value, 0, length(current))
+      AND sorted_sub1(current, 0, j)
+      AND
+    (FORALL (e: int):
+      (0 <= e AND e < j)
+        IMPLIES
+          0 <= nth_default(current, int_to_nat(e))
+            AND nth_default(current, int_to_nat(e)) < value)
+      AND
+    (FORALL (f: int):
+      (0 <= f AND f < value)
+        IMPLIES
+          numeq(current, f, 0, j)
+            = numeq(original, f, 0, length(current)))
+
+  initial_inner_invariant(
+      original, current: list[int],
+      j, value: int): bool =
+    j - 1 + 1 = numlt(original, value, 0, length(current))
+      AND sorted_sub1(current, 0, j)
+      AND
+    (FORALL (e: int):
+      (0 <= e AND e < j)
+        IMPLIES
+          0 <= nth_default(current, int_to_nat(e))
+            AND nth_default(current, int_to_nat(e)) <= value)
+      AND
+    (FORALL (f: int):
+      (0 <= f AND f < value)
+        IMPLIES
+          numeq(current, f, 0, j)
+            = numeq(original, f, 0, length(current)))
+      AND numeq(current, value, 0, j) = 1 - 1
+
+  inner_invariant(
+      original, current: list[int],
+      value, count, j, i: int): bool =
+    (1 <= i AND i <= count)
+      AND j - i + 1 = numlt(original, value, 0, length(current))
+      AND sorted_sub1(current, 0, j)
+      AND
+    (FORALL (e: int):
+      (0 <= e AND e < j)
+        IMPLIES
+          0 <= nth_default(current, int_to_nat(e))
+            AND nth_default(current, int_to_nat(e)) <= value)
+      AND
+    (FORALL (f: int):
+      (0 <= f AND f < value)
+        IMPLIES
+          numeq(current, f, 0, j)
+            = numeq(original, f, 0, length(current)))
+      AND numeq(current, value, 0, j) = i - 1
+
+  inner_update_post(
+      original, current: list[int],
+      value, j, i: int): bool =
+    LET updated: list[int] =
+      list_set(current, int_to_nat(j), value)
+    IN
+      j + 1 - (i + 1) + 1
+        = numlt(original, value, 0, length(updated))
+        AND sorted_sub1(updated, 0, j + 1)
+        AND
+      (FORALL (e: int):
+        (0 <= e AND e < j + 1)
+          IMPLIES
+            0 <= nth_default(updated, int_to_nat(e))
+              AND nth_default(updated, int_to_nat(e)) <= value)
+        AND
+      (FORALL (f: int):
+        (0 <= f AND f < value)
+          IMPLIES
+            numeq(updated, f, 0, j + 1)
+              = numeq(original, f, 0, length(updated)))
+        AND numeq(updated, value, 0, j + 1) = i + 1 - 1
+
+  completed_value_invariant(
+      original, current: list[int],
+      j, value: int): bool =
+    j = numlt(original, value + 1, 0, length(current))
+      AND sorted_sub1(current, 0, j)
+      AND
+    (FORALL (e: int):
+      (0 <= e AND e < j)
+        IMPLIES
+          0 <= nth_default(current, int_to_nat(e))
+            AND nth_default(current, int_to_nat(e)) < value + 1)
+      AND
+    (FORALL (f: int):
+      (0 <= f AND f < value + 1)
+        IMPLIES
+          numeq(current, f, 0, j)
+            = numeq(original, f, 0, length(current)))
+
+  final_inner_invariant(
+      original, current: list[int],
+      value, count, j: int): bool =
+    j - (count + 1) + 1
+      = numlt(original, value, 0, length(current))
+      AND sorted_sub1(current, 0, j)
+      AND
+    (FORALL (e: int):
+      (0 <= e AND e < j)
+        IMPLIES
+          0 <= nth_default(current, int_to_nat(e))
+            AND nth_default(current, int_to_nat(e)) <= value)
+      AND
+    (FORALL (f: int):
+      (0 <= f AND f < value)
+        IMPLIES
+          numeq(current, f, 0, j)
+            = numeq(original, f, 0, length(current)))
+      AND numeq(current, value, 0, j) = count + 1 - 1
+
+  inner_phase(
+      k: int,
+      original, counts, current: list[int],
+      j, value: int): bool =
+    LET count: int =
+      nth_default(counts, int_to_nat(value))
+    IN
+      ((1 <= count + 1)
+        IMPLIES
+          initial_inner_invariant(original, current, j, value)
+            AND
+          (FORALL (j1: int), (next: list[int]):
+            length(next) = length(current)
+              IMPLIES
+            ((FORALL (i: int):
+              inner_invariant(
+                original, next, value, count, j1, i)
+                IMPLIES
+                  (0 <= j1 AND j1 < length(next))
+                    AND
+                  (length(
+                     list_set(next, int_to_nat(j1), value))
+                     = length(next)
+                    IMPLIES
+                  inner_update_post(
+                    original, next, value, j1, i)))
+              AND
+            (final_inner_invariant(
+               original, next, value, count, j1)
+              IMPLIES
+                completed_value_invariant(
+                  original, next, j1, value)))))
+        AND
+      ((count + 1 < 1)
+        IMPLIES
+          completed_value_invariant(
+            original, current, j, value))
+
+  final_outer_invariant(
+      original, current: list[int],
+      upper_value, j: int): bool =
+    j = numlt(original, upper_value + 1, 0, length(current))
+      AND sorted_sub1(current, 0, j)
+      AND
+    (FORALL (e: int):
+      (0 <= e AND e < j)
+        IMPLIES
+          0 <= nth_default(current, int_to_nat(e))
+            AND nth_default(current, int_to_nat(e))
+              < upper_value + 1)
+      AND
+    (FORALL (f: int):
+      (0 <= f AND f < upper_value + 1)
+        IMPLIES
+          numeq(current, f, 0, j)
+            = numeq(original, f, 0, length(current)))
+
+  output_phase(
+      k: int,
+      original, counts: list[int]): bool =
+    LET upper_value: int = k - 1
+    IN
+      ((0 <= upper_value + 1)
+        IMPLIES
+          initial_output_invariant(original)
+            AND
+          (FORALL (j: int), (current: list[int]):
+            length(current) = length(original)
+              IMPLIES
+            ((FORALL (value: int):
+              outer_invariant(
+                original, current, upper_value, j, value)
+                IMPLIES
+                  (0 <= value AND value < length(counts))
+                    AND
+                  inner_phase(
+                    k, original, counts, current, j, value))
+              AND
+            (final_outer_invariant(
+               original, current, upper_value, j)
+              IMPLIES
+                sorted(current)
+                  AND permut(original, current, k)))))
+        AND
+      ((upper_value + 1 < 0)
+        IMPLIES
+          sorted(original)
+            AND permut(original, original, k))
+
+  count_phase(
+      k: int,
+      original, counts: list[int],
+      upper_index: int): bool =
+    (FORALL (value: int):
+      (0 <= value AND value < k)
+        IMPLIES
+          nth_default(counts, int_to_nat(value))
+            = numeq(original, value, 0, 0))
+      AND
+    (FORALL (next_counts: list[int]):
+      length(next_counts) = length(counts)
+        IMPLIES
+      ((FORALL (i: int):
+        ((0 <= i AND i <= upper_index)
+          AND
+        (FORALL (value: int):
+          (0 <= value AND value < k)
+            IMPLIES
+              nth_default(next_counts, int_to_nat(value))
+                = numeq(original, value, 0, i)))
+          IMPLIES
+            count_update_vc(k, original, next_counts, i))
+        AND
+      ((FORALL (value: int):
+        (0 <= value AND value < k)
+          IMPLIES
+            nth_default(next_counts, int_to_nat(value))
+              = numeq(original, value, 0, upper_index + 1))
+        IMPLIES
+          output_phase(k, original, next_counts))))
+
+  in_place_counting_sort_body(
+      k: int,
+      original: list[int]): bool =
+    LET count_size: int = k
+    IN
+      0 <= count_size
+        AND
+      (FORALL (counts: list[int]):
+        ((FORALL (i: int):
+          (0 <= i AND i < count_size)
+            IMPLIES
+              nth_default(counts, int_to_nat(i)) = 0)
+          AND length(counts) = count_size)
+          IMPLIES
+        (LET upper_index: int = length(original) - 1
+         IN
+           ((0 <= upper_index + 1)
+             IMPLIES
+               count_phase(
+                 k, original, counts, upper_index))
+             AND
+           ((upper_index + 1 < 0)
+             IMPLIES
+               output_phase(k, original, counts))))
+
+  in_place_counting_sort_vc: bool =
+    FORALL (k: int), (original: list[int]):
+      (0 < k AND k_values(original, k))
+        IMPLIES
+          in_place_counting_sort_body(k, original)
+END counting_sort_InPlaceCountingSort_in_place_counting_sortqtvc

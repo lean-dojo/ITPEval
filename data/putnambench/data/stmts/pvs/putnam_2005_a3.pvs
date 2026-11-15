@@ -1,0 +1,308 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2005_a3:
+% every nonzero critical point of a positive-degree complex polynomial divided
+% by its principal n/2 power lies on the unit circle when all polynomial zeros
+% lie on the unit circle. This file contains no proof.
+
+putnam_2005_a3: THEORY
+BEGIN
+  complex: TYPE = [# real_part: real, imag_part: real #]
+  complex_function: TYPE = [complex -> complex]
+  coefficient_sequence: TYPE = [nat -> complex]
+
+  complex_zero: complex =
+    (# real_part := 0, imag_part := 0 #)
+
+  complex_one: complex =
+    (# real_part := 1, imag_part := 0 #)
+
+  complex_i: complex =
+    (# real_part := 0, imag_part := 1 #)
+
+  complex_of_real(value: real): complex =
+    (# real_part := value, imag_part := 0 #)
+
+  complex_add(left, right: complex): complex =
+    (# real_part := real_part(left) + real_part(right),
+       imag_part := imag_part(left) + imag_part(right) #)
+
+  complex_neg(value: complex): complex =
+    (# real_part := -real_part(value),
+       imag_part := -imag_part(value) #)
+
+  complex_sub(left, right: complex): complex =
+    complex_add(left, complex_neg(right))
+
+  complex_mul(left, right: complex): complex =
+    (# real_part :=
+         real_part(left) * real_part(right)
+           - imag_part(left) * imag_part(right),
+       imag_part :=
+         real_part(left) * imag_part(right)
+           + imag_part(left) * real_part(right) #)
+
+  complex_scale(scalar: real, value: complex): complex =
+    (# real_part := scalar * real_part(value),
+       imag_part := scalar * imag_part(value) #)
+
+  complex_power(value: complex, exponent: nat): RECURSIVE complex =
+    IF exponent = 0 THEN
+      complex_one
+    ELSE
+      complex_mul(complex_power(value, exponent - 1), value)
+    ENDIF
+  MEASURE exponent
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  squared_modulus(value: complex): real =
+    real_part(value) ^ 2 + imag_part(value) ^ 2
+
+  nonnegative_square_root(value: real): real =
+    IF 0 <= value THEN
+      epsilon(
+        LAMBDA (root: real):
+          0 <= root AND root * root = value)
+    ELSE
+      0
+    ENDIF
+
+  complex_modulus(value: complex): real =
+    nonnegative_square_root(squared_modulus(value))
+
+  complex_inverse(value: complex): complex =
+    LET denominator: real = squared_modulus(value)
+    IN
+      (# real_part := safe_div(real_part(value), denominator),
+         imag_part := safe_div(-imag_part(value), denominator) #)
+
+  complex_div(numerator, denominator: complex): complex =
+    complex_mul(numerator, complex_inverse(denominator))
+
+  nat_factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * nat_factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  alternating_sign(index: nat): RECURSIVE real =
+    IF index = 0 THEN
+      1
+    ELSE
+      -alternating_sign(index - 1)
+    ENDIF
+  MEASURE index
+
+  real_converges_to(
+      sequence: [nat -> real],
+      value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  cosine_partial(argument: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1
+      IN
+        cosine_partial(argument, count - 1)
+          + safe_div(
+              alternating_sign(index)
+                * argument ^ (2 * index),
+              nat_factorial(2 * index) :: real)
+    ENDIF
+  MEASURE count
+
+  cosine_value(argument, value: real): bool =
+    real_converges_to(
+      LAMBDA (count: nat): cosine_partial(argument, count),
+      value)
+
+  pi: real =
+    epsilon(
+      LAMBDA (value: real):
+        3 < value
+          AND value < 4
+          AND cosine_value(value / 2, 0))
+
+  real_exponential_partial(
+      argument: real,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1
+      IN
+        real_exponential_partial(argument, count - 1)
+          + safe_div(
+              argument ^ index,
+              nat_factorial(index) :: real)
+    ENDIF
+  MEASURE count
+
+  real_exponential_value(argument, value: real): bool =
+    real_converges_to(
+      LAMBDA (count: nat):
+        real_exponential_partial(argument, count),
+      value)
+
+  natural_log_value(argument, value: real): bool =
+    argument > 0
+      AND real_exponential_value(value, argument)
+
+  complex_exponential_partial(
+      argument: complex,
+      count: nat): RECURSIVE complex =
+    IF count = 0 THEN
+      complex_zero
+    ELSE
+      LET index: nat = count - 1
+      IN
+        complex_add(
+          complex_exponential_partial(argument, count - 1),
+          complex_scale(
+            safe_div(1, nat_factorial(index) :: real),
+            complex_power(argument, index)))
+    ENDIF
+  MEASURE count
+
+  complex_converges_to(
+      sequence: [nat -> complex],
+      value: complex): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(real_part(sequence(index)) - real_part(value))
+                < epsilon_value
+              AND abs(imag_part(sequence(index)) - imag_part(value))
+                < epsilon_value
+
+  complex_exponential_value(
+      argument, value: complex): bool =
+    complex_converges_to(
+      LAMBDA (count: nat):
+        complex_exponential_partial(argument, count),
+      value)
+
+  principal_argument_value(
+      value: complex,
+      angle: real): bool =
+    NOT (value = complex_zero)
+      AND -pi < angle
+      AND angle <= pi
+      AND EXISTS (unit_value: complex):
+        complex_exponential_value(
+          complex_scale(angle, complex_i),
+          unit_value)
+          AND value
+            = complex_scale(complex_modulus(value), unit_value)
+
+  principal_half_power_value(
+      value: complex,
+      degree: nat,
+      result: complex): bool =
+    IF value = complex_zero THEN
+      result = complex_zero
+    ELSE
+      EXISTS (log_modulus, angle: real):
+        EXISTS (log_value, scaled_log: complex):
+          natural_log_value(
+            complex_modulus(value),
+            log_modulus)
+            AND principal_argument_value(value, angle)
+            AND log_value
+              = (# real_part := log_modulus,
+                   imag_part := angle #)
+            AND scaled_log
+              = complex_scale((degree :: real) / 2, log_value)
+            AND complex_exponential_value(scaled_log, result)
+    ENDIF
+
+  polynomial_value(
+      coefficients: coefficient_sequence,
+      value: complex,
+      count: nat): RECURSIVE complex =
+    IF count = 0 THEN
+      complex_zero
+    ELSE
+      LET index: nat = count - 1
+      IN
+        complex_add(
+          polynomial_value(coefficients, value, count - 1),
+          complex_mul(
+            coefficients(index),
+            complex_power(value, index)))
+    ENDIF
+  MEASURE count
+
+  has_degree(
+      coefficients: coefficient_sequence,
+      degree: nat): bool =
+    NOT (coefficients(degree) = complex_zero)
+      AND FORALL (index: nat):
+        degree < index IMPLIES
+          coefficients(index) = complex_zero
+
+  defines_normalized_polynomial(
+      coefficients: coefficient_sequence,
+      degree: nat,
+      g: complex_function): bool =
+    FORALL (value: complex):
+      EXISTS (denominator: complex):
+        principal_half_power_value(value, degree, denominator)
+          AND g(value)
+            = complex_div(
+                polynomial_value(
+                  coefficients,
+                  value,
+                  degree + 1),
+                denominator)
+
+  has_zero_complex_derivative_at(
+      g: complex_function,
+      point: complex): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (delta: posreal):
+        FORALL (increment: complex):
+          (NOT (increment = complex_zero)
+            AND complex_modulus(increment) < delta)
+          IMPLIES
+            complex_modulus(
+              complex_sub(
+                g(complex_add(point, increment)),
+                g(point)))
+              < epsilon_value * complex_modulus(increment)
+
+  putnam_2005_a3: bool =
+    FORALL
+        (coefficients: coefficient_sequence),
+        (degree: nat),
+        (g: complex_function),
+        (z: complex):
+      (degree > 0
+        AND has_degree(coefficients, degree)
+        AND (FORALL (root: complex):
+          polynomial_value(
+            coefficients,
+            root,
+            degree + 1)
+              = complex_zero
+          IMPLIES complex_modulus(root) = 1)
+        AND defines_normalized_polynomial(
+          coefficients,
+          degree,
+          g)
+        AND NOT (z = complex_zero)
+        AND has_zero_complex_derivative_at(g, z))
+      IMPLIES complex_modulus(z) = 1
+END putnam_2005_a3

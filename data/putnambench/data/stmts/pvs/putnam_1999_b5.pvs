@@ -1,0 +1,218 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1999_b5:
+% for n at least 3, the determinant of the identity plus the n-by-n real
+% matrix with (j,k)-entry cos(j*theta+k*theta), theta=2*pi/n, is 1-n^2/4.
+% This file contains no proof.
+
+putnam_1999_b5: THEORY
+BEGIN
+  matrix: TYPE = [nat, nat -> real]
+  real_sequence: TYPE = [nat -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  cosine_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        cosine_partial(x, count - 1)
+          + safe_div(
+              ((-1 :: real) ^ index) * x ^ (2 * index),
+              factorial(2 * index) :: real)
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  cosine(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat): cosine_partial(x, count),
+          value))
+
+  pi: real =
+    epsilon(
+      LAMBDA (value: real):
+        3 < value
+          AND value < 4
+          AND cosine(value / 2) = 0)
+
+  quotient_aux(
+      numerator, denominator, fuel: nat): RECURSIVE nat =
+    IF fuel = 0
+        OR denominator = 0
+        OR numerator < denominator THEN
+      0
+    ELSE
+      1
+        + quotient_aux(
+            numerator - denominator,
+            denominator,
+            fuel - 1)
+    ENDIF
+  MEASURE fuel
+
+  remainder_aux(
+      numerator, denominator, fuel: nat): RECURSIVE nat =
+    IF fuel = 0
+        OR denominator = 0
+        OR numerator < denominator THEN
+      numerator
+    ELSE
+      remainder_aux(
+        numerator - denominator,
+        denominator,
+        fuel - 1)
+    ENDIF
+  MEASURE fuel
+
+  safe_ndiv(numerator, denominator: nat): nat =
+    quotient_aux(
+      numerator,
+      denominator,
+      numerator + 1)
+
+  safe_mod(numerator, denominator: nat): nat =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      remainder_aux(
+        numerator,
+        denominator,
+        numerator + 1)
+    ENDIF
+
+  function_code_count(n: nat): nat =
+    IF n = 0 THEN 1 ELSE n ^ n ENDIF
+
+  permutation_entry(code, row, n: nat): nat =
+    IF n = 0 THEN
+      0
+    ELSE
+      safe_mod(safe_ndiv(code, n ^ row), n)
+    ENDIF
+
+  permutation_code(code, n: nat): bool =
+    code < function_code_count(n)
+      AND (FORALL (row_1, row_2: nat):
+        (row_1 < n
+          AND row_2 < n
+          AND permutation_entry(code, row_1, n)
+            = permutation_entry(code, row_2, n))
+        IMPLIES row_1 = row_2)
+
+  pair_row(pair, n: nat): nat =
+    safe_ndiv(pair, n)
+
+  pair_column(pair, n: nat): nat =
+    safe_mod(pair, n)
+
+  inversion_at(code, pair, n: nat): bool =
+    pair_row(pair, n) < n
+      AND pair_column(pair, n) < n
+      AND pair_row(pair, n) < pair_column(pair, n)
+      AND permutation_entry(code, pair_row(pair, n), n)
+        > permutation_entry(code, pair_column(pair, n), n)
+
+  count_true(
+      property: [nat -> bool],
+      count: nat): RECURSIVE nat =
+    IF count = 0 THEN
+      0
+    ELSE
+      count_true(property, count - 1)
+        + IF property(count - 1) THEN 1 ELSE 0 ENDIF
+    ENDIF
+  MEASURE count
+
+  inversion_count(code, n: nat): nat =
+    count_true(
+      (LAMBDA (pair: nat): inversion_at(code, pair, n)),
+      n * n)
+
+  permutation_sign(code, n: nat): real =
+    IF mod(inversion_count(code, n), 2) = 0 THEN
+      1
+    ELSE
+      -1
+    ENDIF
+
+  permutation_product(
+      A: matrix,
+      code, n, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      1
+    ELSE
+      permutation_product(A, code, n, count - 1)
+        * A(
+            count - 1,
+            permutation_entry(code, count - 1, n))
+    ENDIF
+  MEASURE count
+
+  determinant_sum(
+      A: matrix,
+      n, limit: nat): RECURSIVE real =
+    IF limit = 0 THEN
+      0
+    ELSE
+      LET code: nat = limit - 1 IN
+        determinant_sum(A, n, limit - 1)
+          + IF permutation_code(code, n) THEN
+              permutation_sign(code, n)
+                * permutation_product(A, code, n, n)
+            ELSE
+              0
+            ENDIF
+    ENDIF
+  MEASURE limit
+
+  determinant(A: matrix, n: nat): real =
+    determinant_sum(A, n, function_code_count(n))
+
+  identity_plus(A: matrix): matrix =
+    LAMBDA (row, column: nat):
+      (IF row = column THEN 1 ELSE 0 ENDIF) + A(row, column)
+
+  has_cosine_entries(
+      A: matrix,
+      n: nat,
+      theta: real): bool =
+    FORALL (row, column: nat):
+      row < n AND column < n IMPLIES
+        A(row, column)
+          = cosine(
+              ((row + 1) :: real) * theta
+                + ((column + 1) :: real) * theta)
+
+  putnam_1999_b5_solution(n: nat): real =
+    1 - (n :: real) ^ 2 / 4
+
+  putnam_1999_b5: bool =
+    FORALL (n: nat), (theta: real), (A: matrix):
+      (n >= 3
+        AND theta = safe_div(2 * pi, n :: real)
+        AND has_cosine_entries(A, n, theta))
+      IMPLIES
+        determinant(identity_plus(A), n)
+          = putnam_1999_b5_solution(n)
+END putnam_1999_b5

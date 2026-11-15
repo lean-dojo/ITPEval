@@ -1,0 +1,96 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2001_a3:
+% the integer parameters for which x^4 - (2m + 4)x^2 + (m - 2)^2 factors
+% into two nonconstant integer polynomials. This file contains no proof.
+
+putnam_2001_a3: THEORY
+BEGIN
+  integer_polynomial: TYPE = list[int]
+
+  polynomial_coefficient(
+      polynomial: integer_polynomial,
+      degree: nat): RECURSIVE int =
+    CASES polynomial OF
+      null: 0,
+      cons(coefficient, tail):
+        IF degree = 0 THEN
+          coefficient
+        ELSE
+          polynomial_coefficient(tail, degree - 1)
+        ENDIF
+    ENDCASES
+  MEASURE polynomial BY <<
+
+  polynomial_equal(
+      left, right: integer_polynomial): bool =
+    FORALL (degree: nat):
+      polynomial_coefficient(left, degree)
+        = polynomial_coefficient(right, degree)
+
+  polynomial_add(
+      left, right: integer_polynomial): RECURSIVE integer_polynomial =
+    CASES left OF
+      null: right,
+      cons(left_coefficient, left_tail):
+        CASES right OF
+          null: left,
+          cons(right_coefficient, right_tail):
+            cons(
+              left_coefficient + right_coefficient,
+              polynomial_add(left_tail, right_tail))
+        ENDCASES
+    ENDCASES
+  MEASURE left BY <<
+
+  polynomial_scale(
+      scalar: int,
+      polynomial: integer_polynomial): RECURSIVE integer_polynomial =
+    CASES polynomial OF
+      null: null,
+      cons(coefficient, tail):
+        cons(
+          scalar * coefficient,
+          polynomial_scale(scalar, tail))
+    ENDCASES
+  MEASURE polynomial BY <<
+
+  polynomial_multiply(
+      left, right: integer_polynomial): RECURSIVE integer_polynomial =
+    CASES left OF
+      null: null,
+      cons(coefficient, tail):
+        polynomial_add(
+          polynomial_scale(coefficient, right),
+          cons(0, polynomial_multiply(tail, right)))
+    ENDCASES
+  MEASURE left BY <<
+
+  nonconstant(polynomial: integer_polynomial): bool =
+    EXISTS (degree: nat):
+      degree > 0
+        AND polynomial_coefficient(polynomial, degree) /= 0
+
+  quartic(m: int): integer_polynomial =
+    cons[int](
+      (m - 2) * (m - 2),
+      cons[int](
+        0,
+        cons[int](
+          -(2 * m + 4),
+          cons[int](0, cons[int](1, null[int])))))
+
+  factorable(m: int): bool =
+    EXISTS (left, right: integer_polynomial):
+      polynomial_equal(
+        quartic(m),
+        polynomial_multiply(left, right))
+        AND nonconstant(left)
+        AND nonconstant(right)
+
+  putnam_2001_a3_solution(m: int): bool =
+    EXISTS (k: int):
+      m = k * k OR m = 2 * k * k
+
+  putnam_2001_a3: bool =
+    FORALL (m: int):
+      factorable(m) IFF putnam_2001_a3_solution(m)
+END putnam_2001_a3

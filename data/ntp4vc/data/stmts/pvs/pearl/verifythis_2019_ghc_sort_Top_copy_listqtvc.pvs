@@ -1,0 +1,191 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/verifythis_2019_ghc_sort_Top_copy_listqtvc: the verification condition
+% for copying an integer list into an array segment while preserving the
+% preceding prefix and matching interval occurrence counts. This file contains
+% no proof.
+
+verifythis_2019_ghc_sort_Top_copy_listqtvc: THEORY
+BEGIN
+
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  nth_default(values: list[int], index: nat): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          nth_default(tail, index - 1)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  list_set(
+      values: list[int],
+      index: nat,
+      value: int): RECURSIVE list[int] =
+    CASES values OF
+      null:
+        null,
+      cons(head, tail):
+        IF index = 0 THEN
+          cons(value, tail)
+        ELSE
+          cons(head, list_set(tail, index - 1, value))
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  list_occurrences(value: int, values: list[int]): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        (IF head = value THEN 1 ELSE 0 ENDIF)
+          + list_occurrences(value, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  interval_occurrences_span(
+      value: int,
+      values: list[int],
+      lower: int,
+      span: nat): RECURSIVE int =
+    IF span = 0 THEN
+      0
+    ELSE
+      (IF nth_default(values, int_to_nat(lower)) = value
+       THEN 1
+       ELSE 0
+       ENDIF)
+        + interval_occurrences_span(value, values, lower + 1, span - 1)
+    ENDIF
+  MEASURE span
+
+  interval_occurrences(
+      value: int,
+      values: list[int],
+      lower, upper: int): int =
+    interval_occurrences_span(
+      value,
+      values,
+      lower,
+      int_to_nat(upper - lower))
+
+  update_function_equation(
+      before, after: list[int],
+      index, value: int): bool =
+    FORALL (position: int):
+      0 <= position IMPLIES
+        nth_default(after, int_to_nat(position))
+          =
+        IF position = index THEN
+          value
+        ELSE
+          nth_default(before, int_to_nat(position))
+        ENDIF
+
+  copied_suffix(
+      destination, source: list[int],
+      start: int): bool =
+    FORALL (position: int):
+      (start <= position AND position < length(destination))
+        IMPLIES
+          nth_default(destination, int_to_nat(position))
+            =
+          nth_default(source, int_to_nat(position - start))
+
+  unchanged_prefix(
+      after, before: list[int],
+      upper: int): bool =
+    FORALL (position: int):
+      (0 <= position AND position < upper)
+        IMPLIES
+          nth_default(after, int_to_nat(position))
+            =
+          nth_default(before, int_to_nat(position))
+
+  matching_occurrences(
+      destination, source: list[int],
+      start: int): bool =
+    FORALL (value: int):
+      interval_occurrences(
+        value, destination, start, length(destination))
+        =
+      list_occurrences(value, source)
+
+  copy_postcondition(
+      after, before, source: list[int],
+      start: int): bool =
+    copied_suffix(after, source, start)
+      AND unchanged_prefix(after, before, start)
+      AND matching_occurrences(after, source, start)
+
+  tail_matches(source, expected_tail: list[int]): bool =
+    CASES source OF
+      null:
+        FALSE,
+      cons(head, tail):
+        tail = expected_tail
+    ENDCASES
+
+  nonempty_copy_branch(
+      start: int,
+      source, destination: list[int],
+      head: int,
+      tail: list[int]): bool =
+    (0 <= start AND start < length(destination))
+      AND
+    (LET updated: list[int] =
+       list_set(destination, int_to_nat(start), head)
+     IN
+       length(updated) = length(destination)
+         IMPLIES
+       update_function_equation(
+         destination, updated, start, head)
+         IMPLIES
+       (LET next_start: int = start + 1
+        IN
+          (tail_matches(source, tail)
+            AND 0 <= next_start
+            AND length(tail) = length(updated) - next_start)
+            AND
+          (FORALL (after_recursive_call: list[int]):
+            length(after_recursive_call) = length(updated)
+              IMPLIES
+            copy_postcondition(
+              after_recursive_call,
+              updated,
+              tail,
+              next_start)
+              IMPLIES
+            copy_postcondition(
+              after_recursive_call,
+              destination,
+              source,
+              start))))
+
+  copy_list_vc: bool =
+    FORALL
+        (start: int),
+        (source, destination: list[int]):
+      (0 <= start
+        AND length(source) = length(destination) - start)
+        IMPLIES
+      CASES source OF
+        null:
+          copied_suffix(destination, source, start)
+            AND matching_occurrences(destination, source, start),
+        cons(head, tail):
+          nonempty_copy_branch(
+            start,
+            source,
+            destination,
+            head,
+            tail)
+      ENDCASES
+
+END verifythis_2019_ghc_sort_Top_copy_listqtvc

@@ -1,0 +1,23 @@
+(* Statement-only formalization of Logipedia corpus artifact
+   bigops.bigop_false: a filtered big operation whose Boolean predicate is
+   constantly false returns its supplied nil element. This file contains no
+   proof. *)
+
+From Stdlib Require Import Bool.Bool.
+
+Fixpoint bigop {B : Type}
+    (n : nat) (p : nat -> bool) (nil : B)
+    (op : B -> B -> B) (f : nat -> B) : B :=
+  match n with
+  | O => nil
+  | S k =>
+      if p k
+      then op (f k) (bigop k p nil op f)
+      else bigop k p nil op f
+  end.
+
+Theorem bigops_bigop_false :
+  forall (B : Type) (n : nat) (nil : B)
+         (op : B -> B -> B) (f : nat -> B),
+    bigop n (fun _ => false) nil op (fun i => f i) = nil.
+Admitted.

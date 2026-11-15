@@ -1,0 +1,216 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/sumrange_CumulativeTree_updateqtvc: the cumulative range-sum tree
+% point-update verification condition, preserving its interval, updated cell,
+% unchanged cells, and whole-tree invariant. This file contains no proof.
+
+sumrange_CumulativeTree_updateqtvc: THEORY
+BEGIN
+
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  nth_default(values: list[int], index: nat): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          nth_default(tail, index - 1)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  set_at(
+      values: list[int],
+      index: nat,
+      value: int): RECURSIVE list[int] =
+    CASES values OF
+      null:
+        null,
+      cons(head, tail):
+        IF index = 0 THEN
+          cons(value, tail)
+        ELSE
+          cons(head, set_at(tail, index - 1, value))
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  sum_from(
+      values: list[int],
+      start, count: nat): RECURSIVE int =
+    IF count = 0 THEN
+      0
+    ELSE
+      nth_default(values, start)
+        + sum_from(values, start + 1, count - 1)
+    ENDIF
+  MEASURE count
+
+  array_sum(
+      values: list[int],
+      lower, upper: int): int =
+    sum_from(
+      values,
+      int_to_nat(lower),
+      int_to_nat(upper - lower))
+
+  nth_function(values: list[int]): [int -> int] =
+    LAMBDA (index: int):
+      nth_default(values, int_to_nat(index))
+
+  function_update(
+      values: [int -> int],
+      index, value: int): [int -> int] =
+    values WITH [(index) := value]
+
+  why3_computer_div(numerator, denominator: int): int =
+    IF denominator = 0 THEN
+      0
+    ELSIF numerator * denominator >= 0 THEN
+      floor((numerator :: real) / (denominator :: real))
+    ELSE
+      -floor(-((numerator :: real) / (denominator :: real)))
+    ENDIF
+
+  indexes: DATATYPE
+  BEGIN
+    mk_indexes(
+      low: int,
+      high: int,
+      isum: int): mk_indexes?
+  END indexes
+
+  tree: DATATYPE
+  BEGIN
+    Leaf(leaf_indexes: indexes): Leaf?
+    Node(
+      node_indexes: indexes,
+      left_tree: tree,
+      right_tree: tree): Node?
+  END tree
+
+  indexes1(current: tree): indexes =
+    CASES current OF
+      Leaf(ind):
+        ind,
+      Node(ind, left, right):
+        ind
+    ENDCASES
+
+  is_indexes_for(
+      ind: indexes,
+      values: list[int],
+      lower, upper: int): bool =
+    low(ind) = lower
+      AND high(ind) = upper
+      AND 0 <= lower
+      AND lower < upper
+      AND upper <= length(values)
+      AND isum(ind) = array_sum(values, lower, upper)
+
+  is_tree_for(
+      current: tree,
+      values: list[int],
+      lower, upper: int): RECURSIVE bool =
+    CASES current OF
+      Leaf(ind):
+        is_indexes_for(ind, values, lower, upper)
+          AND upper = lower + 1,
+      Node(ind, left, right):
+        is_indexes_for(ind, values, lower, upper)
+          AND lower = low(indexes1(left))
+          AND upper = high(indexes1(right))
+          AND
+            (LET middle: int = high(indexes1(left))
+             IN
+               middle = low(indexes1(right))
+                 AND lower < middle
+                 AND middle < upper
+                 AND middle
+                       = why3_computer_div(lower + upper, 2)
+                 AND is_tree_for(
+                       left, values, lower, middle)
+                 AND is_tree_for(
+                       right, values, middle, upper))
+    ENDCASES
+  MEASURE current BY <<
+
+  other_cells_unchanged(
+      original, updated: list[int],
+      index: int): bool =
+    FORALL (k: int):
+      ((0 <= k AND k < length(updated))
+        AND NOT (k = index))
+        IMPLIES
+          nth_default(updated, int_to_nat(k))
+            = nth_default(original, int_to_nat(k))
+
+  update_vc: bool =
+    FORALL
+      (index: int),
+      (values: list[int]),
+      (current: tree),
+      (value: int):
+      0 <= index
+        IMPLIES
+      index < length(values)
+        IMPLIES
+      is_tree_for(current, values, 0, length(values))
+        IMPLIES
+          is_tree_for(
+            current,
+            values,
+            low(indexes1(current)),
+            high(indexes1(current)))
+            AND
+          low(indexes1(current)) <= index
+            AND
+          index < high(indexes1(current))
+            AND
+          (FORALL (updated_tree: tree):
+            (LET updated_values: list[int] =
+               set_at(values, int_to_nat(index), value)
+             IN
+               (low(indexes1(updated_tree))
+                    = low(indexes1(current))
+                AND
+                high(indexes1(updated_tree))
+                    = high(indexes1(current))
+                AND
+                is_tree_for(
+                  updated_tree,
+                  updated_values,
+                  low(indexes1(updated_tree)),
+                  high(indexes1(updated_tree))))
+                 IMPLIES
+                   (0 <= index
+                      AND index < length(values))
+                     AND
+                   (length(updated_values) = length(values)
+                      IMPLIES
+                    nth_function(updated_values)
+                      = function_update(
+                          nth_function(values),
+                          index,
+                          value)
+                      IMPLIES
+                        nth_default(
+                          updated_values,
+                          int_to_nat(index))
+                            = value
+                          AND
+                        other_cells_unchanged(
+                          values,
+                          updated_values,
+                          index)
+                          AND
+                        is_tree_for(
+                          updated_tree,
+                          updated_values,
+                          0,
+                          length(updated_values)))))
+
+END sumrange_CumulativeTree_updateqtvc

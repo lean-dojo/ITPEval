@@ -1,0 +1,838 @@
+:: Statement-only formalization of the NTP4VC corpus artifact
+:: pearl/multiprecision/get_str_Get_str_wmpn_get_str_otherqtvc: the
+:: verification condition for converting a multiprecision integer to digits
+:: in an arbitrary base, including division and padding loops, byte reversal,
+:: pointer frames, fixed-width conversions, and the final string-value
+:: contract. This file contains no proof.
+
+environ
+  vocabularies TARSKI, XBOOLE_0, SUBSET_1, RELAT_1, FUNCT_1,
+    FUNCT_2, FUNCT_4, FUNCT_7, FUNCOP_1, PARTFUN1, ZFMISC_1,
+    NUMBERS, XREAL_0, CARD_1, XXREAL_0, ARYTM_1, ARYTM_3,
+    REAL_1, INT_1, INT_2, NAT_1, VALUED_0, VALUED_1, ORDINAL1,
+    ORDINAL4, MARGREL1, XBOOLEAN, MCART_1, NEWTON, BINOP_1;
+  notations TARSKI, XBOOLE_0, SUBSET_1, ZFMISC_1, XTUPLE_0,
+    MCART_1, RELAT_1, FUNCT_1, RELSET_1, PARTFUN1, FUNCT_2,
+    FUNCT_4, FUNCOP_1, FUNCT_7, ORDINAL1, CARD_1, NUMBERS,
+    XCMPLX_0, XREAL_0, REAL_1, INT_1, INT_2, NAT_1, NAT_D,
+    NEWTON, XXREAL_0, MARGREL1, XBOOLEAN, BINOP_1;
+  constructors FUNCT_1, RELSET_1, PARTFUN1, FUNCT_2, FUNCT_4,
+    FUNCT_7, FUNCOP_1, CARD_1, REAL_1, INT_1, INT_2, XXREAL_0,
+    ZFMISC_1, MCART_1, NAT_1, NAT_D, NEWTON, MARGREL1, BINOP_1;
+  registrations XBOOLE_0, SUBSET_1, RELAT_1, FUNCT_1, RELSET_1,
+    FUNCT_2, FUNCT_4, FUNCT_7, FUNCOP_1, NUMBERS, CARD_1,
+    XXREAL_0, MEMBERED, VALUED_0, VALUED_1, XCMPLX_0,
+    XREAL_0, ORDINAL1, INT_1, INT_2, NAT_1, MARGREL1, NEWTON;
+  requirements REAL, NUMERALS, SUBSET, BOOLE, ARITHM;
+  equalities XBOOLEAN;
+
+begin
+
+::$P-
+theorem
+  for P64,P8,Z,BaseInfo being non empty set,
+      U8,S32 being Function of NAT,INT,
+      Pow2N being Function of NAT,NAT,
+      PowerFn being Function of INT,Funcs(INT,INT),
+      B being Function of BaseInfo,INT,
+      Exp,BigBase being Function of BaseInfo,NAT,
+      Pelt64 being Function of [:P64,INT:],NAT,
+      Pelt8 being Function of [:P8,INT:],NAT,
+      Len64 being Function of P64,NAT,
+      Len8 being Function of P8,NAT,
+      Offset64,Min64,Max64 being Function of P64,INT,
+      Offset8,Min8,Max8 being Function of P8,INT,
+      Writable64 being Function of P64,BOOLEAN,
+      Writable8 being Function of P8,BOOLEAN,
+      Zone64 being Function of P64,Z,
+      Zone8 being Function of P8,Z,
+      ValueSub being Function of [:P64,[:INT,INT:]:],INT,
+      Value being Function of [:P64,INT:],INT,
+      SValueLESub,SValueSub being
+        Function of [:INT,[:P8,[:INT,INT:]:]:],INT,
+      SValueLE,SValue being Function of [:INT,[:P8,INT:]:],INT,
+      Valid64,Valid8,Frame64,Frame8,Shifted8,Update8,
+      MapShift64,Outside8,Allocated64,InBase,Reciprocal,
+      DivisionResult,LimbPost,PartialPost,OuterInv,PaddingInv,
+      ReverseInv,FinalPost,ReverseStep,ReverseLoop,FinalLimb,
+      FinalCont,PaddingStep,AfterLimb,OuterStep,PartialBlock,Body
+        being set,
+      up being Element of P64,
+      un,base,sz being Nat,
+      info being Element of BaseInfo,
+      sp being Element of P8
+  st
+    un < Pow2N.32 &
+    base < Pow2N.32 &
+    sz < Pow2N.32 &
+    (for n being Nat holds Pow2N.n = 2 |^ n) &
+    (for w being Nat st w < Pow2N.8 holds U8.w = w) &
+    (for w being Nat st w < Pow2N.32 holds
+      (w < Pow2N.31 implies S32.w = w) &
+      (Pow2N.31 <= w implies S32.w = w - Pow2N.32)) &
+    (for b,e being Element of INT holds
+      (e < 0 implies PowerFn.[b,e] = 1) &
+      (0 <= e implies
+        ex n being Nat st n = e & PowerFn.[b,e] = b |^ n)) &
+    (for self being Element of BaseInfo holds
+      2 <= B.self &
+      B.self <= 256 &
+      BigBase.self < Pow2N.64 &
+      Pow2N.64 <= BigBase.self * B.self &
+      7 <= Exp.self &
+      Exp.self <= 63 &
+      BigBase.self = PowerFn.[B.self,Exp.self]) &
+    (for a,c being Element of BaseInfo st
+      B.a = B.c & Exp.a = Exp.c & BigBase.a = BigBase.c
+     holds a = c) &
+    (for p being Element of P64, k being Element of INT holds
+      Pelt64.(p,k) < Pow2N.64) &
+    (for p being Element of P8, k being Element of INT holds
+      Pelt8.(p,k) < Pow2N.8) &
+    (for p being Element of P64, n,m being Element of INT holds
+      (n < m implies
+        ValueSub.(p,[n,m]) =
+          Pelt64.(p,n) + Pow2N.64 *
+            ValueSub.(p,In([In(n+1,INT),m],[:INT,INT:]))) &
+      (not n < m implies ValueSub.(p,[n,m]) = 0)) &
+    (for p being Element of P64, n being Element of INT holds
+      Value.(p,n) =
+        ValueSub.(p,[Offset64.p,Offset64.p+n])) &
+    (for b being Element of INT, p being Element of P8,
+         n,m being Element of INT holds
+      (n < m implies
+        SValueLESub.(b,[p,[n,m]]) =
+          U8.(Pelt8.(p,n)) +
+          b * SValueLESub.(b,
+            In([p,[In(n+1,INT),m]],[:P8,[:INT,INT:]:]))) &
+      (not n < m implies SValueLESub.(b,[p,[n,m]]) = 0)) &
+    (for b being Element of INT, p being Element of P8,
+         n,m being Element of INT holds
+      (n < m implies
+        SValueSub.(b,[p,[n,m]]) =
+          U8.(Pelt8.(p,In(m-1,INT))) +
+          b * SValueSub.(b,
+            In([p,[n,In(m-1,INT)]],[:P8,[:INT,INT:]:]))) &
+      (not n < m implies SValueSub.(b,[p,[n,m]]) = 0)) &
+    (for b being Element of INT, p being Element of P8,
+         n being Element of INT holds
+      SValueLE.(b,[p,n]) =
+        SValueLESub.(b,[p,[Offset8.p,Offset8.p+n]]) &
+      SValue.(b,[p,n]) =
+        SValueSub.(b,[p,[Offset8.p,Offset8.p+n]])) &
+    (for p being Element of P64, n being Element of INT holds
+      ([p,n] in Valid64 iff
+        -(Pow2N.31) <= n & n <= Pow2N.31-1 &
+        0 <= n &
+        0 <= Min64.p & Min64.p <= Offset64.p &
+        Offset64.p+n <= Max64.p & Max64.p <= Len64.p)) &
+    (for p being Element of P8, n being Element of INT holds
+      ([p,n] in Valid8 iff
+        -(Pow2N.31) <= n & n <= Pow2N.31-1 &
+        0 <= n &
+        0 <= Min8.p & Min8.p <= Offset8.p &
+        Offset8.p+n <= Max8.p & Max8.p <= Len8.p)) &
+    (for newer,older being Element of P64 holds
+      ([newer,older] in Frame64 iff
+        Len64.newer = Len64.older &
+        Offset64.newer = Offset64.older &
+        Min64.newer = Min64.older &
+        Max64.newer = Max64.older &
+        Writable64.newer = Writable64.older &
+        Zone64.newer = Zone64.older)) &
+    (for newer,older being Element of P8 holds
+      ([newer,older] in Frame8 iff
+        Len8.newer = Len8.older &
+        Offset8.newer = Offset8.older &
+        Min8.newer = Min8.older &
+        Max8.newer = Max8.older &
+        Writable8.newer = Writable8.older &
+        Zone8.newer = Zone8.older)) &
+    (for shifted,original being Element of P8,
+         amount being Element of INT holds
+      ([shifted,[original,amount]] in Shifted8 iff
+        Offset8.shifted = Offset8.original+amount &
+        Len8.shifted = Len8.original &
+        (for k being Element of INT holds
+          Pelt8.(shifted,k) = Pelt8.(original,k)) &
+        Min8.shifted = Min8.original &
+        Max8.shifted = Max8.original &
+        Zone8.shifted = Zone8.original &
+        Writable8.shifted = Writable8.original)) &
+    (for newer,older being Element of P8,
+         k being Element of INT, v being Nat holds
+      ([newer,[older,[k,v]]] in Update8 iff
+        (for j being Element of INT holds
+          (j = k implies Pelt8.(newer,j) = v) &
+          (j <> k implies Pelt8.(newer,j) = Pelt8.(older,j))))) &
+    (for newer,older being Element of P64,
+         ni,oi,n being Element of INT holds
+      ([newer,[older,[ni,[oi,n]]]] in MapShift64 iff
+        (for j being Element of INT st 0 <= j & j < n holds
+          Pelt64.(newer,ni+j) = Pelt64.(older,oi+j)))) &
+    (for current,original being Element of P8,
+         n being Element of INT holds
+      ([current,[original,n]] in Outside8 iff
+        (for j being Element of INT st
+          j < Offset8.current or Offset8.current+n <= j
+         holds Pelt8.(current,j) = Pelt8.(original,j)))) &
+    (for p being Element of P64, n being Element of INT holds
+      ([p,n] in Allocated64 iff
+        Len64.p = n & Offset64.p = 0 & Min64.p = 0 &
+        Max64.p = n & Writable64.p = TRUE)) &
+    (for b being Element of INT, p being Element of P8,
+         n,m being Element of INT holds
+      ([b,[p,[n,m]]] in InBase iff
+        (for k being Element of INT st n <= k & k < m holds
+          0 <= U8.(Pelt8.(p,k)) &
+          U8.(Pelt8.(p,k)) < b))) &
+    (for inverse,divisor being Nat st
+      inverse < Pow2N.64 & divisor < Pow2N.64
+     holds
+      ([inverse,divisor] in Reciprocal iff
+        inverse =
+          (((Pow2N.64 * Pow2N.64)-1) div divisor)-Pow2N.64)) &
+    (for quotientPtr,dividendPtr being Element of P64,
+         count being Nat, divisor,remainder being Nat st
+      count < Pow2N.32 & divisor < Pow2N.64 &
+      remainder < Pow2N.64
+     holds
+      ([quotientPtr,[dividendPtr,[count,[divisor,remainder]]]]
+          in DivisionResult iff
+        Value.(dividendPtr,S32.count) =
+          Value.(quotientPtr,S32.count)*divisor+remainder &
+        remainder < divisor)) &
+    (for b being Element of INT, before,after being Element of P8,
+         capacity being Element of INT, input,done being Nat st
+      input < Pow2N.64 & done < Pow2N.32
+     holds
+      ([b,[before,[after,[capacity,[input,done]]]]] in LimbPost iff
+        SValueLE.(b,[after,done]) = input &
+        0 <= done & done <= capacity &
+        (0 < done implies
+          0 < U8.(Pelt8.(after,
+            In(Offset8.after+done-1,INT)))) &
+        [after,[before,done]] in Outside8 &
+        [b,[after,[Offset8.after,Offset8.after+done]]] in InBase)) &
+    (for whole,b being Element of INT, original being Element of P8,
+         size being Nat, currentUp being Element of P64,
+         currentSp being Element of P8, sn being Nat st
+      size < Pow2N.32 & sn < Pow2N.32
+     holds
+      ([whole,[b,[original,[size,[currentUp,[currentSp,sn]]]]]]
+          in PartialPost iff
+        (for powerSn,accumVal,restVal being Integer st
+          powerSn = PowerFn.[b,S32.sn] &
+          accumVal = SValueLE.(b,[currentSp,S32.sn]) &
+          restVal = Value.(currentUp,In(1,INT))
+         holds
+          accumVal + powerSn*restVal = whole &
+          [b,[currentSp,
+            [Offset8.currentSp,Offset8.currentSp+S32.sn]]] in InBase &
+          0 <= S32.sn & S32.sn < S32.size &
+          0 < restVal &
+          [currentSp,[original,S32.size]] in Outside8))) &
+    (for whole,b being Element of INT, inf being Element of BaseInfo,
+         u,size being Nat, originalSp being Element of P8,
+         originalUp being Element of P64, loopi being Element of INT,
+         currentUp being Element of P64, n being Nat,
+         currentSp being Element of P8, sn being Nat st
+      u < Pow2N.32 & size < Pow2N.32 &
+      n < Pow2N.32 & sn < Pow2N.32
+     holds
+      ([whole,[b,[inf,[u,[size,[originalSp,[originalUp,
+        [loopi,[currentUp,[n,[currentSp,sn]]]]]]]]]]]
+          in OuterInv iff
+        (for powerSn,accumVal,restVal being Integer st
+          powerSn = PowerFn.[b,S32.sn] &
+          accumVal = SValueLE.(b,[currentSp,S32.sn]) &
+          restVal = Value.(currentUp,S32.n)
+         holds
+          accumVal + powerSn*restVal = whole &
+          1 <= S32.n & S32.n <= S32.u &
+          S32.u-S32.n <= loopi &
+          0 <= S32.sn & S32.sn < S32.size &
+          S32.sn = loopi*Exp.inf &
+          [b,[currentSp,
+            [Offset8.currentSp,Offset8.currentSp+S32.sn]]] in InBase &
+          0 < Pelt64.(currentUp,
+            In(Offset64.currentUp+S32.n-1,INT)) &
+          [currentSp,[originalSp,S32.size]] in Outside8))) &
+    (for whole,b being Element of INT, inf being Element of BaseInfo,
+         size being Nat, originalSp being Element of P8,
+         currentUp being Element of P64, n,initialSn,done,currentSn being Nat,
+         currentSp being Element of P8 st
+      size < Pow2N.32 & n < Pow2N.32 & initialSn < Pow2N.32 &
+      done < Pow2N.32 & currentSn < Pow2N.32
+     holds
+      ([whole,[b,[inf,[size,[originalSp,[currentUp,[n,
+        [initialSn,[done,[currentSn,currentSp]]]]]]]]]]
+          in PaddingInv iff
+        (for paddingPower,accumVal,restVal being Integer st
+          paddingPower =
+            PowerFn.[b,S32.currentSn-done+Exp.inf] &
+          accumVal = SValueLE.(b,[currentSp,S32.currentSn]) &
+          restVal = Value.(currentUp,S32.n)
+         holds
+          done <= Exp.inf &
+          S32.currentSn = S32.initialSn+done &
+          [b,[currentSp,
+            [Offset8.currentSp,Offset8.currentSp+S32.currentSn]]]
+              in InBase &
+          accumVal + paddingPower*restVal = whole &
+          [currentSp,[originalSp,S32.size]] in Outside8))) &
+    (for b being Element of INT, size being Nat,
+         globalOriginal,reversalOriginal,current being Element of P8,
+         whole,i being Nat st
+      size < Pow2N.32 & whole < Pow2N.32 & i < Pow2N.32
+     holds
+      ([b,[size,[globalOriginal,[reversalOriginal,
+        [current,[whole,i]]]]]] in ReverseInv iff
+        0 <= 2*S32.i+1 & 2*S32.i+1 <= S32.whole+1 &
+        (for j being Element of INT st
+          Offset8.current+S32.i <= j &
+          j < Offset8.current+S32.whole-S32.i
+         holds Pelt8.(current,j) = Pelt8.(reversalOriginal,j)) &
+        [b,[current,
+          [Offset8.current,Offset8.current+S32.whole]]] in InBase &
+        SValueSub.(b,[current,
+          [Offset8.current,Offset8.current+S32.i]]) =
+          SValueLESub.(b,[reversalOriginal,
+            [Offset8.current+S32.whole-S32.i,
+             Offset8.current+S32.whole]]) &
+        SValueSub.(b,[current,
+          [Offset8.current+S32.whole-S32.i,
+           Offset8.current+S32.whole]]) =
+          SValueLESub.(b,[reversalOriginal,
+            [Offset8.current,Offset8.current+S32.i]]) &
+        SValueLESub.(b,[current,
+          [Offset8.current+S32.i,
+           Offset8.current+S32.whole-S32.i]]) =
+          SValueLESub.(b,[reversalOriginal,
+            [Offset8.current+S32.i,
+             Offset8.current+S32.whole-S32.i]]) &
+        (0 < S32.i implies
+          0 < U8.(Pelt8.(current,Offset8.current))) &
+        [current,[globalOriginal,S32.size]] in Outside8)) &
+    (for b being Element of INT, originalUp being Element of P64,
+         u being Nat, originalSp being Element of P8, size being Nat,
+         current being Element of P8, result being Nat st
+      u < Pow2N.32 & size < Pow2N.32 & result < Pow2N.32
+     holds
+      ([b,[originalUp,[u,[originalSp,[size,[current,result]]]]]]
+          in FinalPost iff
+        0 <= result & result < S32.size &
+        SValue.(b,[current,result]) = Value.(originalUp,S32.u) &
+        [b,[current,[Offset8.current,Offset8.current+result]]]
+          in InBase &
+        0 < U8.(Pelt8.(current,Offset8.current)) &
+        [current,[originalSp,S32.size]] in Outside8)) &
+    (for b being Element of INT, originalUp being Element of P64,
+         u being Nat, originalSp being Element of P8, size being Nat,
+         reversalOriginal being Element of P8, whole being Nat,
+         current being Element of P8, i being Nat st
+      u < Pow2N.32 & size < Pow2N.32 & whole < Pow2N.32 &
+      i < Pow2N.32
+     holds
+      ([b,[originalUp,[u,[originalSp,[size,[reversalOriginal,
+        [whole,[current,i]]]]]]]] in ReverseStep iff
+        -(Pow2N.31) <= 2*S32.i &
+        2*S32.i <= Pow2N.31-1 &
+        (for twice being Nat st
+          twice < Pow2N.32 & S32.twice = 2*S32.i
+         holds
+          -(Pow2N.31) <= S32.twice+1 &
+          S32.twice+1 <= Pow2N.31-1 &
+          (for test being Nat st
+            test < Pow2N.32 & S32.test = S32.twice+1
+           holds
+            (S32.test < S32.whole implies
+              Min8.current <= Offset8.current+S32.i &
+              Offset8.current+S32.i < Max8.current &
+              (for saved being Nat st
+                saved < Pow2N.8 &
+                saved = Pelt8.(current,
+                  In(Offset8.current+S32.i,INT))
+               holds
+                -(Pow2N.31) <= S32.whole-S32.i &
+                S32.whole-S32.i <= Pow2N.31-1 &
+                (for fromEnd being Nat st
+                  fromEnd < Pow2N.32 &
+                  S32.fromEnd = S32.whole-S32.i
+                 holds
+                  -(Pow2N.31) <= S32.fromEnd-1 &
+                  S32.fromEnd-1 <= Pow2N.31-1 &
+                  (for mirror being Nat st
+                    mirror < Pow2N.32 &
+                    S32.mirror = S32.fromEnd-1
+                   holds
+                    Min8.current <= Offset8.current+S32.mirror &
+                    Offset8.current+S32.mirror < Max8.current &
+                    (for other being Nat st
+                      other < Pow2N.8 &
+                      other = Pelt8.(current,
+                        In(Offset8.current+S32.mirror,INT))
+                     holds
+                      Min8.current <= Offset8.current+S32.i &
+                      Offset8.current+S32.i < Max8.current &
+                      Writable8.current = TRUE &
+                      (for afterFirst being Element of P8 st
+                        [afterFirst,current] in Frame8 &
+                        [afterFirst,[current,
+                          [Offset8.afterFirst+S32.i,other]]]
+                            in Update8 &
+                        Pelt8.(afterFirst,
+                          In(Offset8.afterFirst+S32.i,INT)) = other
+                       holds
+                        -(Pow2N.31) <= S32.whole-S32.i &
+                        S32.whole-S32.i <= Pow2N.31-1 &
+                        (for fromEnd2 being Nat st
+                          fromEnd2 < Pow2N.32 &
+                          S32.fromEnd2 = S32.whole-S32.i
+                         holds
+                          -(Pow2N.31) <= S32.fromEnd2-1 &
+                          S32.fromEnd2-1 <= Pow2N.31-1 &
+                          (for mirror2 being Nat st
+                            mirror2 < Pow2N.32 &
+                            S32.mirror2 = S32.fromEnd2-1
+                           holds
+                            Min8.afterFirst <=
+                              Offset8.afterFirst+S32.mirror2 &
+                            Offset8.afterFirst+S32.mirror2 <
+                              Max8.afterFirst &
+                            Writable8.afterFirst = TRUE &
+                            (for afterSecond being Element of P8 st
+                              [afterSecond,afterFirst] in Frame8 &
+                              [afterSecond,[afterFirst,
+                                [Offset8.afterSecond+S32.mirror2,
+                                 saved]]] in Update8 &
+                              Pelt8.(afterSecond,
+                                In(Offset8.afterSecond+S32.mirror2,INT))
+                                  = saved
+                             holds
+                              -(Pow2N.31) <= S32.i+1 &
+                              S32.i+1 <= Pow2N.31-1 &
+                              (for nextI being Nat st
+                                nextI < Pow2N.32 &
+                                S32.nextI = S32.i+1
+                               holds
+                                0 <= S32.whole-S32.i &
+                                S32.whole-S32.nextI <
+                                  S32.whole-S32.i &
+                                [b,[size,[originalSp,
+                                  [reversalOriginal,[afterSecond,
+                                    [whole,nextI]]]]]]
+                                      in ReverseInv)))))))))) &
+            (not S32.test < S32.whole implies
+              0 <= S32.whole &
+              (for result being Nat st
+                result < Pow2N.32 & result = S32.whole
+               holds
+                [b,[originalUp,[u,[originalSp,
+                  [size,[current,result]]]]]] in FinalPost)))))) &
+    (for b being Element of INT, originalUp being Element of P64,
+         u being Nat, originalSp being Element of P8, size being Nat,
+         reversalOriginal being Element of P8, whole being Nat st
+      u < Pow2N.32 & size < Pow2N.32 & whole < Pow2N.32
+     holds
+      ([b,[originalUp,[u,[originalSp,
+        [size,[reversalOriginal,whole]]]]]] in ReverseLoop iff
+        [b,[size,[originalSp,[reversalOriginal,
+          [reversalOriginal,[whole,0]]]]]] in ReverseInv &
+        (for i being Nat, current being Element of P8 st
+          i < Pow2N.32 &
+          [current,reversalOriginal] in Frame8 &
+          [b,[size,[originalSp,[reversalOriginal,
+            [current,[whole,i]]]]]] in ReverseInv
+         holds
+          [b,[originalUp,[u,[originalSp,[size,[reversalOriginal,
+            [whole,[current,i]]]]]]]] in ReverseStep))) &
+    (for b being Element of INT, originalUp being Element of P64,
+         u being Nat, inf being Element of BaseInfo,
+         originalSp being Element of P8, size being Nat,
+         shift,d1,di being Nat, currentUp being Element of P64,
+         currentSp being Element of P8, sn being Nat st
+      u < Pow2N.32 & size < Pow2N.32 & shift < Pow2N.64 &
+      d1 < Pow2N.64 & di < Pow2N.64 & sn < Pow2N.32
+     holds
+      ([b,[originalUp,[u,[inf,[originalSp,[size,[shift,[d1,
+        [di,[currentUp,[currentSp,sn]]]]]]]]]]]
+          in FinalLimb iff
+        Min64.currentUp <= Offset64.currentUp &
+        Offset64.currentUp < Max64.currentUp &
+        (for lastLimb being Nat st
+          lastLimb < Pow2N.64 &
+          lastLimb = Pelt64.(currentUp,Offset64.currentUp)
+         holds
+          Min8.currentSp <= Offset8.currentSp+S32.sn &
+          Offset8.currentSp+S32.sn <= Max8.currentSp &
+          (for spn being Element of P8 st
+            [spn,[currentSp,S32.sn]] in Shifted8
+           holds
+            -(Pow2N.31) <= S32.size-1 &
+            S32.size-1 <= Pow2N.31-1 &
+            (for size1 being Nat st
+              size1 < Pow2N.32 & S32.size1 = S32.size-1
+             holds
+              -(Pow2N.31) <= S32.size1-S32.sn &
+              S32.size1-S32.sn <= Pow2N.31-1 &
+              (for capacity being Nat,
+                   shiftPower,capacityPower being Integer st
+                capacity < Pow2N.32 &
+                S32.capacity = S32.size1-S32.sn &
+                shiftPower = PowerFn.[2,shift] &
+                capacityPower = PowerFn.[B.inf,S32.capacity]
+               holds
+                2 <= B.inf & B.inf <= 256 &
+                Writable8.spn = TRUE &
+                Pow2N.64 div 2 <= d1 &
+                0 <= shift & shift <= 63 &
+                B.inf*shiftPower = d1 &
+                [di,d1] in Reciprocal &
+                [spn,S32.capacity] in Valid8 &
+                0 < S32.capacity &
+                lastLimb < capacityPower &
+                (for afterLocal,returned being Element of P8,
+                     done being Nat st
+                  done < Pow2N.32 &
+                  (for k being Element of INT holds
+                    Pelt8.(afterLocal,k) = Pelt8.(returned,k)) &
+                  [afterLocal,spn] in Frame8 &
+                  [returned,currentSp] in Frame8 &
+                  [B.inf,[spn,[afterLocal,
+                    [S32.capacity,[lastLimb,done]]]]] in LimbPost
+                 holds
+                  done <= Pow2N.31-1 &
+                  (for doneSigned being Nat st
+                    doneSigned < Pow2N.32 &
+                    S32.doneSigned = done
+                   holds
+                    -(Pow2N.31) <= S32.sn+S32.doneSigned &
+                    S32.sn+S32.doneSigned <= Pow2N.31-1 &
+                    (for totalDone being Nat st
+                      totalDone < Pow2N.32 &
+                      S32.totalDone = S32.sn+S32.doneSigned
+                     holds
+                      [b,[originalUp,[u,[originalSp,
+                        [size,[returned,totalDone]]]]]]
+                          in ReverseLoop))))))))) &
+    (for whole,b being Element of INT,
+         originalUp being Element of P64, u being Nat,
+         inf being Element of BaseInfo, originalSp being Element of P8,
+         size,shift,d1,di being Nat st
+      u < Pow2N.32 & size < Pow2N.32 & shift < Pow2N.64 &
+      d1 < Pow2N.64 & di < Pow2N.64
+     holds
+      ([whole,[b,[originalUp,[u,[inf,[originalSp,
+        [size,[shift,[d1,di]]]]]]]]] in FinalCont iff
+        (for sn being Nat, currentUp being Element of P64,
+             currentSp being Element of P8 st
+          sn < Pow2N.32 &
+          [currentUp,originalUp] in Frame64 &
+          [currentSp,originalSp] in Frame8 &
+          [whole,[b,[originalSp,[size,
+            [currentUp,[currentSp,sn]]]]]] in PartialPost
+         holds
+          [b,[originalUp,[u,[inf,[originalSp,[size,[shift,[d1,
+            [di,[currentUp,[currentSp,sn]]]]]]]]]]]
+              in FinalLimb))) &
+    (for whole,b being Element of INT, inf being Element of BaseInfo,
+         originalSp being Element of P8, size,u being Nat,
+         currentUp being Element of P64, n,initialSn,done being Nat,
+         currentSp being Element of P8, currentSn being Nat,
+         previousUp being Element of P64, previousN being Nat,
+         loopi being Element of INT st
+      size < Pow2N.32 & u < Pow2N.32 & n < Pow2N.32 &
+      initialSn < Pow2N.32 & done < Pow2N.32 &
+      currentSn < Pow2N.32 & previousN < Pow2N.32
+     holds
+      ([whole,[b,[inf,[originalSp,[size,[u,[currentUp,[n,
+        [initialSn,[done,[currentSp,[currentSn,[previousUp,
+          [previousN,loopi]]]]]]]]]]]]]] in PaddingStep iff
+        (done < Exp.inf implies
+          Min8.currentSp <= Offset8.currentSp+S32.currentSn &
+          Offset8.currentSp+S32.currentSn < Max8.currentSp &
+          Writable8.currentSp = TRUE &
+          (for afterZero being Element of P8 st
+            [afterZero,currentSp] in Frame8 &
+            [afterZero,[currentSp,
+              [Offset8.afterZero+S32.currentSn,0]]] in Update8 &
+            Pelt8.(afterZero,
+              In(Offset8.afterZero+S32.currentSn,INT)) = 0
+           holds
+            -(Pow2N.31) <= S32.currentSn+1 &
+            S32.currentSn+1 <= Pow2N.31-1 &
+            (for nextSn being Nat st
+              nextSn < Pow2N.32 &
+              S32.nextSn = S32.currentSn+1
+             holds
+              0 <= done+1 & done+1 <= Pow2N.32-1 &
+              (for nextDone being Nat st
+                nextDone < Pow2N.32 & nextDone = done+1
+               holds
+                0 <= Exp.inf-done &
+                Exp.inf-nextDone < Exp.inf-done &
+                [whole,[b,[inf,[size,[originalSp,[currentUp,[n,
+                  [initialSn,[nextDone,[nextSn,afterZero]]]]]]]]]]
+                    in PaddingInv)))) &
+        (not done < Exp.inf implies
+          0 <= Value.(previousUp,S32.previousN) &
+          Value.(currentUp,S32.n) <
+            Value.(previousUp,S32.previousN) &
+          [whole,[b,[inf,[u,[size,[originalSp,[previousUp,
+            [loopi+1,[currentUp,[n,[currentSp,currentSn]]]]]]]]]]]
+              in OuterInv))) &
+    (for whole,b being Element of INT, inf being Element of BaseInfo,
+         originalSp,beforeSp being Element of P8, size,u being Nat,
+         shift,d1,di being Nat, currentUp being Element of P64,
+         n,initialSn being Nat, input being Nat,
+         previousUp being Element of P64, previousN being Nat,
+         loopi being Element of INT, spn being Element of P8 st
+      size < Pow2N.32 & u < Pow2N.32 & shift < Pow2N.64 &
+      d1 < Pow2N.64 & di < Pow2N.64 & n < Pow2N.32 &
+      initialSn < Pow2N.32 & input < Pow2N.64 &
+      previousN < Pow2N.32
+     holds
+      ([whole,[b,[inf,[originalSp,[beforeSp,[size,[u,[shift,[d1,
+        [di,[currentUp,[n,[initialSn,[input,[previousUp,
+          [previousN,[loopi,spn]]]]]]]]]]]]]]]]]
+          in AfterLimb iff
+        Exp.inf <= Pow2N.31-1 &
+        (for signedExp being Nat st
+          signedExp < Pow2N.32 & S32.signedExp = Exp.inf
+         holds
+          -(Pow2N.31) <= S32.signedExp+1 &
+          S32.signedExp+1 <= Pow2N.31-1 &
+          (for capacity being Nat,
+               shiftPower,capacityPower being Integer st
+            capacity < Pow2N.32 &
+            S32.capacity = S32.signedExp+1 &
+            shiftPower = PowerFn.[2,shift] &
+            capacityPower = PowerFn.[B.inf,S32.capacity]
+           holds
+            2 <= B.inf & B.inf <= 256 &
+            Writable8.spn = TRUE &
+            Pow2N.64 div 2 <= d1 &
+            0 <= shift & shift <= 63 &
+            B.inf*shiftPower = d1 &
+            [di,d1] in Reciprocal &
+            [spn,S32.capacity] in Valid8 &
+            0 < S32.capacity &
+            input < capacityPower &
+            (for afterLocal,returned being Element of P8,
+                 done being Nat st
+              done < Pow2N.32 &
+              (for k being Element of INT holds
+                Pelt8.(afterLocal,k) = Pelt8.(returned,k)) &
+              [afterLocal,spn] in Frame8 &
+              [returned,beforeSp] in Frame8 &
+              [B.inf,[spn,[afterLocal,
+                [S32.capacity,[input,done]]]]] in LimbPost
+             holds
+              done <= Pow2N.31-1 &
+              (for doneSigned being Nat st
+                doneSigned < Pow2N.32 & S32.doneSigned = done
+               holds
+                -(Pow2N.31) <= S32.initialSn+S32.doneSigned &
+                S32.initialSn+S32.doneSigned <= Pow2N.31-1 &
+                (for newSn being Nat st
+                  newSn < Pow2N.32 &
+                  S32.newSn = S32.initialSn+S32.doneSigned
+                 holds
+                  [whole,[b,[inf,[size,[originalSp,[currentUp,[n,
+                    [initialSn,[done,[newSn,returned]]]]]]]]]]
+                      in PaddingInv &
+                  (for loopDone,currentSn being Nat,
+                       loopSp being Element of P8 st
+                    loopDone < Pow2N.32 &
+                    currentSn < Pow2N.32 &
+                    [loopSp,returned] in Frame8 &
+                    [whole,[b,[inf,[size,[originalSp,
+                      [currentUp,[n,[initialSn,
+                        [loopDone,[currentSn,loopSp]]]]]]]]]]
+                          in PaddingInv
+                   holds
+                    [whole,[b,[inf,[originalSp,[size,[u,[currentUp,
+                      [n,[initialSn,[loopDone,[loopSp,[currentSn,
+                        [previousUp,[previousN,loopi]]]]]]]]]]]]]]
+                          in PaddingStep)))))))) &
+    (for whole,b being Element of INT, inf being Element of BaseInfo,
+         originalSp being Element of P8, size being Nat,
+         originalUp being Element of P64, u being Nat,
+         shift,d1,di being Nat, temporary,currentUp being Element of P64,
+         n being Nat, currentSp being Element of P8, sn being Nat,
+         loopi being Element of INT st
+      size < Pow2N.32 & u < Pow2N.32 & shift < Pow2N.64 &
+      d1 < Pow2N.64 & di < Pow2N.64 & n < Pow2N.32 &
+      sn < Pow2N.32
+     holds
+      ([whole,[b,[inf,[originalSp,[size,[originalUp,[u,[shift,[d1,
+        [di,[temporary,[currentUp,[n,[currentSp,[sn,loopi]]]]]]]]]]]]]]]
+          in OuterStep iff
+        (1 < S32.n implies
+          [currentUp,S32.n] in Valid64 &
+          [temporary,S32.n] in Valid64 &
+          Writable64.temporary = TRUE &
+          0 < S32.n &
+          0 < BigBase.inf &
+          (for afterDiv being Element of P64, remainder being Nat st
+            remainder < Pow2N.64 &
+            [afterDiv,temporary] in Frame64 &
+            [afterDiv,[currentUp,[n,[BigBase.inf,remainder]]]]
+              in DivisionResult
+           holds
+            [afterDiv,S32.n] in Valid64 &
+            [currentUp,S32.n] in Valid64 &
+            Writable64.currentUp = TRUE &
+            (for copied being Element of P64 st
+              [copied,currentUp] in Frame64 &
+              [copied,[afterDiv,[Offset64.copied,
+                [Offset64.afterDiv,S32.n]]]] in MapShift64 &
+              (for j being Element of INT st
+                j < Offset64.copied or
+                Offset64.copied+S32.n <= j
+               holds Pelt64.(copied,j) = Pelt64.(currentUp,j))
+             holds
+              -(Pow2N.31) <= S32.n-1 &
+              S32.n-1 <= Pow2N.31-1 &
+              (for n1 being Nat st
+                n1 < Pow2N.32 & S32.n1 = S32.n-1
+               holds
+                Min64.copied <= Offset64.copied+S32.n1 &
+                Offset64.copied+S32.n1 < Max64.copied &
+                (for top being Nat st
+                  top < Pow2N.64 &
+                  top = Pelt64.(copied,
+                    In(Offset64.copied+S32.n1,INT))
+                 holds
+                  (for isZero being Element of BOOLEAN st
+                    (top = 0 implies isZero = TRUE) &
+                    (isZero = TRUE implies top = 0)
+                   holds
+                    (for decrement being Nat st
+                      decrement < Pow2N.32 &
+                      (isZero = TRUE implies decrement = 1) &
+                      (isZero <> TRUE implies decrement = 0)
+                     holds
+                      -(Pow2N.31) <= S32.n-S32.decrement &
+                      S32.n-S32.decrement <= Pow2N.31-1 &
+                      (for nextN being Nat st
+                        nextN < Pow2N.32 &
+                        S32.nextN = S32.n-S32.decrement
+                       holds
+                        Min8.currentSp <=
+                          Offset8.currentSp+S32.sn &
+                        Offset8.currentSp+S32.sn <= Max8.currentSp &
+                        (for spn being Element of P8 st
+                          [spn,[currentSp,S32.sn]] in Shifted8
+                         holds
+                          [whole,[b,[inf,[originalSp,[currentSp,
+                            [size,[u,[shift,[d1,[di,[copied,[nextN,
+                              [sn,[remainder,[currentUp,
+                                [n,[loopi,spn]]]]]]]]]]]]]]]]]
+                                  in AfterLimb))))))))) &
+        (not 1 < S32.n implies
+          [whole,[b,[originalSp,[size,
+            [currentUp,[currentSp,sn]]]]]] in PartialPost))) &
+    (for whole,b being Element of INT, inf being Element of BaseInfo,
+         originalUp being Element of P64, u being Nat,
+         originalSp being Element of P8, size,shift,d1,di being Nat st
+      u < Pow2N.32 & size < Pow2N.32 & shift < Pow2N.64 &
+      d1 < Pow2N.64 & di < Pow2N.64
+     holds
+      ([whole,[b,[inf,[originalUp,[u,[originalSp,
+        [size,[shift,[d1,di]]]]]]]]] in PartialBlock iff
+        (1 < S32.u implies
+          0 <= S32.u &
+          (for count being Nat st
+            count < Pow2N.32 & count = S32.u
+           holds
+            0 <= count &
+            (for temporary being Element of P64 st
+              [temporary,count] in Allocated64
+             holds
+              [whole,[b,[inf,[u,[size,[originalSp,[originalUp,
+                [0,[originalUp,[u,[originalSp,0]]]]]]]]]]]
+                  in OuterInv &
+              (for loopi being Element of INT,
+                   loopTemporary,loopUp being Element of P64,
+                   loopN being Nat, loopSp being Element of P8,
+                   loopSn being Nat st
+                loopN < Pow2N.32 & loopSn < Pow2N.32 &
+                [loopTemporary,temporary] in Frame64 &
+                [loopUp,originalUp] in Frame64 &
+                [loopSp,originalSp] in Frame8 &
+                [whole,[b,[inf,[u,[size,[originalSp,[originalUp,
+                  [loopi,[loopUp,[loopN,[loopSp,loopSn]]]]]]]]]]]
+                    in OuterInv
+               holds
+                [whole,[b,[inf,[originalSp,[size,[originalUp,
+                  [u,[shift,[d1,[di,[loopTemporary,[loopUp,[loopN,
+                    [loopSp,[loopSn,loopi]]]]]]]]]]]]]]]
+                      in OuterStep)))) &
+        (not 1 < S32.u implies
+          [whole,[b,[originalSp,[size,
+            [originalUp,[originalSp,0]]]]]] in PartialPost))) &
+    (for whole,b being Element of INT,
+         originalUp being Element of P64, u being Nat,
+         inf being Element of BaseInfo, originalSp being Element of P8,
+         size,shift,d1,di being Nat st
+      u < Pow2N.32 & size < Pow2N.32 & shift < Pow2N.64 &
+      d1 < Pow2N.64 & di < Pow2N.64
+     holds
+      ([whole,[originalUp,[u,[b,[inf,[originalSp,
+        [size,[shift,[d1,di]]]]]]]]] in Body iff
+        [whole,[b,[inf,[originalUp,[u,[originalSp,
+          [size,[shift,[d1,di]]]]]]]]] in PartialBlock &
+        [whole,[b,[originalUp,[u,[inf,[originalSp,
+          [size,[shift,[d1,di]]]]]]]]] in FinalCont)) &
+    [up,S32.un] in Valid64 &
+    1 <= S32.un &
+    B.info = S32.base &
+    Writable64.up = TRUE &
+    Writable8.sp = TRUE &
+    0 < Pelt64.(up,In(Offset64.up+S32.un-1,INT)) &
+    0 < S32.sz &
+    [sp,S32.sz] in Valid8 &
+    (for inputPower being Integer st
+      inputPower = PowerFn.[S32.base,S32.sz-1]
+     holds Value.(up,S32.un) < inputPower)
+  holds
+    0 <= S32.base &
+    (for baseLimb being Nat st
+      baseLimb < Pow2N.64 & baseLimb = S32.base
+     holds
+      0 < baseLimb &
+      (for count being Nat, countPower being Integer st
+        count < Pow2N.32 &
+        countPower = PowerFn.[2,S32.count] &
+        countPower*baseLimb <= Pow2N.64-1 &
+        Pow2N.64-1 <
+          2*countPower*baseLimb &
+        0 <= S32.count & S32.count < 64
+       holds
+        0 <= S32.count &
+        (for shift being Nat st
+          shift < Pow2N.64 & shift = S32.count
+         holds
+          0 <= S32.base &
+          (for baseLimb2 being Nat, shiftPower being Integer st
+            baseLimb2 < Pow2N.64 &
+            baseLimb2 = S32.base &
+            shiftPower = PowerFn.[2,shift]
+           holds
+            (0 <= shift & shift < 64) &
+            shiftPower*baseLimb2 <= Pow2N.64-1 &
+            (for d1 being Nat st
+              d1 < Pow2N.64 &
+              d1 = shiftPower*baseLimb2
+             holds
+              Pow2N.64 div 2 <= d1 &
+              (for di being Nat st
+                di < Pow2N.64 & [di,d1] in Reciprocal
+               holds
+                [Value.(up,S32.un),[up,[un,[S32.base,[info,
+                  [sp,[sz,[shift,[d1,di]]]]]]]]] in Body))))))
+proof
+end;
+::$P+

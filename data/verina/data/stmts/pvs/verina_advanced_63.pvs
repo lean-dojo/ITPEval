@@ -1,0 +1,143 @@
+% Statement-only formalization of the VERINA corpus artifact
+% verina_advanced_63, catalog title "removeDuplicates": counting the distinct
+% entries of a nondecreasing integer list with the exact recursive program and
+% its duplicate-erasure length correctness contract. This file contains no proof.
+
+verina_advanced_63: THEORY
+BEGIN
+
+  all_at_least(
+      lower: int,
+      values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        lower <= head
+          AND all_at_least(lower, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  pairwise_nondecreasing(
+      values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        all_at_least(head, tail)
+          AND pairwise_nondecreasing(tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  removeDuplicates_precond(
+      nums: list[int]): bool =
+    pairwise_nondecreasing(nums)
+
+  countUniques(
+      prev: int,
+      values: list[int],
+      k: nat): RECURSIVE nat =
+    CASES values OF
+      null:
+        k,
+      cons(head, tail):
+        IF head = prev THEN
+          countUniques(prev, tail, k)
+        ELSE
+          countUniques(head, tail, k + 1)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  % The Lean precondition proof is computationally irrelevant. This is the
+  % exact proof-erased recursive run-counting computation.
+  removeDuplicates(nums: list[int]): nat =
+    CASES nums OF
+      null:
+        0,
+      cons(head, tail):
+        countUniques(head, tail, 1)
+    ENDCASES
+
+  int_list_contains(
+      requested: int,
+      values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        FALSE,
+      cons(head, tail):
+        IF requested = head THEN
+          TRUE
+        ELSE
+          int_list_contains(requested, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  reverse_int_list_acc(
+      values, accumulator: list[int]): RECURSIVE list[int] =
+    CASES values OF
+      null:
+        accumulator,
+      cons(head, tail):
+        reverse_int_list_acc(
+          tail,
+          cons(head, accumulator))
+    ENDCASES
+  MEASURE values BY <<
+
+  reverse_int_list(values: list[int]): list[int] =
+    reverse_int_list_acc(values, null[int])
+
+  % This is Lean List.eraseDups specialized to integer equality: it scans
+  % left-to-right, retains each first occurrence, and restores source order.
+  eraseDups_loop(
+      remaining, seen_reversed: list[int]):
+        RECURSIVE list[int] =
+    CASES remaining OF
+      null:
+        reverse_int_list(seen_reversed),
+      cons(head, tail):
+        IF int_list_contains(head, seen_reversed) THEN
+          eraseDups_loop(tail, seen_reversed)
+        ELSE
+          eraseDups_loop(
+            tail,
+            cons(head, seen_reversed))
+        ENDIF
+    ENDCASES
+  MEASURE remaining BY <<
+
+  eraseDups(nums: list[int]): list[int] =
+    eraseDups_loop(nums, null[int])
+
+  int_list_length(values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        int_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  % Lean natural-number subtraction is truncated at zero.
+  nat_subtract(first, second: nat): nat =
+    IF first >= second THEN first - second ELSE 0 ENDIF
+
+  removeDuplicates_postcond(
+      nums: list[int],
+      result: nat): bool =
+    nat_subtract(
+      result,
+      int_list_length(eraseDups(nums))) = 0
+      AND int_list_length(eraseDups(nums)) <= result
+
+  removeDuplicates_spec_satisfied: bool =
+    FORALL (nums: list[int]):
+      removeDuplicates_precond(nums)
+        IMPLIES
+          removeDuplicates_postcond(
+            nums,
+            removeDuplicates(nums))
+
+END verina_advanced_63

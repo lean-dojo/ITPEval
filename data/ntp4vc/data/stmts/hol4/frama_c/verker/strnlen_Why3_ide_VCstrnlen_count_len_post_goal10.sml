@@ -1,0 +1,104 @@
+(*
+  Statement-only formalization of NTP4VC corpus artifact
+  frama_c/verker/strnlen_Why3_ide_VCstrnlen_count_len_post_goal10:
+  a bounded-string-length count postcondition verification condition
+  concluding an exact uint64-converted offset identity, under the stated
+  memory, address-order, byte-range, bounded-string-validity, and non-null
+  prefix assumptions. This file contains no proof.
+*)
+
+open HolKernel Parse boolLib;
+open integerTheory pairTheory;
+
+val goal10 =
+  ``let strnlen_shift =
+      \p : int # int. \k : int. (FST p, SND p + k)
+    in
+    let strnlen_valid_rw =
+      \malloc : int -> int. \p : int # int. \n : int.
+        0 < n ==>
+        0 < FST p /\ 0 <= SND p /\ SND p + n <= malloc (FST p)
+    in
+    let strnlen_is_sint8 =
+      \z : int. -128 <= z /\ z < 128
+    in
+    let strnlen_is_uint64 =
+      \z : int. 0 <= z /\ z < 18446744073709551616
+    in
+    let strnlen_p_valid_strn =
+      \malloc : int -> int.
+       \mchar : (int # int) -> int.
+       \s : int # int.
+       \cnt : int.
+        strnlen_valid_rw malloc (strnlen_shift s 0) (1 + cnt) \/
+        ((?n : int.
+            mchar (strnlen_shift s n) = 0 /\
+            n < cnt /\
+            strnlen_is_uint64 n /\
+            strnlen_valid_rw malloc (strnlen_shift s 0) (1 + n)) /\
+         (!j : int.
+           j <= cnt ==>
+           strnlen_is_sint8 (mchar (strnlen_shift s j))))
+    in
+      !addr_le : (int # int) -> (int # int) -> bool.
+      !region : int -> int.
+      !linked : (int -> int) -> bool.
+      !sconst : ((int # int) -> int) -> bool.
+      !to_uint64 : int -> int.
+      !l_strnlen :
+        ((int # int) -> int) -> (int # int) -> int -> int.
+        (!p q : int # int.
+          FST p = FST q ==>
+          (addr_le p q <=> SND p <= SND q)) ==>
+        (!z : int.
+          strnlen_is_uint64 (to_uint64 z)) ==>
+        (!z : int.
+          strnlen_is_uint64 z ==>
+          to_uint64 z = z) ==>
+        (!mchar : (int # int) -> int.
+         !s : int # int.
+         !cnt : int.
+          (if cnt = 0 \/ mchar (strnlen_shift s 0) = 0 then
+             l_strnlen mchar s cnt = 0
+           else
+             to_uint64
+               (1 +
+                l_strnlen mchar (strnlen_shift s 1)
+                  (to_uint64 (cnt - 1))) =
+             l_strnlen mchar s cnt)) ==>
+        (!mchar : (int # int) -> int.
+         !s : int # int.
+         !cnt : int.
+          strnlen_is_uint64 (l_strnlen mchar s cnt)) ==>
+        !a_1 a : int # int.
+        !i : int.
+        !t_1 : (int # int) -> int.
+        !t : int -> int.
+          let x = SND a_1 in
+          let x_1 = SND a in
+          let x_3 = i + x_1 - x in
+          let x_4 = l_strnlen t_1 a_1 x_3 in
+          let x_5 = i + x_1 in
+            ~(i = 0) ==>
+            t_1 a = 0 ==>
+            x + x_4 = x_1 + l_strnlen t_1 a i ==>
+            0 <= i ==>
+            x <= x_1 ==>
+            region (FST a_1) <= 0 ==>
+            linked t ==>
+            sconst t_1 ==>
+            strnlen_is_uint64 i ==>
+            addr_le a_1 a ==>
+            strnlen_p_valid_strn t t_1 a i ==>
+            strnlen_is_uint64 x_3 ==>
+            strnlen_p_valid_strn t t_1 a_1 x_3 ==>
+            addr_le a (strnlen_shift a_1 x_4) ==>
+            (!i_1 : int.
+              0 <= i_1 ==>
+              i_1 + x < x_1 ==>
+              ~(t_1 (strnlen_shift a_1 i_1) = 0)) ==>
+            (!i_1 : int.
+              0 <= i_1 ==>
+              i_1 + x <= x_5 ==>
+              ~(t_1 (strnlen_shift a_1 i_1) = 0)) ==>
+            x + to_uint64 (x_1 - x) = x_5``;

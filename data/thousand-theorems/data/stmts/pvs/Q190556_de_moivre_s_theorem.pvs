@@ -1,0 +1,120 @@
+% Statement-only formalization of the Thousand Theorems corpus artifact Q190556,
+% "De Moivre's theorem": for every complex number z and natural number n, the
+% nth power of cos(z) + sin(z)i equals cos(nz) + sin(nz)i. This file contains
+% no proof.
+
+de_moivre_s_theorem_Q190556: THEORY
+BEGIN
+  complex: TYPE = [# real_part: real, imag_part: real #]
+  complex_sequence: TYPE = [nat -> complex]
+
+  complex_zero: complex =
+    (# real_part := 0, imag_part := 0 #)
+
+  complex_one: complex =
+    (# real_part := 1, imag_part := 0 #)
+
+  complex_i: complex =
+    (# real_part := 0, imag_part := 1 #)
+
+  complex_add(x, y: complex): complex =
+    (# real_part := real_part(x) + real_part(y),
+       imag_part := imag_part(x) + imag_part(y) #)
+
+  complex_neg(x: complex): complex =
+    (# real_part := -real_part(x),
+       imag_part := -imag_part(x) #)
+
+  complex_sub(x, y: complex): complex =
+    complex_add(x, complex_neg(y))
+
+  complex_mul(x, y: complex): complex =
+    (# real_part := real_part(x) * real_part(y)
+                       - imag_part(x) * imag_part(y),
+       imag_part := real_part(x) * imag_part(y)
+                       + imag_part(x) * real_part(y) #)
+
+  complex_scale(scalar: real, x: complex): complex =
+    (# real_part := scalar * real_part(x),
+       imag_part := scalar * imag_part(x) #)
+
+  complex_power(x: complex, exponent: nat): RECURSIVE complex =
+    IF exponent = 0 THEN
+      complex_one
+    ELSE
+      complex_mul(complex_power(x, exponent - 1), x)
+    ENDIF
+  MEASURE exponent
+
+  nat_factorial(n: nat): RECURSIVE nat =
+    IF n = 0 THEN
+      1
+    ELSE
+      n * nat_factorial(n - 1)
+    ENDIF
+  MEASURE n
+
+  complex_exp_partial(
+      z: complex,
+      count: nat): RECURSIVE complex =
+    IF count = 0 THEN
+      complex_zero
+    ELSE
+      LET k: nat = count - 1 IN
+        complex_add(
+          complex_exp_partial(z, count - 1),
+          complex_scale(
+            1 / (nat_factorial(k) :: real),
+            complex_power(z, k)))
+    ENDIF
+  MEASURE count
+
+  complex_converges_to(
+      sequence: complex_sequence,
+      value: complex): bool =
+    FORALL (eps: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(real_part(sequence(index)) - real_part(value)) < eps
+              AND abs(imag_part(sequence(index)) - imag_part(value)) < eps
+
+  complex_exp(z: complex): complex =
+    epsilon(
+      LAMBDA (value: complex):
+        complex_converges_to(
+          LAMBDA (count: nat):
+            complex_exp_partial(z, count),
+          value))
+
+  complex_sine(z: complex): complex =
+    complex_scale(
+      1 / 2,
+      complex_mul(
+        complex_sub(
+          complex_exp(
+            complex_mul(complex_neg(z), complex_i)),
+          complex_exp(complex_mul(z, complex_i))),
+        complex_i))
+
+  complex_cosine(z: complex): complex =
+    complex_scale(
+      1 / 2,
+      complex_add(
+        complex_exp(complex_mul(z, complex_i)),
+        complex_exp(
+          complex_mul(complex_neg(z), complex_i))))
+
+  cos_add_sin_mul_I_pow: bool =
+    FORALL (n: nat), (z: complex):
+      complex_power(
+        complex_add(
+          complex_cosine(z),
+          complex_mul(complex_sine(z), complex_i)),
+        n)
+      =
+      LET nz: complex = complex_scale(n :: real, z) IN
+        complex_add(
+          complex_cosine(nz),
+          complex_mul(complex_sine(nz), complex_i))
+END de_moivre_s_theorem_Q190556

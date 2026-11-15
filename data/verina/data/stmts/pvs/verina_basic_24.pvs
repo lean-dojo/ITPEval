@@ -1,0 +1,166 @@
+% Statement-only formalization of the VERINA corpus artifact verina_basic_24,
+% catalog title "firstEvenOddDifference": a deterministic left-to-right scan
+% returns the first even array value minus the first odd array value under the
+% stated existence precondition and correctness contract. This file contains no proof.
+
+verina_basic_24: THEORY
+BEGIN
+
+  nat_option: DATATYPE
+  BEGIN
+    NoNat: NoNat?
+    SomeNat(option_value: nat): SomeNat?
+  END nat_option
+
+  % Finite PVS lists preserve the exact contents and order of Lean arrays.
+  int_list_length(
+      values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        int_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  % Lean's Array.get! on integer arrays returns zero outside the array.
+  int_list_get_bang(
+      index: nat,
+      values: list[int]): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          int_list_get_bang(index - 1, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  isEven(n: int): bool =
+    mod(n, 2) = 0
+
+  isOdd(n: int): bool =
+    mod(n, 2) /= 0
+
+  contains_even(
+      values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        FALSE,
+      cons(head, tail):
+        isEven(head) OR contains_even(tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  contains_odd(
+      values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        FALSE,
+      cons(head, tail):
+        isOdd(head) OR contains_odd(tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  firstEvenOddDifference_precond(
+      a: list[int]): bool =
+    int_list_length(a) > 1
+      AND contains_even(a)
+      AND contains_odd(a)
+
+  update_first_even(
+      current: nat_option,
+      position: nat,
+      value: int): nat_option =
+    IF NoNat?(current) AND isEven(value) THEN
+      SomeNat(position)
+    ELSE
+      current
+    ENDIF
+
+  update_first_odd(
+      current: nat_option,
+      position: nat,
+      value: int): nat_option =
+    IF NoNat?(current) AND isOdd(value) THEN
+      SomeNat(position)
+    ELSE
+      current
+    ENDIF
+
+  % This structural recursion is the exact proof-erased source loop: remaining
+  % is the unvisited suffix, position is its array index, and the two options
+  % retain precisely the first parity-matching indices seen so far.
+  findFirstEvenOdd(
+      a, remaining: list[int],
+      position: nat,
+      firstEven, firstOdd: nat_option): RECURSIVE int =
+    CASES remaining OF
+      null:
+        0,
+      cons(value, rest):
+        LET newFirstEven: nat_option =
+              update_first_even(firstEven, position, value),
+            newFirstOdd: nat_option =
+              update_first_odd(firstOdd, position, value)
+        IN
+          CASES newFirstEven OF
+            NoNat:
+              findFirstEvenOdd(
+                a,
+                rest,
+                position + 1,
+                newFirstEven,
+                newFirstOdd),
+            SomeNat(evenIndex):
+              CASES newFirstOdd OF
+                NoNat:
+                  findFirstEvenOdd(
+                    a,
+                    rest,
+                    position + 1,
+                    newFirstEven,
+                    newFirstOdd),
+                SomeNat(oddIndex):
+                  int_list_get_bang(evenIndex, a)
+                    - int_list_get_bang(oddIndex, a)
+              ENDCASES
+          ENDCASES
+    ENDCASES
+  MEASURE remaining BY <<
+
+  % The Lean precondition proof argument is computationally irrelevant.
+  firstEvenOddDifference(
+      a: list[int]): int =
+    findFirstEvenOdd(a, a, 0, NoNat, NoNat)
+
+  firstEvenOddDifference_postcond(
+      a: list[int],
+      result: int): bool =
+    EXISTS (i, j: nat):
+      i < int_list_length(a)
+        AND j < int_list_length(a)
+        AND isEven(int_list_get_bang(i, a))
+        AND isOdd(int_list_get_bang(j, a))
+        AND result =
+              int_list_get_bang(i, a)
+                - int_list_get_bang(j, a)
+        AND
+          (FORALL (k: nat):
+            k < i IMPLIES isOdd(int_list_get_bang(k, a)))
+        AND
+          (FORALL (k: nat):
+            k < j IMPLIES isEven(int_list_get_bang(k, a)))
+
+  firstEvenOddDifference_spec_satisfied: bool =
+    FORALL (a: list[int]):
+      firstEvenOddDifference_precond(a)
+        IMPLIES
+          firstEvenOddDifference_postcond(
+            a,
+            firstEvenOddDifference(a))
+
+END verina_basic_24

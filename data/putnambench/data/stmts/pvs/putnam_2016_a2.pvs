@@ -1,0 +1,69 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2016_a2:
+% the greatest positive integer satisfying a binomial-coefficient inequality,
+% divided by its positive index, converges to (3 + sqrt(5)) / 2. This file
+% contains no proof.
+
+putnam_2016_a2: THEORY
+BEGIN
+  natural_sequence: TYPE = [nat -> nat]
+  real_sequence: TYPE = [nat -> real]
+
+  binomial_coefficient(n, k: nat): RECURSIVE nat =
+    IF k = 0 THEN
+      1
+    ELSIF n = 0 THEN
+      0
+    ELSE
+      binomial_coefficient(n - 1, k - 1)
+        + binomial_coefficient(n - 1, k)
+    ENDIF
+  MEASURE n
+
+  nat_predecessor(value: nat): nat =
+    IF value = 0 THEN 0 ELSE value - 1 ENDIF
+
+  qualifies(n, m: nat): bool =
+    m > 0
+      AND binomial_coefficient(nat_predecessor(m), n)
+        < binomial_coefficient(m, nat_predecessor(n))
+
+  is_greatest_qualifying_sequence(M: natural_sequence): bool =
+    FORALL (n: nat):
+      n > 0 IMPLIES
+        qualifies(n, M(n))
+          AND (FORALL (m: nat):
+            qualifies(n, m) IMPLIES m <= M(n))
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  normalized_sequence(M: natural_sequence): real_sequence =
+    LAMBDA (n: nat):
+      safe_div(M(n) :: real, n :: real)
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (n: nat):
+          cutoff <= n IMPLIES
+            abs(sequence(n) - value) < epsilon_value
+
+  nonnegative_square_root(root, radicand: real): bool =
+    root >= 0 AND root * root = radicand
+
+  solution_value(sqrt_five: real): real =
+    safe_div(3 + sqrt_five, 2)
+
+  putnam_2016_a2: bool =
+    FORALL (M: natural_sequence):
+      is_greatest_qualifying_sequence(M) IMPLIES
+        EXISTS (sqrt_five: real):
+          nonnegative_square_root(sqrt_five, 5)
+            AND converges_to(
+              normalized_sequence(M),
+              solution_value(sqrt_five))
+END putnam_2016_a2

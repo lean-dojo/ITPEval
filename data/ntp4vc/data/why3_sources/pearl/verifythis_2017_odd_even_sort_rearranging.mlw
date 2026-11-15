@@ -1,0 +1,107 @@
+use map.Map
+use array.Array
+use array.IntArraySorted
+use array.ArrayPermut
+use array.ArraySwap
+use int.Int
+use ref.Refint
+use int.Sum
+use number.Parity
+
+let ghost function array_max (a:array int) : int
+  ensures  { forall j. 0 <= j < length a -> a[j] <= result }
+= if length a = 0 then 0
+  else
+  let m = ref a[0] in
+  let i = ref 0 in
+  while !i < length a do
+    variant   { length a - !i }
+    invariant { 0 <= !i <= length a }
+    invariant { forall j. 0 <= j < !i -> a[j] <= !m }
+    if a[!i] > !m then m := a[!i];
+    incr i
+  done;
+  !m
+
+function aux (a:int -> int) (m i:int) : int = i * (m - Map.get a i)
+
+function entropy (a:array int) (m:int) : int = sum (aux a.elts m) 0 (length a)
+
+let ghost entropy_pos (a:array int) (m i:int) : unit
+  requires { 0 <= i <= length a }
+  requires { forall j. 0 <= j < i <= length a -> a[j] <= m }
+  ensures { sum (aux a.elts m) 0 i >= 0 }
+= ()
+
+let ghost decompose_entropy (a:int -> int) (i j m n:int) : unit
+  requires { 0 <= i < j < n }
+  ensures  { sum (aux a m) 0 n
+             = sum (aux a m) 0 i + sum (aux a m) (j+1) n
+               + sum (aux a m) (i+1) j + aux a m i + aux a m j }
+= ()
+
+let ghost inst_ext (a1 a2: int -> int) (a b m:int) : unit
+  requires { forall i. a <= i < b -> Map.get a1 i = Map.get a2 i }
+  ensures { sum (aux a1 m) a b = sum (aux a2 m) a b }
+= ()
+
+let my_swap (a:array int) (i j:int) (ghost m:int)
+  requires { a[i] > a[j] }
+  requires { 0 <= i < j < length a }
+  writes   { a }
+  ensures  { exchange (old a) a i j }
+  ensures  { entropy a m < entropy (old a) m }
+= let ghost a1 = a.elts in
+  swap a i j;
+  let ghost a2 = a.elts in ()
+
+let ghost local_order_implies_sort_sub (a:array int) (i j:int) : unit
+  requires { forall k. i <= k < j - 1 -> a[k] <= a[k+1] }
+  requires { 0 <= i <= j <= length a }
+  ensures  { sorted_sub a i j }
+= ()
+
+let odd_even_sort (a: array int)
+    requires { length a > 0 }
+    ensures  { sorted a }
+    ensures  { permut_all (old a) a }
+=
+  let ghost m = array_max a in
+  let ok = ref false in
+  while not !ok do
+    variant   { entropy a m + (if !ok then 0 else 1) }
+    invariant { permut_all (old a) a }
+    invariant { !ok -> sorted a }
+    ok := true;
+    label L in
+    let i = ref 1 in
+    while !i < length a - 1 do
+      variant   { length a - !i }
+      invariant { permut_all (old a) a }
+      invariant { 0 <= !i <= length a }
+      invariant { odd !i }
+      invariant { !ok -> entropy a m = entropy (a at L) m }
+      invariant { !ok -> forall j. 0 <= j < !i -> odd j
+                      -> a[j] <= a[j+1] }
+      invariant { not !ok -> entropy a m < entropy (a at L) m }
+      if a[!i] > a[!i+1]
+      then begin my_swap a !i (!i+1) m; ok := false end;
+      i := !i + 2
+    done;
+    let i = ref 0 in
+    while !i < length a - 1 do
+      variant   { length a - !i }
+      invariant { permut_all (old a) a }
+      invariant { 0 <= !i <= length a }
+      invariant { even !i }
+      invariant { !ok -> entropy a m = entropy (a at L) m }
+      invariant { !ok -> forall j. 0 <= j < length a - 1 /\ odd j
+                      -> a[j] <= a[j+1] }
+      invariant { !ok -> forall j. 0 <= j < !i /\ even j
+                      -> a[j] <= a[j+1] }
+      invariant { not !ok -> entropy a m < entropy (a at L) m }
+      if a[!i] > a[!i+1]
+      then begin my_swap a !i (!i+1) m; ok := false end;
+      i := !i + 2
+    done;
+  done;

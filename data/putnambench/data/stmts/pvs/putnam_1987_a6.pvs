@@ -1,0 +1,70 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1987_a6:
+% the positive real parameters for which the series determined by the number
+% of zeroes in base-3 expansions converges are exactly those below 25. This
+% file contains no proof.
+
+putnam_1987_a6: THEORY
+BEGIN
+  real_sequence: TYPE = [nat -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  zero_digits_below(
+      n, count: nat): RECURSIVE nat =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1,
+          quotient: nat = ndiv(n, 3 ^ index)
+      IN
+        zero_digits_below(n, count - 1)
+          + IF quotient > 0 AND mod(quotient, 3) = 0 THEN
+              1
+            ELSE
+              0
+            ENDIF
+    ENDIF
+  MEASURE count
+
+  base3_zero_count(n: nat): nat =
+    zero_digits_below(n, n + 1)
+
+  partial_sum(
+      values: real_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      partial_sum(values, count - 1) + values(count - 1)
+    ENDIF
+  MEASURE count
+
+  series_converges(values: real_sequence): bool =
+    EXISTS (total: real):
+      FORALL (epsilon_value: posreal):
+        EXISTS (cutoff: nat):
+          FORALL (count: nat):
+            cutoff <= count IMPLIES
+              abs(partial_sum(values, count) - total)
+                < epsilon_value
+
+  series_terms(x: real): real_sequence =
+    LAMBDA (index: nat):
+      LET n: nat = index + 1 IN
+        safe_div(
+          x ^ base3_zero_count(n),
+          (n :: real) ^ 3)
+
+  putnam_1987_a6_solution(x: real): bool =
+    x > 0 AND x < 25
+
+  putnam_1987_a6: bool =
+    FORALL (x: real):
+      (x > 0 AND series_converges(series_terms(x)))
+        IFF putnam_1987_a6_solution(x)
+END putnam_1987_a6

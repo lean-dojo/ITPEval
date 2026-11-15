@@ -1,0 +1,77 @@
+% Statement-only formalization of "The Law of Cosines" from Hundred Theorems
+% artifact 094: in an arbitrary real inner-product space, the squared length
+% opposite an angle equals the usual cosine-rule expression. This file contains no proof.
+
+law_of_cosines_094[
+  V: TYPE+,
+  zero: V,
+  vadd: [V, V -> V],
+  vneg: [V -> V],
+  scale: [real, V -> V],
+  inner: [V, V -> real]
+]: THEORY
+BEGIN
+  vector_space_laws: bool =
+    (FORALL (u, v: V): vadd(u, v) = vadd(v, u))
+      AND (FORALL (u, v, w: V):
+        vadd(vadd(u, v), w) = vadd(u, vadd(v, w)))
+      AND (FORALL (u: V): vadd(u, zero) = u)
+      AND (FORALL (u: V): vadd(u, vneg(u)) = zero)
+      AND (FORALL (a: real), (u, v: V):
+        scale(a, vadd(u, v)) = vadd(scale(a, u), scale(a, v)))
+      AND (FORALL (a, b: real), (u: V):
+        scale(a + b, u) = vadd(scale(a, u), scale(b, u)))
+      AND (FORALL (a, b: real), (u: V):
+        scale(a * b, u) = scale(a, scale(b, u)))
+      AND (FORALL (u: V): scale(1, u) = u)
+      AND (FORALL (u: V): scale(0, u) = zero)
+      AND (FORALL (u: V): vneg(u) = scale(-1, u))
+
+  inner_product_laws: bool =
+    (FORALL (u, v, w: V):
+      inner(vadd(u, v), w) = inner(u, w) + inner(v, w))
+      AND (FORALL (a: real), (u, v: V):
+        inner(scale(a, u), v) = a * inner(u, v))
+      AND (FORALL (u, v: V): inner(u, v) = inner(v, u))
+      AND (FORALL (u: V): 0 <= inner(u, u))
+      AND (FORALL (u: V): inner(u, u) = 0 IFF u = zero)
+
+  real_inner_product_space: bool =
+    vector_space_laws AND inner_product_laws
+
+  displacement(P, Q: V): V =
+    vadd(Q, vneg(P))
+
+  squared_distance(P, Q: V): real =
+    inner(displacement(P, Q), displacement(P, Q))
+
+  sqrt_value(root, radicand: real): bool =
+    0 <= root AND root * root = radicand
+
+  angle_cosine_value(
+    A, O, B: V,
+    OA_length, OB_length, cosine: real
+  ): bool =
+    sqrt_value(OA_length, squared_distance(O, A))
+      AND sqrt_value(OB_length, squared_distance(O, B))
+      AND
+        IF squared_distance(O, A) = 0
+             OR squared_distance(O, B) = 0
+        THEN
+          cosine = 0
+        ELSE
+          cosine * OA_length * OB_length =
+            inner(displacement(O, A), displacement(O, B))
+        ENDIF
+
+  law_of_cosines: bool =
+    real_inner_product_space IMPLIES
+      (FORALL (A, B, C: V):
+        EXISTS (AB_length, AC_length, cosine_A: real):
+          angle_cosine_value(
+            B, A, C, AB_length, AC_length, cosine_A)
+            AND squared_distance(B, C) =
+              squared_distance(A, B)
+                + squared_distance(A, C)
+                - 2 * AB_length * AC_length * cosine_A)
+END law_of_cosines_094

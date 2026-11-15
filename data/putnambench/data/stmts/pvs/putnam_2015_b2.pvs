@@ -1,0 +1,97 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2015_b2:
+% repeatedly remove the three least remaining positive integers and their sum;
+% some resulting sum ends in the decimal digits 2015. This file contains no proof.
+
+putnam_2015_b2: THEORY
+BEGIN
+  natural_set: TYPE = [nat -> bool]
+  set_sequence: TYPE = [nat -> natural_set]
+  minimum_triple: TYPE = [below(3) -> nat]
+  minimum_selector: TYPE = [natural_set -> minimum_triple]
+  natural_sequence: TYPE = [nat -> nat]
+
+  positive_naturals: natural_set =
+    LAMBDA (value: nat):
+      value >= 1
+
+  remove_one(S: natural_set, removed: nat): natural_set =
+    LAMBDA (value: nat):
+      S(value) AND value /= removed
+
+  remove_four(
+      S: natural_set,
+      first, second, third, fourth: nat): natural_set =
+    LAMBDA (value: nat):
+      S(value)
+        AND value /= first
+        AND value /= second
+        AND value /= third
+        AND value /= fourth
+
+  has_at_least_three(S: natural_set): bool =
+    EXISTS (first, second, third: nat):
+      S(first)
+        AND S(second)
+        AND S(third)
+        AND first /= second
+        AND first /= third
+        AND second /= third
+
+  is_least_member(value: nat, S: natural_set): bool =
+    S(value)
+      AND (FORALL (other: nat):
+        S(other) IMPLIES value <= other)
+
+  selects_three_least(
+      select: minimum_selector): bool =
+    FORALL (S: natural_set):
+      has_at_least_three(S) IMPLIES
+        is_least_member(select(S)(0), S)
+          AND is_least_member(
+            select(S)(1),
+            remove_one(S, select(S)(0)))
+          AND is_least_member(
+            select(S)(2),
+            remove_one(
+              remove_one(S, select(S)(0)),
+              select(S)(1)))
+
+  sums_selected_three(
+      sets: set_sequence,
+      select: minimum_selector,
+      sums: natural_sequence): bool =
+    FORALL (n: nat):
+      sums(n) =
+        select(sets(n))(0)
+          + select(sets(n))(1)
+          + select(sets(n))(2)
+
+  follows_removal_process(
+      sets: set_sequence,
+      select: minimum_selector,
+      sums: natural_sequence): bool =
+    FORALL (n: nat):
+      sets(n + 1) =
+        remove_four(
+          sets(n),
+          select(sets(n))(0),
+          select(sets(n))(1),
+          select(sets(n))(2),
+          sums(n))
+
+  putnam_2015_b2_solution: bool = TRUE
+
+  putnam_2015_b2: bool =
+    FORALL
+        (sets: set_sequence),
+        (select: minimum_selector),
+        (sums: natural_sequence):
+      (sets(0) = positive_naturals
+        AND selects_three_least(select)
+        AND sums_selected_three(sets, select, sums)
+        AND follows_removal_process(sets, select, sums))
+      IMPLIES
+        ((EXISTS (n: nat):
+          mod(sums(n), 10000) = 2015)
+        IFF putnam_2015_b2_solution)
+END putnam_2015_b2

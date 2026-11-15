@@ -1,0 +1,129 @@
+% Statement-only formalization of the Thousand Theorems artifact Q510197,
+% "Tutte theorem": a finite simple graph has a perfect matching exactly when
+% deleting any vertex set leaves at most as many odd connected components as
+% deleted vertices. This file contains no proof.
+
+Q510197_tutte_theorem[V: TYPE]: THEORY
+BEGIN
+  IMPORTING finite_sets[V]
+
+  vertex_set: TYPE = [V -> bool]
+  graph: TYPE = [V, V -> bool]
+  vertex_relation: TYPE = [V, V -> bool]
+
+  simple_graph(G: graph): bool =
+    (FORALL (v: V): NOT G(v, v))
+      AND
+    (FORALL (v, w: V): G(v, w) IFF G(w, v))
+
+  has_cardinality(S: vertex_set, cardinality: nat): bool =
+    EXISTS (enumeration: [below(cardinality) -> V]):
+      (FORALL (i, j: below(cardinality)):
+        enumeration(i) = enumeration(j) IMPLIES i = j)
+        AND
+      (FORALL (v: V):
+        S(v)
+          IFF
+        EXISTS (i: below(cardinality)): enumeration(i) = v)
+
+  connected_after_deletion(
+      G: graph,
+      deleted: vertex_set,
+      source, target: V): bool =
+    NOT deleted(source)
+      AND NOT deleted(target)
+      AND
+        (FORALL (R: vertex_relation):
+          ((FORALL (v: V):
+              NOT deleted(v) IMPLIES R(v, v))
+            AND
+           (FORALL (x, y, z: V):
+              NOT deleted(x)
+                AND NOT deleted(y)
+                AND NOT deleted(z)
+                AND R(x, y)
+                AND G(y, z)
+              IMPLIES R(x, z)))
+          IMPLIES R(source, target))
+
+  component_after_deletion(
+      G: graph,
+      deleted: vertex_set,
+      representative: V): vertex_set =
+    LAMBDA (v: V):
+      connected_after_deletion(G, deleted, representative, v)
+
+  odd_component_at(
+      G: graph,
+      deleted: vertex_set,
+      representative: V): bool =
+    NOT deleted(representative)
+      AND
+    EXISTS (half_size: nat):
+      has_cardinality(
+        component_after_deletion(G, deleted, representative),
+        2 * half_size + 1)
+
+  represents_odd_components(
+      G: graph,
+      deleted, representatives: vertex_set): bool =
+    (FORALL (representative: V):
+      representatives(representative)
+        IMPLIES odd_component_at(G, deleted, representative))
+      AND
+    (FORALL (v: V):
+      odd_component_at(G, deleted, v)
+        IMPLIES
+          EXISTS (representative: V):
+            representatives(representative)
+              AND connected_after_deletion(
+                    G, deleted, representative, v))
+      AND
+    (FORALL (left, right: V):
+      representatives(left)
+        AND representatives(right)
+        AND connected_after_deletion(G, deleted, left, right)
+      IMPLIES left = right)
+
+  odd_component_count(
+      G: graph,
+      deleted: vertex_set,
+      count: nat): bool =
+    EXISTS (representatives: vertex_set):
+      represents_odd_components(G, deleted, representatives)
+        AND has_cardinality(representatives, count)
+
+  is_tutte_violator(G: graph, deleted: vertex_set): bool =
+    EXISTS (deleted_count, odd_count: nat):
+      has_cardinality(deleted, deleted_count)
+        AND odd_component_count(G, deleted, odd_count)
+        AND deleted_count < odd_count
+
+  is_perfect_matching(G, matching: graph): bool =
+    simple_graph(matching)
+      AND
+    (FORALL (v, w: V):
+      matching(v, w) IMPLIES G(v, w))
+      AND
+    (FORALL (v: V):
+      EXISTS (partner: V):
+        matching(v, partner)
+          AND
+        (FORALL (candidate: V):
+          matching(v, candidate) IMPLIES candidate = partner))
+
+  has_perfect_matching(G: graph): bool =
+    EXISTS (matching: graph):
+      is_perfect_matching(G, matching)
+
+  tutte_theorem: bool =
+    is_finite_type[V]
+      IMPLIES
+        FORALL (G: graph):
+          simple_graph(G)
+            IMPLIES
+              (has_perfect_matching(G)
+                IFF
+               FORALL (deleted: vertex_set):
+                 NOT is_tutte_violator(G, deleted))
+END Q510197_tutte_theorem

@@ -1,0 +1,79 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2018_a3:
+% the greatest possible sum of cos(3*x_i) over ten real numbers whose
+% cosines sum to zero is 480/49. This file contains no proof.
+
+putnam_2018_a3: THEORY
+BEGIN
+  real_sequence: TYPE = [nat -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  nat_factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * nat_factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  cosine_partial(argument: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        cosine_partial(argument, count - 1)
+          + safe_div(
+              ((-1 :: real) ^ index) * argument ^ (2 * index),
+              nat_factorial(2 * index) :: real)
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  cosine(argument: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat):
+            cosine_partial(argument, count),
+          value))
+
+  finite_sum(values: real_sequence, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      finite_sum(values, count - 1) + values(count - 1)
+    ENDIF
+  MEASURE count
+
+  cosine_sum(x: real_sequence, multiplier: real): real =
+    finite_sum(
+      LAMBDA (index: nat):
+        cosine(multiplier * x(index)),
+      10)
+
+  admissible(x: real_sequence): bool =
+    cosine_sum(x, 1) = 0
+
+  putnam_2018_a3_solution: real =
+    480 / 49
+
+  putnam_2018_a3: bool =
+    (EXISTS (x: real_sequence):
+      admissible(x)
+        AND cosine_sum(x, 3) = putnam_2018_a3_solution)
+      AND (FORALL (x: real_sequence):
+        admissible(x)
+          IMPLIES
+            cosine_sum(x, 3) <= putnam_2018_a3_solution)
+END putnam_2018_a3

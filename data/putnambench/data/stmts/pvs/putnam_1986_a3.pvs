@@ -1,0 +1,119 @@
+% Statement-only formalization of PutnamBench artifact putnam_1986_a3:
+% the infinite series of principal positive arccotangents of n^2 + n + 1
+% sums to pi / 2. This file contains no proof.
+
+putnam_1986_a3: THEORY
+BEGIN
+  real_function: TYPE = [real -> real]
+  real_sequence: TYPE = [nat -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  nat_factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * nat_factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  sine_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        sine_partial(x, count - 1)
+          + safe_div(
+              ((-1 :: real) ^ index) * x ^ (2 * index + 1),
+              nat_factorial(2 * index + 1) :: real)
+    ENDIF
+  MEASURE count
+
+  cosine_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        cosine_partial(x, count - 1)
+          + safe_div(
+              ((-1 :: real) ^ index) * x ^ (2 * index),
+              nat_factorial(2 * index) :: real)
+    ENDIF
+  MEASURE count
+
+  partial_sum(values: real_sequence, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      partial_sum(values, count - 1) + values(count - 1)
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  series_sums_to(values: real_sequence, total: real): bool =
+    converges_to(
+      LAMBDA (count: nat): partial_sum(values, count),
+      total)
+
+  sine(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat): sine_partial(x, count),
+          value))
+
+  cosine(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat): cosine_partial(x, count),
+          value))
+
+  pi: real =
+    epsilon(
+      LAMBDA (value: real):
+        3 < value
+          AND value < 4
+          AND cosine(value / 2) = 0)
+
+  cotangent_definition(cot: real_function): bool =
+    cot = (LAMBDA (theta: real):
+      safe_div(cosine(theta), sine(theta)))
+
+  principal_arccot(
+      cot, arccot: real_function): bool =
+    FORALL (t: real):
+      t >= 0 IMPLIES
+        0 < arccot(t)
+          AND arccot(t) <= pi / 2
+          AND cot(arccot(t)) = t
+
+  arccot_series_terms(arccot: real_function): real_sequence =
+    LAMBDA (index: nat):
+      arccot(
+        (index :: real) ^ 2
+          + (index :: real)
+          + 1)
+
+  putnam_1986_a3_solution: real = pi / 2
+
+  putnam_1986_a3: bool =
+    FORALL (cot, arccot: real_function):
+      (cotangent_definition(cot)
+        AND principal_arccot(cot, arccot))
+      IMPLIES
+        series_sums_to(
+          arccot_series_terms(arccot),
+          putnam_1986_a3_solution)
+END putnam_1986_a3

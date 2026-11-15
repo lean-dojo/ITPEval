@@ -1,0 +1,393 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/linear_probing_LinearProbing_addqtvc: the linear-probing insertion
+% verification condition for resizing, probe traversal, list update, and
+% preservation of the table view and state invariant. This file contains no proof.
+
+linear_probing_LinearProbing_addqtvc[
+  key, keym, t: TYPE+,
+  key_default: key,
+  keym1: [key -> keym],
+  key_eq: [key, key -> bool],
+  hash: [key -> int],
+  dummy: key,
+  bucket: [key, int -> int],
+  size: [t -> int],
+  data: [t -> list[key]],
+  view: [t -> [keym -> bool]],
+  loc: [t -> [keym -> int]]
+]: THEORY
+BEGIN
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  nth_default(
+      values: list[key],
+      index: nat): RECURSIVE key =
+    CASES values OF
+      null:
+        key_default,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          nth_default(tail, index - 1)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  list_set(
+      values: list[key],
+      index: nat,
+      value: key): RECURSIVE list[key] =
+    CASES values OF
+      null:
+        null,
+      cons(head, tail):
+        IF index = 0 THEN
+          cons(value, tail)
+        ELSE
+          cons(head, list_set(tail, index - 1, value))
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  list_contents(values: list[key]): [int -> key] =
+    LAMBDA (index: int):
+      nth_default(values, int_to_nat(index))
+
+  update_key(
+      values: [int -> key],
+      index: int,
+      value: key): [int -> key] =
+    values WITH [(index) := value]
+
+  array_function_equal(
+      values: list[key],
+      left, right: [int -> key]): bool =
+    FORALL (index: int):
+      (0 <= index AND index < length(values))
+        IMPLIES left(index) = right(index)
+
+  update_view(
+      values: [keym -> bool],
+      index: keym,
+      value: bool): [keym -> bool] =
+    values WITH [(index) := value]
+
+  update_loc(
+      values: [keym -> int],
+      index: keym,
+      value: int): [keym -> int] =
+    values WITH [(index) := value]
+
+  neq(left, right: key): bool =
+    NOT key_eq(left, right)
+
+  between(left, position, right: int): bool =
+    (left <= position AND position < right)
+      OR (right < left AND left <= position)
+      OR (position < right AND right < left)
+
+  count_dummy_span(
+      values: list[key],
+      lower: int,
+      span: nat): RECURSIVE int =
+    IF span = 0 THEN
+      0
+    ELSE
+      (IF key_eq(
+            nth_default(values, int_to_nat(lower)),
+            dummy)
+       THEN 1 ELSE 0 ENDIF)
+        + count_dummy_span(values, lower + 1, span - 1)
+    ENDIF
+  MEASURE span
+
+  numof(values: list[key], lower, upper: int): int =
+    count_dummy_span(
+      values,
+      lower,
+      int_to_nat(upper - lower))
+
+  valid(
+      values: list[key],
+      visible: [keym -> bool],
+      locations: [keym -> int]): bool =
+    NOT (visible(keym1(dummy)) = TRUE)
+      AND
+    (FORALL (index: int):
+      (0 <= index AND index < length(values))
+        IMPLIES
+          LET x: key =
+            nth_default(values, int_to_nat(index))
+          IN
+            neq(x, dummy)
+              IMPLIES
+                visible(keym1(x)) = TRUE
+                  AND locations(keym1(x)) = index)
+      AND
+    (LET n: int = length(values)
+     IN
+       FORALL (x: key):
+         visible(keym1(x)) = TRUE
+           IMPLIES
+             LET index: int = locations(keym1(x))
+             IN
+               (0 <= index AND index < n)
+                 AND key_eq(
+                   nth_default(values, int_to_nat(index)),
+                   x)
+                 AND
+               (FORALL (position: int):
+                 (0 <= position AND position < n)
+                   IMPLIES
+                 between(bucket(x, n), position, index)
+                   IMPLIES
+                     neq(
+                       nth_default(
+                         values,
+                         int_to_nat(position)),
+                       x)
+                       AND
+                     neq(
+                       nth_default(
+                         values,
+                         int_to_nat(position)),
+                       dummy)))
+
+  state_invariant(
+      state_size: int,
+      values: list[key],
+      visible: [keym -> bool],
+      locations: [keym -> int]): bool =
+    0 <= state_size
+      AND state_size < length(values)
+      AND state_size + numof(values, 0, length(values))
+        = length(values)
+      AND valid(values, visible, locations)
+
+  state_equal(left, right: t): bool =
+    size(left) = size(right)
+      AND data(left) = data(right)
+      AND view(left) = view(right)
+      AND loc(left) = loc(right)
+
+  key_context: bool =
+    (FORALL (left, right: key):
+      key_eq(left, right)
+        IFF keym1(left) = keym1(right))
+      AND
+    (FORALL (left, right: key):
+      neq(left, right)
+        IFF NOT (keym1(left) = keym1(right)))
+      AND
+    (FORALL (x: key):
+      0 <= hash(x))
+      AND
+    (FORALL (left, right: key):
+      key_eq(left, right)
+        IMPLIES hash(left) = hash(right))
+
+  bucket_context: bool =
+    FORALL (n: int), (x: key):
+      0 < n
+        IMPLIES
+          bucket(x, n) = mod(hash(x), n)
+            AND 0 <= bucket(x, n)
+            AND bucket(x, n) < n
+
+  state_context: bool =
+    (FORALL (self: t):
+      state_invariant(
+        size(self),
+        data(self),
+        view(self),
+        loc(self)))
+      AND
+    (FORALL (left, right: t):
+      state_equal(left, right)
+        IMPLIES left = right)
+
+  source_context: bool =
+    key_context
+      AND bucket_context
+      AND state_context
+
+  resized_capacity_branch(h: t): bool =
+    IF length(data(h)) <= 2 * (size(h) + 1) THEN
+      FORALL (h1: t):
+        (view(h) = view(h1) AND size(h) = size(h1))
+          IMPLIES
+        length(data(h1)) = 2 * length(data(h))
+          IMPLIES
+            size(h1) + 1 < length(data(h1))
+    ELSE
+      size(h) + 1 < length(data(h))
+    ENDIF
+
+  probe_prefix_clear(
+      values: list[key],
+      x: key,
+      index: int): bool =
+    FORALL (position: int):
+      (0 <= position AND position < length(values))
+        IMPLIES
+      between(
+        bucket(x, length(values)),
+        position,
+        index)
+        IMPLIES
+          neq(
+            nth_default(values, int_to_nat(position)),
+            x)
+            AND
+          neq(
+            nth_default(values, int_to_nat(position)),
+            dummy)
+
+  probe_candidate(
+      values: list[key],
+      x: key,
+      index: int): bool =
+    (0 <= index AND index < length(values))
+      AND
+    (key_eq(
+       nth_default(values, int_to_nat(index)),
+       dummy)
+      OR
+     key_eq(
+       nth_default(values, int_to_nat(index)),
+       x))
+      AND probe_prefix_clear(values, x, index)
+
+  updated_state_condition(
+      h1: t,
+      x: key,
+      index: int): bool =
+    LET updated_data: list[key] =
+          list_set(data(h1), int_to_nat(index), x),
+        updated_view: [keym -> bool] =
+          update_view(view(h1), keym1(x), TRUE),
+        updated_loc: [keym -> int] =
+          update_loc(loc(h1), keym1(x), index),
+        updated_size: int =
+          size(h1) + 1
+    IN
+      state_invariant(
+        updated_size,
+        updated_data,
+        updated_view,
+        updated_loc)
+
+  unchanged_state_condition(
+      h1: t,
+      x: key,
+      index: int): bool =
+    state_invariant(
+      size(h1),
+      data(h1),
+      update_view(view(h1), keym1(x), TRUE),
+      update_loc(loc(h1), keym1(x), index))
+
+  updated_state_matches(
+      h1, h2: t,
+      x: key,
+      index: int): bool =
+    update_loc(loc(h1), keym1(x), index) = loc(h2)
+      AND update_view(view(h1), keym1(x), TRUE) = view(h2)
+      AND list_set(data(h1), int_to_nat(index), x) = data(h2)
+      AND size(h1) + 1 = size(h2)
+
+  unchanged_state_matches(
+      h1, h2: t,
+      x: key,
+      index: int): bool =
+    update_loc(loc(h1), keym1(x), index) = loc(h2)
+      AND update_view(view(h1), keym1(x), TRUE) = view(h2)
+      AND data(h1) = data(h2)
+      AND size(h1) = size(h2)
+
+  expected_view(h: t, x: key): [keym -> bool] =
+    update_view(view(h), keym1(x), TRUE)
+
+  empty_bucket_branch(
+      h, h1: t,
+      x: key,
+      index: int): bool =
+    (0 <= index AND index < length(data(h1)))
+      AND
+    (length(list_set(data(h1), int_to_nat(index), x))
+       = length(data(h1))
+      IMPLIES
+    length(list_set(data(h1), int_to_nat(index), x))
+       = length(data(h1))
+      IMPLIES
+    array_function_equal(
+      list_set(data(h1), int_to_nat(index), x),
+      list_contents(
+        list_set(data(h1), int_to_nat(index), x)),
+      update_key(list_contents(data(h1)), index, x))
+      IMPLIES
+        FORALL (h2: t):
+          updated_state_condition(h1, x, index)
+            AND
+          (updated_state_matches(h1, h2, x, index)
+            IMPLIES
+              view(h2) = expected_view(h, x)))
+
+  existing_key_branch(
+      h, h1: t,
+      x: key,
+      index: int): bool =
+    FORALL (h2: t):
+      unchanged_state_condition(h1, x, index)
+        AND
+      (unchanged_state_matches(h1, h2, x, index)
+        IMPLIES
+          view(h2) = expected_view(h, x))
+
+  probe_postcondition(
+      h, h1: t,
+      x: key,
+      index: int): bool =
+    LET selected: key =
+      nth_default(data(h1), int_to_nat(index))
+    IN
+      (0 <= index AND index < length(data(h1)))
+        AND
+      ((key_eq(selected, dummy)
+          IFF keym1(selected) = keym1(dummy))
+        IMPLIES
+          IF key_eq(selected, dummy) THEN
+            empty_bucket_branch(h, h1, x, index)
+          ELSE
+            existing_key_branch(h, h1, x, index)
+          ENDIF)
+
+  insertion_phase(h: t, x: key): bool =
+    FORALL (h1: t):
+      (view(h) = view(h1) AND size(h) = size(h1))
+        IMPLIES
+      size(h1) + 1 < length(data(h1))
+        IMPLIES
+          LET values: list[key] = data(h1)
+          IN
+            (neq(x, dummy)
+              AND
+                (LET n: int = length(values)
+                 IN 0 < n AND 0 < numof(values, 0, n)))
+              AND
+            (FORALL (index: int):
+              probe_candidate(values, x, index)
+                IMPLIES
+                  probe_postcondition(h, h1, x, index))
+
+  add_vc: bool =
+    source_context
+      IMPLIES
+        FORALL (x: key), (h: t):
+          neq(x, dummy)
+            IMPLIES
+              resized_capacity_branch(h)
+                AND insertion_phase(h, x)
+END linear_probing_LinearProbing_addqtvc

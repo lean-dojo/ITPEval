@@ -1,0 +1,107 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2024_b3:
+% consecutive positive solutions of tan(x) = x, listed in increasing order,
+% differ by more than pi and by less than pi plus the stated reciprocal bound.
+% This file contains no proof.
+
+putnam_2024_b3: THEORY
+BEGIN
+  real_sequence: TYPE = [nat -> real]
+  positive_real_sequence: TYPE = [posnat -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  sine_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        sine_partial(x, count - 1)
+          + safe_div(
+              ((-1 :: real) ^ index) * x ^ (2 * index + 1),
+              factorial(2 * index + 1) :: real)
+    ENDIF
+  MEASURE count
+
+  cosine_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        cosine_partial(x, count - 1)
+          + safe_div(
+              ((-1 :: real) ^ index) * x ^ (2 * index),
+              factorial(2 * index) :: real)
+    ENDIF
+  MEASURE count
+
+  sine(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat): sine_partial(x, count),
+          value))
+
+  cosine(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat): cosine_partial(x, count),
+          value))
+
+  tangent(x: real): real =
+    safe_div(sine(x), cosine(x))
+
+  pi: real =
+    epsilon(
+      LAMBDA (value: real):
+        3 < value
+          AND value < 4
+          AND cosine(value / 2) = 0)
+
+  strictly_increasing(r: positive_real_sequence): bool =
+    FORALL (left_index, right_index: posnat):
+      left_index < right_index IMPLIES
+        r(left_index) < r(right_index)
+
+  enumerates_positive_tangent_fixed_points(
+      r: positive_real_sequence): bool =
+    strictly_increasing(r)
+      AND (FORALL (x: real):
+        (0 < x AND x < r(1)) IMPLIES tangent(x) /= x)
+      AND (FORALL (index: posnat):
+        0 < r(index)
+          AND tangent(r(index)) = r(index)
+          AND (FORALL (x: real):
+            (r(index) < x AND x < r(index + 1))
+              IMPLIES tangent(x) /= x))
+
+  putnam_2024_b3_statement: bool =
+    FORALL (r: positive_real_sequence), (n: posnat):
+      enumerates_positive_tangent_fixed_points(r)
+        IMPLIES
+          0 < r(n + 1) - r(n) - pi
+            AND r(n + 1) - r(n) - pi
+              < safe_div(
+                  1,
+                  ((n ^ 2 + n) :: real) * pi)
+END putnam_2024_b3

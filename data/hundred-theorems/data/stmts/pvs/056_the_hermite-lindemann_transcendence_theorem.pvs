@@ -1,0 +1,118 @@
+% Statement-only formalization of "The Hermite-Lindemann Transcendence Theorem" from Hundred
+% Theorems item 056: the exponential of every nonzero algebraic complex number is
+% transcendental. This file contains no proof.
+
+hundred_theorems_056: THEORY
+BEGIN
+  complex: TYPE = [# real_part: real, imag_part: real #]
+
+  complex_zero: complex =
+    (# real_part := 0, imag_part := 0 #)
+
+  complex_one: complex =
+    (# real_part := 1, imag_part := 0 #)
+
+  complex_of_real(x: real): complex =
+    (# real_part := x, imag_part := 0 #)
+
+  complex_add(x, y: complex): complex =
+    (# real_part := real_part(x) + real_part(y),
+       imag_part := imag_part(x) + imag_part(y) #)
+
+  complex_mul(x, y: complex): complex =
+    (# real_part := real_part(x) * real_part(y)
+                       - imag_part(x) * imag_part(y),
+       imag_part := real_part(x) * imag_part(y)
+                       + imag_part(x) * real_part(y) #)
+
+  complex_scale(scalar: real, x: complex): complex =
+    (# real_part := scalar * real_part(x),
+       imag_part := scalar * imag_part(x) #)
+
+  complex_power(x: complex, exponent: nat): RECURSIVE complex =
+    IF exponent = 0 THEN
+      complex_one
+    ELSE
+      complex_mul(complex_power(x, exponent - 1), x)
+    ENDIF
+  MEASURE exponent
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  nat_factorial(n: nat): RECURSIVE nat =
+    IF n = 0 THEN
+      1
+    ELSE
+      n * nat_factorial(n - 1)
+    ENDIF
+  MEASURE n
+
+  polynomial_value(
+      coefficients: [nat -> real],
+      x: complex,
+      count: nat): RECURSIVE complex =
+    IF count = 0 THEN
+      complex_zero
+    ELSE
+      LET k: nat = count - 1 IN
+        complex_add(
+          polynomial_value(coefficients, x, count - 1),
+          complex_mul(
+            complex_of_real(coefficients(k)),
+            complex_power(x, k)))
+    ENDIF
+  MEASURE count
+
+  algebraic_over_rationals(x: complex): bool =
+    EXISTS (degree: nat):
+      EXISTS (coefficients: [nat -> real]):
+        0 < degree
+          AND (FORALL (i: nat):
+            i <= degree IMPLIES rational?(coefficients(i)))
+          AND NOT (coefficients(degree) = 0)
+          AND polynomial_value(coefficients, x, degree + 1)
+            = complex_zero
+
+  complex_exponential_partial(
+      x: complex,
+      count: nat): RECURSIVE complex =
+    IF count = 0 THEN
+      complex_zero
+    ELSE
+      LET j: nat = count - 1 IN
+        complex_add(
+          complex_exponential_partial(x, count - 1),
+          complex_scale(
+            safe_div(1, nat_factorial(j) :: real),
+            complex_power(x, j)))
+    ENDIF
+  MEASURE count
+
+  complex_converges_to(
+      sequence: [nat -> complex],
+      value: complex): bool =
+    FORALL (eps: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(real_part(sequence(index)) - real_part(value)) < eps
+              AND abs(imag_part(sequence(index)) - imag_part(value)) < eps
+
+  complex_exponential_value(x, value: complex): bool =
+    complex_converges_to(
+      (LAMBDA (count: nat):
+        complex_exponential_partial(x, count)),
+      value)
+
+  the_hermite_lindemann_transcendence_theorem: bool =
+    FORALL (x, exp_x: complex):
+      (NOT (x = complex_zero)
+        AND algebraic_over_rationals(x)
+        AND complex_exponential_value(x, exp_x))
+      IMPLIES NOT algebraic_over_rationals(exp_x)
+END hundred_theorems_056

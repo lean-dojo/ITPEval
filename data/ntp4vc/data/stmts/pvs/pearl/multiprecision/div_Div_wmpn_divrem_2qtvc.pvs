@@ -1,0 +1,572 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/multiprecision/div_Div_wmpn_divrem_2qtvc: the verification condition
+% for normalized two-limb multiprecision division, including the initial
+% remainder adjustment, reciprocal setup, loop invariant, quotient updates,
+% and final two-limb remainder writeback. This file contains no proof.
+
+div_Div_wmpn_divrem_2qtvc[zone: TYPE+]: THEORY
+BEGIN
+
+  IMPORTING
+    bv[32], bv[64],
+    bv_nat[32], bv_nat[64]
+
+  word32: TYPE = bvec[32]
+  word64: TYPE = bvec[64]
+
+  ptr: TYPE =
+    [# data_length: nat,
+       cells: [int -> word64],
+       pointer_offset: int,
+       pointer_min: int,
+       pointer_max: int,
+       is_writable: bool,
+       pointer_zone: zone #]
+
+  radix: int = 18446744073709551616
+  half_radix: int = 9223372036854775808
+
+  zero64: word64 = fill[64](FALSE)
+  one64: word64 = nat2bv[64](1)
+
+  unsigned64(value1: word64): int =
+    bv2nat[64](value1)
+
+  signed32(value1: word32): int =
+    IF value1(31) THEN
+      bv2nat[32](value1) - 4294967296
+    ELSE
+      bv2nat[32](value1)
+    ENDIF
+
+  int_to_nat(value1: int): nat =
+    IF value1 < 0 THEN 0 ELSE value1 ENDIF
+
+  nat_power(base: int, exponent: nat): RECURSIVE int =
+    IF exponent = 0 THEN
+      1
+    ELSE
+      base * nat_power(base, exponent - 1)
+    ENDIF
+  MEASURE exponent
+
+  int_power(base, exponent: int): int =
+    nat_power(base, int_to_nat(exponent))
+
+  value_from(
+      values: [int -> word64],
+      start: int,
+      count: nat): RECURSIVE int =
+    IF count = 0 THEN
+      0
+    ELSE
+      unsigned64(values(start))
+        + radix * value_from(values, start + 1, count - 1)
+    ENDIF
+  MEASURE count
+
+  value_sub(
+      values: [int -> word64],
+      lower, upper: int): int =
+    value_from(values, lower, int_to_nat(upper - lower))
+
+  value(p: ptr, count: int): int =
+    value_sub(
+      cells(p),
+      pointer_offset(p),
+      pointer_offset(p) + count)
+
+  int32_in_bounds(value1: int): bool =
+    -2147483648 <= value1 AND value1 <= 2147483647
+
+  valid(p: ptr, count: int): bool =
+    int32_in_bounds(count)
+      AND 0 <= count
+      AND 0 <= pointer_min(p)
+      AND pointer_min(p) <= pointer_offset(p)
+      AND pointer_offset(p) + count <= pointer_max(p)
+      AND pointer_max(p) <= data_length(p)
+
+  access_closed(p: ptr, index: int): bool =
+    pointer_min(p) <= index AND index <= pointer_max(p)
+
+  access(p: ptr, index: int): bool =
+    pointer_min(p) <= index AND index < pointer_max(p)
+
+  same_metadata(left, right: ptr): bool =
+    data_length(left) = data_length(right)
+      AND pointer_offset(left) = pointer_offset(right)
+      AND pointer_min(left) = pointer_min(right)
+      AND pointer_max(left) = pointer_max(right)
+      AND is_writable(left) = is_writable(right)
+      AND pointer_zone(left) = pointer_zone(right)
+
+  shifted_same_storage(
+      newer, older: ptr,
+      amount: int): bool =
+    pointer_offset(newer) = pointer_offset(older) + amount
+      AND data_length(newer) = data_length(older)
+      AND cells(newer) = cells(older)
+      AND pointer_min(newer) = pointer_min(older)
+      AND pointer_max(newer) = pointer_max(older)
+      AND pointer_zone(newer) = pointer_zone(older)
+      AND is_writable(newer) = is_writable(older)
+
+  update_cells(
+      values: [int -> word64],
+      index: int,
+      replacement: word64): [int -> word64] =
+    values WITH [(index) := replacement]
+
+  single_update(
+      newer, older: ptr,
+      index: int,
+      replacement: word64): bool =
+    cells(newer) = update_cells(cells(older), index, replacement)
+      AND cells(newer)(index) = replacement
+
+  carry_bounds(carry: word64): bool =
+    0 <= unsigned64(carry) AND unsigned64(carry) <= 1
+
+  reciprocal_3by2(v, dh, dl: word64): bool =
+    unsigned64(v)
+      =
+    floor(
+      ((radix * radix * radix - 1) :: real)
+        / ((unsigned64(dl) + radix * unsigned64(dh)) :: real))
+      - radix
+
+  initial_adjust_condition(
+      dh, dl, high, low: word64): bool =
+    IF unsigned64(dh) <= unsigned64(high) THEN
+      IF unsigned64(dh) < unsigned64(high) THEN
+        TRUE
+      ELSE
+        TRUE =
+          (IF unsigned64(dl) <= unsigned64(low) THEN
+             TRUE
+           ELSE
+             FALSE
+           ENDIF)
+      ENDIF
+    ELSE
+      TRUE = FALSE
+    ENDIF
+
+  initial_adjust_obligation(
+      dh, dl, high, low: word64): bool =
+    initial_adjust_condition(dh, dl, high, low)
+      IMPLIES
+        (0 <= 0 AND 0 <= 1)
+          AND
+            (FORALL (result, borrow: word64):
+              unsigned64(result) - radix * unsigned64(borrow)
+                  =
+                unsigned64(low) - unsigned64(dl) - 0
+                AND carry_bounds(borrow)
+              IMPLIES carry_bounds(borrow))
+
+  initial_decision_relation(
+      decision: bool,
+      dh, dl, high, low: word64): bool =
+    IF unsigned64(dh) <= unsigned64(high) THEN
+      IF unsigned64(dh) < unsigned64(high) THEN
+        decision = TRUE
+      ELSE
+        decision =
+          (IF unsigned64(dl) <= unsigned64(low) THEN
+             TRUE
+           ELSE
+             FALSE
+           ENDIF)
+      ENDIF
+    ELSE
+      decision = FALSE
+    ENDIF
+
+  initial_remainder_state(
+      rh, rl, qh,
+      dh, dl, high, low: word64): bool =
+    EXISTS (decision: bool):
+      initial_decision_relation(decision, dh, dl, high, low)
+        AND
+          (IF decision = TRUE THEN
+             EXISTS (low_borrow: word64):
+               unsigned64(rl) - radix * unsigned64(low_borrow)
+                   =
+                 unsigned64(low) - unsigned64(dl) - 0
+                 AND carry_bounds(low_borrow)
+                 AND
+                   (EXISTS (high_borrow: word64):
+                     unsigned64(rh)
+                         - radix * unsigned64(high_borrow)
+                       =
+                     unsigned64(high)
+                       - unsigned64(dh)
+                       - unsigned64(low_borrow)
+                       AND carry_bounds(high_borrow)
+                       AND qh = one64)
+           ELSE
+             rh = high AND rl = low AND qh = zero64
+           ENDIF)
+
+  remainder_bound(
+      rl, rh, dl, dh: word64): bool =
+    unsigned64(rl) + radix * unsigned64(rh)
+      < unsigned64(dl) + radix * unsigned64(dh)
+
+  division_invariant(
+      x, y, quotient, shifted_x: ptr,
+      sx, index: word32,
+      qh, rl, rh, dl, dh: word64): bool =
+    0 <= signed32(index)
+      AND signed32(index) <= signed32(sx) - 2
+      AND pointer_offset(shifted_x)
+            = pointer_offset(x) + signed32(index)
+      AND data_length(shifted_x) = data_length(x)
+      AND pointer_min(shifted_x) = pointer_min(x)
+      AND pointer_max(shifted_x) = pointer_max(x)
+      AND cells(shifted_x) = cells(x)
+      AND is_writable(shifted_x) = TRUE
+      AND
+        value(x, signed32(sx))
+          =
+        (value_sub(
+           cells(quotient),
+           pointer_offset(quotient) + signed32(index),
+           pointer_offset(quotient) + signed32(sx) - 2)
+           + unsigned64(qh)
+               * int_power(
+                   radix,
+                   signed32(sx) - 2 - signed32(index)))
+          * value(y, 2)
+          * int_power(radix, signed32(index))
+          + value(x, signed32(index))
+          + int_power(radix, signed32(index))
+              * (unsigned64(rl) + radix * unsigned64(rh))
+      AND remainder_bound(rl, rh, dl, dh)
+
+  final_division_result(
+      x, y, quotient, remainder: ptr,
+      sx: word32,
+      qh: word64): bool =
+    value(x, signed32(sx))
+      =
+    (value(quotient, signed32(sx) - 2)
+       + int_power(radix, signed32(sx) - 2) * unsigned64(qh))
+      * value(y, 2)
+      + value(remainder, 2)
+      AND value(remainder, 2) < value(y, 2)
+      AND 0 <= unsigned64(qh)
+      AND unsigned64(qh) <= 1
+
+  final_low_update(
+      x, y, q1, x1: ptr,
+      sx: word32,
+      qh, low: word64): bool =
+    FORALL (x2: ptr):
+      same_metadata(x2, x1)
+        IMPLIES
+          cells(x2)
+            =
+          update_cells(
+            cells(x1),
+            pointer_offset(x2),
+            low)
+        IMPLIES final_division_result(x, y, q1, x2, sx, qh)
+
+  final_high_update(
+      x, y, q1: ptr,
+      sx: word32,
+      qh, low, high: word64): bool =
+    FORALL (x1: ptr):
+      same_metadata(x1, x)
+        IMPLIES
+          single_update(
+            x1, x,
+            pointer_offset(x1) + 1,
+            high)
+        IMPLIES
+          access(x1, pointer_offset(x1))
+            AND is_writable(x1) = TRUE
+            AND final_low_update(x, y, q1, x1, sx, qh, low)
+
+  final_branch(
+      x, y, q1: ptr,
+      sx: word32,
+      qh, low, high: word64): bool =
+    access(x, pointer_offset(x) + 1)
+      AND is_writable(x) = TRUE
+      AND final_high_update(x, y, q1, sx, qh, low, high)
+
+  updated_quotient_state(
+      x, y, q1, shifted_x: ptr,
+      sx, current_index, next_index: word32,
+      qh, next_low, next_high,
+      dl, dh, quotient_digit: word64): bool =
+    FORALL (q2: ptr):
+      same_metadata(q2, q1)
+        IMPLIES
+          single_update(
+            q2, q1,
+            pointer_offset(q2) + signed32(next_index),
+            quotient_digit)
+        IMPLIES
+          signed32(next_index) < signed32(current_index)
+            AND
+              division_invariant(
+                x, y, q2, shifted_x,
+                sx, next_index,
+                qh, next_low, next_high, dl, dh)
+
+  next_index_obligation(
+      x, y, q1, shifted_x: ptr,
+      sx, current_index: word32,
+      qh, next_low, next_high,
+      dl, dh, quotient_digit: word64): bool =
+    FORALL (next_index: word32):
+      signed32(next_index) = signed32(current_index) - 1
+        IMPLIES
+          access(
+            q1,
+            pointer_offset(q1) + signed32(next_index))
+            AND is_writable(q1) = TRUE
+            AND
+              updated_quotient_state(
+                x, y, q1, shifted_x,
+                sx, current_index, next_index,
+                qh, next_low, next_high,
+                dl, dh, quotient_digit)
+
+  quotient_digit_obligation(
+      x, y, q1, shifted_x: ptr,
+      sx, current_index: word32,
+      qh, current_low, current_high,
+      dl, dh, quotient_digit,
+      next_low, next_high: word64): bool =
+    unsigned64(quotient_digit) * unsigned64(dl)
+        + radix * unsigned64(quotient_digit) * unsigned64(dh)
+        + unsigned64(next_low)
+        + radix * unsigned64(next_high)
+      =
+    unsigned64(cells(shifted_x)(pointer_offset(shifted_x)))
+      + radix * unsigned64(current_low)
+      + radix * radix * unsigned64(current_high)
+      AND 0 <= unsigned64(next_low) + radix * unsigned64(next_high)
+      AND
+        unsigned64(next_low) + radix * unsigned64(next_high)
+          < unsigned64(dl) + radix * unsigned64(dh)
+      IMPLIES
+        int32_in_bounds(signed32(current_index) - 1)
+          AND
+            next_index_obligation(
+              x, y, q1, shifted_x,
+              sx, current_index,
+              qh, next_low, next_high,
+              dl, dh, quotient_digit)
+
+  shifted_input_obligation(
+      x, y, q1, current_x, shifted_x: ptr,
+      sx, current_index: word32,
+      qh, current_low, current_high,
+      dl, dh, reciprocal_word: word64): bool =
+    access(shifted_x, pointer_offset(shifted_x))
+      AND
+        (half_radix <= unsigned64(dh)
+          AND reciprocal_3by2(reciprocal_word, dh, dl)
+          AND remainder_bound(current_low, current_high, dl, dh))
+      AND
+        (FORALL (quotient_digit, next_low, next_high: word64):
+          quotient_digit_obligation(
+            x, y, q1, shifted_x,
+            sx, current_index,
+            qh, current_low, current_high,
+            dl, dh, quotient_digit,
+            next_low, next_high))
+
+  positive_branch(
+      x, y, q1, current_x: ptr,
+      sx, current_index: word32,
+      qh, current_low, current_high,
+      dl, dh, reciprocal_word: word64): bool =
+    access_closed(
+      current_x,
+      pointer_offset(current_x) - 1)
+      AND
+        (FORALL (shifted_x: ptr):
+          shifted_same_storage(shifted_x, current_x, -1)
+            IMPLIES
+              shifted_input_obligation(
+                x, y, q1, current_x, shifted_x,
+                sx, current_index,
+                qh, current_low, current_high,
+                dl, dh, reciprocal_word))
+
+  loop_iteration(
+      x, y, q1, current_x: ptr,
+      sx, current_index: word32,
+      qh, current_low, current_high,
+      dl, dh, reciprocal_word: word64): bool =
+    IF 0 < signed32(current_index) THEN
+      positive_branch(
+        x, y, q1, current_x,
+        sx, current_index,
+        qh, current_low, current_high,
+        dl, dh, reciprocal_word)
+    ELSE
+      final_branch(
+        x, y, q1,
+        sx, qh, current_low, current_high)
+    ENDIF
+
+  loop_obligation(
+      x, y, q: ptr,
+      sx: word32,
+      qh, dl, dh, reciprocal_word: word64): bool =
+    FORALL
+      (current_index: word32),
+      (current_low, current_high: word64),
+      (current_x, q1: ptr):
+      same_metadata(q1, q)
+        IMPLIES
+          division_invariant(
+            x, y, q1, current_x,
+            sx, current_index,
+            qh, current_low, current_high, dl, dh)
+        IMPLIES
+          loop_iteration(
+            x, y, q1, current_x,
+            sx, current_index,
+            qh, current_low, current_high,
+            dl, dh, reciprocal_word)
+
+  reciprocal_obligation(
+      x, y, q, shifted_x: ptr,
+      sx, initial_index: word32,
+      dl, dh, high, low,
+      reciprocal_word: word64): bool =
+    initial_adjust_obligation(dh, dl, high, low)
+      AND
+        (FORALL (rh, rl, qh: word64):
+          initial_remainder_state(rh, rl, qh, dh, dl, high, low)
+            IMPLIES
+              division_invariant(
+                x, y, q, shifted_x,
+                sx, initial_index,
+                qh, rl, rh, dl, dh)
+                AND
+                  loop_obligation(
+                    x, y, q, sx,
+                    qh, dl, dh, reciprocal_word))
+
+  initial_index_state(
+      x, y, q, shifted_x: ptr,
+      sx, initial_index: word32,
+      dl, dh, high, low: word64): bool =
+    half_radix <= unsigned64(dh)
+      AND
+        (FORALL (reciprocal_word: word64):
+          reciprocal_3by2(reciprocal_word, dh, dl)
+            IMPLIES
+              reciprocal_obligation(
+                x, y, q, shifted_x,
+                sx, initial_index,
+                dl, dh, high, low,
+                reciprocal_word))
+
+  loaded_low_limb(
+      x, y, q, shifted_x: ptr,
+      sx: word32,
+      dl, dh, high, low: word64): bool =
+    int32_in_bounds(signed32(sx) - 2)
+      AND
+        (FORALL (initial_index: word32):
+          signed32(initial_index) = signed32(sx) - 2
+            IMPLIES
+              initial_index_state(
+                x, y, q, shifted_x,
+                sx, initial_index,
+                dl, dh, high, low))
+
+  loaded_high_limb(
+      x, y, q, shifted_x: ptr,
+      sx: word32,
+      dl, dh, high: word64): bool =
+    access(shifted_x, pointer_offset(shifted_x))
+      AND
+        loaded_low_limb(
+          x, y, q, shifted_x,
+          sx, dl, dh, high,
+          cells(shifted_x)(pointer_offset(shifted_x)))
+
+  loaded_divisor_low(
+      x, y, q, shifted_x: ptr,
+      sx: word32,
+      dl, dh: word64): bool =
+    access(shifted_x, pointer_offset(shifted_x) + 1)
+      AND
+        loaded_high_limb(
+          x, y, q, shifted_x,
+          sx, dl, dh,
+          cells(shifted_x)(pointer_offset(shifted_x) + 1))
+
+  loaded_divisor_high(
+      x, y, q, shifted_x: ptr,
+      sx: word32,
+      dh: word64): bool =
+    access(y, pointer_offset(y))
+      AND
+        loaded_divisor_low(
+          x, y, q, shifted_x,
+          sx,
+          cells(y)(pointer_offset(y)),
+          dh)
+
+  shifted_pointer_obligation(
+      x, y, q, shifted_x: ptr,
+      sx: word32): bool =
+    access(y, pointer_offset(y) + 1)
+      AND
+        loaded_divisor_high(
+          x, y, q, shifted_x,
+          sx,
+          cells(y)(pointer_offset(y) + 1))
+
+  initial_offset_obligation(
+      x, y, q: ptr,
+      sx: word32): bool =
+    FORALL (initial_offset: word32):
+      signed32(initial_offset) = signed32(sx) - 2
+        IMPLIES
+          access_closed(
+            x,
+            pointer_offset(x) + signed32(initial_offset))
+            AND
+              (FORALL (shifted_x: ptr):
+                shifted_same_storage(
+                  shifted_x, x, signed32(initial_offset))
+                  IMPLIES
+                    shifted_pointer_obligation(
+                      x, y, q, shifted_x, sx))
+
+  wmpn_divrem_2_vc: bool =
+    FORALL (sx: word32), (x, y, q: ptr):
+      2 <= signed32(sx)
+        IMPLIES
+          valid(x, signed32(sx))
+        IMPLIES
+          valid(y, 2)
+        IMPLIES
+          valid(q, signed32(sx) - 2)
+        IMPLIES
+          half_radix
+            <= unsigned64(cells(y)(pointer_offset(y) + 1))
+        IMPLIES
+          is_writable(q) = TRUE
+        IMPLIES
+          is_writable(x) = TRUE
+        IMPLIES
+          int32_in_bounds(signed32(sx) - 2)
+            AND initial_offset_obligation(x, y, q, sx)
+
+END div_Div_wmpn_divrem_2qtvc

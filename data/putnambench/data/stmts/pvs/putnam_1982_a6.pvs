@@ -1,0 +1,75 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1982_a6:
+% whether a positive-integer permutation preserves the limit of a real series
+% under strict magnitude decrease and vanishing weighted displacement. This
+% file contains no proof.
+
+putnam_1982_a6: THEORY
+BEGIN
+  natural_sequence: TYPE = [nat -> nat]
+  real_sequence: TYPE = [nat -> real]
+
+  positive_integer_bijection(b: natural_sequence): bool =
+    (FORALL (n: nat):
+      n >= 1 IMPLIES b(n) >= 1)
+      AND (FORALL (i, j: nat):
+        (i >= 1 AND j >= 1 AND b(i) = b(j))
+          IMPLIES i = j)
+      AND (FORALL (value: nat):
+        value >= 1 IMPLIES
+          EXISTS (index: nat):
+            index >= 1 AND b(index) = value)
+
+  strictly_decreasing_magnitudes(x: real_sequence): bool =
+    FORALL (i, j: nat):
+      (i >= 1 AND i < j) IMPLIES
+        abs(x(j)) < abs(x(i))
+
+  partial_sum(x: real_sequence, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      partial_sum(x, count - 1) + x(count)
+    ENDIF
+  MEASURE count
+
+  permuted_partial_sum(
+      b: natural_sequence,
+      x: real_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      permuted_partial_sum(b, x, count - 1) + x(b(count))
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  weighted_displacement(
+      b: natural_sequence,
+      x: real_sequence): real_sequence =
+    LAMBDA (index: nat):
+      abs((b(index) :: real) - (index :: real)) * abs(x(index))
+
+  putnam_1982_a6_solution: bool = FALSE
+
+  putnam_1982_a6: bool =
+    (FORALL (b: natural_sequence), (x: real_sequence):
+      (positive_integer_bijection(b)
+        AND strictly_decreasing_magnitudes(x)
+        AND converges_to(weighted_displacement(b, x), 0)
+        AND converges_to(
+          LAMBDA (count: nat): partial_sum(x, count),
+          1))
+      IMPLIES
+        converges_to(
+          LAMBDA (count: nat):
+            permuted_partial_sum(b, x, count),
+          1))
+      IFF putnam_1982_a6_solution
+END putnam_1982_a6

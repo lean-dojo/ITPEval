@@ -1,0 +1,313 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/verifythis_2019_ghc_sort_Top_cutpointsqtvc: the verification condition
+% for constructing increasing cutpoints that delimit monotonic segments of a
+% nonempty integer sequence. This file contains no proof.
+
+verifythis_2019_ghc_sort_Top_cutpointsqtvc: THEORY
+BEGIN
+
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  nth_default(values: list[int], index: nat): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          nth_default(tail, index - 1)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  list_reverse(values: list[int]): RECURSIVE list[int] =
+    CASES values OF
+      null:
+        null,
+      cons(head, tail):
+        append(list_reverse(tail), cons(head, null))
+    ENDCASES
+  MEASURE values BY <<
+
+  list_member(value: int, values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        FALSE,
+      cons(head, tail):
+        head = value OR list_member(value, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  % The Why3 record is uniquely determined by its list field because its
+  % invariant fixes the ghost sequence to the reverse of that list.
+  list_seq: TYPE = list[int]
+
+  list_of(self: list_seq): list[int] =
+    self
+
+  seq_of(self: list_seq): list[int] =
+    list_reverse(self)
+
+  nil_seq: list_seq =
+    null
+
+  eqb(left, right: bool): bool =
+    ((NOT left) OR right) AND ((NOT right) OR left)
+
+  first_value(values: list[int]): int =
+    nth_default(values, 0)
+
+  last_value(values: list[int]): int =
+    nth_default(values, int_to_nat(length(values) - 1))
+
+  array_value(values: list[int], index: int): int =
+    nth_default(values, int_to_nat(index))
+
+  within_bounds(values: list[int], upper: int): bool =
+    FORALL (value: int):
+      list_member(value, values)
+        IMPLIES (0 <= value AND value <= upper)
+
+  monotonic_segment(
+      values: list[int],
+      lower, upper: int): bool =
+    (FORALL (z1, z2: int):
+      (lower <= z1 AND z1 < z2 AND z2 < upper)
+        IMPLIES array_value(values, z1) < array_value(values, z2))
+      OR
+    (FORALL (z1, z2: int):
+      (lower <= z1 AND z1 < z2 AND z2 < upper)
+        IMPLIES array_value(values, z2) <= array_value(values, z1))
+
+  all_segments_monotonic(
+      values, cut_sequence: list[int]): bool =
+    FORALL (k: int):
+      (0 <= k AND k < length(cut_sequence) - 1)
+        IMPLIES
+          monotonic_segment(
+            values,
+            nth_default(cut_sequence, int_to_nat(k)),
+            nth_default(cut_sequence, int_to_nat(k + 1)))
+
+  cut_sequence_nondecreasing(cut_sequence: list[int]): bool =
+    FORALL (i, j: int):
+      (0 <= i AND i < j AND j < length(cut_sequence))
+        IMPLIES
+          nth_default(cut_sequence, int_to_nat(i))
+            <= nth_default(cut_sequence, int_to_nat(j))
+
+  initial_cutpoint_state(
+      values: list[int],
+      n: int,
+      initial: list_seq): bool =
+    1 = 0 + 1
+      AND (0 < 1 AND 1 <= n + 1)
+      AND 0 < length(seq_of(initial))
+      AND first_value(seq_of(initial)) = 0
+      AND last_value(seq_of(initial)) = 0
+      AND within_bounds(list_of(initial), n)
+      AND all_segments_monotonic(values, seq_of(initial))
+      AND cut_sequence_nondecreasing(seq_of(initial))
+
+  loop_cutpoint_state(
+      values: list[int],
+      n: int,
+      cut: list_seq): bool =
+    (0 < last_value(seq_of(cut)) + 1
+      AND last_value(seq_of(cut)) + 1 <= n + 1)
+      AND 0 < length(seq_of(cut))
+      AND first_value(seq_of(cut)) = 0
+      AND within_bounds(list_of(cut), n)
+      AND all_segments_monotonic(values, seq_of(cut))
+      AND cut_sequence_nondecreasing(seq_of(cut))
+
+  final_cutpoint_state(
+      values: list[int],
+      cut: list_seq): bool =
+    first_value(seq_of(cut)) = 0
+      AND last_value(seq_of(cut)) = length(values)
+      AND 2 <= length(list_of(cut))
+      AND within_bounds(list_of(cut), length(values))
+      AND all_segments_monotonic(values, seq_of(cut))
+      AND cut_sequence_nondecreasing(seq_of(cut))
+
+  current_index_safety(
+      values: list[int],
+      cut: list_seq): bool =
+    (0 <= last_value(seq_of(cut)) + 1
+      AND last_value(seq_of(cut)) + 1 < length(values))
+      AND
+    (0 <= last_value(seq_of(cut))
+      AND last_value(seq_of(cut)) < length(values))
+
+  one_step_segment(
+      values: list[int],
+      n: int,
+      cut: list_seq): bool =
+    (last_value(seq_of(cut)) + 1
+        <= last_value(seq_of(cut)) + 1
+      AND last_value(seq_of(cut)) + 1 <= n)
+      AND
+    monotonic_segment(
+      values,
+      last_value(seq_of(cut)),
+      last_value(seq_of(cut)) + 1)
+
+  y_index_safety(values: list[int], y: int): bool =
+    (0 <= y AND y < length(values))
+      AND
+    (LET previous: int = y - 1
+     IN 0 <= previous AND previous < length(values))
+
+  direction_at(
+      values: list[int],
+      left, right: int): bool =
+    IF array_value(values, left) < array_value(values, right)
+    THEN TRUE
+    ELSE FALSE
+    ENDIF
+
+  direction_result_premise(
+      values: list[int],
+      n: int,
+      cut: list_seq,
+      y: int,
+      result: bool): bool =
+    IF y < n THEN
+      LET current_direction: bool =
+            direction_at(values, y - 1, y),
+          segment_direction: bool =
+            direction_at(
+              values,
+              last_value(seq_of(cut)),
+              last_value(seq_of(cut)) + 1)
+      IN
+        result = eqb(current_direction, segment_direction)
+          AND
+        ((result = TRUE)
+          <=> (current_direction = segment_direction))
+    ELSE
+      result = FALSE
+    ENDIF
+
+  same_segment_step(
+      values: list[int],
+      n: int,
+      cut: list_seq,
+      y: int): bool =
+    (0 <= n - y AND n - (y + 1) < n - y)
+      AND
+    (last_value(seq_of(cut)) + 1 <= y + 1
+      AND y + 1 <= n)
+      AND
+    monotonic_segment(
+      values,
+      last_value(seq_of(cut)),
+      y + 1)
+
+  extended_cutpoint_state(
+      values: list[int],
+      n: int,
+      cut, extended: list_seq,
+      y: int): bool =
+    (0 <= n - (last_value(seq_of(cut)) + 1)
+      AND
+      n - (y + 1)
+        < n - (last_value(seq_of(cut)) + 1))
+      AND
+    (0 < y + 1 AND y + 1 <= n + 1)
+      AND 0 < length(seq_of(extended))
+      AND first_value(seq_of(extended)) = 0
+      AND last_value(seq_of(extended)) = y
+      AND within_bounds(list_of(extended), n)
+      AND all_segments_monotonic(values, seq_of(extended))
+      AND cut_sequence_nondecreasing(seq_of(extended))
+
+  direction_result_conclusion(
+      values: list[int],
+      n: int,
+      cut: list_seq,
+      y: int,
+      result: bool): bool =
+    IF result = TRUE THEN
+      same_segment_step(values, n, cut, y)
+    ELSE
+      FORALL (extended: list_seq):
+        list_of(extended) = cons(y, list_of(cut))
+          IMPLIES
+            extended_cutpoint_state(
+              values, n, cut, extended, y)
+    ENDIF
+
+  inner_loop_obligation(
+      values: list[int],
+      n: int,
+      cut: list_seq,
+      y: int): bool =
+    (((last_value(seq_of(cut)) + 1 <= y AND y <= n)
+        AND
+      monotonic_segment(
+        values,
+        last_value(seq_of(cut)),
+        y))
+      IMPLIES
+        ((y < n IMPLIES y_index_safety(values, y))
+          AND
+        (FORALL (result: bool):
+          direction_result_premise(
+            values, n, cut, y, result)
+            IMPLIES
+              direction_result_conclusion(
+                values, n, cut, y, result))))
+
+  continue_outer_loop(
+      values: list[int],
+      n: int,
+      cut: list_seq): bool =
+    current_index_safety(values, cut)
+      AND one_step_segment(values, n, cut)
+      AND
+    (FORALL (y: int):
+      inner_loop_obligation(values, n, cut, y))
+
+  finish_outer_loop(
+      values: list[int],
+      n: int,
+      cut: list_seq): bool =
+    IF last_value(seq_of(cut)) < n THEN
+      FORALL (extended: list_seq):
+        list_of(extended) = cons(n, list_of(cut))
+          IMPLIES final_cutpoint_state(values, extended)
+    ELSE
+      final_cutpoint_state(values, cut)
+    ENDIF
+
+  outer_loop_obligation(
+      values: list[int],
+      n: int,
+      cut: list_seq): bool =
+    loop_cutpoint_state(values, n, cut)
+      IMPLIES
+        IF last_value(seq_of(cut)) + 1 < n THEN
+          continue_outer_loop(values, n, cut)
+        ELSE
+          finish_outer_loop(values, n, cut)
+        ENDIF
+
+  cutpoints_vc: bool =
+    FORALL (values: list[int]):
+      0 < length(values)
+        IMPLIES
+          (LET n: int = length(values)
+           IN
+             FORALL (initial: list_seq):
+               list_of(initial) = cons(0, list_of(nil_seq))
+                 IMPLIES
+                   (initial_cutpoint_state(values, n, initial)
+                     AND
+                   (FORALL (cut: list_seq):
+                     outer_loop_obligation(values, n, cut))))
+
+END verifythis_2019_ghc_sort_Top_cutpointsqtvc

@@ -1,0 +1,68 @@
+% Statement-only formalization of "Sum of kth Powers" from Hundred Theorems
+% artifact 077 (hundred-theorems__pvs__077): Faulhaber's formula expresses
+% inclusive sums of natural-number powers using Bernoulli polynomials. This
+% file contains no proof.
+
+sum_of_kth_powers_077: THEORY
+BEGIN
+  binomial_coefficient(n, k: nat): RECURSIVE nat =
+    IF k = 0 THEN
+      1
+    ELSIF n = 0 THEN
+      0
+    ELSE
+      binomial_coefficient(n - 1, k - 1)
+        + binomial_coefficient(n - 1, k)
+    ENDIF
+  MEASURE n
+
+  real_prefix_sum(values: [nat -> real], count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      real_prefix_sum(values, count - 1) + values(count - 1)
+    ENDIF
+  MEASURE count
+
+  bernoulli_recurrence(bernoulli: [nat -> real]): bool =
+    bernoulli(0) = 1
+      AND (FORALL (r: nat):
+        bernoulli(r + 1)
+          = - real_prefix_sum(
+              (LAMBDA (j: nat):
+                (binomial_coefficient(r + 2, j) :: real)
+                  * bernoulli(j)),
+              r + 1)
+            / ((r + 2) :: real))
+
+  bernoulli_polynomial_spec(
+      bernoulli: [nat -> real],
+      bernoulli_polynomial: [nat, real -> real]): bool =
+    FORALL (r: nat), (x: real):
+      bernoulli_polynomial(r, x)
+        = real_prefix_sum(
+            (LAMBDA (k: nat):
+              IF k <= r THEN
+                (binomial_coefficient(r, k) :: real)
+                  * bernoulli(k)
+                  * x ^ (r - k)
+              ELSE
+                0
+              ENDIF),
+            r + 1)
+
+  sum_of_kth_powers: bool =
+    FORALL (bernoulli: [nat -> real]),
+           (bernoulli_polynomial: [nat, real -> real]):
+      (bernoulli_recurrence(bernoulli)
+        AND bernoulli_polynomial_spec(
+          bernoulli, bernoulli_polynomial))
+      IMPLIES
+        (FORALL (m, n: nat):
+          real_prefix_sum(
+            (LAMBDA (k: nat): (k :: real) ^ m),
+            n + 1)
+            = (bernoulli_polynomial(m + 1, (n :: real) + 1)
+                - bernoulli_polynomial(m + 1, 0))
+              / ((m + 1) :: real))
+END sum_of_kth_powers_077

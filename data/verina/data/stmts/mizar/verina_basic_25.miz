@@ -1,0 +1,188 @@
+:: Statement-only formalization of the VERINA corpus artifact
+:: verina_basic_25, catalog title "sumAndAverage": the source program sums
+:: zero through n and computes the average with Lean's IEEE-754 binary64
+:: Nat.toFloat and division operations. Float values are represented by their
+:: 64-bit encodings, so NaNs, infinities, and the two signed zeros remain
+:: distinguishable. This file contains no proof.
+
+environ
+  vocabularies TARSKI, XBOOLE_0, ZFMISC_1, SUBSET_1, RELAT_1, FUNCT_1,
+    PARTFUN1, FUNCT_2, NUMBERS, NAT_1, INT_1, INT_2, CARD_1, ARYTM_1,
+    ARYTM_3, ORDINAL1, ORDINAL4, XCMPLX_0, XREAL_0, REAL_1, XXREAL_0,
+    COMPLEX1, POWER, NEWTON, PREPOWER, ABIAN, MCART_1, XTUPLE_0,
+    VALUED_0, VALUED_1, MARGREL1, XBOOLEAN;
+  notations TARSKI, XBOOLE_0, ZFMISC_1, SUBSET_1, XTUPLE_0, MCART_1,
+    RELAT_1, FUNCT_1, PARTFUN1, ORDINAL1, CARD_1, NUMBERS, XCMPLX_0,
+    XREAL_0, REAL_1, COMPLEX1, XXREAL_0, INT_1, INT_2, RELSET_1,
+    FUNCT_2, NAT_1, NAT_D, NEWTON, PREPOWER, POWER, ABIAN, VALUED_0,
+    VALUED_1, XBOOLEAN, MARGREL1;
+  constructors RELAT_1, RELSET_1, FUNCT_1, PARTFUN1, FUNCT_2, CARD_1,
+    NUMBERS, REAL_1, COMPLEX1, NAT_1, NAT_D, INT_1, INT_2, XXREAL_0,
+    NEWTON, PREPOWER, POWER, ABIAN, XTUPLE_0, MCART_1, VALUED_1,
+    BINOP_2, XBOOLEAN, MARGREL1;
+  registrations XBOOLE_0, SUBSET_1, RELAT_1, RELSET_1, FUNCT_1,
+    PARTFUN1, FUNCT_2, ORDINAL1, CARD_1, NUMBERS, NAT_1, INT_1,
+    XCMPLX_0, XREAL_0, XXREAL_0, COMPLEX1, NEWTON, PREPOWER, POWER,
+    ABIAN, XTUPLE_0, MEMBERED, VALUED_0, VALUED_1, XBOOLEAN,
+    MARGREL1;
+  requirements REAL, NUMERALS, SUBSET, BOOLE, ARITHM;
+  equalities XCMPLX_0, VALUED_1, SUBSET_1, XBOOLEAN;
+
+begin
+
+::$P-
+theorem
+  for n being Nat,
+      output being Element of [:INT,NAT:],
+      prefixSum,natLog2,natToFloat,exponentField,fractionField being
+        Function of NAT,NAT,
+      binary64Value being Function of NAT,REAL,
+      roundBinary64 being Function of REAL,NAT,
+      scaleBinary64,floatDiv being Function of [:NAT,NAT:],NAT,
+      floatBEq being Function of [:NAT,NAT:],BOOLEAN,
+      sum,averageBits being Nat,
+      resultSum being Integer st
+    0 < n & n < 2 |^ 53 &
+
+    :: The carrier is the set of binary64 bit patterns. These two projections
+    :: decode the fraction and biased-exponent fields.
+    (for bits being Nat holds
+      fractionField/.bits = bits mod (2 |^ 52) &
+      exponentField/.bits = (bits div (2 |^ 52)) mod 2048) &
+
+    :: Exact real decoding of every finite, nonnegative binary64 pattern.
+    (for bits being Nat st
+      bits < 2 |^ 63 & exponentField/.bits < 2047
+    holds
+      (exponentField/.bits = 0 &
+        binary64Value/.bits =
+          (fractionField/.bits qua Real) /
+            ((2 |^ 1074) qua Real)) or
+      (0 < exponentField/.bits & exponentField/.bits <= 1075 &
+        binary64Value/.bits =
+          ((2 |^ 52 + fractionField/.bits) qua Real) /
+            ((2 |^ (1075 -' exponentField/.bits)) qua Real)) or
+      (1075 < exponentField/.bits &
+        binary64Value/.bits =
+          ((2 |^ 52 + fractionField/.bits) qua Real) *
+            ((2 |^ (exponentField/.bits -' 1075)) qua Real))) &
+
+    :: Round a reachable nonnegative real to the nearest finite binary64
+    :: pattern; a distance tie selects an even low significand bit.
+    (for x being Real st
+      0 <= x & x < ((2 |^ 106) qua Real)
+    holds
+      roundBinary64/.x < 2 |^ 63 &
+      exponentField/.(roundBinary64/.x) < 2047 &
+      (for candidate being Nat st
+        candidate < 2 |^ 63 & exponentField/.candidate < 2047
+      holds
+        |.x - binary64Value/.(roundBinary64/.x).| <=
+          |.x - binary64Value/.candidate.|) &
+      (for candidate being Nat st
+        candidate < 2 |^ 63 &
+        exponentField/.candidate < 2047 &
+        candidate <> roundBinary64/.x &
+        |.x - binary64Value/.(roundBinary64/.x).| =
+          |.x - binary64Value/.candidate.| &
+        candidate mod 2 = 0
+      holds
+        (roundBinary64/.x) mod 2 = 0)) &
+
+    :: This is the graph of Lean's Nat.log2.
+    (for value being Nat holds
+      (value < 2 & natLog2/.value = 0) or
+      (2 <= value &
+        2 |^ (natLog2/.value) <= value &
+        value < 2 |^ (natLog2/.value + 1))) &
+
+    :: Float.scaleB is exact on the finite values reached by this program.
+    (for bits,shift being Nat st
+      bits < 2 |^ 63 &
+      exponentField/.bits < 2047 &
+      shift <= 42 &
+      binary64Value/.bits * ((2 |^ shift) qua Real) <
+        ((2 |^ 1024) qua Real)
+    holds
+      scaleBinary64/.[bits,shift] < 2 |^ 63 &
+      exponentField/.(scaleBinary64/.[bits,shift]) < 2047 &
+      binary64Value/.(scaleBinary64/.[bits,shift]) =
+        binary64Value/.bits * ((2 |^ shift) qua Real)) &
+
+    :: Lean Nat.toFloat keeps the top 64 bits, converts that UInt64 with
+    :: nearest-even rounding, and then scales by the discarded bit count.
+    (for value being Nat st value < 2 |^ 106 holds
+      ex shift,mantissa,mantissaBits being Nat st
+        shift = natLog2/.value -' 63 &
+        shift <= 42 &
+        mantissa = value div (2 |^ shift) &
+        mantissa < 2 |^ 64 &
+        mantissaBits = roundBinary64/.(mantissa qua Real) &
+        natToFloat/.value =
+          scaleBinary64/.[mantissaBits,shift] &
+        natToFloat/.value < 2 |^ 63 &
+        exponentField/.(natToFloat/.value) < 2047) &
+
+    :: Division of the positive finite operands reached here is exact real
+    :: division followed by one nearest-even binary64 rounding step.
+    (for numBits,denBits being Nat st
+      numBits < 2 |^ 63 &
+      denBits < 2 |^ 63 &
+      exponentField/.numBits < 2047 &
+      exponentField/.denBits < 2047 &
+      0 < binary64Value/.denBits &
+      binary64Value/.numBits / binary64Value/.denBits <
+        ((2 |^ 106) qua Real)
+    holds
+      floatDiv/.[numBits,denBits] =
+        roundBinary64/.
+          (binary64Value/.numBits / binary64Value/.denBits)) &
+
+    :: Lean Float BEq rejects NaNs, identifies the two signed zeros, and
+    :: otherwise compares the full binary64 encodings.
+    (for left,right being Nat st
+      left < 2 |^ 64 & right < 2 |^ 64
+    holds
+      (floatBEq/.[left,right] = TRUE iff
+        not (exponentField/.left = 2047 &
+          fractionField/.left <> 0) &
+        not (exponentField/.right = 2047 &
+          fractionField/.right <> 0) &
+        (left = right or
+          (exponentField/.left = 0 &
+           fractionField/.left = 0 &
+           exponentField/.right = 0 &
+           fractionField/.right = 0)))) &
+
+    :: List.range (n + 1) contains exactly 0 through n.
+    prefixSum/.0 = 0 &
+    (for k being Nat holds
+      prefixSum/.(k + 1) = prefixSum/.k + k) &
+
+    :: Executable source branch and returned Int x Float pair.
+    ((n <= 0 &
+        resultSum = 0 &
+        averageBits = 0) or
+     (not n <= 0 &
+        sum = prefixSum/.(n + 1) &
+        sum < 2 |^ 106 &
+        resultSum = sum &
+        averageBits =
+          floatDiv/.
+            [natToFloat/.sum,natToFloat/.n])) &
+    averageBits < 2 |^ 64 &
+    output = [resultSum,averageBits]
+  holds
+    (n = 0 implies
+      resultSum = 0 &
+      floatBEq/.[averageBits,0] = TRUE) &
+    (0 < n implies
+      resultSum = (n * (n + 1)) div 2 &
+      floatBEq/.
+        [averageBits,
+         floatDiv/.
+           [natToFloat/.((n * (n + 1)) div 2),
+            natToFloat/.n]] = TRUE)
+proof
+end;
+::$P+

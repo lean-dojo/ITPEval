@@ -1,0 +1,97 @@
+% Statement-only formalization of the Thousand Theorems corpus artifact Q3527230,
+% "Von Staudt–Clausen theorem": each even Bernoulli number plus the sum of
+% reciprocals of primes p with p - 1 dividing its index is an integer.
+% This file contains no proof.
+
+Q3527230_von_staudt_clausen_theorem: THEORY
+BEGIN
+
+  nat_divides(divisor, value: nat): bool =
+    EXISTS (quotient: nat):
+      value = divisor * quotient
+
+  prime_nat(value: nat): bool =
+    value >= 2
+      AND FORALL (divisor: nat):
+        nat_divides(divisor, value)
+          IMPLIES divisor = 1 OR divisor = value
+
+  binomial(n, k: nat): RECURSIVE nat =
+    IF k = 0 THEN
+      1
+    ELSIF n = 0 THEN
+      0
+    ELSE
+      binomial(n - 1, k - 1) + binomial(n - 1, k)
+    ENDIF
+  MEASURE n
+
+  safe_rat_div_nat(numerator: rat, denominator: nat): rat =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / (denominator :: rat)
+    ENDIF
+
+  bernoulli_recurrence_sum(
+      values: [nat -> rat],
+      n, count: nat): RECURSIVE rat =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        bernoulli_recurrence_sum(values, n, count - 1)
+          + safe_rat_div_nat(
+              binomial(n, index) :: rat,
+              n - index + 1)
+            * values(index)
+    ENDIF
+  MEASURE count
+
+  is_positive_bernoulli_sequence(values: [nat -> rat]): bool =
+    FORALL (n: nat):
+      values(n) =
+        1 - bernoulli_recurrence_sum(values, n, n)
+
+  positive_bernoulli: [nat -> rat] =
+    epsilon(
+      LAMBDA (values: [nat -> rat]):
+        is_positive_bernoulli_sequence(values))
+
+  negative_one_power(n: nat): RECURSIVE rat =
+    IF n = 0 THEN
+      1
+    ELSE
+      -negative_one_power(n - 1)
+    ENDIF
+  MEASURE n
+
+  bernoulli(n: nat): rat =
+    negative_one_power(n) * positive_bernoulli(n)
+
+  reciprocal_nat(value: nat): rat =
+    safe_rat_div_nat(1, value)
+
+  von_staudt_prime_sum(k, count: nat): RECURSIVE rat =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET p: nat = count - 1 IN
+        von_staudt_prime_sum(k, count - 1)
+          + IF prime_nat(p)
+                AND nat_divides(p - 1, 2 * k) THEN
+              reciprocal_nat(p)
+            ELSE
+              0
+            ENDIF
+    ENDIF
+  MEASURE count
+
+  von_staudt_clausen: bool =
+    FORALL (k: nat):
+      EXISTS (integer_value: int):
+        bernoulli(2 * k)
+          + von_staudt_prime_sum(k, 2 * k + 2)
+          = (integer_value :: rat)
+
+END Q3527230_von_staudt_clausen_theorem

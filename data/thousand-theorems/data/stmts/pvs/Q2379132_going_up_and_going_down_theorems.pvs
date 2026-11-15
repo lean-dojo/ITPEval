@@ -1,0 +1,264 @@
+% Statement-only formalization of the thousand-theorems corpus artifact Q2379132
+% (thousand-theorems__pvs__Q2379132), "Going-up and going-down theorems".
+% It states the two indexed going-up results, the prime-spectrum
+% characterization of going-down, and the localized-spectrum surjectivity
+% criterion. This file contains no proof.
+
+Q2379132_going_up_and_going_down_theorems[
+  R, S: TYPE+,
+  zero_R, one_R: R,
+  neg_R: [R -> R],
+  add_R, mul_R: [R, R -> R],
+  zero_S, one_S: S,
+  neg_S: [S -> S],
+  add_S, mul_S: [S, S -> S],
+  algebra_map: [R -> S]
+]: THEORY
+BEGIN
+
+  ideal_R: TYPE = [R -> bool]
+  ideal_S: TYPE = [S -> bool]
+
+  commutative_ring_R: bool =
+    (FORALL (a, b, c: R):
+      add_R(add_R(a, b), c) = add_R(a, add_R(b, c)))
+      AND (FORALL (a, b: R):
+        add_R(a, b) = add_R(b, a))
+      AND (FORALL (a: R):
+        add_R(zero_R, a) = a
+          AND add_R(a, zero_R) = a)
+      AND (FORALL (a: R):
+        add_R(neg_R(a), a) = zero_R
+          AND add_R(a, neg_R(a)) = zero_R)
+      AND (FORALL (a, b, c: R):
+        mul_R(mul_R(a, b), c) = mul_R(a, mul_R(b, c)))
+      AND (FORALL (a, b: R):
+        mul_R(a, b) = mul_R(b, a))
+      AND (FORALL (a: R):
+        mul_R(one_R, a) = a
+          AND mul_R(a, one_R) = a)
+      AND (FORALL (a, b, c: R):
+        mul_R(a, add_R(b, c))
+          = add_R(mul_R(a, b), mul_R(a, c)))
+      AND (FORALL (a, b, c: R):
+        mul_R(add_R(a, b), c)
+          = add_R(mul_R(a, c), mul_R(b, c)))
+
+  commutative_ring_S: bool =
+    (FORALL (a, b, c: S):
+      add_S(add_S(a, b), c) = add_S(a, add_S(b, c)))
+      AND (FORALL (a, b: S):
+        add_S(a, b) = add_S(b, a))
+      AND (FORALL (a: S):
+        add_S(zero_S, a) = a
+          AND add_S(a, zero_S) = a)
+      AND (FORALL (a: S):
+        add_S(neg_S(a), a) = zero_S
+          AND add_S(a, neg_S(a)) = zero_S)
+      AND (FORALL (a, b, c: S):
+        mul_S(mul_S(a, b), c) = mul_S(a, mul_S(b, c)))
+      AND (FORALL (a, b: S):
+        mul_S(a, b) = mul_S(b, a))
+      AND (FORALL (a: S):
+        mul_S(one_S, a) = a
+          AND mul_S(a, one_S) = a)
+      AND (FORALL (a, b, c: S):
+        mul_S(a, add_S(b, c))
+          = add_S(mul_S(a, b), mul_S(a, c)))
+      AND (FORALL (a, b, c: S):
+        mul_S(add_S(a, b), c)
+          = add_S(mul_S(a, c), mul_S(b, c)))
+
+  ring_homomorphism: bool =
+    algebra_map(zero_R) = zero_S
+      AND algebra_map(one_R) = one_S
+      AND (FORALL (a, b: R):
+        algebra_map(add_R(a, b))
+          = add_S(algebra_map(a), algebra_map(b)))
+      AND (FORALL (a, b: R):
+        algebra_map(mul_R(a, b))
+          = mul_S(algebra_map(a), algebra_map(b)))
+
+  integral_domain_S: bool =
+    commutative_ring_S
+      AND one_S /= zero_S
+      AND (FORALL (a, b: S):
+        mul_S(a, b) = zero_S
+          IMPLIES a = zero_S OR b = zero_S)
+
+  polynomial_value(
+      coefficients: list[R],
+      x: S): RECURSIVE S =
+    CASES coefficients OF
+      null: zero_S,
+      cons(head, tail):
+        add_S(
+          algebra_map(head),
+          mul_S(x, polynomial_value(tail, x)))
+    ENDCASES
+  MEASURE coefficients BY <<
+
+  monic_coefficients(coefficients: list[R]): RECURSIVE bool =
+    CASES coefficients OF
+      null: FALSE,
+      cons(head, tail):
+        CASES tail OF
+          null: head = one_R,
+          cons(next, rest): monic_coefficients(tail)
+        ENDCASES
+    ENDCASES
+  MEASURE coefficients BY <<
+
+  integral_element(x: S): bool =
+    EXISTS (coefficients: list[R]):
+      monic_coefficients(coefficients)
+        AND polynomial_value(coefficients, x) = zero_S
+
+  integral_algebra: bool =
+    FORALL (x: S):
+      integral_element(x)
+
+  is_ideal_R(I: ideal_R): bool =
+    I(zero_R)
+      AND (FORALL (a, b: R):
+        I(a) AND I(b) IMPLIES I(add_R(a, b)))
+      AND (FORALL (a: R):
+        I(a) IMPLIES I(neg_R(a)))
+      AND (FORALL (a, b: R):
+        I(b) IMPLIES I(mul_R(a, b)))
+
+  is_ideal_S(I: ideal_S): bool =
+    I(zero_S)
+      AND (FORALL (a, b: S):
+        I(a) AND I(b) IMPLIES I(add_S(a, b)))
+      AND (FORALL (a: S):
+        I(a) IMPLIES I(neg_S(a)))
+      AND (FORALL (a, b: S):
+        I(b) IMPLIES I(mul_S(a, b)))
+
+  is_prime_R(P: ideal_R): bool =
+    is_ideal_R(P)
+      AND NOT P(one_R)
+      AND (FORALL (a, b: R):
+        P(mul_R(a, b)) IMPLIES P(a) OR P(b))
+
+  is_prime_S(Q: ideal_S): bool =
+    is_ideal_S(Q)
+      AND NOT Q(one_S)
+      AND (FORALL (a, b: S):
+        Q(mul_S(a, b)) IMPLIES Q(a) OR Q(b))
+
+  kernel_contained_in(P: ideal_R): bool =
+    FORALL (a: R):
+      algebra_map(a) = zero_S IMPLIES P(a)
+
+  contracts_to(Q: ideal_S, P: ideal_R): bool =
+    FORALL (a: R):
+      Q(algebra_map(a)) IFF P(a)
+
+  ideal_included_R(I, J: ideal_R): bool =
+    FORALL (a: R):
+      I(a) IMPLIES J(a)
+
+  ideal_included_S(I, J: ideal_S): bool =
+    FORALL (a: S):
+      I(a) IMPLIES J(a)
+
+  contraction_included_in_ideal(
+      Q: ideal_S,
+      P: ideal_R): bool =
+    FORALL (a: R):
+      Q(algebra_map(a)) IMPLIES P(a)
+
+  ideal_below_contraction(
+      P: ideal_R,
+      Q: ideal_S): bool =
+    FORALL (a: R):
+      P(a) IMPLIES Q(algebra_map(a))
+
+  has_going_down: bool =
+    FORALL (p, q: ideal_R):
+      is_prime_R(p)
+        AND is_prime_R(q)
+        AND ideal_included_R(p, q)
+        IMPLIES
+          FORALL (Q: ideal_S):
+            is_prime_S(Q)
+              AND contracts_to(Q, q)
+              IMPLIES
+                EXISTS (P: ideal_S):
+                  is_prime_S(P)
+                    AND ideal_included_S(P, Q)
+                    AND contracts_to(P, p)
+
+  generalizing_prime_spectrum_comap: bool =
+    FORALL (Q: ideal_S):
+      is_prime_S(Q)
+        IMPLIES
+          FORALL (p: ideal_R):
+            is_prime_R(p)
+              AND ideal_below_contraction(p, Q)
+              IMPLIES
+                EXISTS (P: ideal_S):
+                  is_prime_S(P)
+                    AND ideal_included_S(P, Q)
+                    AND contracts_to(P, p)
+
+  local_prime_spectrum_comap_surjective(Q: ideal_S): bool =
+    FORALL (p: ideal_R):
+      is_prime_R(p)
+        AND ideal_below_contraction(p, Q)
+        IMPLIES
+          EXISTS (P: ideal_S):
+            is_prime_S(P)
+              AND ideal_included_S(P, Q)
+              AND contracts_to(P, p)
+
+  exists_ideal_over_prime_of_isIntegral_of_isDomain: bool =
+    (commutative_ring_R
+      AND integral_domain_S
+      AND ring_homomorphism
+      AND integral_algebra)
+    IMPLIES
+      FORALL (P: ideal_R):
+        is_prime_R(P)
+          AND kernel_contained_in(P)
+          IMPLIES
+            EXISTS (Q: ideal_S):
+              is_prime_S(Q)
+                AND contracts_to(Q, P)
+
+  exists_ideal_over_prime_of_isIntegral_of_isPrime: bool =
+    (commutative_ring_R
+      AND commutative_ring_S
+      AND ring_homomorphism
+      AND integral_algebra)
+    IMPLIES
+      FORALL (P: ideal_R, I: ideal_S):
+        is_prime_R(P)
+          AND is_prime_S(I)
+          AND contraction_included_in_ideal(I, P)
+          IMPLIES
+            EXISTS (Q: ideal_S):
+              ideal_included_S(I, Q)
+                AND is_prime_S(Q)
+                AND contracts_to(Q, P)
+
+  has_going_down_iff_generalizing_prime_spectrum_comap: bool =
+    (commutative_ring_R
+      AND commutative_ring_S
+      AND ring_homomorphism)
+    IMPLIES
+      (has_going_down IFF generalizing_prime_spectrum_comap)
+
+  has_going_down_of_local_prime_spectrum_comap_surjective: bool =
+    (commutative_ring_R
+      AND commutative_ring_S
+      AND ring_homomorphism
+      AND
+        (FORALL (Q: ideal_S):
+          is_prime_S(Q)
+            IMPLIES local_prime_spectrum_comap_surjective(Q)))
+    IMPLIES has_going_down
+
+END Q2379132_going_up_and_going_down_theorems

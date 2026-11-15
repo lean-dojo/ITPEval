@@ -1,0 +1,449 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/flag2_Flag_dutch_flagqtvc: the Dutch-flag loop verification condition
+% for partitioning a three-color list while preserving occurrence counts.
+% This file contains no proof.
+
+flag2_Flag_dutch_flagqtvc: THEORY
+BEGIN
+
+  color: DATATYPE
+  BEGIN
+    Blue: Blue?
+    White: White?
+    Red: Red?
+  END color
+
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  nth_default(
+      values: list[color],
+      index: nat,
+      default_color: color): RECURSIVE color =
+    CASES values OF
+      null:
+        default_color,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          nth_default(tail, index - 1, default_color)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  list_contents(
+      values: list[color],
+      default_color: color): [int -> color] =
+    LAMBDA (index: int):
+      nth_default(values, int_to_nat(index), default_color)
+
+  monochrome(
+      values: [int -> color],
+      lower, upper: int,
+      selected_color: color): bool =
+    FORALL (index: int):
+      (lower <= index AND index < upper)
+        IMPLIES values(index) = selected_color
+
+  nb_occ_specification(
+      nb_occ: [[int -> color], int, int, color -> int]): bool =
+    FORALL
+        (upper, lower: int),
+        (values: [int -> color]),
+        (selected_color: color):
+      IF upper <= lower THEN
+        nb_occ(values, lower, upper, selected_color) = 0
+      ELSIF values(upper - 1) = selected_color THEN
+        nb_occ(values, lower, upper, selected_color)
+          = 1 + nb_occ(values, lower, upper - 1, selected_color)
+      ELSE
+        nb_occ(values, lower, upper, selected_color)
+          = nb_occ(values, lower, upper - 1, selected_color)
+      ENDIF
+
+  occurrence_counts_preserved(
+      nb_occ: [[int -> color], int, int, color -> int],
+      current, original: list[color],
+      default_color: color): bool =
+    FORALL (selected_color: color):
+      nb_occ(
+        list_contents(current, default_color),
+        0,
+        length(current),
+        selected_color)
+      =
+      nb_occ(
+        list_contents(original, default_color),
+        0,
+        length(current),
+        selected_color)
+
+  partition_invariant(
+      nb_occ: [[int -> color], int, int, color -> int],
+      original, current: list[color],
+      blue_end, unknown_begin, red_begin: int,
+      default_color: color): bool =
+    (0 <= blue_end
+      AND blue_end <= unknown_begin
+      AND unknown_begin <= red_begin
+      AND red_begin <= length(current))
+      AND
+    monochrome(
+      list_contents(current, default_color),
+      0,
+      blue_end,
+      Blue)
+      AND
+    monochrome(
+      list_contents(current, default_color),
+      blue_end,
+      unknown_begin,
+      White)
+      AND
+    monochrome(
+      list_contents(current, default_color),
+      red_begin,
+      length(current),
+      Red)
+      AND
+    occurrence_counts_preserved(
+      nb_occ, current, original, default_color)
+
+  swap_conditions(
+      nb_occ: [[int -> color], int, int, color -> int],
+      before, after: list[color],
+      first_index, second_index: int,
+      default_color: color): bool =
+    nth_default(
+      after, int_to_nat(first_index), default_color)
+      =
+    nth_default(
+      before, int_to_nat(second_index), default_color)
+      AND
+    nth_default(
+      after, int_to_nat(second_index), default_color)
+      =
+    nth_default(
+      before, int_to_nat(first_index), default_color)
+      AND
+    (FORALL (index: int):
+      (index /= first_index AND index /= second_index)
+        IMPLIES
+          nth_default(
+            after, int_to_nat(index), default_color)
+          =
+          nth_default(
+            before, int_to_nat(index), default_color))
+      AND
+    (FORALL
+        (lower, upper: int),
+        (selected_color: color):
+      ((lower <= first_index AND first_index < upper)
+        AND lower <= second_index AND second_index < upper)
+        IMPLIES
+          nb_occ(
+            list_contents(after, default_color),
+            lower,
+            upper,
+            selected_color)
+          =
+          nb_occ(
+            list_contents(before, default_color),
+            lower,
+            upper,
+            selected_color))
+
+  blue_postcondition(
+      nb_occ: [[int -> color], int, int, color -> int],
+      original, after: list[color],
+      blue_end, unknown_begin, red_begin: int,
+      default_color: color): bool =
+    (0 <= red_begin - unknown_begin
+      AND red_begin - (unknown_begin + 1)
+        < red_begin - unknown_begin)
+      AND
+    (0 <= blue_end + 1
+      AND blue_end + 1 <= unknown_begin + 1
+      AND unknown_begin + 1 <= red_begin
+      AND red_begin <= length(after))
+      AND
+    monochrome(
+      list_contents(after, default_color),
+      0,
+      blue_end + 1,
+      Blue)
+      AND
+    monochrome(
+      list_contents(after, default_color),
+      blue_end + 1,
+      unknown_begin + 1,
+      White)
+      AND
+    monochrome(
+      list_contents(after, default_color),
+      red_begin,
+      length(after),
+      Red)
+      AND
+    occurrence_counts_preserved(
+      nb_occ, after, original, default_color)
+
+  blue_case(
+      nb_occ: [[int -> color], int, int, color -> int],
+      original, current: list[color],
+      blue_end, unknown_begin, red_begin: int,
+      default_color: color): bool =
+    ((0 <= blue_end AND blue_end < length(current))
+      AND 0 <= unknown_begin
+      AND unknown_begin < length(current))
+      AND
+    (FORALL (after: list[color]):
+      length(after) = length(current)
+        IMPLIES
+      swap_conditions(
+        nb_occ,
+        current,
+        after,
+        blue_end,
+        unknown_begin,
+        default_color)
+        IMPLIES
+      blue_postcondition(
+        nb_occ,
+        original,
+        after,
+        blue_end,
+        unknown_begin,
+        red_begin,
+        default_color))
+
+  white_case(
+      nb_occ: [[int -> color], int, int, color -> int],
+      original, current: list[color],
+      blue_end, unknown_begin, red_begin: int,
+      default_color: color): bool =
+    (0 <= red_begin - unknown_begin
+      AND red_begin - (unknown_begin + 1)
+        < red_begin - unknown_begin)
+      AND
+    (0 <= blue_end
+      AND blue_end <= unknown_begin + 1
+      AND unknown_begin + 1 <= red_begin
+      AND red_begin <= length(current))
+      AND
+    monochrome(
+      list_contents(current, default_color),
+      0,
+      blue_end,
+      Blue)
+      AND
+    monochrome(
+      list_contents(current, default_color),
+      blue_end,
+      unknown_begin + 1,
+      White)
+      AND
+    monochrome(
+      list_contents(current, default_color),
+      red_begin,
+      length(current),
+      Red)
+      AND
+    occurrence_counts_preserved(
+      nb_occ, current, original, default_color)
+
+  red_postcondition(
+      nb_occ: [[int -> color], int, int, color -> int],
+      original, after: list[color],
+      blue_end, unknown_begin, red_begin: int,
+      default_color: color): bool =
+    (0 <= red_begin - unknown_begin
+      AND red_begin - 1 - unknown_begin
+        < red_begin - unknown_begin)
+      AND
+    (0 <= blue_end
+      AND blue_end <= unknown_begin
+      AND unknown_begin <= red_begin - 1
+      AND red_begin - 1 <= length(after))
+      AND
+    monochrome(
+      list_contents(after, default_color),
+      0,
+      blue_end,
+      Blue)
+      AND
+    monochrome(
+      list_contents(after, default_color),
+      blue_end,
+      unknown_begin,
+      White)
+      AND
+    monochrome(
+      list_contents(after, default_color),
+      red_begin - 1,
+      length(after),
+      Red)
+      AND
+    occurrence_counts_preserved(
+      nb_occ, after, original, default_color)
+
+  red_case(
+      nb_occ: [[int -> color], int, int, color -> int],
+      original, current: list[color],
+      blue_end, unknown_begin, red_begin: int,
+      default_color: color): bool =
+    ((0 <= red_begin - 1
+      AND red_begin - 1 < length(current))
+      AND 0 <= unknown_begin
+      AND unknown_begin < length(current))
+      AND
+    (FORALL (after: list[color]):
+      length(after) = length(current)
+        IMPLIES
+      swap_conditions(
+        nb_occ,
+        current,
+        after,
+        red_begin - 1,
+        unknown_begin,
+        default_color)
+        IMPLIES
+      red_postcondition(
+        nb_occ,
+        original,
+        after,
+        blue_end,
+        unknown_begin,
+        red_begin,
+        default_color))
+
+  completed_partition(
+      nb_occ: [[int -> color], int, int, color -> int],
+      original, current: list[color],
+      default_color: color): bool =
+    (EXISTS (blue_end, red_begin: int):
+      monochrome(
+        list_contents(current, default_color),
+        0,
+        blue_end,
+        Blue)
+        AND
+      monochrome(
+        list_contents(current, default_color),
+        blue_end,
+        red_begin,
+        White)
+        AND
+      monochrome(
+        list_contents(current, default_color),
+        red_begin,
+        length(current),
+        Red))
+      AND
+    occurrence_counts_preserved(
+      nb_occ, current, original, default_color)
+
+  loop_step(
+      nb_occ: [[int -> color], int, int, color -> int],
+      original, current: list[color],
+      blue_end, unknown_begin, red_begin: int,
+      default_color: color): bool =
+    IF unknown_begin < red_begin THEN
+      (0 <= unknown_begin
+        AND unknown_begin < length(current))
+        AND
+      CASES nth_default(
+          current,
+          int_to_nat(unknown_begin),
+          default_color)
+      OF
+        Blue:
+          blue_case(
+            nb_occ,
+            original,
+            current,
+            blue_end,
+            unknown_begin,
+            red_begin,
+            default_color),
+        White:
+          white_case(
+            nb_occ,
+            original,
+            current,
+            blue_end,
+            unknown_begin,
+            red_begin,
+            default_color),
+        Red:
+          red_case(
+            nb_occ,
+            original,
+            current,
+            blue_end,
+            unknown_begin,
+            red_begin,
+            default_color)
+      ENDCASES
+    ELSE
+      completed_partition(
+        nb_occ, original, current, default_color)
+    ENDIF
+
+  dutch_flag_vc: bool =
+    FORALL
+        (default_color: color),
+        (nb_occ: [[int -> color], int, int, color -> int]),
+        (original: list[color]):
+      nb_occ_specification(nb_occ)
+        IMPLIES
+      LET original_length: int = length(original)
+      IN
+        (((0 <= 0
+            AND 0 <= 0
+            AND 0 <= original_length
+            AND original_length <= length(original))
+          AND
+        monochrome(
+          list_contents(original, default_color),
+          0,
+          0,
+          Blue)
+          AND
+        monochrome(
+          list_contents(original, default_color),
+          0,
+          0,
+          White)
+          AND
+        monochrome(
+          list_contents(original, default_color),
+          original_length,
+          length(original),
+          Red))
+          AND
+        (FORALL
+            (red_begin, unknown_begin, blue_end: int),
+            (current: list[color]):
+          length(current) = length(original)
+            IMPLIES
+          partition_invariant(
+            nb_occ,
+            original,
+            current,
+            blue_end,
+            unknown_begin,
+            red_begin,
+            default_color)
+            IMPLIES
+          loop_step(
+            nb_occ,
+            original,
+            current,
+            blue_end,
+            unknown_begin,
+            red_begin,
+            default_color)))
+
+END flag2_Flag_dutch_flagqtvc

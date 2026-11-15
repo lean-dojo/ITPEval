@@ -1,0 +1,118 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2006_a5:
+% for positive odd n and irrational theta/pi, the sum of tan(theta + k*pi/n)
+% for k from 1 through n divided by their product equals n when n is 1
+% modulo 4, and equals -n otherwise. This file contains no proof.
+
+putnam_2006_a5: THEORY
+BEGIN
+  real_sequence: TYPE = [nat -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  nat_factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * nat_factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  sine_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        sine_partial(x, count - 1)
+          + safe_div(
+              ((-1 :: real) ^ index) * x ^ (2 * index + 1),
+              nat_factorial(2 * index + 1) :: real)
+    ENDIF
+  MEASURE count
+
+  cosine_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        cosine_partial(x, count - 1)
+          + safe_div(
+              ((-1 :: real) ^ index) * x ^ (2 * index),
+              nat_factorial(2 * index) :: real)
+    ENDIF
+  MEASURE count
+
+  sine(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat): sine_partial(x, count),
+          value))
+
+  cosine(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat): cosine_partial(x, count),
+          value))
+
+  tangent(x: real): real =
+    safe_div(sine(x), cosine(x))
+
+  pi: real =
+    epsilon(
+      LAMBDA (value: real):
+        3 < value
+          AND value < 4
+          AND cosine(value / 2) = 0)
+
+  indexed_sum(a: real_sequence, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      indexed_sum(a, count - 1) + a(count)
+    ENDIF
+  MEASURE count
+
+  indexed_product(a: real_sequence, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      1
+    ELSE
+      indexed_product(a, count - 1) * a(count)
+    ENDIF
+  MEASURE count
+
+  putnam_2006_a5_solution(n: nat): int =
+    IF mod(n, 4) = 1 THEN
+      n :: int
+    ELSE
+      -(n :: int)
+    ENDIF
+
+  putnam_2006_a5: bool =
+    FORALL (n: nat), (theta: real), (a: real_sequence):
+      (mod(n, 2) = 1
+        AND NOT rational?(safe_div(theta, pi))
+        AND (FORALL (k: nat):
+          1 <= k AND k <= n IMPLIES
+            a(k) =
+              tangent(
+                theta
+                  + safe_div(
+                      (k :: real) * pi,
+                      n :: real))))
+      IMPLIES
+        safe_div(indexed_sum(a, n), indexed_product(a, n))
+          = (putnam_2006_a5_solution(n) :: real)
+END putnam_2006_a5

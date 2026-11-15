@@ -1,0 +1,163 @@
+% Statement-only formalization of the VERINA corpus artifact verina_basic_56
+% (verina__pvs__verina_basic_56), catalog title "copy": copying a bounded
+% source-array segment into a destination array while preserving its other
+% entries and size. This file contains no proof.
+
+verina_basic_56: THEORY
+BEGIN
+
+  % Finite PVS lists preserve exactly the contents and order of Lean arrays.
+  int_list_length(
+      values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        int_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  % Lean Array.get! on integer arrays returns zero outside the array.
+  int_list_get_bang(
+      index: nat,
+      values: list[int]): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          int_list_get_bang(index - 1, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  % Lean Array.set! replaces an in-bounds entry and leaves an out-of-bounds
+  % array unchanged.
+  int_list_set_bang(
+      index: nat,
+      new_value: int,
+      values: list[int]): RECURSIVE list[int] =
+    CASES values OF
+      null:
+        null[int],
+      cons(head, tail):
+        IF index = 0 THEN
+          cons(new_value, tail)
+        ELSE
+          cons(
+            head,
+            int_list_set_bang(
+              index - 1,
+              new_value,
+              tail))
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  copy_precond(
+      src: list[int],
+      sStart: nat,
+      dest: list[int],
+      dStart, len: nat): bool =
+    int_list_length(src) >= sStart + len
+      AND int_list_length(dest) >= dStart + len
+
+  % This is the source updateSegment recursion: for positive n it first writes
+  % offset n - 1, then continues with n - 1.
+  updateSegment(
+      r, src: list[int],
+      sStart, dStart, n: nat): RECURSIVE list[int] =
+    IF n = 0 THEN
+      r
+    ELSE
+      LET previous: nat = n - 1,
+          rNew: list[int] =
+            int_list_set_bang(
+              dStart + previous,
+              int_list_get_bang(sStart + previous, src),
+              r)
+      IN
+        updateSegment(
+          rNew,
+          src,
+          sStart,
+          dStart,
+          previous)
+    ENDIF
+  MEASURE n
+
+  % The source precondition proof argument is computationally irrelevant.
+  copy(
+      src: list[int],
+      sStart: nat,
+      dest: list[int],
+      dStart, len: nat): list[int] =
+    IF len = 0 THEN
+      dest
+    ELSE
+      updateSegment(
+        dest,
+        src,
+        sStart,
+        dStart,
+        len)
+    ENDIF
+
+  % The source proof argument to the postcondition is logically irrelevant.
+  copy_postcond(
+      src: list[int],
+      sStart: nat,
+      dest: list[int],
+      dStart, len: nat,
+      result: list[int]): bool =
+    int_list_length(result) = int_list_length(dest)
+      AND
+        (FORALL (i: nat):
+          i < dStart
+            IMPLIES
+              int_list_get_bang(i, result)
+                = int_list_get_bang(i, dest))
+      AND
+        (FORALL (i: nat):
+          dStart + len <= i
+            IMPLIES
+              i < int_list_length(result)
+                IMPLIES
+                  int_list_get_bang(i, result)
+                    = int_list_get_bang(i, dest))
+      AND
+        (FORALL (i: nat):
+          i < len
+            IMPLIES
+              int_list_get_bang(dStart + i, result)
+                = int_list_get_bang(sStart + i, src))
+
+  copy_spec_satisfied: bool =
+    FORALL (
+        src: list[int],
+        sStart: nat,
+        dest: list[int],
+        dStart, len: nat):
+      copy_precond(
+        src,
+        sStart,
+        dest,
+        dStart,
+        len)
+        IMPLIES
+          copy_postcond(
+            src,
+            sStart,
+            dest,
+            dStart,
+            len,
+            copy(
+              src,
+              sStart,
+              dest,
+              dStart,
+              len))
+
+END verina_basic_56

@@ -1,0 +1,88 @@
+% Statement-only formalization of the Thousand Theorems corpus artifact Q2226868
+% (thousand-theorems__pvs__Q2226868), "Geometric mean theorem": in a real
+% inner-product affine space, the altitude to a right triangle's hypotenuse has
+% squared length equal to the product of the two hypotenuse segments. This file
+% contains no proof.
+
+Q2226868_geometric_mean_theorem[
+  V: TYPE+,
+  P: TYPE+,
+  zero: V,
+  vadd: [V, V -> V],
+  vneg: [V -> V],
+  scale: [real, V -> V],
+  inner: [V, V -> real],
+  point_vadd: [V, P -> P],
+  vsub: [P, P -> V],
+  distance: [P, P -> real]
+]: THEORY
+BEGIN
+  vector_space_laws: bool =
+    (FORALL (u, v: V): vadd(u, v) = vadd(v, u))
+      AND (FORALL (u, v, w: V):
+        vadd(vadd(u, v), w) = vadd(u, vadd(v, w)))
+      AND (FORALL (u: V): vadd(u, zero) = u)
+      AND (FORALL (u: V): vadd(u, vneg(u)) = zero)
+      AND (FORALL (a: real), (u, v: V):
+        scale(a, vadd(u, v)) = vadd(scale(a, u), scale(a, v)))
+      AND (FORALL (a, b: real), (u: V):
+        scale(a + b, u) = vadd(scale(a, u), scale(b, u)))
+      AND (FORALL (a, b: real), (u: V):
+        scale(a * b, u) = scale(a, scale(b, u)))
+      AND (FORALL (u: V): scale(1, u) = u)
+      AND (FORALL (u: V): scale(0, u) = zero)
+      AND (FORALL (u: V): vneg(u) = scale(-1, u))
+
+  inner_product_laws: bool =
+    (FORALL (u, v, w: V):
+      inner(vadd(u, v), w) = inner(u, w) + inner(v, w))
+      AND (FORALL (a: real), (u, v: V):
+        inner(scale(a, u), v) = a * inner(u, v))
+      AND (FORALL (u, v: V): inner(u, v) = inner(v, u))
+      AND (FORALL (u: V): 0 <= inner(u, u))
+      AND (FORALL (u: V): inner(u, u) = 0 IFF u = zero)
+
+  affine_torsor_laws: bool =
+    (FORALL (p: P): point_vadd(zero, p) = p)
+      AND (FORALL (u, v: V), (p: P):
+        point_vadd(vadd(u, v), p) =
+          point_vadd(u, point_vadd(v, p)))
+      AND (FORALL (p, q: P):
+        point_vadd(vsub(p, q), q) = p)
+      AND (FORALL (u: V), (p: P):
+        vsub(point_vadd(u, p), p) = u)
+
+  distance_laws: bool =
+    FORALL (p, q: P):
+      0 <= distance(p, q)
+        AND distance(p, q) ^ 2 =
+          inner(vsub(p, q), vsub(p, q))
+
+  euclidean_affine_space: bool =
+    vector_space_laws
+      AND inner_product_laws
+      AND affine_torsor_laws
+      AND distance_laws
+
+  strictly_between(p1, p4, p3: P): bool =
+    p4 /= p1
+      AND p4 /= p3
+      AND EXISTS (t: real):
+        0 <= t
+          AND t <= 1
+          AND p4 =
+            point_vadd(scale(t, vsub(p3, p1)), p1)
+
+  right_angle(p1, vertex, p3: P): bool =
+    inner(vsub(p1, vertex), vsub(p3, vertex)) = 0
+
+  geometric_mean_theorem: bool =
+    euclidean_affine_space IMPLIES
+      FORALL (p1, p2, p3, p4: P):
+        (strictly_between(p1, p4, p3)
+          AND right_angle(p1, p4, p2)
+          AND right_angle(p1, p2, p3))
+        IMPLIES
+          distance(p2, p4) ^ 2 =
+            distance(p1, p4) * distance(p3, p4)
+END Q2226868_geometric_mean_theorem

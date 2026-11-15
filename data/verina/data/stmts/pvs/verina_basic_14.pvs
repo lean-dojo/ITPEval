@@ -1,0 +1,66 @@
+% Statement-only formalization of the VERINA corpus artifact verina_basic_14,
+% catalog title "containsZ": deciding whether a Unicode-scalar string contains
+% the lowercase or uppercase letter z. This file contains no proof.
+
+verina_basic_14: THEORY
+BEGIN
+
+  % String.toList observes a Lean string as its finite list of Unicode scalar
+  % characters, so this preserves the full extensional source string domain.
+  lean_char: TYPE =
+    {codepoint: nat |
+      codepoint < 1114112
+        AND (codepoint < 55296 OR codepoint >= 57344)}
+
+  lean_string: TYPE = list[lean_char]
+
+  containsZ_precond(s: lean_string): bool =
+    TRUE
+
+  contains_z_char(c: lean_char): bool =
+    c = 122 OR c = 90
+
+  contains_z_chars(chars: list[lean_char]): RECURSIVE bool =
+    CASES chars OF
+      null:
+        FALSE,
+      cons(head, tail):
+        contains_z_char(head)
+          OR contains_z_chars(tail)
+    ENDCASES
+  MEASURE chars BY <<
+
+  % The source precondition proof argument is computationally irrelevant.
+  % This recursion is the exact proof-erased List.any computation.
+  containsZ(s: lean_string): bool =
+    contains_z_chars(s)
+
+  lean_char_list_member(
+      requested: lean_char,
+      chars: list[lean_char]): RECURSIVE bool =
+    CASES chars OF
+      null:
+        FALSE,
+      cons(head, tail):
+        head = requested
+          OR lean_char_list_member(requested, tail)
+    ENDCASES
+  MEASURE chars BY <<
+
+  containsZ_postcond(
+      s: lean_string,
+      result: bool): bool =
+    (EXISTS (x: lean_char):
+      lean_char_list_member(x, s)
+        AND (x = 122 OR x = 90))
+      IFF result
+
+  containsZ_spec_satisfied: bool =
+    FORALL (s: lean_string):
+      containsZ_precond(s)
+        IMPLIES
+          containsZ_postcond(
+            s,
+            containsZ(s))
+
+END verina_basic_14

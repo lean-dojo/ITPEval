@@ -1,0 +1,262 @@
+% Statement-only formalization of the Babel-formal artifact galois, concerning field
+% cancellation laws and solvability across Galois-theoretic polynomial towers. This file
+% contains no proof.
+
+galois_field[
+  FieldElem: TYPE,
+  zero_F: FieldElem,
+  one_F: FieldElem,
+  add_F: [FieldElem, FieldElem -> FieldElem],
+  mul_F: [FieldElem, FieldElem -> FieldElem],
+  opp_F: [FieldElem -> FieldElem],
+  inv_F: [FieldElem -> FieldElem]
+]: THEORY
+BEGIN
+  field_like: bool =
+    (FORALL (x, y: FieldElem): add_F(x, y) = add_F(y, x))
+      AND (FORALL (x, y, z: FieldElem):
+        add_F(add_F(x, y), z) = add_F(x, add_F(y, z)))
+      AND (FORALL (x: FieldElem): add_F(x, zero_F) = x)
+      AND (FORALL (x: FieldElem): add_F(opp_F(x), x) = zero_F)
+      AND (FORALL (x, y: FieldElem): mul_F(x, y) = mul_F(y, x))
+      AND (FORALL (x, y, z: FieldElem):
+        mul_F(mul_F(x, y), z) = mul_F(x, mul_F(y, z)))
+      AND (FORALL (x: FieldElem): mul_F(one_F, x) = x)
+      AND (FORALL (x: FieldElem):
+        NOT (x = zero_F) IMPLIES mul_F(inv_F(x), x) = one_F)
+      AND (FORALL (x, y, z: FieldElem):
+        mul_F(x, add_F(y, z)) =
+          add_F(mul_F(x, y), mul_F(x, z)))
+      AND NOT (zero_F = one_F)
+      AND (FORALL (x: FieldElem):
+        NOT (x = zero_F) IMPLIES NOT (inv_F(x) = zero_F))
+
+  add_cancel_l: bool =
+    field_like IMPLIES
+      (FORALL (x, y, z: FieldElem):
+        add_F(x, y) = add_F(x, z) IMPLIES y = z)
+
+  add_cancel_r: bool =
+    field_like IMPLIES
+      (FORALL (x, y, z: FieldElem):
+        add_F(y, x) = add_F(z, x) IMPLIES y = z)
+
+  mul_cancel_l: bool =
+    field_like IMPLIES
+      (FORALL (x, y, z: FieldElem):
+        NOT (x = zero_F) IMPLIES
+          (mul_F(x, y) = mul_F(x, z) IMPLIES y = z))
+
+  mul_cancel_r: bool =
+    field_like IMPLIES
+      (FORALL (x, y, z: FieldElem):
+        NOT (x = zero_F) IMPLIES
+          (mul_F(y, x) = mul_F(z, x) IMPLIES y = z))
+
+  inv_unique: bool =
+    field_like IMPLIES
+      (FORALL (x, y: FieldElem):
+        NOT (x = zero_F) IMPLIES
+          (mul_F(x, y) = one_F IMPLIES y = inv_F(x)))
+
+  inv_involutive: bool =
+    field_like IMPLIES
+      (FORALL (x: FieldElem):
+        NOT (x = zero_F) IMPLIES inv_F(inv_F(x)) = x)
+END galois_field
+
+galois_tower[
+  F, K, L, M: TYPE,
+  PolyF, PolyK, PolyL, PolyM: TYPE,
+  SplitElem, SplitPoly: TYPE,
+  split_member: [PolyF, SplitElem -> bool],
+  split_poly_member: [PolyF, SplitPoly -> bool],
+  algebra_map_FK: [F -> K],
+  algebra_map_KL: [K -> L],
+  algebra_map_LM: [L -> M],
+  algebra_map_to_split:
+    [controller: PolyF ->
+      [F -> {x: SplitElem | split_member(controller, x)}]],
+  splits_FK: [PolyF, [F -> K] -> bool],
+  splits_to_split:
+    [controller: PolyF ->
+      [PolyF,
+       [F -> {x: SplitElem | split_member(controller, x)}] -> bool]],
+  map_poly_FK: [PolyF, [F -> K] -> PolyK],
+  map_poly_KL: [PolyK, [K -> L] -> PolyL],
+  map_poly_LM: [PolyL, [L -> M] -> PolyM],
+  map_poly_FL: [PolyF, [F -> L] -> PolyL],
+  map_poly_to_split:
+    [controller: PolyF ->
+      [PolyF,
+       [F -> {x: SplitElem | split_member(controller, x)}] ->
+       {u: SplitPoly | split_poly_member(controller, u)}]],
+  solvable_F: [PolyF -> bool],
+  solvable_K: [PolyK -> bool],
+  solvable_L: [PolyL -> bool],
+  solvable_M: [PolyM -> bool],
+  solvable_over_split:
+    [controller: PolyF ->
+      [{u: SplitPoly | split_poly_member(controller, u)} -> bool]]
+]: THEORY
+BEGIN
+  splitting_field(controller: PolyF): TYPE =
+    {x: SplitElem | split_member(controller, x)}
+
+  polynomial_over_split(controller: PolyF): TYPE =
+    {u: SplitPoly | split_poly_member(controller, u)}
+
+  mapped_to_split(
+    controller: PolyF,
+    p: PolyF
+  ): polynomial_over_split(controller) =
+    map_poly_to_split(controller)(p, algebra_map_to_split(controller))
+
+  map_poly_comp: bool =
+    FORALL (p: PolyF), (f: [F -> K]), (g: [K -> L]):
+      map_poly_KL(map_poly_FK(p, f), g) =
+        map_poly_FL(p, LAMBDA (x: F): g(f(x)))
+
+  isSolvable_of_isScalarTower: bool =
+    (FORALL (p, q: PolyF):
+      solvable_F(p) IMPLIES
+        (solvable_K(map_poly_FK(q, algebra_map_FK))
+          IMPLIES solvable_F(q)))
+      AND
+    (FORALL (controller, p, q: PolyF):
+      solvable_F(p) IMPLIES
+        (solvable_over_split(controller)(mapped_to_split(controller, q))
+          IMPLIES solvable_F(q)))
+
+  isSolvable_map_poly: bool =
+    (FORALL (p: PolyF):
+      solvable_F(p) IMPLIES
+        solvable_K(map_poly_FK(p, algebra_map_FK)))
+      AND
+    (FORALL (p: PolyK):
+      solvable_K(p) IMPLIES
+        solvable_L(map_poly_KL(p, algebra_map_KL)))
+      AND
+    (FORALL (p: PolyL):
+      solvable_L(p) IMPLIES
+        solvable_M(map_poly_LM(p, algebra_map_LM)))
+      AND
+    (FORALL (controller, p: PolyF):
+      solvable_F(p) IMPLIES
+        solvable_over_split(controller)(mapped_to_split(controller, p)))
+
+  isSolvable_of_splits: bool =
+    (FORALL (p: PolyF), (f: [F -> K]):
+      splits_FK(p, f) IMPLIES solvable_F(p))
+      AND
+    (FORALL (controller, p: PolyF):
+      splits_to_split(controller)(p, algebra_map_to_split(controller))
+        IMPLIES solvable_F(p))
+
+  tower_axioms: bool =
+    map_poly_comp
+      AND isSolvable_of_isScalarTower
+      AND isSolvable_map_poly
+      AND isSolvable_of_splits
+
+  gal_isSolvable_tower: bool =
+    tower_axioms IMPLIES
+      (FORALL (p, q: PolyF):
+        solvable_F(p) IMPLIES
+          (solvable_over_split(p)(mapped_to_split(p, q))
+            IMPLIES solvable_F(q)))
+
+  gal_isSolvable_double_tower: bool =
+    tower_axioms IMPLIES
+      (FORALL (p, q, r: PolyF):
+        solvable_F(p) IMPLIES
+          (solvable_over_split(p)(mapped_to_split(p, q)) IMPLIES
+            (solvable_over_split(q)(mapped_to_split(q, r))
+              IMPLIES solvable_F(r))))
+
+  gal_isSolvable_triple_tower: bool =
+    tower_axioms IMPLIES
+      (FORALL (p, q, r, s: PolyF):
+        solvable_F(p) IMPLIES
+          (solvable_over_split(p)(mapped_to_split(p, q)) IMPLIES
+            (solvable_over_split(q)(mapped_to_split(q, r)) IMPLIES
+              (solvable_over_split(r)(mapped_to_split(r, s))
+                IMPLIES solvable_F(s)))))
+
+  gal_isSolvable_quadruple_tower: bool =
+    tower_axioms IMPLIES
+      (FORALL (p, q, r, s, t: PolyF):
+        solvable_F(p) IMPLIES
+          (solvable_over_split(p)(mapped_to_split(p, q)) IMPLIES
+            (solvable_over_split(q)(mapped_to_split(q, r)) IMPLIES
+              (solvable_over_split(r)(mapped_to_split(r, s)) IMPLIES
+                (solvable_over_split(s)(mapped_to_split(s, t))
+                  IMPLIES solvable_F(t))))))
+
+  gal_isSolvable_map_poly: bool =
+    tower_axioms IMPLIES
+      (FORALL (p: PolyF):
+        solvable_F(p) IMPLIES
+          solvable_K(map_poly_FK(p, algebra_map_FK)))
+
+  gal_isSolvable_of_split: bool =
+    tower_axioms IMPLIES
+      (FORALL (p: PolyF):
+        splits_to_split(p)(p, algebra_map_to_split(p))
+          IMPLIES solvable_F(p))
+
+  gal_isSolvable_split_tower: bool =
+    tower_axioms IMPLIES
+      (FORALL (p, q: PolyF):
+        splits_to_split(p)(q, algebra_map_to_split(p))
+          IMPLIES solvable_F(q))
+
+  gal_isSolvable_two_step_map: bool =
+    tower_axioms IMPLIES
+      (FORALL (p: PolyF):
+        solvable_F(p) IMPLIES
+          solvable_L(
+            map_poly_KL(
+              map_poly_FK(p, algebra_map_FK),
+              algebra_map_KL)))
+
+  gal_isSolvable_three_step_map: bool =
+    tower_axioms IMPLIES
+      (FORALL (p: PolyF):
+        solvable_F(p) IMPLIES
+          solvable_M(
+            map_poly_LM(
+              map_poly_KL(
+                map_poly_FK(p, algebra_map_FK),
+                algebra_map_KL),
+              algebra_map_LM)))
+
+  gal_isSolvable_map_poly_comp: bool =
+    tower_axioms IMPLIES
+      (FORALL (p: PolyF):
+        solvable_F(p) IMPLIES
+          solvable_L(
+            map_poly_KL(
+              map_poly_FK(p, algebra_map_FK),
+              algebra_map_KL)))
+
+  gal_isSolvable_mutual_split: bool =
+    tower_axioms IMPLIES
+      (FORALL (p, q: PolyF):
+        splits_to_split(q)(p, algebra_map_to_split(q)) IMPLIES
+          (splits_to_split(p)(q, algebra_map_to_split(p)) IMPLIES
+            (solvable_F(p) AND solvable_F(q))))
+
+  gal_isSolvable_tower_split: bool =
+    tower_axioms IMPLIES
+      (FORALL (p, q, r: PolyF):
+        splits_to_split(p)(q, algebra_map_to_split(p)) IMPLIES
+          (solvable_over_split(q)(mapped_to_split(q, r))
+            IMPLIES solvable_F(r)))
+
+  gal_isSolvable_map_after_split: bool =
+    tower_axioms IMPLIES
+      (FORALL (p: PolyF):
+        splits_to_split(p)(p, algebra_map_to_split(p)) IMPLIES
+          solvable_K(map_poly_FK(p, algebra_map_FK)))
+END galois_tower

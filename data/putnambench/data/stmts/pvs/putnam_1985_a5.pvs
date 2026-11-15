@@ -1,0 +1,153 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1985_a5:
+% for 1 <= m <= 10, the integral from 0 to 2*pi of the product of cos(k*x)
+% for k = 1,...,m is nonzero exactly when m is 3, 4, 7, or 8. This file
+% contains no proof.
+
+putnam_1985_a5: THEORY
+BEGIN
+  real_function: TYPE = [real -> real]
+  real_sequence: TYPE = [nat -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  cosine_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        cosine_partial(x, count - 1)
+          + safe_div(
+              ((-1 :: real) ^ index) * x ^ (2 * index),
+              factorial(2 * index) :: real)
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  cosine(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat): cosine_partial(x, count),
+          value))
+
+  pi: real =
+    epsilon(
+      LAMBDA (value: real):
+        3 < value
+          AND value < 4
+          AND cosine(value / 2) = 0)
+
+  cosine_product(m: nat, x: real): RECURSIVE real =
+    IF m = 0 THEN
+      1
+    ELSE
+      cosine_product(m - 1, x) * cosine((m :: real) * x)
+    ENDIF
+  MEASURE m
+
+  valid_partition(
+      lower, upper: real,
+      points: real_sequence,
+      count: nat): bool =
+    IF lower = upper THEN
+      count = 0 AND points(0) = lower
+    ELSE
+      count > 0
+        AND points(0) = lower
+        AND points(count) = upper
+        AND (FORALL (index: nat):
+          index < count IMPLIES
+            points(index) < points(index + 1))
+    ENDIF
+
+  valid_tags(
+      points, tags: real_sequence,
+      count: nat): bool =
+    FORALL (index: nat):
+      index < count IMPLIES
+        points(index) <= tags(index)
+          AND tags(index) <= points(index + 1)
+
+  mesh_less_than(
+      points: real_sequence,
+      count: nat,
+      bound: real): bool =
+    FORALL (index: nat):
+      index < count IMPLIES
+        points(index + 1) - points(index) < bound
+
+  riemann_sum(
+      f: real_function,
+      points, tags: real_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      riemann_sum(f, points, tags, count - 1)
+        + f(tags(count - 1))
+            * (points(count) - points(count - 1))
+    ENDIF
+  MEASURE count
+
+  has_interval_integral(
+      f: real_function,
+      integral_value, lower, upper: real): bool =
+    lower <= upper
+      AND FORALL (epsilon_value: posreal):
+        EXISTS (mesh_bound: posreal):
+          FORALL
+              (points, tags: real_sequence),
+              (count: nat):
+            (valid_partition(lower, upper, points, count)
+              AND valid_tags(points, tags, count)
+              AND mesh_less_than(points, count, mesh_bound))
+            IMPLIES
+              abs(
+                riemann_sum(f, points, tags, count)
+                  - integral_value)
+                < epsilon_value
+
+  interval_integral(
+      f: real_function,
+      lower, upper: real): real =
+    IF EXISTS (integral_value: real):
+        has_interval_integral(f, integral_value, lower, upper)
+    THEN
+      epsilon(
+        LAMBDA (integral_value: real):
+          has_interval_integral(f, integral_value, lower, upper))
+    ELSE
+      0
+    ENDIF
+
+  putnam_1985_a5_solution(m: nat): bool =
+    m = 3 OR m = 4 OR m = 7 OR m = 8
+
+  putnam_1985_a5: bool =
+    FORALL (m: nat):
+      (1 <= m AND m <= 10) IMPLIES
+        (interval_integral(
+          LAMBDA (x: real): cosine_product(m, x),
+          0,
+          2 * pi) /= 0
+          IFF putnam_1985_a5_solution(m))
+END putnam_1985_a5

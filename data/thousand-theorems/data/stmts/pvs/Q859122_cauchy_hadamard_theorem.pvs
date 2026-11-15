@@ -1,0 +1,199 @@
+% Statement-only formalization of the Thousand Theorems corpus artifact Q859122,
+% "Cauchy–Hadamard theorem": for a formal multilinear series, the inverse of
+% its convergence radius is the limsup of the nth roots of its operator norms.
+% This file contains no proof.
+
+Q859122_cauchy_hadamard_theorem: THEORY
+BEGIN
+  norm_profile: TYPE = [nat -> real]
+
+  extended_nonnegative_real: TYPE =
+    [# infinite_flag: bool, finite_part: real #]
+  extended_sequence: TYPE =
+    [nat -> extended_nonnegative_real]
+
+  zero_extended: extended_nonnegative_real =
+    (# infinite_flag := FALSE, finite_part := 0 #)
+
+  top_extended: extended_nonnegative_real =
+    (# infinite_flag := TRUE, finite_part := 0 #)
+
+  finite_extended(value: real): extended_nonnegative_real =
+    (# infinite_flag := FALSE, finite_part := value #)
+
+  canonical_extended(value: extended_nonnegative_real): bool =
+    IF infinite_flag(value) THEN
+      finite_part(value) = 0
+    ELSE
+      0 <= finite_part(value)
+    ENDIF
+
+  extended_le(
+      left, right: extended_nonnegative_real): bool =
+    canonical_extended(left)
+      AND canonical_extended(right)
+      AND IF infinite_flag(right) THEN
+        TRUE
+      ELSIF infinite_flag(left) THEN
+        FALSE
+      ELSE
+        finite_part(left) <= finite_part(right)
+      ENDIF
+
+  extended_inverse(
+      value: extended_nonnegative_real):
+      extended_nonnegative_real =
+    IF infinite_flag(value) THEN
+      zero_extended
+    ELSIF finite_part(value) = 0 THEN
+      top_extended
+    ELSE
+      finite_extended(1 / finite_part(value))
+    ENDIF
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  nat_factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * nat_factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  exponential_partial(x: real, count: nat):
+      RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        exponential_partial(x, count - 1)
+          + safe_div(
+              x ^ index,
+              nat_factorial(index) :: real)
+    ENDIF
+  MEASURE count
+
+  converges_to_real(
+      values: [nat -> real],
+      limit_value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(values(index) - limit_value)
+              < epsilon_value
+
+  real_exponential(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to_real(
+          LAMBDA (count: nat):
+            exponential_partial(x, count),
+          value))
+
+  natural_log(x: real): real =
+    IF 0 < x THEN
+      epsilon(
+        LAMBDA (value: real):
+          real_exponential(value) = x)
+    ELSE
+      0
+    ENDIF
+
+  nonnegative_real_power(base, exponent: real): real =
+    IF 0 < base THEN
+      real_exponential(exponent * natural_log(base))
+    ELSIF exponent = 0 THEN
+      1
+    ELSE
+      0
+    ENDIF
+
+  nonnegative_profile(values: norm_profile): bool =
+    FORALL (index: nat):
+      0 <= values(index)
+
+  admissible_radius(
+      coefficient_norms: norm_profile,
+      radius_value: real): bool =
+    0 <= radius_value
+      AND EXISTS (bound: real):
+        FORALL (index: nat):
+          coefficient_norms(index) * radius_value ^ index
+            <= bound
+
+  is_convergence_radius(
+      coefficient_norms: norm_profile,
+      radius_value: extended_nonnegative_real): bool =
+    canonical_extended(radius_value)
+      AND (FORALL (candidate: real):
+        admissible_radius(coefficient_norms, candidate)
+          IMPLIES
+            extended_le(
+              finite_extended(candidate),
+              radius_value))
+      AND (FORALL (upper_bound: extended_nonnegative_real):
+        (canonical_extended(upper_bound)
+          AND (FORALL (candidate: real):
+            admissible_radius(coefficient_norms, candidate)
+              IMPLIES
+                extended_le(
+                  finite_extended(candidate),
+                  upper_bound)))
+        IMPLIES
+          extended_le(radius_value, upper_bound))
+
+  root_profile(
+      coefficient_norms: norm_profile): extended_sequence =
+    LAMBDA (index: nat):
+      finite_extended(
+        nonnegative_real_power(
+          coefficient_norms(index),
+          safe_div(1, index :: real)))
+
+  eventual_upper_bound(
+      values: extended_sequence,
+      upper_bound: extended_nonnegative_real): bool =
+    canonical_extended(upper_bound)
+      AND EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            extended_le(values(index), upper_bound)
+
+  is_limsup(
+      values: extended_sequence,
+      limit_value: extended_nonnegative_real): bool =
+    canonical_extended(limit_value)
+      AND (FORALL (upper_bound: extended_nonnegative_real):
+        eventual_upper_bound(values, upper_bound)
+          IMPLIES
+            extended_le(limit_value, upper_bound))
+      AND (FORALL (lower_bound: extended_nonnegative_real):
+        (canonical_extended(lower_bound)
+          AND (FORALL (upper_bound: extended_nonnegative_real):
+            eventual_upper_bound(values, upper_bound)
+              IMPLIES
+                extended_le(lower_bound, upper_bound)))
+        IMPLIES
+          extended_le(lower_bound, limit_value))
+
+  cauchy_hadamard_theorem: bool =
+    FORALL
+        (coefficient_norms: norm_profile),
+        (radius_value, limsup_value:
+          extended_nonnegative_real):
+      (nonnegative_profile(coefficient_norms)
+        AND is_convergence_radius(
+          coefficient_norms, radius_value)
+        AND is_limsup(
+          root_profile(coefficient_norms),
+          limsup_value))
+      IMPLIES
+        extended_inverse(radius_value) = limsup_value
+END Q859122_cauchy_hadamard_theorem

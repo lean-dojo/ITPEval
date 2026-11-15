@@ -1,0 +1,283 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% frama_c/contiki_list/array_pop_Why3_ide_VCarray_pop_loop_inv_RightLinked_preserved_goal18:
+% preservation of the right-linked-list loop invariant after updating an array
+% entry in pointer memory. This file contains no proof.
+
+array_pop_Why3_ide_VCarray_pop_loop_inv_RightLinked_preserved_goal18[
+  region: [int -> int],
+  linked: [[int -> int] -> bool]
+]: THEORY
+BEGIN
+  addr: TYPE = [# base: int, offset: int #]
+  pointer_memory: TYPE = [addr -> addr]
+  real_memory: TYPE = [addr -> real]
+  allocation_table: TYPE = [int -> int]
+
+  s1_list: TYPE =
+    [# list_next: addr,
+       list_x: real,
+       list_y: real,
+       list_z: real #]
+
+  shift(p: addr, k: int): addr =
+    (# base := base(p), offset := offset(p) + k #)
+
+  separated(p: addr, p_size: int, q: addr, q_size: int): bool =
+    p_size <= 0
+      OR q_size <= 0
+      OR base(p) /= base(q)
+      OR offset(q) + q_size <= offset(p)
+      OR offset(p) + p_size <= offset(q)
+
+  havoc(
+      old_memory, outside_memory: pointer_memory,
+      start: addr,
+      size: int): pointer_memory =
+    LAMBDA (q: addr):
+      IF separated(q, 1, start, size) THEN
+        outside_memory(q)
+      ELSE
+        old_memory(q)
+      ENDIF
+
+  valid_rw(malloc: allocation_table, p: addr, size: int): bool =
+    0 < size IMPLIES
+      0 < base(p)
+        AND 0 <= offset(p)
+        AND offset(p) + size <= malloc(base(p))
+
+  framed(memory: pointer_memory): bool =
+    FORALL (p: addr): region(base(memory(p))) <= 0
+
+  is_sint32(value: int): bool =
+    -2147483648 <= value AND value < 2147483648
+
+  load_s1_list(
+      p: addr,
+      float_memory: real_memory,
+      ptr_memory: pointer_memory): s1_list =
+    (# list_next := ptr_memory(shift(p, 0)),
+       list_x := float_memory(shift(p, 1)),
+       list_y := float_memory(shift(p, 2)),
+       list_z := float_memory(shift(p, 3)) #)
+
+  eqs1_list(left, right: s1_list): bool =
+    list_next(right) = list_next(left)
+      AND list_x(right) = list_x(left)
+      AND list_y(right) = list_y(left)
+      AND list_z(right) = list_z(left)
+
+  linked_candidate: TYPE =
+    [[int -> int], pointer_memory, addr, addr, int, int, addr -> bool]
+
+  p_linked_n(
+      malloc: allocation_table,
+      ptr_memory: pointer_memory,
+      root, array_base: addr,
+      index, count: int,
+      bound: addr): bool =
+    FORALL (candidate: linked_candidate):
+      ((FORALL (base_index: int),
+               (candidate_malloc: allocation_table),
+               (candidate_memory: pointer_memory),
+               (candidate_bound, candidate_array: addr):
+          (0 <= base_index AND base_index <= 2147483646)
+            IMPLIES
+              candidate(
+                candidate_malloc,
+                candidate_memory,
+                candidate_bound,
+                candidate_array,
+                base_index,
+                0,
+                candidate_bound))
+        AND
+        (FORALL (base_index, positive_count: int),
+                (candidate_memory: pointer_memory),
+                (candidate_array, candidate_root: addr),
+                (candidate_malloc: allocation_table),
+                (candidate_bound: addr):
+          (candidate_memory(shift(candidate_array, base_index))
+              = candidate_root
+            AND 0 < positive_count
+            AND 0 <= base_index
+            AND 0 <= base_index + positive_count
+            AND base_index + positive_count <= 2147483646
+            AND valid_rw(candidate_malloc, candidate_root, 4)
+            AND candidate(
+              candidate_malloc,
+              candidate_memory,
+              candidate_memory(shift(candidate_root, 0)),
+              candidate_array,
+              1 + base_index,
+              positive_count - 1,
+              candidate_bound))
+          IMPLIES
+            candidate(
+              candidate_malloc,
+              candidate_memory,
+              candidate_root,
+              candidate_array,
+              base_index,
+              positive_count,
+              candidate_bound)))
+      IMPLIES
+        candidate(malloc, ptr_memory, root, array_base, index, count, bound)
+
+  p_array_swipe_left(
+      left_memory, right_memory: pointer_memory,
+      array_base: addr,
+      lower, upper: int): bool =
+    FORALL (position: int):
+      lower <= position IMPLIES
+        position < upper IMPLIES
+          right_memory(shift(array_base, 1 + position))
+            = left_memory(shift(array_base, position))
+
+  p_unchanged(
+      malloc_0: allocation_table,
+      ptr_memory_0: pointer_memory,
+      float_memory_0: real_memory,
+      malloc_1: allocation_table,
+      ptr_memory_1: pointer_memory,
+      float_memory_1: real_memory,
+      array_base: addr,
+      lower, upper: int): bool =
+    FORALL (position: int):
+      LET slot: addr = shift(array_base, position),
+          value_0: addr = ptr_memory_0(slot),
+          value_1: addr = ptr_memory_1(slot)
+      IN
+        lower <= position IMPLIES
+          position < upper IMPLIES
+            value_0 = value_1
+              AND eqs1_list(
+                load_s1_list(value_1, float_memory_1, ptr_memory_1),
+                load_s1_list(value_0, float_memory_0, ptr_memory_0))
+              AND (valid_rw(malloc_1, value_1, 4)
+                IMPLIES valid_rw(malloc_0, value_0, 4))
+
+  goal18: bool =
+    FORALL (t_2, t_3: pointer_memory),
+           (a_4: addr),
+           (i_2, i: int),
+           (a_1: addr),
+           (i_3, i_1: int),
+           (a, a_3: addr),
+           (t: allocation_table),
+           (a_2: addr),
+           (t_1: real_memory):
+      LET a_5: pointer_memory = havoc(t_2, t_3, shift(a_4, i_2), i - 1),
+          a_6: addr = t_3(a_1),
+          x: int = i + i_2,
+          x_1: int = 2 + i_3,
+          x_2: int = 1 + i_3,
+          a_7: addr = shift(a_4, 0),
+          a_8: addr = t_3(shift(a_4, i_1)),
+          x_3: int = i_2 - i_1,
+          a_9: pointer_memory =
+            a_5 WITH
+              [(shift(a_4, i_3)) := a_5(shift(a_4, x_2))]
+      IN
+        (a_5(a_1) = a_6
+          AND 0 < i
+          AND 0 <= i_1
+          AND i_1 <= i_2
+          AND i_2 <= i_3
+          AND i_3 < x
+          AND region(base(a)) <= 0
+          AND region(base(a_1)) <= 0
+          AND region(base(a_3)) <= 0
+          AND region(base(a_4)) <= 0
+          AND x_1 <= x
+          AND framed(t_3)
+          AND linked(t)
+          AND is_sint32(i)
+          AND is_sint32(i_1)
+          AND is_sint32(i_2)
+          AND is_sint32(i_3)
+          AND is_sint32(x_2)
+          AND valid_rw(t, a_7, 2147483646)
+          AND separated(a_1, 1, a_7, 2147483646)
+          AND separated(a_6, 4, a_7, 2147483646)
+          AND p_linked_n(t, t_3, a, a_4, i_2, i, a_3)
+          AND p_linked_n(t, t_3, a_8, a_4, i_1, x_3, a)
+          AND p_array_swipe_left(a_5, t_3, a_4, i_2, i_3)
+          AND p_linked_n(
+            t,
+            a_5,
+            a_2,
+            a_4,
+            x_2,
+            i + i_2 - 1 - i_3,
+            a_3)
+          AND p_linked_n(t, a_5, a_8, a_4, i_1, x_3, a)
+          AND p_linked_n(
+            t,
+            a_5,
+            a_5(shift(a, 0)),
+            a_4,
+            i_2,
+            i_3 - i_2,
+            a_2)
+          AND p_unchanged(
+            t,
+            a_5,
+            t_1,
+            t,
+            t_3,
+            t_1,
+            a_4,
+            i_1,
+            i_2)
+          AND p_unchanged(
+            t,
+            a_5,
+            t_1,
+            t,
+            t_3,
+            t_1,
+            a_4,
+            i_3,
+            x)
+          AND
+            (FORALL (i_4: int):
+              i_1 <= i_4 IMPLIES
+                i_4 < x IMPLIES
+                  separated(a_1, 1, t_3(shift(a_4, i_4)), 4))
+          AND
+            (FORALL (i_4: int):
+              i_1 <= i_4 IMPLIES
+                i_4 < x IMPLIES
+                  separated(t_3(shift(a_4, i_4)), 4, a_7, 2147483646))
+          AND
+            (FORALL (i_5, i_4: int):
+              i_5 /= i_4 IMPLIES
+                i_1 <= i_4 IMPLIES
+                  i_1 <= i_5 IMPLIES
+                    i_4 < x IMPLIES
+                      i_5 < x IMPLIES
+                        t_3(shift(a_4, i_5))
+                          /= t_3(shift(a_4, i_4)))
+          AND
+            (FORALL (i_5, i_4: int):
+              i_5 /= i_4 IMPLIES
+                i_1 <= i_4 IMPLIES
+                  i_1 <= i_5 IMPLIES
+                    i_4 < x IMPLIES
+                      i_5 < x IMPLIES
+                        separated(
+                          t_3(shift(a_4, i_5)),
+                          4,
+                          t_3(shift(a_4, i_4)),
+                          4)))
+        IMPLIES
+          p_linked_n(
+            t,
+            a_9,
+            a_9(shift(a_2, 0)),
+            a_4,
+            x_1,
+            i + i_2 - 2 - i_3,
+            a_3)
+END array_pop_Why3_ide_VCarray_pop_loop_inv_RightLinked_preserved_goal18

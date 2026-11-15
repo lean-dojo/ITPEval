@@ -1,0 +1,113 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% frama_c/standard_algorithms/equal_range2/equal_range_Why3_ide_VCequal_range_call_lower_bound_pre_sorted_goal26:
+% an equal-range verification condition preserving sortedness on the lower
+% half-range selected by the midpoint calculation. This file contains no proof.
+
+equal_range_Why3_ide_VCequal_range_call_lower_bound_pre_sorted_goal26: THEORY
+BEGIN
+  addr: TYPE = [# base: int, offset: int #]
+  integer_memory: TYPE = [addr -> int]
+  allocation_table: TYPE = [int -> int]
+
+  shift(p: addr, k: int): addr =
+    (# base := base(p), offset := offset(p) + k #)
+
+  shift_sint32(p: addr, k: int): addr =
+    shift(p, k)
+
+  valid_rd(m: allocation_table, p: addr, n: int): bool =
+    0 < n IMPLIES
+      base(p) /= 0
+        AND 0 <= offset(p)
+        AND offset(p) + n <= m(base(p))
+
+  is_uint32(x: int): bool =
+    0 <= x AND x < 4294967296
+
+  is_sint32(x: int): bool =
+    -2147483648 <= x AND x < 2147483648
+
+  to_uint32(x: int): int =
+    mod(x, 4294967296)
+
+  trunc_div(n, d: int): int =
+    IF d = 0 THEN
+      0
+    ELSIF n * d >= 0 THEN
+      floor((n :: real) / (d :: real))
+    ELSE
+      -floor(-((n :: real) / (d :: real)))
+    ENDIF
+
+  p_sorted(
+      mint_0: integer_memory,
+      a: addr,
+      m, n: int): bool =
+    FORALL (i_1, i: int):
+      i < n IMPLIES
+      m <= i_1 IMPLIES
+      i_1 < i IMPLIES
+      mint_0(shift(a, i_1)) <=
+        mint_0(shift(a, i))
+
+  p_strictupperbound(
+      mint_0: integer_memory,
+      a: addr,
+      m, n, v: int): bool =
+    FORALL (j: int):
+      m <= j IMPLIES
+      j < n IMPLIES
+      mint_0(shift(a, j)) < v
+
+  p_strictlowerbound(
+      mint_0: integer_memory,
+      a: addr,
+      m, n, v: int): bool =
+    FORALL (j: int):
+      m <= j IMPLIES
+      j < n IMPLIES
+      v < mint_0(shift(a, j))
+
+  goal26: bool =
+    FORALL
+      (region: [int -> int]),
+      (linked: [allocation_table -> bool]),
+      (i_2, i_3: int),
+      (a: addr),
+      (t_1: integer_memory),
+      (i_1, i: int),
+      (t: allocation_table):
+      LET x: int = i_2 - i_3,
+          x_1: int = trunc_div(x, 2),
+          x_2: int = i_3 + x_1,
+          a_1: addr = shift_sint32(a, x_2),
+          x_3: int = t_1(a_1),
+          x_4: int =
+            i_3 + to_uint32(trunc_div(to_uint32(x), 2))
+      IN
+        i_2 <= i_1 IMPLIES
+        i_3 <= i_2 IMPLIES
+        0 <= i_3 IMPLIES
+        i_3 < i_2 IMPLIES
+        region(base(a)) <= 0 IMPLIES
+        0 <= x_1 IMPLIES
+        x_3 <= i IMPLIES
+        0 <= x_4 IMPLIES
+        i <= x_3 IMPLIES
+        i_2 <= 4294967295 + i_3 IMPLIES
+        x_1 <= 4294967295 IMPLIES
+        x_4 <= 4294967295 IMPLIES
+        linked(t) IMPLIES
+        is_uint32(i_1) IMPLIES
+        is_uint32(i_2) IMPLIES
+        is_uint32(i_3) IMPLIES
+        is_sint32(i) IMPLIES
+        p_sorted(t_1, a, 0, i_1) IMPLIES
+        p_strictupperbound(t_1, a, 0, i_3, i) IMPLIES
+        p_strictlowerbound(t_1, a, i_2, i_1, i) IMPLIES
+        valid_rd(t, shift_sint32(a, 0), i_1) IMPLIES
+        is_uint32(x_2) IMPLIES
+        is_sint32(x_3) IMPLIES
+        valid_rd(t, a_1, 1) IMPLIES
+        p_sorted(t_1, shift_sint32(a, i_3), 0, x_1)
+END equal_range_Why3_ide_VCequal_range_call_lower_bound_pre_sorted_goal26

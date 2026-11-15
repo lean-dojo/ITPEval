@@ -1,0 +1,412 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/verifythis_2021_lexicographic_permutations_1_Top_permutqtvc: the
+% verification condition for enumerating every integer permutation exactly
+% through a strictly increasing lexicographic traversal, with finite-set
+% membership invariants and a decreasing cardinality variant.
+% This file contains no proof.
+
+verifythis_2021_lexicographic_permutations_1_Top_permutqtvc: THEORY
+BEGIN
+
+  IMPORTING finite_sets[list[int]]
+
+  int_list_length(values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        int_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  int_list_get(
+      values: list[int],
+      index: int): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index <= 0 THEN
+          head
+        ELSE
+          int_list_get(tail, index - 1)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  permutation_list_length(
+      values: list[list[int]]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        permutation_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  permutation_list_get(
+      values: list[list[int]],
+      index: int): RECURSIVE list[int] =
+    CASES values OF
+      null:
+        null,
+      cons(head, tail):
+        IF index <= 0 THEN
+          head
+        ELSE
+          permutation_list_get(tail, index - 1)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  occurrence_count(
+      value: int,
+      values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        occurrence_count(value, tail)
+          + IF head = value THEN 1 ELSE 0 ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  to_seq(values: list[int]): list[int] =
+    values
+
+  bounds(index: int, values: list[int]): bool =
+    0 <= index AND index < int_list_length(values)
+
+  lex_less(p, q: list[int]): bool =
+    int_list_length(p) = int_list_length(q)
+      AND 0 < int_list_length(q)
+      AND
+        EXISTS (i: int):
+          bounds(i, p)
+            AND
+              (FORALL (j: int):
+                0 <= j AND j < i IMPLIES
+                  int_list_get(p, j) = int_list_get(q, j))
+            AND int_list_get(p, i) < int_list_get(q, i)
+
+  is_permutation_of(p, a: list[int]): bool =
+    int_list_length(p) = int_list_length(a)
+      AND
+        (FORALL (x: int):
+          occurrence_count(x, p) = occurrence_count(x, a))
+
+  ascending(values: list[int]): bool =
+    FORALL (i, j: int):
+      0 <= i AND i <= j AND j < int_list_length(values)
+        IMPLIES int_list_get(values, i) <= int_list_get(values, j)
+
+  sequence_copy(copied, original: list[int]): bool =
+    int_list_length(copied) = int_list_length(original)
+      AND
+        (FORALL (i: int):
+          bounds(i, copied) IMPLIES
+            int_list_get(copied, i) = int_list_get(original, i))
+
+  snoc(
+      values: list[list[int]],
+      value: list[int]): list[list[int]] =
+    append(values, cons(value, null))
+
+  snoc_contract(
+      before, after: list[list[int]],
+      value: list[int]): bool =
+    permutation_list_length(after) =
+      1 + permutation_list_length(before)
+      AND
+        permutation_list_get(
+          after,
+          permutation_list_length(before)) = value
+      AND
+        (FORALL (i: int):
+          0 <= i AND i < permutation_list_length(before) IMPLIES
+            permutation_list_get(after, i) =
+              permutation_list_get(before, i))
+
+  all_permutations_complete(
+      source: list[int],
+      all_permutations: finite_set[list[int]]): bool =
+    FORALL (p: list[int]):
+      is_permutation_of(p, source) IMPLIES all_permutations(p)
+
+  strictly_lexicographic(result: list[list[int]]): bool =
+    FORALL (i, j: int):
+      0 <= i
+        AND i < j
+        AND j < permutation_list_length(result)
+      IMPLIES
+        lex_less(
+          permutation_list_get(result, i),
+          permutation_list_get(result, j))
+
+  result_permutations(
+      result: list[list[int]],
+      source: list[int]): bool =
+    FORALL (i: int):
+      0 <= i AND i < permutation_list_length(result) IMPLIES
+        is_permutation_of(
+          permutation_list_get(result, i),
+          source)
+
+  contains_every_smaller(
+      result: list[list[int]],
+      source, last: list[int]): bool =
+    FORALL (p: list[int]):
+      is_permutation_of(p, source) IMPLIES
+      lex_less(p, last) IMPLIES
+        EXISTS (i: int):
+          0 <= i
+            AND i < permutation_list_length(result) - 1
+            AND permutation_list_get(result, i) = p
+
+  set_matches_result(
+      selected: finite_set[list[int]],
+      result: list[list[int]]): bool =
+    FORALL (p: list[int]):
+      selected(p)
+        IFF
+          EXISTS (i: int):
+            0 <= i
+              AND i < permutation_list_length(result)
+              AND permutation_list_get(result, i) = p
+
+  enumeration_invariant_with_last(
+      source: list[int],
+      all_permutations, selected: finite_set[list[int]],
+      result: list[list[int]],
+      current, last: list[int]): bool =
+    0 < permutation_list_length(result)
+      AND is_permutation_of(to_seq(current), source)
+      AND result_permutations(result, source)
+      AND last =
+        permutation_list_get(
+          result,
+          permutation_list_length(result) - 1)
+      AND permutation_list_get(
+            result,
+            permutation_list_length(result) - 1) =
+          to_seq(current)
+      AND is_permutation_of(last, source)
+      AND strictly_lexicographic(result)
+      AND contains_every_smaller(result, source, last)
+      AND set_matches_result(selected, result)
+      AND subset?(selected, all_permutations)
+
+  enumeration_invariant(
+      source: list[int],
+      all_permutations, selected: finite_set[list[int]],
+      result: list[list[int]],
+      current: list[int]): bool =
+    enumeration_invariant_with_last(
+      source,
+      all_permutations,
+      selected,
+      result,
+      current,
+      permutation_list_get(
+        result,
+        permutation_list_length(result) - 1))
+
+  next_contract(
+      source, previous, current: list[int],
+      has_next: bool): bool =
+    is_permutation_of(to_seq(current), source)
+      AND
+        (NOT has_next IMPLIES
+          (FORALL (i: int):
+            bounds(i, current) IMPLIES
+              int_list_get(current, i) =
+                int_list_get(previous, i)))
+      AND
+        (NOT has_next IMPLIES
+          (FORALL (p: list[int]):
+            is_permutation_of(p, source) IMPLIES
+              NOT lex_less(to_seq(current), p)))
+      AND
+        (has_next IMPLIES
+          lex_less(to_seq(previous), to_seq(current)))
+      AND
+        (has_next IMPLIES
+          (FORALL (p: list[int]):
+            is_permutation_of(p, source) IMPLIES
+              NOT
+                (lex_less(to_seq(previous), p)
+                  AND lex_less(p, to_seq(current)))))
+
+  variant_decreases(
+      all_permutations, selected: finite_set[list[int]],
+      next_selected: finite_set[list[int]]): bool =
+    0 <=
+      (card(all_permutations) :: int)
+        - (card(selected) :: int)
+      AND
+        (card(all_permutations) :: int)
+            - (card(next_selected) :: int)
+          <
+        (card(all_permutations) :: int)
+            - (card(selected) :: int)
+
+  final_postcondition(
+      original: list[int],
+      result: list[list[int]]): bool =
+    result_permutations(result, to_seq(original))
+      AND strictly_lexicographic(result)
+      AND
+        (FORALL (p: list[int]):
+          is_permutation_of(p, to_seq(original)) IMPLIES
+            EXISTS (i: int):
+              0 <= i
+                AND i < permutation_list_length(result)
+                AND permutation_list_get(result, i) = p)
+
+  true_branch(
+      source: list[int],
+      all_permutations, selected: finite_set[list[int]],
+      result: list[list[int]],
+      current: list[int]): bool =
+    LET o8: list[int] = to_seq(current)
+    IN
+      sequence_copy(o8, current)
+      IMPLIES
+        (LET o9: list[list[int]] = snoc(result, o8)
+         IN
+           snoc_contract(result, o9, o8)
+           IMPLIES
+             (LET o10: list[int] = to_seq(current)
+              IN
+                sequence_copy(o10, current)
+                IMPLIES
+                  (LET o11: list[int] = to_seq(current)
+                   IN
+                     sequence_copy(o11, current)
+                     IMPLIES
+                       (LET next_selected:
+                          finite_set[list[int]] =
+                            add(o11, selected)
+                        IN
+                          variant_decreases(
+                            all_permutations,
+                            selected,
+                            next_selected)
+                            AND
+                          enumeration_invariant_with_last(
+                            source,
+                            all_permutations,
+                            next_selected,
+                            o9,
+                            current,
+                            o10)))))
+
+  loop_obligation(
+      original, source: list[int],
+      all_permutations, selected: finite_set[list[int]],
+      result: list[list[int]],
+      previous, current: list[int],
+      has_next: bool): bool =
+    next_contract(source, previous, current, has_next)
+      IMPLIES
+        IF has_next THEN
+          true_branch(
+            source,
+            all_permutations,
+            selected,
+            result,
+            current)
+        ELSE
+          final_postcondition(original, result)
+        ENDIF
+
+  permut_vc: bool =
+    FORALL (a: list[int]):
+      LET a0: list[int] = to_seq(a)
+      IN
+        sequence_copy(a0, a)
+        IMPLIES
+          (FORALL (all1: finite_set[list[int]]):
+            all_permutations_complete(a0, all1)
+            IMPLIES
+              (FORALL (a1: list[int]):
+                int_list_length(a1) = int_list_length(a)
+                IMPLIES
+                  (ascending(a1)
+                    AND
+                   is_permutation_of(
+                     to_seq(a1),
+                     to_seq(a)))
+                IMPLIES
+                  (LET o1: list[int] = to_seq(a1)
+                   IN
+                     sequence_copy(o1, a1)
+                     IMPLIES
+                       (LET o2: list[list[int]] = null,
+                            o3: list[list[int]] = snoc(o2, o1)
+                        IN
+                          snoc_contract(o2, o3, o1)
+                          IMPLIES
+                            (LET o4: list[int] = to_seq(a1)
+                             IN
+                               sequence_copy(o4, a1)
+                               IMPLIES
+                                 (LET o5: list[int] = to_seq(a1)
+                                  IN
+                                    sequence_copy(o5, a1)
+                                    IMPLIES
+                                      (LET o6:
+                                         finite_set[list[int]] =
+                                           add(
+                                             o5,
+                                             emptyset[list[int]])
+                                       IN
+                                         enumeration_invariant_with_last(
+                                           a0,
+                                           all1,
+                                           o6,
+                                           o3,
+                                           a1,
+                                           o4)
+                                         AND
+                                           (FORALL
+                                               (selected:
+                                                  finite_set[list[int]]),
+                                               (result:
+                                                  list[list[int]]),
+                                               (a2: list[int]):
+                                             int_list_length(a2) =
+                                               int_list_length(a1)
+                                             IMPLIES
+                                               enumeration_invariant(
+                                                 a0,
+                                                 all1,
+                                                 selected,
+                                                 result,
+                                                 a2)
+                                             IMPLIES
+                                               ((int_list_length(a2) =
+                                                   int_list_length(a0)
+                                                  AND
+                                                 is_permutation_of(
+                                                   to_seq(a2),
+                                                   a0))
+                                                AND
+                                                  (FORALL
+                                                      (a3: list[int]):
+                                                    int_list_length(a3) =
+                                                      int_list_length(a2)
+                                                    IMPLIES
+                                                      (FORALL
+                                                          (has_next: bool):
+                                                        loop_obligation(
+                                                          a,
+                                                          a0,
+                                                          all1,
+                                                          selected,
+                                                          result,
+                                                          a2,
+                                                          a3,
+                                                          has_next))))))))))))
+
+END verifythis_2021_lexicographic_permutations_1_Top_permutqtvc

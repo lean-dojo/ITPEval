@@ -1,0 +1,596 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/multiprecision/sub_Sub_wmpn_subqtvc: the verification condition for
+% unequal-length multiprecision subtraction, including initial subtraction,
+% borrow propagation, copying remaining limbs, pointer aliasing, map updates,
+% and memory framing. This file contains no proof.
+
+sub_Sub_wmpn_subqtvc[zone: TYPE+]: THEORY
+BEGIN
+
+  IMPORTING
+    bv[32], bv[64],
+    bv_nat[32], bv_nat[64]
+
+  word32: TYPE = bvec[32]
+  word64: TYPE = bvec[64]
+
+  ptr: TYPE =
+    [# data_length: nat,
+       cells: [int -> word64],
+       pointer_offset: int,
+       pointer_min: int,
+       pointer_max: int,
+       is_writable: bool,
+       pointer_zone: zone #]
+
+  radix: int = 18446744073709551616
+
+  zero64: word64 = fill[64](FALSE)
+
+  unsigned64(value1: word64): int =
+    bv2nat[64](value1)
+
+  signed32(value1: word32): int =
+    IF value1(31) THEN
+      bv2nat[32](value1) - 4294967296
+    ELSE
+      bv2nat[32](value1)
+    ENDIF
+
+  int_to_nat(value1: int): nat =
+    IF value1 < 0 THEN 0 ELSE value1 ENDIF
+
+  nat_power(base: int, exponent: nat): RECURSIVE int =
+    IF exponent = 0 THEN
+      1
+    ELSE
+      base * nat_power(base, exponent - 1)
+    ENDIF
+  MEASURE exponent
+
+  int_power(base, exponent: int): int =
+    nat_power(base, int_to_nat(exponent))
+
+  value_from(
+      values: [int -> word64],
+      start: int,
+      count: nat): RECURSIVE int =
+    IF count = 0 THEN
+      0
+    ELSE
+      unsigned64(values(start))
+        + radix * value_from(values, start + 1, count - 1)
+    ENDIF
+  MEASURE count
+
+  value(p: ptr, count: int): int =
+    value_from(
+      cells(p),
+      pointer_offset(p),
+      int_to_nat(count))
+
+  plength(p: ptr): int =
+    data_length(p)
+
+  pelts(p: ptr, index: int): word64 =
+    cells(p)(index)
+
+  int32_in_bounds(value1: int): bool =
+    -2147483648 <= value1 AND value1 <= 2147483647
+
+  valid(p: ptr, count: int): bool =
+    int32_in_bounds(count)
+      AND 0 <= count
+      AND 0 <= pointer_min(p)
+      AND pointer_min(p) <= pointer_offset(p)
+      AND pointer_offset(p) + count <= pointer_max(p)
+      AND pointer_max(p) <= plength(p)
+
+  same_data(left, right: ptr): bool =
+    data_length(left) = data_length(right)
+      AND cells(left) = cells(right)
+
+  rebased_snapshot(
+      fresh, shared, old: ptr): bool =
+    same_data(fresh, shared)
+      AND data_length(shared) = data_length(old)
+      AND pointer_offset(fresh) = pointer_offset(old)
+      AND pointer_min(fresh) = pointer_min(old)
+      AND pointer_max(fresh) = pointer_max(old)
+      AND is_writable(fresh) = is_writable(old)
+      AND pointer_zone(fresh) = pointer_zone(old)
+
+  snapshot_metadata(
+      fresh, old: ptr): bool =
+    data_length(fresh) = data_length(old)
+      AND pointer_offset(fresh) = pointer_offset(old)
+      AND pointer_min(fresh) = pointer_min(old)
+      AND pointer_max(fresh) = pointer_max(old)
+      AND is_writable(fresh) = is_writable(old)
+      AND pointer_zone(fresh) = pointer_zone(old)
+
+  disjoint_or_equal(
+      left, right: ptr,
+      left_count, right_count: int): bool =
+    pointer_offset(left) = pointer_offset(right)
+      OR pointer_offset(left) + left_count <= pointer_offset(right)
+      OR pointer_offset(right) + right_count <= pointer_offset(left)
+
+  map_eq_sub(
+      left, right: ptr,
+      lower, upper: int): bool =
+    FORALL (index: int):
+      lower <= index AND index < upper
+        IMPLIES pelts(left, index) = pelts(right, index)
+
+  frame(
+      new, old: ptr,
+      count: int): bool =
+    FORALL (index: int):
+      index < pointer_offset(new)
+        OR pointer_offset(new) + count <= index
+      IMPLIES pelts(new, index) = pelts(old, index)
+
+  single_update(
+      new, old: ptr,
+      index: int,
+      replacement: word64): bool =
+    cells(new) = cells(old) WITH [(index) := replacement]
+      AND pelts(new, index) = replacement
+
+  access(p: ptr, index: int): bool =
+    pointer_min(p) <= index
+      AND index < pointer_max(p)
+
+  borrow_range(borrow: word64): bool =
+    0 <= unsigned64(borrow)
+      AND unsigned64(borrow) <= 1
+
+  zero_flag(limb: word64, flag: bool): bool =
+    (unsigned64(limb) = unsigned64(zero64)
+      IMPLIES flag = TRUE)
+      AND
+    (flag = TRUE IMPLIES limb = zero64)
+
+  value_equation(
+      sy: word32,
+      current, x, y: ptr,
+      index: int,
+      borrow: word64): bool =
+    value(current, index)
+        - int_power(radix, index) * unsigned64(borrow)
+      =
+    value(x, index) - value(y, signed32(sy))
+
+  alias_invariant(
+      sy, sx: word32,
+      current, x_current, y_current, x, y: ptr): bool =
+    cells(x_current) = cells(current)
+      AND cells(y_current) = cells(current)
+      AND
+        (pointer_offset(current) = pointer_offset(x_current)
+          OR
+            map_eq_sub(
+              x_current, x,
+              pointer_offset(x_current),
+              pointer_offset(x_current) + signed32(sx)))
+      AND
+        (pointer_offset(current) = pointer_offset(y_current)
+          OR
+            map_eq_sub(
+              y_current, y,
+              pointer_offset(y_current),
+              pointer_offset(y_current) + signed32(sy)))
+
+  common_invariant(
+      sy, sx: word32,
+      r, x, y: ptr,
+      index: word32,
+      borrow: word64,
+      current, x_current, y_current: ptr): bool =
+    signed32(sy) <= signed32(index)
+      AND signed32(index) <= signed32(sx)
+      AND
+        value_equation(
+          sy, current, x, y, signed32(index), borrow)
+      AND frame(current, r, signed32(index))
+      AND
+        alias_invariant(
+          sy, sx, current, x_current, y_current, x, y)
+      AND borrow_range(borrow)
+
+  first_invariant(
+      sy, sx: word32,
+      r, x, y: ptr,
+      index: word32,
+      borrow: word64,
+      current, x_current, y_current: ptr): bool =
+    common_invariant(
+      sy, sx, r, x, y,
+      index, borrow,
+      current, x_current, y_current)
+      AND (index = sx OR unsigned64(borrow) = 1)
+
+  second_invariant(
+      sy, sx: word32,
+      r, x, y: ptr,
+      index: word32,
+      borrow: word64,
+      current, x_current, y_current: ptr): bool =
+    common_invariant(
+      sy, sx, r, x, y,
+      index, borrow,
+      current, x_current, y_current)
+      AND (index = sx OR unsigned64(borrow) = 0)
+
+  final_state(
+      sy, sx: word32,
+      r, x, y, current, x_current, y_current: ptr,
+      borrow: word64): bool =
+    value_equation(
+      sy, current, x, y, signed32(sx), borrow)
+      AND borrow_range(borrow)
+      AND frame(current, r, signed32(sx))
+      AND
+        (pointer_offset(current) = pointer_offset(x_current)
+          OR
+            map_eq_sub(
+              x_current, x,
+              pointer_offset(x_current),
+              pointer_offset(x_current) + signed32(sx)))
+      AND
+        (pointer_offset(current) = pointer_offset(y_current)
+          OR
+            map_eq_sub(
+              y_current, y,
+              pointer_offset(y_current),
+              pointer_offset(y_current) + signed32(sy)))
+
+  second_step(
+      sy, sx: word32,
+      r, x, y: ptr,
+      index: word32,
+      borrow: word64,
+      current, x_current, y_current: ptr): bool =
+    IF signed32(index) < signed32(sx) THEN
+      access(
+        x_current,
+        pointer_offset(x_current) + signed32(index))
+        AND
+          access(
+            x,
+            pointer_offset(x) + signed32(index))
+        AND
+          (access(
+            current,
+            pointer_offset(current) + signed32(index))
+            AND is_writable(current) = TRUE)
+        AND
+          (FORALL (y_next, x_next, r_next: ptr):
+            rebased_snapshot(y_next, r_next, y_current)
+              IMPLIES
+                rebased_snapshot(x_next, r_next, x_current)
+              IMPLIES
+                snapshot_metadata(r_next, current)
+              IMPLIES
+                (single_update(
+                  r_next,
+                  current,
+                  pointer_offset(r_next) + signed32(index),
+                  pelts(
+                    x_current,
+                    pointer_offset(x_current) + signed32(index)))
+                  AND
+                    pelts(
+                      r_next,
+                      pointer_offset(r_next) + signed32(index))
+                    =
+                    pelts(
+                      x_current,
+                      pointer_offset(x_current) + signed32(index)))
+              IMPLIES
+                int32_in_bounds(signed32(index) + 1)
+                  AND
+                    (FORALL (next_index: word32):
+                      signed32(next_index) = signed32(index) + 1
+                        IMPLIES
+                          (0 <= signed32(sx) - signed32(index)
+                            AND
+                              signed32(sx) - signed32(next_index)
+                                <
+                              signed32(sx) - signed32(index))
+                          AND
+                            second_invariant(
+                              sy, sx, r, x, y,
+                              next_index, borrow,
+                              r_next, x_next, y_next)))
+    ELSE
+      final_state(
+        sy, sx, r, x, y,
+        current, x_current, y_current, borrow)
+    ENDIF
+
+  second_loop(
+      sy, sx: word32,
+      r, x, y: ptr,
+      borrow: word64,
+      initial, x_initial, y_initial: ptr): bool =
+    FORALL
+        (index: word32),
+        (y_current, x_current, current: ptr):
+      rebased_snapshot(y_current, current, y_initial)
+        IMPLIES
+          rebased_snapshot(x_current, current, x_initial)
+        IMPLIES
+          snapshot_metadata(current, initial)
+        IMPLIES
+          second_invariant(
+            sy, sx, r, x, y,
+            index, borrow,
+            current, x_current, y_current)
+        IMPLIES
+          second_step(
+            sy, sx, r, x, y,
+            index, borrow,
+            current, x_current, y_current)
+
+  second_phase(
+      sy, sx: word32,
+      r, x, y: ptr,
+      index: word32,
+      borrow: word64,
+      current, x_current, y_current: ptr): bool =
+    second_invariant(
+      sy, sx, r, x, y,
+      index, borrow,
+      current, x_current, y_current)
+      AND
+        second_loop(
+          sy, sx, r, x, y,
+          borrow,
+          current, x_current, y_current)
+
+  first_step(
+      sy, sx: word32,
+      r, x, y: ptr,
+      index: word32,
+      borrow: word64,
+      current, x_current, y_current: ptr): bool =
+    IF signed32(index) < signed32(sx) THEN
+      access(
+        x_current,
+        pointer_offset(x_current) + signed32(index))
+        AND
+          access(
+            x,
+            pointer_offset(x) + signed32(index))
+        AND
+          (FORALL (result: word64):
+            unsigned64(result)
+                =
+                mod(
+                  unsigned64(
+                    pelts(
+                      x_current,
+                      pointer_offset(x_current) + signed32(index)))
+                    - 1,
+                  radix)
+              IMPLIES
+                (access(
+                  current,
+                  pointer_offset(current) + signed32(index))
+                  AND is_writable(current) = TRUE)
+                AND
+                  (FORALL (y_next, x_next, r_next: ptr):
+                    rebased_snapshot(y_next, r_next, y_current)
+                      IMPLIES
+                        rebased_snapshot(x_next, r_next, x_current)
+                      IMPLIES
+                        snapshot_metadata(r_next, current)
+                      IMPLIES
+                        (single_update(
+                          r_next,
+                          current,
+                          pointer_offset(r_next) + signed32(index),
+                          result)
+                          AND
+                            pelts(
+                              r_next,
+                              pointer_offset(r_next) + signed32(index))
+                            = result)
+                      IMPLIES
+                        int32_in_bounds(signed32(index) + 1)
+                          AND
+                            (FORALL (next_index: word32):
+                              signed32(next_index)
+                                  = signed32(index) + 1
+                                IMPLIES
+                                  (FORALL (flag: bool):
+                                    zero_flag(
+                                      pelts(
+                                        x_current,
+                                        pointer_offset(x_current)
+                                          + signed32(index)),
+                                      flag)
+                                      IMPLIES
+                                        IF NOT (flag = TRUE) THEN
+                                          second_phase(
+                                            sy, sx, r, x, y,
+                                            next_index, zero64,
+                                            r_next, x_next, y_next)
+                                        ELSE
+                                          (0
+                                              <=
+                                            signed32(sx)
+                                              - signed32(index)
+                                            AND
+                                              signed32(sx)
+                                                - (signed32(index) + 1)
+                                              <
+                                              signed32(sx)
+                                                - signed32(index))
+                                            AND
+                                              first_invariant(
+                                                sy, sx, r, x, y,
+                                                next_index, borrow,
+                                                r_next, x_next, y_next)
+                                        ENDIF))))
+    ELSE
+      second_phase(
+        sy, sx, r, x, y,
+        index, borrow,
+        current, x_current, y_current)
+    ENDIF
+
+  first_loop(
+      sy, sx: word32,
+      r, x, y: ptr,
+      initial, x_initial, y_initial: ptr): bool =
+    FORALL
+        (index: word32),
+        (borrow: word64),
+        (y_current, x_current, current: ptr):
+      rebased_snapshot(y_current, current, y_initial)
+        IMPLIES
+          rebased_snapshot(x_current, current, x_initial)
+        IMPLIES
+          snapshot_metadata(current, initial)
+        IMPLIES
+          first_invariant(
+            sy, sx, r, x, y,
+            index, borrow,
+            current, x_current, y_current)
+        IMPLIES
+          first_step(
+            sy, sx, r, x, y,
+            index, borrow,
+            current, x_current, y_current)
+
+  first_phase(
+      sy, sx: word32,
+      r, x, y: ptr,
+      index: word32,
+      borrow: word64,
+      current, x_current, y_current: ptr): bool =
+    first_invariant(
+      sy, sx, r, x, y,
+      index, borrow,
+      current, x_current, y_current)
+      AND
+        first_loop(
+          sy, sx, r, x, y,
+          current, x_current, y_current)
+
+  after_initial_flag(
+      sy, sx: word32,
+      r, x, y: ptr,
+      borrow: word64,
+      flag: bool,
+      current, x_current, y_current: ptr): bool =
+    IF NOT (flag = TRUE) THEN
+      first_phase(
+        sy, sx, r, x, y,
+        sy, borrow,
+        current, x_current, y_current)
+    ELSE
+      second_phase(
+        sy, sx, r, x, y,
+        sy, borrow,
+        current, x_current, y_current)
+    ENDIF
+
+  after_initial(
+      sy, sx: word32,
+      r, x, y: ptr,
+      borrow: word64,
+      current, x_current, y_current: ptr): bool =
+    FORALL (flag: bool):
+      zero_flag(borrow, flag)
+        IMPLIES
+          after_initial_flag(
+            sy, sx, r, x, y,
+            borrow, flag,
+            current, x_current, y_current)
+
+  initial_postcondition(
+      sy: word32,
+      r, x, y, current, x_current, y_current: ptr,
+      borrow: word64): bool =
+    value_equation(
+      sy, current, x, y, signed32(sy), borrow)
+      AND borrow_range(borrow)
+      AND frame(current, r, signed32(sy))
+      AND
+        (pointer_offset(current) = pointer_offset(x_current)
+          OR
+            map_eq_sub(
+              x_current, x,
+              pointer_offset(x_current),
+              pointer_offset(x_current) + signed32(sy)))
+      AND
+        (pointer_offset(current) = pointer_offset(y_current)
+          OR
+            map_eq_sub(
+              y_current, y,
+              pointer_offset(y_current),
+              pointer_offset(y_current) + signed32(sy)))
+
+  wmpn_sub_vc: bool =
+    FORALL
+        (sy, sx: word32),
+        (r, x, y: ptr):
+      0 <= signed32(sy)
+        IMPLIES
+          signed32(sy) <= signed32(sx)
+        IMPLIES
+          valid(r, signed32(sx))
+        IMPLIES
+          valid(x, signed32(sx))
+        IMPLIES
+          valid(y, signed32(sy))
+        IMPLIES
+          disjoint_or_equal(
+            r, x, signed32(sx), signed32(sx))
+        IMPLIES
+          disjoint_or_equal(
+            r, y, signed32(sx), signed32(sy))
+        IMPLIES
+          same_data(r, x)
+        IMPLIES
+          same_data(x, y)
+        IMPLIES
+          is_writable(r) = TRUE
+        IMPLIES
+          0 <= signed32(sy)
+            AND valid(r, signed32(sy))
+            AND valid(x, signed32(sy))
+            AND valid(y, signed32(sy))
+            AND
+              disjoint_or_equal(
+                r, x, signed32(sy), signed32(sy))
+            AND
+              disjoint_or_equal(
+                r, y, signed32(sy), signed32(sy))
+            AND same_data(r, x)
+            AND same_data(x, y)
+            AND is_writable(r) = TRUE
+            AND
+              (FORALL (y_current, x_current, current: ptr):
+                rebased_snapshot(y_current, current, y)
+                  IMPLIES
+                    rebased_snapshot(x_current, current, x)
+                  IMPLIES
+                    snapshot_metadata(current, r)
+                  IMPLIES
+                    (FORALL (borrow: word64):
+                      initial_postcondition(
+                        sy, r, x, y,
+                        current, x_current, y_current,
+                        borrow)
+                        IMPLIES
+                          after_initial(
+                            sy, sx, r, x, y,
+                            borrow,
+                            current, x_current, y_current)))
+
+END sub_Sub_wmpn_subqtvc

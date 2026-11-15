@@ -1,0 +1,99 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1993_a5:
+% the sum of three definite integrals of the stated squared rational function
+% is a rational number. This file contains no proof.
+
+putnam_1993_a5: THEORY
+BEGIN
+  real_function: TYPE = [real -> real]
+  real_sequence: TYPE = [nat -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  integrand(x: real): real =
+    safe_div(
+      x ^ 2 - x,
+      x ^ 3 - 3 * x + 1) ^ 2
+
+  valid_tagged_partition(
+      left, right: real,
+      points, tags: real_sequence,
+      count: nat): bool =
+    count > 0
+      AND points(0) = left
+      AND points(count) = right
+      AND FORALL (index: nat):
+        index < count IMPLIES
+          (points(index) < points(index + 1)
+            AND points(index) <= tags(index)
+            AND tags(index) <= points(index + 1))
+
+  mesh_less_than(
+      points: real_sequence,
+      count: nat,
+      bound: real): bool =
+    FORALL (index: nat):
+      index < count IMPLIES
+        points(index + 1) - points(index) < bound
+
+  riemann_sum(
+      f: real_function,
+      points, tags: real_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      riemann_sum(f, points, tags, count - 1)
+        + f(tags(count - 1))
+            * (points(count) - points(count - 1))
+    ENDIF
+  MEASURE count
+
+  has_interval_integral(
+      f: real_function,
+      left, right, integral_value: real): bool =
+    left < right
+      AND FORALL (epsilon_value: posreal):
+        EXISTS (mesh_bound: posreal):
+          FORALL
+              (points, tags: real_sequence),
+              (count: nat):
+            (valid_tagged_partition(
+                left, right, points, tags, count)
+              AND mesh_less_than(points, count, mesh_bound))
+            IMPLIES
+              abs(
+                riemann_sum(f, points, tags, count)
+                  - integral_value)
+                < epsilon_value
+
+  interval_integral(
+      f: real_function,
+      left, right: real): real =
+    IF EXISTS (integral_value: real):
+        has_interval_integral(f, left, right, integral_value)
+    THEN
+      epsilon(
+        LAMBDA (integral_value: real):
+          has_interval_integral(
+            f, left, right, integral_value))
+    ELSE
+      0
+    ENDIF
+
+  putnam_1993_a5: bool =
+    rational?(
+      interval_integral(integrand, -100, -10)
+        + interval_integral(
+            integrand,
+            safe_div(1, 101),
+            safe_div(1, 11))
+        + interval_integral(
+            integrand,
+            safe_div(101, 100),
+            safe_div(11, 10)))
+END putnam_1993_a5

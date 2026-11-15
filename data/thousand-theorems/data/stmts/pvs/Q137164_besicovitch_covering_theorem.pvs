@@ -1,0 +1,424 @@
+% Statement-only formalization of the Thousand Theorems artifact Q137164,
+% "Besicovitch covering theorem": admissible radii accumulating at zero yield
+% a countable pairwise-disjoint family of closed balls covering almost all of
+% a set in a second-countable Besicovitch metric measure space. This file contains no proof.
+
+besicovitch_covering_theorem_Q137164[
+  X: TYPE,
+  carrier: [X -> bool],
+  distance: [X, X -> real]
+]: THEORY
+BEGIN
+  event: TYPE = [X -> bool]
+  event_sequence: TYPE = [nat -> event]
+  sigma_algebra: TYPE = [event -> bool]
+  real_function: TYPE = [X -> real]
+  radius_family: TYPE = [X -> [real -> bool]]
+  center_sequence: TYPE = [nat -> X]
+  radius_sequence: TYPE = [nat -> real]
+
+  measure_value: TYPE =
+    [# infinite_flag: bool, finite_part: real #]
+  measure_value_sequence: TYPE = [nat -> measure_value]
+  measure_map: TYPE = [event -> measure_value]
+  measure_sequence: TYPE = [nat -> measure_map]
+  real_sequence: TYPE = [nat -> real]
+
+  zero_measure_value: measure_value =
+    (# infinite_flag := FALSE, finite_part := 0 #)
+
+  infinite_measure_value: measure_value =
+    (# infinite_flag := TRUE, finite_part := 0 #)
+
+  finite_measure_value(value: real): measure_value =
+    (# infinite_flag := FALSE, finite_part := value #)
+
+  canonical_measure_value(value: measure_value): bool =
+    IF infinite_flag(value) THEN
+      finite_part(value) = 0
+    ELSE
+      finite_part(value) >= 0
+    ENDIF
+
+  measure_value_is_zero(value: measure_value): bool =
+    canonical_measure_value(value)
+      AND NOT infinite_flag(value)
+      AND finite_part(value) = 0
+
+  measure_value_le(left, right: measure_value): bool =
+    canonical_measure_value(left)
+      AND canonical_measure_value(right)
+      AND IF infinite_flag(right) THEN
+        TRUE
+      ELSIF infinite_flag(left) THEN
+        FALSE
+      ELSE
+        finite_part(left) <= finite_part(right)
+      ENDIF
+
+  measure_value_add(left, right: measure_value): measure_value =
+    IF infinite_flag(left) OR infinite_flag(right) THEN
+      infinite_measure_value
+    ELSE
+      finite_measure_value(
+        finite_part(left) + finite_part(right))
+    ENDIF
+
+  full_event: event =
+    LAMBDA (x: X): carrier(x)
+
+  empty_event: event =
+    LAMBDA (x: X): FALSE
+
+  carrier_event(E: event): bool =
+    FORALL (x: X):
+      E(x) IMPLIES carrier(x)
+
+  event_subset(E, F: event): bool =
+    FORALL (x: X):
+      E(x) IMPLIES F(x)
+
+  event_difference(E, F: event): event =
+    LAMBDA (x: X):
+      carrier(x) AND E(x) AND NOT F(x)
+
+  event_intersection(E, F: event): event =
+    LAMBDA (x: X):
+      carrier(x) AND E(x) AND F(x)
+
+  event_complement(E: event): event =
+    LAMBDA (x: X):
+      carrier(x) AND NOT E(x)
+
+  countable_union(events: event_sequence): event =
+    LAMBDA (x: X):
+      carrier(x)
+        AND EXISTS (index: nat): events(index)(x)
+
+  finite_real_sum(values: real_sequence, count: nat):
+      RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      finite_real_sum(values, count - 1)
+        + values(count - 1)
+    ENDIF
+  MEASURE count
+
+  converges_to_real(values: real_sequence, limit: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(values(index) - limit) < epsilon_value
+
+  unbounded_above(values: real_sequence): bool =
+    FORALL (bound: real):
+      EXISTS (index: nat):
+        bound < values(index)
+
+  partial_measure_sum(
+      values: measure_value_sequence,
+      count: nat): real =
+    finite_real_sum(
+      LAMBDA (index: nat):
+        finite_part(values(index)),
+      count)
+
+  extended_nonnegative_sum(
+      values: measure_value_sequence,
+      total: measure_value): bool =
+    canonical_measure_value(total)
+      AND (FORALL (index: nat):
+        canonical_measure_value(values(index)))
+      AND IF infinite_flag(total) THEN
+        (EXISTS (index: nat):
+          infinite_flag(values(index)))
+          OR ((FORALL (index: nat):
+                NOT infinite_flag(values(index)))
+            AND unbounded_above(
+              LAMBDA (count: nat):
+                partial_measure_sum(values, count)))
+      ELSE
+        (FORALL (index: nat):
+          NOT infinite_flag(values(index)))
+          AND converges_to_real(
+            LAMBDA (count: nat):
+              partial_measure_sum(values, count),
+            finite_part(total))
+      ENDIF
+
+  is_sigma_algebra(Sigma: sigma_algebra): bool =
+    (FORALL (E: event):
+      Sigma(E) IMPLIES carrier_event(E))
+      AND Sigma(full_event)
+      AND (FORALL (E: event):
+        Sigma(E) IMPLIES Sigma(event_complement(E)))
+      AND (FORALL (events: event_sequence):
+        (FORALL (index: nat): Sigma(events(index)))
+          IMPLIES Sigma(countable_union(events)))
+
+  outer_measure_laws(M: measure_map): bool =
+    measure_value_is_zero(M(empty_event))
+      AND (FORALL (E: event):
+        carrier_event(E) IMPLIES
+          canonical_measure_value(M(E)))
+      AND (FORALL (E, F: event):
+        carrier_event(E)
+          AND carrier_event(F)
+          AND event_subset(E, F)
+        IMPLIES measure_value_le(M(E), M(F)))
+      AND (FORALL (events: event_sequence):
+        (FORALL (index: nat):
+          carrier_event(events(index)))
+        IMPLIES
+          EXISTS (total: measure_value):
+            extended_nonnegative_sum(
+              LAMBDA (index: nat):
+                M(events(index)),
+              total)
+              AND measure_value_le(
+                M(countable_union(events)),
+                total))
+
+  caratheodory_measurable(
+      M: measure_map,
+      E: event): bool =
+    carrier_event(E)
+      AND FORALL (test: event):
+        carrier_event(test) IMPLIES
+          M(test) =
+            measure_value_add(
+              M(event_intersection(test, E)),
+              M(event_difference(test, E)))
+
+  is_measure(
+      M: measure_map,
+      Sigma: sigma_algebra): bool =
+    is_sigma_algebra(Sigma)
+      AND outer_measure_laws(M)
+      AND (FORALL (E: event):
+        Sigma(E) IMPLIES
+          caratheodory_measurable(M, E))
+
+  finite_measure(
+      M: measure_map,
+      Sigma: sigma_algebra): bool =
+    is_measure(M, Sigma)
+      AND NOT infinite_flag(M(full_event))
+
+  s_finite_measure(
+      M: measure_map,
+      Sigma: sigma_algebra): bool =
+    EXISTS (components: measure_sequence):
+      (FORALL (index: nat):
+        finite_measure(components(index), Sigma))
+        AND (FORALL (E: event):
+          Sigma(E) IMPLIES
+            extended_nonnegative_sum(
+              LAMBDA (index: nat):
+                components(index)(E),
+              M(E)))
+
+  null_event(
+      M: measure_map,
+      E: event): bool =
+    carrier_event(E)
+      AND measure_value_is_zero(M(E))
+
+  metric_space: bool =
+    (FORALL (x, y: X):
+      carrier(x) AND carrier(y) IMPLIES
+        distance(x, y) >= 0)
+      AND (FORALL (x, y: X):
+        carrier(x) AND carrier(y) IMPLIES
+          (distance(x, y) = 0 IFF x = y))
+      AND (FORALL (x, y: X):
+        carrier(x) AND carrier(y) IMPLIES
+          distance(x, y) = distance(y, x))
+      AND (FORALL (x, y, z: X):
+        carrier(x) AND carrier(y) AND carrier(z)
+          IMPLIES
+            distance(x, z)
+              <= distance(x, y) + distance(y, z))
+
+  metric_open(U: event): bool =
+    carrier_event(U)
+      AND FORALL (x: X):
+        carrier(x) AND U(x) IMPLIES
+          EXISTS (epsilon_value: posreal):
+            FORALL (y: X):
+              carrier(y)
+                AND distance(x, y) < epsilon_value
+              IMPLIES U(y)
+
+  second_countable_metric: bool =
+    EXISTS (basis: event_sequence):
+      (FORALL (index: nat):
+        metric_open(basis(index)))
+        AND (FORALL (U: event), (x: X):
+          metric_open(U) AND carrier(x) AND U(x)
+            IMPLIES
+              EXISTS (index: nat):
+                basis(index)(x)
+                  AND event_subset(basis(index), U))
+
+  opens_measurable(Sigma: sigma_algebra): bool =
+    FORALL (U: event):
+      metric_open(U) IMPLIES Sigma(U)
+
+  closed_ball(center: X, radius: real): event =
+    LAMBDA (x: X):
+      carrier(x)
+        AND distance(x, center) <= radius
+
+  disjoint_events(E, F: event): bool =
+    FORALL (x: X):
+      carrier(x) IMPLIES
+        NOT (E(x) AND F(x))
+
+  satellite_configuration(
+      N: nat,
+      tau: real,
+      centers: center_sequence,
+      radii: radius_sequence): bool =
+    (FORALL (index: nat):
+      index <= N IMPLIES
+        carrier(centers(index))
+          AND 0 < radii(index))
+      AND (FORALL (left_index, right_index: nat):
+        left_index <= N
+          AND right_index <= N
+          AND left_index /= right_index
+        IMPLIES
+          ((radii(left_index)
+              <= distance(
+                centers(left_index),
+                centers(right_index))
+            AND radii(right_index)
+              <= tau * radii(left_index))
+          OR
+          (radii(right_index)
+              <= distance(
+                centers(right_index),
+                centers(left_index))
+            AND radii(left_index)
+              <= tau * radii(right_index))))
+      AND (FORALL (index: nat):
+        index < N IMPLIES
+          radii(index)
+              <= distance(centers(index), centers(N))
+            AND radii(N) <= tau * radii(index))
+      AND (FORALL (index: nat):
+        index < N IMPLIES
+          distance(centers(index), centers(N))
+            <= radii(index) + radii(N))
+
+  has_besicovitch_covering: bool =
+    EXISTS (N: nat), (tau: real):
+      1 < tau
+        AND NOT EXISTS
+            (centers: center_sequence),
+            (radii: radius_sequence):
+          satellite_configuration(
+            N, tau, centers, radii)
+
+  event_is_empty(E: event): bool =
+    FORALL (x: X):
+      carrier(x) IMPLIES NOT E(x)
+
+  countable_event(E: event): bool =
+    carrier_event(E)
+      AND (event_is_empty(E)
+        OR EXISTS (enumeration: center_sequence):
+          (FORALL (index: nat):
+            E(enumeration(index)))
+            AND (FORALL (x: X):
+              carrier(x) IMPLIES
+                (E(x) IFF
+                  EXISTS (index: nat):
+                    enumeration(index) = x)))
+
+  union_selected_closed_balls(
+      selected: event,
+      radii: real_function): event =
+    LAMBDA (x: X):
+      carrier(x)
+        AND EXISTS (center: X):
+          carrier(center)
+            AND selected(center)
+            AND distance(x, center) <= radii(center)
+
+  selected_balls_pairwise_disjoint(
+      selected: event,
+      radii: real_function): bool =
+    FORALL (left_center, right_center: X):
+      carrier(left_center)
+        AND carrier(right_center)
+        AND selected(left_center)
+        AND selected(right_center)
+        AND left_center /= right_center
+      IMPLIES
+        disjoint_events(
+          closed_ball(left_center, radii(left_center)),
+          closed_ball(right_center, radii(right_center)))
+
+  admissible_radii_accumulate_at_zero(
+      admissible: radius_family,
+      source_set: event): bool =
+    FORALL (x: X), (delta: real):
+      carrier(x)
+        AND source_set(x)
+        AND delta > 0
+      IMPLIES
+        EXISTS (radius: real):
+          admissible(x)(radius)
+            AND 0 < radius
+            AND radius < delta
+
+  positive_bound_on(
+      bound: real_function,
+      source_set: event): bool =
+    FORALL (x: X):
+      carrier(x) AND source_set(x)
+        IMPLIES 0 < bound(x)
+
+  besicovitch_covering_theorem: bool =
+    metric_space
+      AND second_countable_metric
+      AND has_besicovitch_covering
+    IMPLIES
+      FORALL
+          (M: measure_map),
+          (Sigma: sigma_algebra),
+          (admissible: radius_family),
+          (source_set: event),
+          (bound: real_function):
+        (is_measure(M, Sigma)
+          AND s_finite_measure(M, Sigma)
+          AND opens_measurable(Sigma)
+          AND carrier_event(source_set)
+          AND admissible_radii_accumulate_at_zero(
+            admissible, source_set)
+          AND positive_bound_on(bound, source_set))
+        IMPLIES
+          EXISTS
+              (selected: event),
+              (radii: real_function):
+            countable_event(selected)
+              AND event_subset(selected, source_set)
+              AND (FORALL (x: X):
+                carrier(x) AND selected(x)
+                  IMPLIES
+                    admissible(x)(radii(x))
+                      AND 0 < radii(x)
+                      AND radii(x) < bound(x))
+              AND null_event(
+                M,
+                event_difference(
+                  source_set,
+                  union_selected_closed_balls(
+                    selected, radii)))
+              AND selected_balls_pairwise_disjoint(
+                selected, radii)
+END besicovitch_covering_theorem_Q137164

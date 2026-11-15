@@ -1,0 +1,108 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2022_b1:
+% an integer polynomial with zero constant term and odd linear coefficient
+% has an exponential power series with no zero coefficient. This file contains no proof.
+
+putnam_2022_b1: THEORY
+BEGIN
+  integer_polynomial: TYPE = list[int]
+  real_sequence: TYPE = [nat -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  coefficient(
+      polynomial: integer_polynomial,
+      degree: nat): RECURSIVE int =
+    CASES polynomial OF
+      null: 0,
+      cons(head_coefficient, tail):
+        IF degree = 0 THEN
+          head_coefficient
+        ELSE
+          coefficient(tail, degree - 1)
+        ENDIF
+    ENDCASES
+  MEASURE polynomial BY <<
+
+  polynomial_value(
+      polynomial: integer_polynomial,
+      x: real): RECURSIVE real =
+    CASES polynomial OF
+      null: 0,
+      cons(head_coefficient, tail):
+        (head_coefficient :: real)
+          + x * polynomial_value(tail, x)
+    ENDCASES
+  MEASURE polynomial BY <<
+
+  odd_integer(value: int): bool =
+    EXISTS (half: int):
+      value = 2 * half + 1
+
+  nat_factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * nat_factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  exponential_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        exponential_partial(x, count - 1)
+          + safe_div(
+              x ^ index,
+              nat_factorial(index) :: real)
+    ENDIF
+  MEASURE count
+
+  power_series_partial(
+      values: real_sequence,
+      x: real,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        power_series_partial(values, x, count - 1)
+          + values(index) * x ^ index
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  real_exponential(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat):
+            exponential_partial(x, count),
+          value))
+
+  putnam_2022_b1: bool =
+    FORALL
+        (P: integer_polynomial),
+        (b: real_sequence):
+      (coefficient(P, 0) = 0
+        AND odd_integer(coefficient(P, 1))
+        AND FORALL (x: real):
+          converges_to(
+            LAMBDA (count: nat):
+              power_series_partial(b, x, count),
+            real_exponential(polynomial_value(P, x))))
+      IMPLIES
+        (FORALL (k: nat):
+          b(k) /= 0)
+END putnam_2022_b1

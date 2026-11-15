@@ -1,0 +1,115 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1994_a6:
+% ten bijections of the integers act transitively from zero, and at most half
+% of their ordered binary-exponent compositions stabilize any nonempty finite
+% set of integers. This file contains no proof.
+
+putnam_1994_a6: THEORY
+BEGIN
+  digit: TYPE = {index: nat | index < 10}
+  integer_function: TYPE = [int -> int]
+  generator_family: TYPE = [digit -> integer_function]
+  word: TYPE = [nat -> digit]
+  composition_table: TYPE =
+    [nat, word, nat -> integer_function]
+  exponent_selection: TYPE = [digit -> bool]
+
+  IMPORTING finite_sets[int], finite_sets[integer_function]
+
+  integer_set: TYPE = finite_set[int]
+  function_family: TYPE = finite_set[integer_function]
+
+  injective(g: integer_function): bool =
+    FORALL (x, y: int):
+      g(x) = g(y) IMPLIES x = y
+
+  surjective(g: integer_function): bool =
+    FORALL (y: int):
+      EXISTS (x: int):
+        g(x) = y
+
+  all_bijections(f: generator_family): bool =
+    FORALL (index: digit):
+      injective(f(index)) AND surjective(f(index))
+
+  composition_specification(
+      f: generator_family,
+      mijcomp: composition_table): bool =
+    FORALL (length: nat):
+      length >= 1 IMPLIES
+        FORALL (indices: word), (position: nat):
+          position < length IMPLIES
+            FORALL (x: int):
+              mijcomp(length, indices, position)(x) =
+                IF position = length - 1 THEN
+                  f(indices(position))(x)
+                ELSE
+                  f(indices(position))(
+                    mijcomp(length, indices, position + 1)(x))
+                ENDIF
+
+  transitive_from_zero(mijcomp: composition_table): bool =
+    FORALL (target: int):
+      EXISTS (length: nat), (indices: word):
+        length >= 1
+          AND mijcomp(length, indices, 0)(0) = target
+
+  optional_apply(
+      g: integer_function,
+      selected: bool,
+      x: int): int =
+    IF selected THEN g(x) ELSE x ENDIF
+
+  selected_composition(
+      f: generator_family,
+      exponents: exponent_selection): integer_function =
+    LAMBDA (x: int):
+      optional_apply(f(0), exponents(0),
+        optional_apply(f(1), exponents(1),
+          optional_apply(f(2), exponents(2),
+            optional_apply(f(3), exponents(3),
+              optional_apply(f(4), exponents(4),
+                optional_apply(f(5), exponents(5),
+                  optional_apply(f(6), exponents(6),
+                    optional_apply(f(7), exponents(7),
+                      optional_apply(f(8), exponents(8),
+                        optional_apply(
+                          f(9), exponents(9), x))))))))))
+
+  is_binary_composition_family(
+      f: generator_family,
+      F: function_family): bool =
+    FORALL (g: integer_function):
+      F(g) IFF
+        EXISTS (exponents: exponent_selection):
+          g = selected_composition(f, exponents)
+
+  maps_set_to_itself(
+      g: integer_function,
+      A: integer_set): bool =
+    FORALL (y: int):
+      A(y) IFF
+        EXISTS (x: int):
+          A(x) AND g(x) = y
+
+  is_stabilizer_family(
+      stabilizers, F: function_family,
+      A: integer_set): bool =
+    FORALL (g: integer_function):
+      stabilizers(g) IFF
+        F(g) AND maps_set_to_itself(g, A)
+
+  putnam_1994_a6: bool =
+    FORALL (f: generator_family),
+           (mijcomp: composition_table),
+           (F: function_family):
+      (all_bijections(f)
+        AND transitive_from_zero(mijcomp)
+        AND composition_specification(f, mijcomp)
+        AND is_binary_composition_family(f, F))
+      IMPLIES
+        FORALL (A: integer_set):
+          card(A) > 0 IMPLIES
+            EXISTS (stabilizers: function_family):
+              is_stabilizer_family(stabilizers, F, A)
+                AND card(stabilizers) <= 512
+END putnam_1994_a6

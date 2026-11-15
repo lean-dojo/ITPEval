@@ -1,0 +1,174 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1988_a6:
+% a linear endomorphism of an n-dimensional vector space with n+1 eigenvectors,
+% every n of which are linearly independent, is scalar. This file contains no proof.
+
+putnam_1988_a6[
+  FieldElement, Vector: TYPE+,
+  zero_F, one_F: FieldElement,
+  add_F, multiply_F:
+    [FieldElement, FieldElement -> FieldElement],
+  negate_F, inverse_F: [FieldElement -> FieldElement],
+  zero_V: Vector,
+  add_V: [Vector, Vector -> Vector],
+  negate_V: [Vector -> Vector],
+  scale: [FieldElement, Vector -> Vector]
+]: THEORY
+BEGIN
+  IMPORTING finite_sets[Vector]
+
+  vector_set: TYPE = finite_set[Vector]
+  vector_sequence: TYPE = [nat -> Vector]
+  scalar_sequence: TYPE = [nat -> FieldElement]
+  endomorphism: TYPE = [Vector -> Vector]
+
+  field_axioms: bool =
+    zero_F /= one_F
+      AND (FORALL (a, b: FieldElement):
+        add_F(a, b) = add_F(b, a))
+      AND (FORALL (a, b, c: FieldElement):
+        add_F(add_F(a, b), c) = add_F(a, add_F(b, c)))
+      AND (FORALL (a: FieldElement):
+        add_F(a, zero_F) = a)
+      AND (FORALL (a: FieldElement):
+        add_F(a, negate_F(a)) = zero_F)
+      AND (FORALL (a, b: FieldElement):
+        multiply_F(a, b) = multiply_F(b, a))
+      AND (FORALL (a, b, c: FieldElement):
+        multiply_F(multiply_F(a, b), c)
+          = multiply_F(a, multiply_F(b, c)))
+      AND (FORALL (a: FieldElement):
+        multiply_F(a, one_F) = a)
+      AND (FORALL (a, b, c: FieldElement):
+        multiply_F(a, add_F(b, c))
+          = add_F(multiply_F(a, b), multiply_F(a, c)))
+      AND (FORALL (a: FieldElement):
+        a /= zero_F IMPLIES
+          multiply_F(a, inverse_F(a)) = one_F)
+
+  vector_space_axioms: bool =
+    (FORALL (u, v: Vector):
+      add_V(u, v) = add_V(v, u))
+      AND (FORALL (u, v, w: Vector):
+        add_V(add_V(u, v), w) = add_V(u, add_V(v, w)))
+      AND (FORALL (v: Vector):
+        add_V(v, zero_V) = v)
+      AND (FORALL (v: Vector):
+        add_V(v, negate_V(v)) = zero_V)
+      AND (FORALL (a: FieldElement), (u, v: Vector):
+        scale(a, add_V(u, v))
+          = add_V(scale(a, u), scale(a, v)))
+      AND (FORALL (a, b: FieldElement), (v: Vector):
+        scale(add_F(a, b), v)
+          = add_V(scale(a, v), scale(b, v)))
+      AND (FORALL (a, b: FieldElement), (v: Vector):
+        scale(multiply_F(a, b), v)
+          = scale(a, scale(b, v)))
+      AND (FORALL (v: Vector):
+        scale(one_F, v) = v)
+
+  linear_combination(
+      vectors: vector_sequence,
+      coefficients: scalar_sequence,
+      count: nat): RECURSIVE Vector =
+    IF count = 0 THEN
+      zero_V
+    ELSE
+      add_V(
+        linear_combination(vectors, coefficients, count - 1),
+        scale(coefficients(count - 1), vectors(count - 1)))
+    ENDIF
+  MEASURE count
+
+  injective_below(
+      vectors: vector_sequence,
+      bound: nat): bool =
+    FORALL (i, j: nat):
+      i < bound AND j < bound AND vectors(i) = vectors(j)
+        IMPLIES i = j
+
+  enumerates_exactly(
+      vectors: vector_sequence,
+      set_value: vector_set,
+      bound: nat): bool =
+    injective_below(vectors, bound)
+      AND (FORALL (v: Vector):
+        set_value(v)
+          IFF
+            EXISTS (i: nat):
+              i < bound AND vectors(i) = v)
+
+  finite_subset(
+      left, right: vector_set): bool =
+    FORALL (v: Vector):
+      left(v) IMPLIES right(v)
+
+  linearly_independent(
+      set_value: vector_set): bool =
+    FORALL
+        (vectors: vector_sequence),
+        (coefficients: scalar_sequence):
+      (enumerates_exactly(vectors, set_value, card(set_value))
+        AND linear_combination(
+          vectors, coefficients, card(set_value)) = zero_V)
+      IMPLIES
+        (FORALL (i: nat):
+          i < card(set_value)
+            IMPLIES coefficients(i) = zero_F)
+
+  spans_space(
+      set_value: vector_set): bool =
+    FORALL (v: Vector):
+      EXISTS
+          (vectors: vector_sequence),
+          (coefficients: scalar_sequence):
+        enumerates_exactly(vectors, set_value, card(set_value))
+          AND linear_combination(
+            vectors, coefficients, card(set_value)) = v
+
+  has_dimension(n: nat): bool =
+    EXISTS (basis: vector_set):
+      card(basis) = n
+        AND linearly_independent(basis)
+        AND spans_space(basis)
+
+  linear(A: endomorphism): bool =
+    (FORALL (u, v: Vector):
+      A(add_V(u, v)) = add_V(A(u), A(v)))
+      AND (FORALL (a: FieldElement), (v: Vector):
+        A(scale(a, v)) = scale(a, A(v)))
+
+  eigenvector(A: endomorphism, v: Vector): bool =
+    v /= zero_V
+      AND EXISTS (eigenvalue: FieldElement):
+        A(v) = scale(eigenvalue, v)
+
+  every_n_linearly_independent(
+      evecs: vector_set,
+      n: nat): bool =
+    FORALL (chosen: vector_set):
+      (finite_subset(chosen, evecs) AND card(chosen) = n)
+        IMPLIES linearly_independent(chosen)
+
+  scalar_endomorphism(A: endomorphism): bool =
+    EXISTS (scalar: FieldElement):
+      FORALL (v: Vector):
+        A(v) = scale(scalar, v)
+
+  putnam_1988_a6_solution: bool = TRUE
+
+  putnam_1988_a6: bool =
+    ((field_axioms AND vector_space_axioms)
+      IMPLIES
+        (FORALL
+            (n: nat),
+            (A: endomorphism),
+            (evecs: vector_set):
+          (has_dimension(n)
+            AND linear(A)
+            AND card(evecs) = n + 1
+            AND (FORALL (v: Vector):
+              evecs(v) IMPLIES eigenvector(A, v))
+            AND every_n_linearly_independent(evecs, n))
+          IMPLIES scalar_endomorphism(A)))
+      IFF putnam_1988_a6_solution
+END putnam_1988_a6

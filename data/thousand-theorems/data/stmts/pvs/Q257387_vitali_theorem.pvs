@@ -1,0 +1,76 @@
+% Statement-only formalization of the Thousand Theorems corpus artifact Q257387,
+% "Vitali theorem": the set obtained by choosing one representative from every
+% rational-difference class in the real unit interval is not Borel measurable.
+% This file contains no proof.
+
+Q257387_vitali_theorem: THEORY
+BEGIN
+  real_set: TYPE = [real -> bool]
+  real_set_sequence: TYPE = [nat -> real_set]
+  sigma_algebra: TYPE = [real_set -> bool]
+
+  empty_set: real_set =
+    LAMBDA (x: real): FALSE
+
+  full_set: real_set =
+    LAMBDA (x: real): TRUE
+
+  set_complement(value: real_set): real_set =
+    LAMBDA (x: real):
+      NOT value(x)
+
+  countable_union(values: real_set_sequence): real_set =
+    LAMBDA (x: real):
+      EXISTS (index: nat):
+        values(index)(x)
+
+  open_set(value: real_set): bool =
+    FORALL (x: real):
+      value(x) IMPLIES
+        EXISTS (radius: posreal):
+          FORALL (y: real):
+            abs(y - x) < radius IMPLIES value(y)
+
+  is_sigma_algebra(Sigma: sigma_algebra): bool =
+    Sigma(empty_set)
+      AND Sigma(full_set)
+      AND (FORALL (value: real_set):
+        Sigma(value) IMPLIES
+          Sigma(set_complement(value)))
+      AND (FORALL (values: real_set_sequence):
+        (FORALL (index: nat):
+          Sigma(values(index)))
+        IMPLIES Sigma(countable_union(values)))
+
+  contains_open_sets(Sigma: sigma_algebra): bool =
+    FORALL (value: real_set):
+      open_set(value) IMPLIES Sigma(value)
+
+  borel_measurable(value: real_set): bool =
+    FORALL (Sigma: sigma_algebra):
+      (is_sigma_algebra(Sigma)
+        AND contains_open_sets(Sigma))
+      IMPLIES Sigma(value)
+
+  unit_interval(x: real): bool =
+    0 <= x AND x <= 1
+
+  rational_difference_class(
+      representative_source: real): real_set =
+    LAMBDA (candidate: real):
+      unit_interval(candidate)
+        AND rational?(
+          representative_source - candidate)
+
+  vitali_representative(source: real): real =
+    epsilon(rational_difference_class(source))
+
+  vitali_set: real_set =
+    LAMBDA (candidate: real):
+      EXISTS (source: real):
+        unit_interval(source)
+          AND candidate = vitali_representative(source)
+
+  vitaliSet_not_measurable: bool =
+    NOT borel_measurable(vitali_set)
+END Q257387_vitali_theorem

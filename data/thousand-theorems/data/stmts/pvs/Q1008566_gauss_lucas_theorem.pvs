@@ -1,0 +1,330 @@
+% Statement-only formalization of the Thousand Theorems artifact Q1008566,
+% "Gauss–Lucas theorem": the derivative roots of a nonconstant complex
+% polynomial lie in the convex hull of its roots, with the corresponding
+% root-multiplicity center-of-mass identity. This file contains no proof.
+
+gauss_lucas_theorem_Q1008566: THEORY
+BEGIN
+  complex: TYPE = [# real_part: real, imag_part: real #]
+  complex_sequence: TYPE = [nat -> complex]
+  real_sequence: TYPE = [nat -> real]
+
+  root_enumeration: TYPE =
+    [# roots: complex_sequence, root_count: nat #]
+
+  complex_zero: complex =
+    (# real_part := 0, imag_part := 0 #)
+
+  complex_one: complex =
+    (# real_part := 1, imag_part := 0 #)
+
+  complex_add(x, y: complex): complex =
+    (# real_part := real_part(x) + real_part(y),
+       imag_part := imag_part(x) + imag_part(y) #)
+
+  complex_sub(x, y: complex): complex =
+    (# real_part := real_part(x) - real_part(y),
+       imag_part := imag_part(x) - imag_part(y) #)
+
+  complex_mul(x, y: complex): complex =
+    (# real_part := real_part(x) * real_part(y)
+                       - imag_part(x) * imag_part(y),
+       imag_part := real_part(x) * imag_part(y)
+                       + imag_part(x) * real_part(y) #)
+
+  complex_scale(scalar: real, z: complex): complex =
+    (# real_part := scalar * real_part(z),
+       imag_part := scalar * imag_part(z) #)
+
+  complex_norm_squared(z: complex): real =
+    real_part(z) ^ 2 + imag_part(z) ^ 2
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  complex_power(z: complex, exponent: nat): RECURSIVE complex =
+    IF exponent = 0 THEN
+      complex_one
+    ELSE
+      complex_mul(complex_power(z, exponent - 1), z)
+    ENDIF
+  MEASURE exponent
+
+  polynomial_value(
+      coefficients: complex_sequence,
+      z: complex,
+      count: nat): RECURSIVE complex =
+    IF count = 0 THEN
+      complex_zero
+    ELSE
+      LET index: nat = count - 1 IN
+        complex_add(
+          polynomial_value(coefficients, z, count - 1),
+          complex_mul(
+            coefficients(index),
+            complex_power(z, index)))
+    ENDIF
+  MEASURE count
+
+  polynomial_derivative_value(
+      coefficients: complex_sequence,
+      z: complex,
+      count: nat): RECURSIVE complex =
+    IF count <= 1 THEN
+      complex_zero
+    ELSE
+      LET index: nat = count - 1 IN
+        complex_add(
+          polynomial_derivative_value(
+            coefficients, z, count - 1),
+          complex_mul(
+            complex_scale(index :: real, coefficients(index)),
+            complex_power(z, index - 1)))
+    ENDIF
+  MEASURE count
+
+  exact_positive_degree(
+      coefficients: complex_sequence,
+      degree: nat): bool =
+    0 < degree
+      AND coefficients(degree) /= complex_zero
+
+  polynomial_root(
+      coefficients: complex_sequence,
+      degree: nat,
+      z: complex): bool =
+    polynomial_value(coefficients, z, degree + 1) = complex_zero
+
+  derivative_root(
+      coefficients: complex_sequence,
+      degree: nat,
+      z: complex): bool =
+    polynomial_derivative_value(
+      coefficients, z, degree + 1) = complex_zero
+
+  has_root_multiplicity(
+      coefficients: complex_sequence,
+      degree: nat,
+      root: complex,
+      multiplicity: nat): bool =
+    EXISTS
+        (quotient: complex_sequence),
+        (quotient_count: nat):
+      polynomial_value(quotient, root, quotient_count)
+          /= complex_zero
+        AND FORALL (z: complex):
+          polynomial_value(coefficients, z, degree + 1)
+            = complex_mul(
+                complex_power(
+                  complex_sub(z, root), multiplicity),
+                polynomial_value(
+                  quotient, z, quotient_count))
+
+  root_multiplicity_assignment: TYPE = [complex -> nat]
+
+  has_root_multiplicities(
+      coefficients: complex_sequence,
+      degree: nat,
+      multiplicities: root_multiplicity_assignment): bool =
+    FORALL (root: complex):
+      polynomial_root(coefficients, degree, root)
+      IMPLIES
+        has_root_multiplicity(
+          coefficients,
+          degree,
+          root,
+          multiplicities(root))
+
+  enumerates_distinct_roots(
+      coefficients: complex_sequence,
+      degree: nat,
+      enumeration: root_enumeration): bool =
+    (FORALL (index: nat):
+      index < root_count(enumeration) IMPLIES
+        polynomial_root(
+          coefficients, degree, roots(enumeration)(index)))
+      AND
+    (FORALL (left, right: nat):
+      left < root_count(enumeration)
+        AND right < root_count(enumeration)
+        AND roots(enumeration)(left)
+          = roots(enumeration)(right)
+      IMPLIES left = right)
+      AND
+    (FORALL (root: complex):
+      polynomial_root(coefficients, degree, root) IMPLIES
+        EXISTS (index: nat):
+          index < root_count(enumeration)
+            AND roots(enumeration)(index) = root)
+
+  deriv_root_weight(
+      coefficients: complex_sequence,
+      degree: nat,
+      multiplicities: root_multiplicity_assignment,
+      z, root: complex): real =
+    IF polynomial_root(coefficients, degree, z) THEN
+      IF root = z THEN 1 ELSE 0 ENDIF
+    ELSE
+      safe_div(
+        multiplicities(root) :: real,
+        complex_norm_squared(complex_sub(z, root)))
+    ENDIF
+
+  sum_deriv_root_weights(
+      coefficients: complex_sequence,
+      degree: nat,
+      z: complex,
+      enumeration: root_enumeration,
+      multiplicities: root_multiplicity_assignment,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      sum_deriv_root_weights(
+        coefficients,
+        degree,
+        z,
+        enumeration,
+        multiplicities,
+        count - 1)
+        + deriv_root_weight(
+            coefficients,
+            degree,
+            multiplicities,
+            z,
+            roots(enumeration)(count - 1))
+    ENDIF
+  MEASURE count
+
+  weighted_deriv_root_sum(
+      coefficients: complex_sequence,
+      degree: nat,
+      z: complex,
+      enumeration: root_enumeration,
+      multiplicities: root_multiplicity_assignment,
+      count: nat): RECURSIVE complex =
+    IF count = 0 THEN
+      complex_zero
+    ELSE
+      complex_add(
+        weighted_deriv_root_sum(
+          coefficients,
+          degree,
+          z,
+          enumeration,
+          multiplicities,
+          count - 1),
+        complex_scale(
+          deriv_root_weight(
+            coefficients,
+            degree,
+            multiplicities,
+            z,
+            roots(enumeration)(count - 1)),
+          roots(enumeration)(count - 1)))
+    ENDIF
+  MEASURE count
+
+  deriv_root_center_mass(
+      coefficients: complex_sequence,
+      degree: nat,
+      z: complex,
+      enumeration: root_enumeration,
+      multiplicities: root_multiplicity_assignment): complex =
+    complex_scale(
+      safe_div(
+        1,
+        sum_deriv_root_weights(
+          coefficients,
+          degree,
+          z,
+          enumeration,
+          multiplicities,
+          root_count(enumeration))),
+      weighted_deriv_root_sum(
+        coefficients,
+        degree,
+        z,
+        enumeration,
+        multiplicities,
+          root_count(enumeration)))
+
+  sum_weights(
+      weights: real_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      sum_weights(weights, count - 1) + weights(count - 1)
+    ENDIF
+  MEASURE count
+
+  weighted_point_sum(
+      points: complex_sequence,
+      weights: real_sequence,
+      count: nat): RECURSIVE complex =
+    IF count = 0 THEN
+      complex_zero
+    ELSE
+      complex_add(
+        weighted_point_sum(points, weights, count - 1),
+        complex_scale(
+          weights(count - 1), points(count - 1)))
+    ENDIF
+  MEASURE count
+
+  in_convex_hull_of_roots(
+      coefficients: complex_sequence,
+      degree: nat,
+      z: complex): bool =
+    EXISTS
+        (points: complex_sequence),
+        (weights: real_sequence),
+        (count: nat):
+      (FORALL (index: nat):
+        index < count IMPLIES
+          polynomial_root(
+            coefficients, degree, points(index))
+            AND 0 <= weights(index))
+        AND sum_weights(weights, count) = 1
+        AND weighted_point_sum(points, weights, count) = z
+
+  eq_center_mass_of_eval_derivative_eq_zero: bool =
+    FORALL
+        (coefficients: complex_sequence),
+        (degree: nat),
+        (z: complex):
+      (exact_positive_degree(coefficients, degree)
+        AND derivative_root(coefficients, degree, z))
+      IMPLIES
+        EXISTS
+            (enumeration: root_enumeration),
+            (multiplicities: root_multiplicity_assignment):
+          enumerates_distinct_roots(
+            coefficients, degree, enumeration)
+            AND has_root_multiplicities(
+              coefficients, degree, multiplicities)
+            AND z =
+              deriv_root_center_mass(
+                coefficients,
+                degree,
+                z,
+                enumeration,
+                multiplicities)
+
+  root_set_derivative_subset_convex_hull_root_set: bool =
+    FORALL
+        (coefficients: complex_sequence),
+        (degree: nat):
+      exact_positive_degree(coefficients, degree)
+      IMPLIES
+        FORALL (z: complex):
+          derivative_root(coefficients, degree, z)
+          IMPLIES
+            in_convex_hull_of_roots(
+              coefficients, degree, z)
+END gauss_lucas_theorem_Q1008566

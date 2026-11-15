@@ -1,0 +1,241 @@
+% Statement-only formalization of the Thousand Theorems corpus artifact Q3527205,
+% "Dimension theorem for vector spaces": over a semiring with invariant basis
+% number, any two bases of the same module have bijective index types. This file
+% contains no proof.
+
+Q3527205_dimension_theorem_for_vector_spaces[
+  R, M: TYPE+,
+  I, J: TYPE,
+  zeroR, oneR: R,
+  addR, mulR: [R, R -> R],
+  zeroM: M,
+  addM: [M, M -> M],
+  smul: [R, M -> M],
+  basisI: [I -> M],
+  basisJ: [J -> M]
+]: THEORY
+BEGIN
+
+  r_sequence: TYPE = [nat -> R]
+
+  zero_sequence: r_sequence =
+    LAMBDA (index: nat): zeroR
+
+  sequence_add(x, y: r_sequence): r_sequence =
+    LAMBDA (index: nat): addR(x(index), y(index))
+
+  sequence_scale(a: R, x: r_sequence): r_sequence =
+    LAMBDA (index: nat): mulR(a, x(index))
+
+  supported_below(count: nat, x: r_sequence): bool =
+    FORALL (index: nat):
+      count <= index IMPLIES x(index) = zeroR
+
+  semiring_laws: bool =
+    (FORALL (a, b: R):
+      addR(a, b) = addR(b, a))
+      AND (FORALL (a, b, c: R):
+        addR(addR(a, b), c) = addR(a, addR(b, c)))
+      AND (FORALL (a: R):
+        addR(zeroR, a) = a
+          AND addR(a, zeroR) = a)
+      AND (FORALL (a, b, c: R):
+        mulR(mulR(a, b), c) = mulR(a, mulR(b, c)))
+      AND (FORALL (a: R):
+        mulR(oneR, a) = a
+          AND mulR(a, oneR) = a)
+      AND (FORALL (a, b, c: R):
+        mulR(a, addR(b, c)) =
+          addR(mulR(a, b), mulR(a, c)))
+      AND (FORALL (a, b, c: R):
+        mulR(addR(a, b), c) =
+          addR(mulR(a, c), mulR(b, c)))
+      AND (FORALL (a: R):
+        mulR(zeroR, a) = zeroR
+          AND mulR(a, zeroR) = zeroR)
+
+  module_laws: bool =
+    (FORALL (x, y: M):
+      addM(x, y) = addM(y, x))
+      AND (FORALL (x, y, z: M):
+        addM(addM(x, y), z) = addM(x, addM(y, z)))
+      AND (FORALL (x: M):
+        addM(zeroM, x) = x
+          AND addM(x, zeroM) = x)
+      AND (FORALL (a, b: R), (x: M):
+        smul(mulR(a, b), x) = smul(a, smul(b, x)))
+      AND (FORALL (x: M):
+        smul(oneR, x) = x)
+      AND (FORALL (a, b: R), (x: M):
+        smul(addR(a, b), x) =
+          addM(smul(a, x), smul(b, x)))
+      AND (FORALL (a: R), (x, y: M):
+        smul(a, addM(x, y)) =
+          addM(smul(a, x), smul(a, y)))
+      AND (FORALL (x: M):
+        smul(zeroR, x) = zeroM)
+      AND (FORALL (a: R):
+        smul(a, zeroM) = zeroM)
+
+  finite_free_linear(
+      source_size, target_size: nat,
+      map: [r_sequence -> r_sequence]): bool =
+    map(zero_sequence) = zero_sequence
+      AND (FORALL (x: r_sequence):
+        supported_below(source_size, x)
+          IMPLIES supported_below(target_size, map(x)))
+      AND (FORALL (x, y: r_sequence):
+        supported_below(source_size, x)
+          AND supported_below(source_size, y)
+        IMPLIES
+          map(sequence_add(x, y)) =
+            sequence_add(map(x), map(y)))
+      AND (FORALL (a: R), (x: r_sequence):
+        supported_below(source_size, x)
+        IMPLIES
+          map(sequence_scale(a, x)) =
+            sequence_scale(a, map(x)))
+
+  finite_free_isomorphism(
+      source_size, target_size: nat,
+      map: [r_sequence -> r_sequence]): bool =
+    finite_free_linear(source_size, target_size, map)
+      AND (FORALL (x, y: r_sequence):
+        supported_below(source_size, x)
+          AND supported_below(source_size, y)
+          AND map(x) = map(y)
+        IMPLIES x = y)
+      AND (FORALL (y: r_sequence):
+        supported_below(target_size, y)
+        IMPLIES
+          EXISTS (x: r_sequence):
+            supported_below(source_size, x)
+              AND map(x) = y)
+
+  invariant_basis_number: bool =
+    zeroR /= oneR
+      AND (FORALL (source_size, target_size: nat):
+        (EXISTS (map: [r_sequence -> r_sequence]):
+          finite_free_isomorphism(
+            source_size, target_size, map))
+        IMPLIES source_size = target_size)
+
+  member_I(index: I, indices: list[I]): RECURSIVE bool =
+    CASES indices OF
+      null: FALSE,
+      cons(head, tail):
+        index = head OR member_I(index, tail)
+    ENDCASES
+  MEASURE indices BY <<
+
+  no_duplicates_I(indices: list[I]): RECURSIVE bool =
+    CASES indices OF
+      null: TRUE,
+      cons(head, tail):
+        NOT member_I(head, tail)
+          AND no_duplicates_I(tail)
+    ENDCASES
+  MEASURE indices BY <<
+
+  finitely_supported_I(
+      coefficients: [I -> R],
+      support: list[I]): bool =
+    no_duplicates_I(support)
+      AND (FORALL (index: I):
+        coefficients(index) /= zeroR
+          IFF member_I(index, support))
+
+  linear_combination_I(
+      coefficients: [I -> R],
+      support: list[I]): RECURSIVE M =
+    CASES support OF
+      null: zeroM,
+      cons(head, tail):
+        addM(
+          smul(coefficients(head), basisI(head)),
+          linear_combination_I(coefficients, tail))
+    ENDCASES
+  MEASURE support BY <<
+
+  is_basis_I: bool =
+    FORALL (x: M):
+      EXISTS (coefficients: [I -> R]), (support: list[I]):
+        finitely_supported_I(coefficients, support)
+          AND linear_combination_I(coefficients, support) = x
+          AND (FORALL
+              (other_coefficients: [I -> R]),
+              (other_support: list[I]):
+            finitely_supported_I(
+              other_coefficients, other_support)
+              AND linear_combination_I(
+                other_coefficients, other_support) = x
+            IMPLIES other_coefficients = coefficients)
+
+  member_J(index: J, indices: list[J]): RECURSIVE bool =
+    CASES indices OF
+      null: FALSE,
+      cons(head, tail):
+        index = head OR member_J(index, tail)
+    ENDCASES
+  MEASURE indices BY <<
+
+  no_duplicates_J(indices: list[J]): RECURSIVE bool =
+    CASES indices OF
+      null: TRUE,
+      cons(head, tail):
+        NOT member_J(head, tail)
+          AND no_duplicates_J(tail)
+    ENDCASES
+  MEASURE indices BY <<
+
+  finitely_supported_J(
+      coefficients: [J -> R],
+      support: list[J]): bool =
+    no_duplicates_J(support)
+      AND (FORALL (index: J):
+        coefficients(index) /= zeroR
+          IFF member_J(index, support))
+
+  linear_combination_J(
+      coefficients: [J -> R],
+      support: list[J]): RECURSIVE M =
+    CASES support OF
+      null: zeroM,
+      cons(head, tail):
+        addM(
+          smul(coefficients(head), basisJ(head)),
+          linear_combination_J(coefficients, tail))
+    ENDCASES
+  MEASURE support BY <<
+
+  is_basis_J: bool =
+    FORALL (x: M):
+      EXISTS (coefficients: [J -> R]), (support: list[J]):
+        finitely_supported_J(coefficients, support)
+          AND linear_combination_J(coefficients, support) = x
+          AND (FORALL
+              (other_coefficients: [J -> R]),
+              (other_support: list[J]):
+            finitely_supported_J(
+              other_coefficients, other_support)
+              AND linear_combination_J(
+                other_coefficients, other_support) = x
+            IMPLIES other_coefficients = coefficients)
+
+  bijective_index_map(map: [I -> J]): bool =
+    (FORALL (x, y: I):
+      map(x) = map(y) IMPLIES x = y)
+      AND (FORALL (y: J):
+        EXISTS (x: I): map(x) = y)
+
+  dimension_theorem_for_vector_spaces: bool =
+    (semiring_laws
+      AND module_laws
+      AND invariant_basis_number
+      AND is_basis_I
+      AND is_basis_J)
+    IMPLIES
+      EXISTS (index_equivalence: [I -> J]):
+        bijective_index_map(index_equivalence)
+
+END Q3527205_dimension_theorem_for_vector_spaces

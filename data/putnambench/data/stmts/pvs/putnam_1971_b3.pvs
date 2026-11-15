@@ -1,0 +1,93 @@
+% Statement-only formalization of PutnamBench artifact putnam_1971_b3:
+% the Lebesgue measure of times after a positive delay when one floor count is
+% twice the delayed floor count is exactly one. This file contains no proof.
+
+putnam_1971_b3: THEORY
+BEGIN
+  real_set: TYPE = [real -> bool]
+  real_sequence: TYPE = [nat -> real]
+
+  partial_sum(values: real_sequence, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      partial_sum(values, count - 1) + values(count - 1)
+    ENDIF
+  MEASURE count
+
+  converges_to(values: real_sequence, limit: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (count: nat):
+          cutoff <= count IMPLIES
+            abs(values(count) - limit) < epsilon_value
+
+  interval_length(left_endpoint, right_endpoint: real): real =
+    IF left_endpoint < right_endpoint THEN
+      right_endpoint - left_endpoint
+    ELSE
+      0
+    ENDIF
+
+  open_interval_cover(
+      covered: real_set,
+      left_endpoints, right_endpoints: real_sequence): bool =
+    FORALL (x: real):
+      covered(x) IMPLIES
+        EXISTS (index: nat):
+          left_endpoints(index) < x
+            AND x < right_endpoints(index)
+
+  cover_partial_length(
+      left_endpoints, right_endpoints: real_sequence,
+      count: nat): real =
+    partial_sum(
+      LAMBDA (index: nat):
+        interval_length(
+          left_endpoints(index),
+          right_endpoints(index)),
+      count)
+
+  cover_has_total_length(
+      left_endpoints, right_endpoints: real_sequence,
+      total: real): bool =
+    converges_to(
+      LAMBDA (count: nat):
+        cover_partial_length(
+          left_endpoints, right_endpoints, count),
+      total)
+
+  has_lebesgue_outer_measure(
+      covered: real_set,
+      measure_value: real): bool =
+    measure_value >= 0
+      AND (FORALL
+          (left_endpoints, right_endpoints: real_sequence),
+          (total: real):
+        (open_interval_cover(
+            covered, left_endpoints, right_endpoints)
+          AND cover_has_total_length(
+            left_endpoints, right_endpoints, total))
+        IMPLIES measure_value <= total)
+      AND (FORALL (epsilon_value: posreal):
+        EXISTS
+            (left_endpoints, right_endpoints: real_sequence),
+            (total: real):
+          open_interval_cover(
+            covered, left_endpoints, right_endpoints)
+            AND cover_has_total_length(
+              left_endpoints, right_endpoints, total)
+            AND total < measure_value + epsilon_value)
+
+  matching_times(delay: real): real_set =
+    LAMBDA (time: real):
+      time >= delay
+        AND floor(time) = 2 * floor(time - delay)
+
+  putnam_1971_b3: bool =
+    FORALL (delay: real):
+      delay > 0 IMPLIES
+        has_lebesgue_outer_measure(
+          matching_times(delay),
+          1)
+END putnam_1971_b3

@@ -1,0 +1,162 @@
+% Statement-only formalization of the VERINA corpus artifact verina_basic_83
+% (verina__pvs__verina_basic_83), catalog title "concat": the executable
+% integer-array loop concatenates two arrays and satisfies the exact length and
+% indexwise segment contract. This file contains no proof.
+
+verina_basic_83: THEORY
+BEGIN
+
+  % Finite PVS lists preserve exactly the contents and order of Lean arrays.
+  int_list_length(
+      values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        int_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  % Lean Array.get! on integer arrays returns zero outside the array.
+  int_list_get_bang(
+      index: nat,
+      values: list[int]): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          int_list_get_bang(index - 1, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  % Lean Array.set! replaces an in-bounds entry and leaves an out-of-bounds
+  % array unchanged.
+  int_list_set_bang(
+      index: nat,
+      new_value: int,
+      values: list[int]): RECURSIVE list[int] =
+    CASES values OF
+      null:
+        null[int],
+      cons(head, tail):
+        IF index = 0 THEN
+          cons(new_value, tail)
+        ELSE
+          cons(
+            head,
+            int_list_set_bang(
+              index - 1,
+              new_value,
+              tail))
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  % This is Lean Array.mkArray for integer arrays.
+  int_mk_array(
+      count: nat,
+      value: int): RECURSIVE list[int] =
+    IF count = 0 THEN
+      null[int]
+    ELSE
+      cons(
+        value,
+        int_mk_array(count - 1, value))
+    ENDIF
+  MEASURE count
+
+  % Lean natural-number subtraction is truncated at zero.
+  nat_subtract(
+      first, second: nat): nat =
+    IF first >= second THEN
+      first - second
+    ELSE
+      0
+    ENDIF
+
+  concat_precond(
+      a, b: list[int]): bool =
+    TRUE
+
+  % At the public call, n + 1 supplies one step for every array update and the
+  % final failed bounds test. The fuel-zero branch is unreachable and only
+  % supplies a structural termination measure for the source's local loop.
+  concat_loop(
+      a, b: list[int],
+      n, i: nat,
+      c: list[int],
+      fuel: nat): RECURSIVE list[int] =
+    IF fuel = 0 THEN
+      c
+    ELSIF i < n THEN
+      LET value: int =
+            IF i < int_list_length(a) THEN
+              int_list_get_bang(i, a)
+            ELSE
+              int_list_get_bang(
+                nat_subtract(i, int_list_length(a)),
+                b)
+            ENDIF,
+          updated: list[int] =
+            int_list_set_bang(i, value, c)
+      IN
+        concat_loop(
+          a,
+          b,
+          n,
+          i + 1,
+          updated,
+          fuel - 1)
+    ELSE
+      c
+    ENDIF
+  MEASURE fuel
+
+  % The source precondition proof argument is computationally irrelevant.
+  concat(
+      a, b: list[int]): list[int] =
+    LET n: nat =
+          int_list_length(a) + int_list_length(b)
+    IN
+      concat_loop(
+        a,
+        b,
+        n,
+        0,
+        int_mk_array(n, 0),
+        n + 1)
+
+  % The source proof argument to the postcondition is logically irrelevant.
+  concat_postcond(
+      a, b, result: list[int]): bool =
+    int_list_length(result)
+      = int_list_length(a) + int_list_length(b)
+      AND
+        (FORALL (k: nat):
+          k < int_list_length(a)
+            IMPLIES
+              int_list_get_bang(k, result)
+                = int_list_get_bang(k, a))
+      AND
+        (FORALL (k: nat):
+          k < int_list_length(b)
+            IMPLIES
+              int_list_get_bang(
+                k + int_list_length(a),
+                result)
+                = int_list_get_bang(k, b))
+
+  concat_spec_satisfied: bool =
+    FORALL (a, b: list[int]):
+      concat_precond(a, b)
+        IMPLIES
+          concat_postcond(
+            a,
+            b,
+            concat(a, b))
+
+END verina_basic_83

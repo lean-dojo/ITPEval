@@ -1,0 +1,150 @@
+% Statement-only formalization of the Babel-formal topic supinf. This file contains no proof.
+
+supinf[
+  R: TYPE+,
+  N: TYPE+,
+  zeroN: N,
+  succN: [N -> N],
+  natLe: [N, N -> bool],
+  zeroR: R,
+  oneR: R,
+  addR: [R, R -> R],
+  mulR: [R, R -> R],
+  oppR: [R -> R],
+  invR: [R -> R],
+  leR: [R, R -> bool],
+  ltR: [R, R -> bool],
+  absR: [R -> R],
+  embedN: [N -> R]
+]: THEORY
+BEGIN
+  complete_ordered_field_laws: bool =
+    (FORALL (n: N): natLe(n, n))
+      AND (FORALL (n, m: N):
+        natLe(n, m) IMPLIES natLe(n, succN(m)))
+      AND (FORALL (n: N): natLe(n, succN(n)))
+      AND (FORALL (x, y: R): addR(x, y) = addR(y, x))
+      AND (FORALL (x, y, z: R):
+        addR(addR(x, y), z) = addR(x, addR(y, z)))
+      AND (FORALL (x: R): addR(x, zeroR) = x)
+      AND (FORALL (x: R): addR(oppR(x), x) = zeroR)
+      AND (FORALL (x, y: R): mulR(x, y) = mulR(y, x))
+      AND (FORALL (x, y, z: R):
+        mulR(mulR(x, y), z) = mulR(x, mulR(y, z)))
+      AND (FORALL (x: R): mulR(x, oneR) = x)
+      AND (FORALL (x, y, z: R):
+        mulR(x, addR(y, z)) =
+          addR(mulR(x, y), mulR(x, z)))
+      AND (FORALL (x: R): addR(x, oppR(zeroR)) = x)
+      AND (FORALL (x: R): leR(x, x))
+      AND (FORALL (x, y, z: R):
+        leR(x, y) AND leR(y, z) IMPLIES leR(x, z))
+      AND (FORALL (x, y: R):
+        leR(x, y) AND leR(y, x) IMPLIES x = y)
+      AND (FORALL (x, y: R):
+        ltR(x, y) = (leR(x, y) AND NOT (x = y)))
+      AND (FORALL (x: R):
+        leR(addR(x, oppR(zeroR)), absR(x)))
+      AND (FORALL (x: R):
+        ltR(zeroR, x) IMPLIES ltR(zeroR, invR(x)))
+      AND (FORALL (x, y, z: R):
+        leR(y, z) IMPLIES leR(addR(x, y), addR(x, z)))
+      AND (FORALL (x: R):
+        ltR(zeroR, x) IMPLIES invR(invR(x)) = x)
+      AND (FORALL (n: N): ltR(zeroR, embedN(succN(n))))
+      AND (FORALL (m, n: N):
+        natLe(m, n) IMPLIES leR(embedN(m), embedN(n)))
+      AND embedN(zeroN) = zeroR
+      AND (FORALL (n: N):
+        embedN(succN(n)) = addR(embedN(n), oneR))
+      AND (FORALL (x, y: R):
+        ltR(x, y) OR x = y OR ltR(y, x))
+      AND (FORALL (a, b: R):
+        ltR(zeroR, a) AND ltR(zeroR, b) AND leR(a, b)
+          IMPLIES leR(invR(b), invR(a)))
+      AND (FORALL (x, y: R):
+        ltR(x, y) IMPLIES
+          (EXISTS (eps: R):
+            ltR(zeroR, eps) AND ltR(addR(x, eps), y)))
+      AND (FORALL (x: R):
+        EXISTS (n: N): leR(x, embedN(n)))
+      AND (FORALL (A: [R -> bool]):
+        (EXISTS (lower: R):
+          FORALL (a: R): A(a) IMPLIES leR(lower, a))
+          IMPLIES
+            (EXISTS (sup: R):
+              (FORALL (a: R): A(a) IMPLIES leR(a, sup))
+                AND (FORALL (y: R):
+                  (FORALL (a: R): A(a) IMPLIES leR(a, y))
+                    IMPLIES leR(sup, y))))
+
+  subR(x, y: R): R = addR(x, oppR(y))
+
+  up_bounds(A: [R -> bool], x: R): bool =
+    FORALL (a: R): A(a) IMPLIES leR(a, x)
+
+  is_maximum(x: R, A: [R -> bool]): bool =
+    A(x) AND up_bounds(A, x)
+
+  low_bounds(A: [R -> bool], x: R): bool =
+    FORALL (a: R): A(a) IMPLIES leR(x, a)
+
+  is_inf(x: R, A: [R -> bool]): bool =
+    low_bounds(A, x)
+      AND (FORALL (a: R): low_bounds(A, a) IMPLIES leR(a, x))
+
+  limit(u: [N -> R], l: R): bool =
+    FORALL (eps: R):
+      ltR(zeroR, eps) IMPLIES
+        (EXISTS (bound: N):
+          FORALL (n: N):
+            natLe(bound, n) IMPLIES
+              leR(absR(subR(u(n), l)), eps))
+
+  add_sub_cancel_r: bool =
+    complete_ordered_field_laws IMPLIES
+      (FORALL (a, b: R): addR(a, subR(b, a)) = b)
+
+  rabs_pos: bool =
+    complete_ordered_field_laws IMPLIES
+      (FORALL (t: R): leR(t, absR(t)))
+
+  unique_max: bool =
+    complete_ordered_field_laws IMPLIES
+      (FORALL (A: [R -> bool]), (x, y: R):
+        is_maximum(x, A) AND is_maximum(y, A) IMPLIES x = y)
+
+  inf_lt: bool =
+    complete_ordered_field_laws IMPLIES
+      (FORALL (A: [R -> bool]), (x, y: R):
+        is_inf(x, A) AND ltR(x, y) IMPLIES
+          (EXISTS (a: R): A(a) AND ltR(a, y)))
+
+  le_of_le_add_eps: bool =
+    complete_ordered_field_laws IMPLIES
+      (FORALL (x, y: R):
+        (FORALL (eps: R):
+          ltR(zeroR, eps) IMPLIES leR(y, addR(x, eps)))
+          IMPLIES leR(y, x))
+
+  le_lim: bool =
+    complete_ordered_field_laws IMPLIES
+      (FORALL (x, y: R), (u: [N -> R]):
+        limit(u, x)
+          AND (FORALL (n: N): leR(y, u(n)))
+          IMPLIES leR(y, x))
+
+  inv_succ_pos: bool =
+    complete_ordered_field_laws IMPLIES
+      (FORALL (n: N):
+        ltR(zeroR, invR(embedN(succN(n)))))
+
+  limit_inv_succ: bool =
+    complete_ordered_field_laws IMPLIES
+      (FORALL (eps: R):
+        ltR(zeroR, eps) IMPLIES
+          (EXISTS (bound: N):
+            FORALL (n: N):
+              natLe(bound, n) IMPLIES
+                leR(invR(embedN(succN(n))), eps)))
+END supinf

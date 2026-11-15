@@ -1,0 +1,134 @@
+% Statement-only formalization of the VERINA corpus artifact verina_basic_80
+% (verina__pvs__verina_basic_80), catalog title "only_once": the executable
+% integer-array scan returns true exactly when the key occurs once, under its
+% complete Boolean correctness contract. This file contains no proof.
+
+verina_basic_80: THEORY
+BEGIN
+
+  % Finite PVS lists preserve exactly the contents and order of Lean arrays.
+  int_list_length(
+      values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        int_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  % Lean natural-number subtraction is truncated at zero.
+  nat_subtract(
+      first, second: nat): nat =
+    IF first >= second THEN
+      first - second
+    ELSE
+      0
+    ENDIF
+
+  % Lean Array.get? is called only at an index below the array size. This
+  % accessor therefore returns exactly the value in every executable branch.
+  int_list_get_bang(
+      index: nat,
+      values: list[int]): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          int_list_get_bang(index - 1, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  only_once_precond(
+      a: list[int],
+      key: int): bool =
+    TRUE
+
+  % Remaining is exactly the number of source indices from i to the array end.
+  % Thus every active step matches the source's successful Array.get? branch,
+  % and the zero case matches its final test of the accumulated count.
+  only_once_loop_steps(
+      a: list[int],
+      key: int,
+      i, keyCount, remaining: nat): RECURSIVE bool =
+    IF remaining = 0 THEN
+      keyCount = 1
+    ELSE
+      LET value: int =
+            int_list_get_bang(i, a),
+          newCount: nat =
+            IF value = key THEN
+              keyCount + 1
+            ELSE
+              keyCount
+            ENDIF
+      IN
+        only_once_loop_steps(
+          a,
+          key,
+          i + 1,
+          newCount,
+          remaining - 1)
+    ENDIF
+  MEASURE remaining
+
+  only_once_loop(
+      a: list[int],
+      key: int,
+      i, keyCount: nat): bool =
+    only_once_loop_steps(
+      a,
+      key,
+      i,
+      keyCount,
+      nat_subtract(int_list_length(a), i))
+
+  % The source precondition proof argument is computationally irrelevant.
+  only_once(
+      a: list[int],
+      key: int): bool =
+    only_once_loop(a, key, 0, 0)
+
+  % This is Lean Array.foldl with the source counter update and initial zero.
+  count_occurrences_fold(
+      values: list[int],
+      key: int,
+      count: nat): RECURSIVE nat =
+    CASES values OF
+      null:
+        count,
+      cons(head, tail):
+        count_occurrences_fold(
+          tail,
+          key,
+          IF head = key THEN count + 1 ELSE count ENDIF)
+    ENDCASES
+  MEASURE values BY <<
+
+  count_occurrences(
+      a: list[int],
+      key: int): nat =
+    count_occurrences_fold(a, key, 0)
+
+  only_once_postcond(
+      a: list[int],
+      key: int,
+      result: bool): bool =
+    (count_occurrences(a, key) = 1 IMPLIES result)
+      AND
+        (count_occurrences(a, key) /= 1 IMPLIES NOT result)
+
+  only_once_spec_satisfied: bool =
+    FORALL (a: list[int], key: int):
+      only_once_precond(a, key)
+        IMPLIES
+          only_once_postcond(
+            a,
+            key,
+            only_once(a, key))
+
+END verina_basic_80

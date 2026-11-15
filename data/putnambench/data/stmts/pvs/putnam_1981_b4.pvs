@@ -1,0 +1,214 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1981_b4:
+% whether every real linear subspace of 5-by-7 matrices containing matrices
+% of ranks 0, 1, 2, 4, and 5 must also contain one of rank 3. This file
+% contains no proof.
+
+putnam_1981_b4: THEORY
+BEGIN
+  row_index: TYPE = below(5)
+  column_index: TYPE = below(7)
+
+  matrix: TYPE = [row_index, column_index -> real]
+  matrix_set: TYPE = [matrix -> bool]
+  square_matrix: TYPE = [nat, nat -> real]
+  row_selector: TYPE = [nat -> row_index]
+  column_selector: TYPE = [nat -> column_index]
+
+  quotient_aux(
+      numerator, denominator, fuel: nat): RECURSIVE nat =
+    IF fuel = 0
+        OR denominator = 0
+        OR numerator < denominator THEN
+      0
+    ELSE
+      1
+        + quotient_aux(
+            numerator - denominator,
+            denominator,
+            fuel - 1)
+    ENDIF
+  MEASURE fuel
+
+  remainder_aux(
+      numerator, denominator, fuel: nat): RECURSIVE nat =
+    IF fuel = 0
+        OR denominator = 0
+        OR numerator < denominator THEN
+      numerator
+    ELSE
+      remainder_aux(
+        numerator - denominator,
+        denominator,
+        fuel - 1)
+    ENDIF
+  MEASURE fuel
+
+  safe_ndiv(numerator, denominator: nat): nat =
+    quotient_aux(
+      numerator,
+      denominator,
+      numerator + 1)
+
+  safe_mod(numerator, denominator: nat): nat =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      remainder_aux(
+        numerator,
+        denominator,
+        numerator + 1)
+    ENDIF
+
+  function_code_count(n: nat): nat =
+    IF n = 0 THEN 1 ELSE n ^ n ENDIF
+
+  permutation_entry(code, row, n: nat): nat =
+    IF n = 0 THEN
+      0
+    ELSE
+      safe_mod(safe_ndiv(code, n ^ row), n)
+    ENDIF
+
+  permutation_code(code, n: nat): bool =
+    code < function_code_count(n)
+      AND (FORALL (row_1, row_2: nat):
+        (row_1 < n
+          AND row_2 < n
+          AND permutation_entry(code, row_1, n)
+            = permutation_entry(code, row_2, n))
+        IMPLIES row_1 = row_2)
+
+  pair_row(pair, n: nat): nat =
+    safe_ndiv(pair, n)
+
+  pair_column(pair, n: nat): nat =
+    safe_mod(pair, n)
+
+  inversion_at(code, pair, n: nat): bool =
+    pair_row(pair, n) < n
+      AND pair_column(pair, n) < n
+      AND pair_row(pair, n) < pair_column(pair, n)
+      AND permutation_entry(code, pair_row(pair, n), n)
+        > permutation_entry(code, pair_column(pair, n), n)
+
+  count_true(
+      property: [nat -> bool],
+      count: nat): RECURSIVE nat =
+    IF count = 0 THEN
+      0
+    ELSE
+      count_true(property, count - 1)
+        + IF property(count - 1) THEN 1 ELSE 0 ENDIF
+    ENDIF
+  MEASURE count
+
+  inversion_count(code, n: nat): nat =
+    count_true(
+      (LAMBDA (pair: nat): inversion_at(code, pair, n)),
+      n * n)
+
+  permutation_sign(code, n: nat): real =
+    IF mod(inversion_count(code, n), 2) = 0 THEN
+      1
+    ELSE
+      -1
+    ENDIF
+
+  permutation_product(
+      A: square_matrix,
+      code, n, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      1
+    ELSE
+      permutation_product(A, code, n, count - 1)
+        * A(
+            count - 1,
+            permutation_entry(code, count - 1, n))
+    ENDIF
+  MEASURE count
+
+  determinant_sum(
+      A: square_matrix,
+      n, limit: nat): RECURSIVE real =
+    IF limit = 0 THEN
+      0
+    ELSE
+      LET code: nat = limit - 1 IN
+        determinant_sum(A, n, limit - 1)
+          + IF permutation_code(code, n) THEN
+              permutation_sign(code, n)
+                * permutation_product(A, code, n, n)
+            ELSE
+              0
+            ENDIF
+    ENDIF
+  MEASURE limit
+
+  determinant(A: square_matrix, n: nat): real =
+    determinant_sum(A, n, function_code_count(n))
+
+  injective_rows_below(rows: row_selector, count: nat): bool =
+    FORALL (i, j: nat):
+      (i < count AND j < count AND rows(i) = rows(j))
+        IMPLIES i = j
+
+  injective_columns_below(
+      columns: column_selector,
+      count: nat): bool =
+    FORALL (i, j: nat):
+      (i < count AND j < count AND columns(i) = columns(j))
+        IMPLIES i = j
+
+  minor_matrix(
+      A: matrix,
+      rows: row_selector,
+      columns: column_selector): square_matrix =
+    LAMBDA (i, j: nat): A(rows(i), columns(j))
+
+  has_nonzero_minor(A: matrix, size: nat): bool =
+    size <= 5
+      AND EXISTS
+          (rows: row_selector),
+          (columns: column_selector):
+        injective_rows_below(rows, size)
+          AND injective_columns_below(columns, size)
+          AND determinant(
+            minor_matrix(A, rows, columns), size) /= 0
+
+  matrix_has_rank(A: matrix, rank_value: nat): bool =
+    rank_value <= 5
+      AND has_nonzero_minor(A, rank_value)
+      AND FORALL (larger_size: nat):
+        (rank_value < larger_size AND larger_size <= 5)
+          IMPLIES NOT has_nonzero_minor(A, larger_size)
+
+  linear_combination(
+      r, s: real,
+      A, B: matrix): matrix =
+    LAMBDA (row: row_index), (column: column_index):
+      r * A(row, column) + s * B(row, column)
+
+  closed_under_linear_combinations(V: matrix_set): bool =
+    FORALL
+        (A, B: matrix),
+        (r, s: real):
+      (V(A) AND V(B))
+        IMPLIES V(linear_combination(r, s, A, B))
+
+  contains_rank(V: matrix_set, rank_value: nat): bool =
+    EXISTS (A: matrix):
+      V(A) AND matrix_has_rank(A, rank_value)
+
+  putnam_1981_b4_solution: bool = FALSE
+
+  putnam_1981_b4: bool =
+    (FORALL (V: matrix_set):
+      (closed_under_linear_combinations(V)
+        AND contains_rank(V, 0)
+        AND contains_rank(V, 1)
+        AND contains_rank(V, 2)
+        AND contains_rank(V, 4)
+        AND contains_rank(V, 5))
+      IMPLIES contains_rank(V, 3))
+      IFF putnam_1981_b4_solution
+END putnam_1981_b4

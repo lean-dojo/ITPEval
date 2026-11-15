@@ -1,0 +1,93 @@
+% Statement-only formalization of the VERINA corpus artifact
+% verina_advanced_19, "isCleanPalindrome": filtering a Unicode-scalar string
+% to ASCII letters, lowercasing them, and deciding whether the result is a
+% palindrome. This file contains no proof.
+
+verina_advanced_19: THEORY
+BEGIN
+
+  % The program observes a Lean String only through String.toList.  A finite
+  % list of Unicode scalar values is therefore its exact extensional input.
+  lean_char: TYPE =
+    {codepoint: nat |
+      codepoint < 1114112
+        AND (codepoint < 55296 OR codepoint >= 57344)}
+
+  lean_string: TYPE = list[lean_char]
+
+  lean_char_option: DATATYPE
+  BEGIN
+    NoLeanChar: NoLeanChar?
+    SomeLeanChar(option_value: lean_char): SomeLeanChar?
+  END lean_char_option
+
+  isUpperAlpha(c: lean_char): bool =
+    c >= 65 AND c <= 90
+
+  isLowerAlpha(c: lean_char): bool =
+    c >= 97 AND c <= 122
+
+  isAlpha(c: lean_char): bool =
+    isUpperAlpha(c) OR isLowerAlpha(c)
+
+  toLower(c: lean_char): lean_char =
+    IF isUpperAlpha(c) THEN c + 32 ELSE c ENDIF
+
+  normalizeChar(c: lean_char): lean_char_option =
+    IF isAlpha(c) THEN
+      SomeLeanChar(toLower(c))
+    ELSE
+      NoLeanChar
+    ENDIF
+
+  normalizeString(s: lean_string): RECURSIVE list[lean_char] =
+    CASES s OF
+      null:
+        null,
+      cons(c, rest):
+        CASES normalizeChar(c) OF
+          NoLeanChar:
+            normalizeString(rest),
+          SomeLeanChar(c_prime):
+            cons(c_prime, normalizeString(rest))
+        ENDCASES
+    ENDCASES
+  MEASURE s BY <<
+
+  isCleanPalindrome_precond(s: lean_string): bool =
+    TRUE
+
+  reverseList_acc(
+      xs, accumulator: list[lean_char]): RECURSIVE list[lean_char] =
+    CASES xs OF
+      null:
+        accumulator,
+      cons(x, rest):
+        reverseList_acc(rest, cons(x, accumulator))
+    ENDCASES
+  MEASURE xs BY <<
+
+  reverseList(xs: list[lean_char]): list[lean_char] =
+    reverseList_acc(xs, null)
+
+  isCleanPalindrome(s: lean_string): bool =
+    LET norm: list[lean_char] = normalizeString(s)
+    IN
+      norm = reverseList(norm)
+
+  isCleanPalindrome_postcond(
+      s: lean_string,
+      result: bool): bool =
+    LET norm: list[lean_char] = normalizeString(s)
+    IN
+      (result IMPLIES norm = reverseList(norm))
+        AND (NOT result IMPLIES norm /= reverseList(norm))
+
+  isCleanPalindrome_spec_satisfied: bool =
+    FORALL (s: lean_string):
+      isCleanPalindrome_precond(s) IMPLIES
+        isCleanPalindrome_postcond(
+          s,
+          isCleanPalindrome(s))
+
+END verina_advanced_19

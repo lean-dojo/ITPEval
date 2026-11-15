@@ -1,0 +1,247 @@
+% Statement-only formalization of the Thousand Theorems artifact Q1477053,
+% "Arzelà–Ascoli theorem": a pointwise equicontinuous family of bounded
+% continuous functions from a compact space into a separated pseudometric
+% space, with range in a compact set, has compact closure in the uniform
+% topology. This file contains no proof.
+
+arzela_ascoli_theorem_Q1477053[
+  X: TYPE,
+  Y: TYPE,
+  open_x: [[X -> bool] -> bool],
+  distance_y: [Y, Y -> real],
+  s: [Y -> bool],
+  A: [[X -> Y] -> bool]
+]: THEORY
+BEGIN
+  x_set: TYPE = [X -> bool]
+  x_set_family: TYPE = [x_set -> bool]
+  x_set_sequence: TYPE = [nat -> x_set]
+
+  y_set: TYPE = [Y -> bool]
+  y_set_family: TYPE = [y_set -> bool]
+  y_set_sequence: TYPE = [nat -> y_set]
+
+  map_xy: TYPE = [X -> Y]
+  map_set: TYPE = [map_xy -> bool]
+  map_set_family: TYPE = [map_set -> bool]
+  map_set_sequence: TYPE = [nat -> map_set]
+
+  empty_x_set: x_set =
+    LAMBDA (x: X): FALSE
+
+  whole_x_set: x_set =
+    LAMBDA (x: X): TRUE
+
+  x_intersection(U, V: x_set): x_set =
+    LAMBDA (x: X):
+      U(x) AND V(x)
+
+  x_union(F: x_set_family): x_set =
+    LAMBDA (x: X):
+      EXISTS (U: x_set):
+        F(U) AND U(x)
+
+  x_subset(U, V: x_set): bool =
+    FORALL (x: X):
+      U(x) IMPLIES V(x)
+
+  x_topology_laws: bool =
+    open_x(empty_x_set)
+      AND open_x(whole_x_set)
+      AND
+        (FORALL (U, V: x_set):
+          (open_x(U) AND open_x(V))
+            IMPLIES open_x(x_intersection(U, V)))
+      AND
+        (FORALL (F: x_set_family):
+          (FORALL (U: x_set):
+            F(U) IMPLIES open_x(U))
+          IMPLIES open_x(x_union(F)))
+
+  x_open_cover(C: x_set_family, K: x_set): bool =
+    (FORALL (U: x_set):
+      C(U) IMPLIES open_x(U))
+      AND
+        (FORALL (x: X):
+          K(x) IMPLIES
+            EXISTS (U: x_set):
+              C(U) AND U(x))
+
+  x_compact(K: x_set): bool =
+    FORALL (C: x_set_family):
+      x_open_cover(C, K)
+        IMPLIES
+          EXISTS
+              (count: nat),
+              (chosen: x_set_sequence):
+            (FORALL (index: nat):
+              index < count IMPLIES C(chosen(index)))
+              AND
+                (FORALL (x: X):
+                  K(x) IMPLIES
+                    EXISTS (index: nat):
+                      index < count AND chosen(index)(x))
+
+  separated_pseudometric_laws: bool =
+    (FORALL (y, z: Y):
+      0 <= distance_y(y, z))
+      AND
+        (FORALL (y: Y):
+          distance_y(y, y) = 0)
+      AND
+        (FORALL (y, z: Y):
+          distance_y(y, z) = distance_y(z, y))
+      AND
+        (FORALL (x, y, z: Y):
+          distance_y(x, z)
+            <= distance_y(x, y) + distance_y(y, z))
+      AND
+        (FORALL (y, z: Y):
+          distance_y(y, z) = 0 IMPLIES y = z)
+
+  y_open(U: y_set): bool =
+    FORALL (y: Y):
+      U(y)
+        IMPLIES
+          EXISTS (radius: posreal):
+            FORALL (z: Y):
+              distance_y(y, z) < radius IMPLIES U(z)
+
+  y_open_cover(C: y_set_family, K: y_set): bool =
+    (FORALL (U: y_set):
+      C(U) IMPLIES y_open(U))
+      AND
+        (FORALL (y: Y):
+          K(y) IMPLIES
+            EXISTS (U: y_set):
+              C(U) AND U(y))
+
+  y_compact(K: y_set): bool =
+    FORALL (C: y_set_family):
+      y_open_cover(C, K)
+        IMPLIES
+          EXISTS
+              (count: nat),
+              (chosen: y_set_sequence):
+            (FORALL (index: nat):
+              index < count IMPLIES C(chosen(index)))
+              AND
+                (FORALL (y: Y):
+                  K(y) IMPLIES
+                    EXISTS (index: nat):
+                      index < count AND chosen(index)(y))
+
+  preimage(f: map_xy, U: y_set): x_set =
+    LAMBDA (x: X):
+      U(f(x))
+
+  continuous_map(f: map_xy): bool =
+    FORALL (U: y_set):
+      y_open(U) IMPLIES open_x(preimage(f, U))
+
+  bounded_map(f: map_xy): bool =
+    EXISTS (bound: real):
+      0 <= bound
+        AND
+          FORALL (x, z: X):
+            distance_y(f(x), f(z)) <= bound
+
+  bounded_continuous_map(f: map_xy): bool =
+    bounded_map(f) AND continuous_map(f)
+
+  all_bounded_continuous_maps: map_set =
+    LAMBDA (f: map_xy):
+      bounded_continuous_map(f)
+
+  map_subset(B, C: map_set): bool =
+    FORALL (f: map_xy):
+      B(f) IMPLIES C(f)
+
+  uniform_ball(
+      center: map_xy,
+      radius: posreal): map_set =
+    LAMBDA (f: map_xy):
+      bounded_continuous_map(f)
+        AND
+          EXISTS (uniform_bound: real):
+            0 <= uniform_bound
+              AND uniform_bound < radius
+              AND
+                FORALL (x: X):
+                  distance_y(center(x), f(x)) <= uniform_bound
+
+  map_open(U: map_set): bool =
+    map_subset(U, all_bounded_continuous_maps)
+      AND
+        FORALL (f: map_xy):
+          U(f)
+            IMPLIES
+              EXISTS (radius: posreal):
+                map_subset(
+                  uniform_ball(f, radius),
+                  U)
+
+  map_complement(U: map_set): map_set =
+    LAMBDA (f: map_xy):
+      bounded_continuous_map(f) AND NOT U(f)
+
+  map_closed(C: map_set): bool =
+    map_subset(C, all_bounded_continuous_maps)
+      AND map_open(map_complement(C))
+
+  map_closure(B: map_set): map_set =
+    LAMBDA (f: map_xy):
+      bounded_continuous_map(f)
+        AND FORALL (C: map_set):
+          (map_closed(C) AND map_subset(B, C))
+            IMPLIES C(f)
+
+  map_open_cover(C: map_set_family, K: map_set): bool =
+    (FORALL (U: map_set):
+      C(U) IMPLIES map_open(U))
+      AND
+        (FORALL (f: map_xy):
+          K(f) IMPLIES
+            EXISTS (U: map_set):
+              C(U) AND U(f))
+
+  map_compact(K: map_set): bool =
+    FORALL (C: map_set_family):
+      map_open_cover(C, K)
+        IMPLIES
+          EXISTS
+              (count: nat),
+              (chosen: map_set_sequence):
+            (FORALL (index: nat):
+              index < count IMPLIES C(chosen(index)))
+              AND
+                (FORALL (f: map_xy):
+                  K(f) IMPLIES
+                    EXISTS (index: nat):
+                      index < count AND chosen(index)(f))
+
+  family_has_range_in_s: bool =
+    FORALL (f: map_xy), (x: X):
+      A(f) IMPLIES s(f(x))
+
+  pointwise_equicontinuous: bool =
+    FORALL (x: X), (epsilon_value: posreal):
+      EXISTS (U: x_set):
+        open_x(U)
+          AND U(x)
+          AND
+            FORALL (f: map_xy), (y, z: X):
+              (A(f) AND U(y) AND U(z))
+                IMPLIES
+                  distance_y(f(y), f(z)) < epsilon_value
+
+  arzela_ascoli: bool =
+    (x_topology_laws
+      AND x_compact(whole_x_set)
+      AND separated_pseudometric_laws
+      AND y_compact(s)
+      AND map_subset(A, all_bounded_continuous_maps)
+      AND family_has_range_in_s
+      AND pointwise_equicontinuous)
+    IMPLIES map_compact(map_closure(A))
+END arzela_ascoli_theorem_Q1477053

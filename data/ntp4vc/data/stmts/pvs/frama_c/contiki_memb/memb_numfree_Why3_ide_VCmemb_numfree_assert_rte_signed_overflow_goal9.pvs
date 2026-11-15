@@ -1,0 +1,133 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% frama_c/contiki_memb/memb_numfree_Why3_ide_VCmemb_numfree_assert_rte_signed_overflow_goal9:
+% a Contiki memb verification condition bounding the number of free entries
+% to prevent signed 32-bit overflow. This file contains no proof.
+
+memb_numfree_Why3_ide_VCmemb_numfree_assert_rte_signed_overflow_goal9: THEORY
+BEGIN
+  addr: TYPE = [# base: int, offset: int #]
+  pointer_memory: TYPE = [addr -> addr]
+  integer_memory: TYPE = [addr -> int]
+  allocation_table: TYPE = [int -> int]
+  occurrence_counter: TYPE =
+    [integer_memory, int, addr, int, int -> int]
+
+  shift(p: addr, k: int): addr =
+    (# base := base(p), offset := offset(p) + k #)
+
+  valid_rw(m: allocation_table, p: addr, n: int): bool =
+    n > 0 IMPLIES
+      base(p) > 0 AND
+      offset(p) >= 0 AND
+      offset(p) + n <= m(base(p))
+
+  valid_rd(m: allocation_table, p: addr, n: int): bool =
+    n > 0 IMPLIES
+      base(p) /= 0 AND
+      offset(p) >= 0 AND
+      offset(p) + n <= m(base(p))
+
+  separated(p: addr, a: int, q: addr, b: int): bool =
+    a <= 0 OR
+    b <= 0 OR
+    base(p) /= base(q) OR
+    offset(q) + b <= offset(p) OR
+    offset(p) + a <= offset(q)
+
+  framed(
+      region: [int -> int],
+      m: pointer_memory): bool =
+    FORALL (p: addr): region(base(m(p))) <= 0
+
+  is_sint32(x: int): bool =
+    -2147483648 <= x AND x < 2147483648
+
+  is_uint16(x: int): bool =
+    0 <= x AND x < 65536
+
+  p_valid_memb(
+      malloc_0: allocation_table,
+      mptr_0: pointer_memory,
+      mint_0: integer_memory,
+      m: addr): bool =
+    LET x: int = mint_0(shift(m, 0)) IN
+    LET x_1: int = mint_0(shift(m, 1)) IN
+    LET x_2: int = x_1 * x IN
+    LET a: addr = mptr_0(shift(m, 2)) IN
+    LET a_1: addr = mptr_0(shift(m, 3)) IN
+    LET a_2: addr = shift(a, 0) IN
+    LET a_3: addr = shift(a_1, 0) IN
+      x > 0 AND
+      x_2 <= 2147483647 AND
+      valid_rw(malloc_0, m, 4) AND
+      valid_rw(malloc_0, a, 1) AND
+      valid_rw(malloc_0, a_1, 1) AND
+      valid_rw(malloc_0, a_2, x_1) AND
+      valid_rw(malloc_0, a_3, x_2) AND
+      separated(a_2, x_1, a_3, x_2)
+
+  occurrence_axioms(l_occ_a: occurrence_counter): bool =
+    (FORALL
+      (to_0, from_0: int),
+      (mchar_0: integer_memory),
+      (e: int),
+      (t: addr):
+        to_0 <= from_0 IMPLIES
+        l_occ_a(mchar_0, e, t, from_0, to_0) = 0)
+    AND
+    (FORALL
+      (to_0: int),
+      (mchar_0: integer_memory),
+      (t: addr),
+      (e, from_0: int):
+        mchar_0(shift(t, to_0 - 1)) = e IMPLIES
+        from_0 < to_0 IMPLIES
+        1 + l_occ_a(mchar_0, e, t, from_0, to_0 - 1) =
+          l_occ_a(mchar_0, e, t, from_0, to_0))
+    AND
+    (FORALL
+      (to_0: int),
+      (mchar_0: integer_memory),
+      (t: addr),
+      (e, from_0: int):
+        mchar_0(shift(t, to_0 - 1)) /= e IMPLIES
+        from_0 < to_0 IMPLIES
+        l_occ_a(mchar_0, e, t, from_0, to_0 - 1) =
+          l_occ_a(mchar_0, e, t, from_0, to_0))
+
+  goal9: bool =
+    FORALL
+      (region: [int -> int]),
+      (linked: [allocation_table -> bool]),
+      (sconst: [integer_memory -> bool]),
+      (l_occ_a: occurrence_counter),
+      (a: addr),
+      (t_3: pointer_memory),
+      (i: int),
+      (t_1, t_2: integer_memory),
+      (t: allocation_table):
+      LET a_1: addr = shift(a, 2) IN
+      LET a_2: addr = t_3(a_1) IN
+      LET a_3: addr = shift(a_2, i) IN
+      LET a_4: addr = shift(a, 1) IN
+      LET x: int = t_1(a_4) IN
+      LET x_1: int = l_occ_a(t_2, 0, a_2, 0, i) IN
+        occurrence_axioms(l_occ_a) IMPLIES
+        t_2(a_3) = 0 IMPLIES
+        0 <= i IMPLIES
+        i < x IMPLIES
+        i <= x IMPLIES
+        region(base(a)) <= 0 IMPLIES
+        x_1 <= i IMPLIES
+        framed(region, t_3) IMPLIES
+        linked(t) IMPLIES
+        sconst(t_2) IMPLIES
+        is_sint32(i) IMPLIES
+        is_uint16(x) IMPLIES
+        p_valid_memb(t, t_3, t_1, a) IMPLIES
+        valid_rd(t, a_1, 1) IMPLIES
+        valid_rd(t, a_4, 1) IMPLIES
+        valid_rd(t, a_3, 1) IMPLIES
+        is_sint32(x_1) IMPLIES
+        x_1 <= 2147483646
+END memb_numfree_Why3_ide_VCmemb_numfree_assert_rte_signed_overflow_goal9

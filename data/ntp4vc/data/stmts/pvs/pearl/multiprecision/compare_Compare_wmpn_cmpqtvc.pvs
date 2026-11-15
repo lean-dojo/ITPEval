@@ -1,0 +1,201 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/multiprecision/compare_Compare_wmpn_cmpqtvc: the verification
+% condition for comparing two valid equal-length multiprecision integers by
+% scanning their 64-bit limbs from most significant to least significant.
+% This file contains no proof.
+
+compare_Compare_wmpn_cmpqtvc[zone: TYPE+]: THEORY
+BEGIN
+
+  IMPORTING
+    bv[32], bv[64],
+    bv_nat[32], bv_nat[64]
+
+  word32: TYPE = bvec[32]
+  word64: TYPE = bvec[64]
+
+  ptr: TYPE =
+    [# data_length: nat,
+       cells: [int -> word64],
+       pointer_offset: int,
+       pointer_min: int,
+       pointer_max: int,
+       is_writable: bool,
+       pointer_zone: zone #]
+
+  radix: int = 18446744073709551616
+
+  unsigned64(value1: word64): int =
+    bv2nat[64](value1)
+
+  signed32(value1: word32): int =
+    IF value1(31) THEN
+      bv2nat[32](value1) - 4294967296
+    ELSE
+      bv2nat[32](value1)
+    ENDIF
+
+  int_to_nat(value1: int): nat =
+    IF value1 < 0 THEN 0 ELSE value1 ENDIF
+
+  pelts(p: ptr, index: int): word64 =
+    cells(p)(index)
+
+  value_from(
+      values: [int -> word64],
+      start: int,
+      count: nat): RECURSIVE int =
+    IF count = 0 THEN
+      0
+    ELSE
+      unsigned64(values(start))
+        + radix * value_from(values, start + 1, count - 1)
+    ENDIF
+  MEASURE count
+
+  value(p: ptr, count: int): int =
+    value_from(
+      cells(p),
+      pointer_offset(p),
+      int_to_nat(count))
+
+  int32_in_bounds(value1: int): bool =
+    -2147483648 <= value1 AND value1 <= 2147483647
+
+  valid(p: ptr, count: int): bool =
+    int32_in_bounds(count)
+      AND 0 <= count
+      AND 0 <= pointer_min(p)
+      AND pointer_min(p) <= pointer_offset(p)
+      AND pointer_offset(p) + count <= pointer_max(p)
+      AND pointer_max(p) <= (data_length(p) :: int)
+
+  valid_index(p: ptr, index: int): bool =
+    pointer_min(p) <= pointer_offset(p) + index
+      AND pointer_offset(p) + index < pointer_max(p)
+
+  equal_tail(
+      x, y: ptr,
+      lower, upper: int): bool =
+    FORALL (j: int):
+      lower <= j AND j < upper
+        IMPLIES
+          pelts(x, pointer_offset(x) + j)
+            = pelts(y, pointer_offset(y) + j)
+
+  compare_int(x, y: int): int =
+    IF x < y THEN -1
+    ELSE
+      IF x = y THEN 0 ELSE 1 ENDIF
+    ENDIF
+
+  loop_obligation(
+      x, y: ptr,
+      size, index: word32): bool =
+    ((0 <= signed32(index)
+        AND signed32(index) <= signed32(size))
+      AND
+        equal_tail(
+          x,
+          y,
+          signed32(index),
+          signed32(size)))
+      IMPLIES
+        IF 1 <= signed32(index) THEN
+          int32_in_bounds(signed32(index) - 1)
+            AND
+              (FORALL (previous_index: word32):
+                signed32(previous_index) = signed32(index) - 1
+                  IMPLIES
+                    valid_index(
+                      x,
+                      signed32(previous_index))
+                      AND
+                        (LET lx: word64 =
+                           pelts(
+                             x,
+                             pointer_offset(x)
+                               + signed32(previous_index))
+                         IN
+                           valid_index(
+                             y,
+                             signed32(previous_index))
+                             AND
+                               (LET ly: word64 =
+                                  pelts(
+                                    y,
+                                    pointer_offset(y)
+                                      + signed32(previous_index))
+                                IN
+                                  FORALL (equal_limb: bool):
+                                    ((unsigned64(lx) = unsigned64(ly)
+                                        IMPLIES equal_limb = TRUE)
+                                      AND
+                                        (equal_limb = TRUE
+                                          IMPLIES lx = ly))
+                                      IMPLIES
+                                        IF NOT equal_limb = TRUE THEN
+                                          IF unsigned64(ly)
+                                               < unsigned64(lx)
+                                          THEN
+                                            1
+                                              = compare_int(
+                                                  value(
+                                                    x,
+                                                    signed32(size)),
+                                                  value(
+                                                    y,
+                                                    signed32(size)))
+                                          ELSE
+                                            -1
+                                              = compare_int(
+                                                  value(
+                                                    x,
+                                                    signed32(size)),
+                                                  value(
+                                                    y,
+                                                    signed32(size)))
+                                          ENDIF
+                                        ELSE
+                                          signed32(previous_index)
+                                            < signed32(index)
+                                            AND
+                                              (0
+                                                  <= signed32(
+                                                       previous_index)
+                                                AND
+                                                  signed32(previous_index)
+                                                    <= signed32(size))
+                                            AND
+                                              equal_tail(
+                                                x,
+                                                y,
+                                                signed32(previous_index),
+                                                signed32(size))
+                                        ENDIF)))
+        ELSE
+          0
+            = compare_int(
+                value(x, signed32(size)),
+                value(y, signed32(size)))
+        ENDIF
+
+  wmpn_cmp_vc: bool =
+    FORALL (x: ptr), (size: word32), (y: ptr):
+      valid(x, signed32(size))
+        IMPLIES
+          valid(y, signed32(size))
+            IMPLIES
+              0 <= signed32(size)
+                AND signed32(size) <= signed32(size)
+                AND
+                  equal_tail(
+                    x,
+                    y,
+                    signed32(size),
+                    signed32(size))
+                AND
+                  (FORALL (index: word32):
+                    loop_obligation(x, y, size, index))
+
+END compare_Compare_wmpn_cmpqtvc

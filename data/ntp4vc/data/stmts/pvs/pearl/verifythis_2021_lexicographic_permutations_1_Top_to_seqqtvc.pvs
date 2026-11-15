@@ -1,0 +1,147 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/verifythis_2021_lexicographic_permutations_1_Top_to_seqqtvc: the
+% loop verification condition for copying a finite integer array into a
+% sequence by appending each entry while preserving length and every
+% zero-based indexed value. This file contains no proof.
+
+verifythis_2021_lexicographic_permutations_1_Top_to_seqqtvc: THEORY
+BEGIN
+
+  int_list_length(values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        int_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  int_list_get(
+      values: list[int],
+      index: int): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index <= 0 THEN
+          head
+        ELSE
+          int_list_get(tail, index - 1)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  prefix_copy(
+      copied, original: list[int],
+      bound: int): bool =
+    FORALL (index: int):
+      0 <= index AND index < bound IMPLIES
+        int_list_get(copied, index) =
+          int_list_get(original, index)
+
+  snoc(values: list[int], value: int): list[int] =
+    append(values, cons(value, null))
+
+  snoc_contract(
+      before, after: list[int],
+      value: int): bool =
+    int_list_length(after) = 1 + int_list_length(before)
+      AND
+        int_list_get(after, int_list_length(before)) = value
+      AND
+        prefix_copy(
+          after,
+          before,
+          int_list_length(before))
+
+  initial_state(original: list[int]): bool =
+    int_list_length(null) = 0
+      AND prefix_copy(null, original, 0)
+
+  append_preservation(
+      original, current: list[int]): bool =
+    LET value: int =
+          int_list_get(
+            original,
+            int_list_length(current)),
+        extended: list[int] =
+          snoc(current, value)
+    IN
+      snoc_contract(current, extended, value)
+        IMPLIES
+          int_list_length(extended) =
+            int_list_length(current) + 1
+          AND
+            prefix_copy(
+              extended,
+              original,
+              int_list_length(current) + 1)
+
+  loop_preservation(
+      original: list[int],
+      upper: int,
+      current: list[int]): bool =
+    ((0 <= int_list_length(current)
+        AND int_list_length(current) <= upper)
+      AND
+        prefix_copy(
+          current,
+          original,
+          int_list_length(current)))
+      IMPLIES
+        (0 <= int_list_length(current)
+          AND
+            int_list_length(current) <
+              int_list_length(original))
+        AND append_preservation(original, current)
+
+  loop_exit(
+      original: list[int],
+      upper: int,
+      current: list[int]): bool =
+    (int_list_length(current) = upper + 1
+      AND prefix_copy(current, original, upper + 1))
+      IMPLIES
+        int_list_length(current) =
+          int_list_length(original)
+        AND
+          prefix_copy(
+            current,
+            original,
+            int_list_length(current))
+
+  final_result(
+      result, original: list[int]): bool =
+    int_list_length(result) = int_list_length(original)
+      AND
+        prefix_copy(
+          result,
+          original,
+          int_list_length(result))
+
+  to_seq_vc: bool =
+    FORALL (original: list[int]):
+      LET upper: int =
+        int_list_length(original) - 1
+      IN
+        (0 <= upper + 1
+          IMPLIES
+            initial_state(original)
+              AND
+                (FORALL (current: list[int]):
+                  loop_preservation(
+                    original,
+                    upper,
+                    current)
+                    AND
+                  loop_exit(
+                    original,
+                    upper,
+                    current)))
+        AND
+          (upper + 1 < 0
+            IMPLIES
+              LET result: list[int] = null
+              IN final_result(result, original))
+
+END verifythis_2021_lexicographic_permutations_1_Top_to_seqqtvc

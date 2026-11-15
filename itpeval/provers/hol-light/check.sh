@@ -28,6 +28,8 @@ if [[ ! -f "${HELLO_FILE}" ]]; then
   fail "missing hello file at ${HELLO_FILE}"
 fi
 
+itpeval_validate_statement_file "hol-light" "${HELLO_FILE}"
+
 TIMEOUT_SEC="${ITPEVAL_HOLLIGHT_CHECK_TIMEOUT:-300}"
 log "Running HOL Light hello check (timeout ${TIMEOUT_SEC}s) …"
 log "  Note: loading hol.ml takes 30–90 s on a typical machine."

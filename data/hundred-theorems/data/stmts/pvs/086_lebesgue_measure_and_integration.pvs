@@ -1,0 +1,452 @@
+% Statement-only formalization of Hundred Theorems artifact 086, "Lebesgue Measure and Integration":
+% extended-nonnegative measures on arbitrary measurable spaces, lower Lebesgue integration by
+% measurable simple minorants, monotone convergence, and measurable-set measure restriction.
+% This file contains no proof.
+
+lebesgue_measure_and_integration_086: THEORY
+BEGIN
+  sample_space: TYPE+
+
+  event: TYPE = [sample_space -> bool]
+  event_sequence: TYPE = [nat -> event]
+  sigma_algebra: TYPE = [event -> bool]
+
+  measure_value: TYPE =
+    [# infinite_flag: bool, finite_part: real #]
+  measure_value_sequence: TYPE = [nat -> measure_value]
+  measure_map: TYPE = [event -> measure_value]
+  nonnegative_function: TYPE = [sample_space -> measure_value]
+  nonnegative_function_sequence: TYPE =
+    [nat -> nonnegative_function]
+  real_sequence: TYPE = [nat -> real]
+
+  zero_measure_value: measure_value =
+    (# infinite_flag := FALSE, finite_part := 0 #)
+
+  infinite_measure_value: measure_value =
+    (# infinite_flag := TRUE, finite_part := 0 #)
+
+  canonical_measure_value(value: measure_value): bool =
+    IF infinite_flag(value) THEN
+      finite_part(value) = 0
+    ELSE
+      finite_part(value) >= 0
+    ENDIF
+
+  canonical_nonnegative_function(
+      function_value: nonnegative_function): bool =
+    FORALL (omega: sample_space):
+      canonical_measure_value(function_value(omega))
+
+  measure_value_is_zero(value: measure_value): bool =
+    NOT infinite_flag(value)
+      AND finite_part(value) = 0
+
+  measure_value_le(left, right: measure_value): bool =
+    canonical_measure_value(left)
+      AND canonical_measure_value(right)
+      AND IF infinite_flag(right) THEN
+        TRUE
+      ELSIF infinite_flag(left) THEN
+        FALSE
+      ELSE
+        finite_part(left) <= finite_part(right)
+      ENDIF
+
+  measure_value_add(left, right: measure_value): measure_value =
+    IF infinite_flag(left) OR infinite_flag(right) THEN
+      infinite_measure_value
+    ELSE
+      (# infinite_flag := FALSE,
+         finite_part := finite_part(left) + finite_part(right) #)
+    ENDIF
+
+  measure_value_product(left, right: measure_value): measure_value =
+    IF measure_value_is_zero(left)
+        OR measure_value_is_zero(right) THEN
+      zero_measure_value
+    ELSIF infinite_flag(left)
+        OR infinite_flag(right) THEN
+      infinite_measure_value
+    ELSE
+      (# infinite_flag := FALSE,
+         finite_part := finite_part(left) * finite_part(right) #)
+    ENDIF
+
+  full_event: event =
+    LAMBDA (omega: sample_space): TRUE
+
+  empty_event: event =
+    LAMBDA (omega: sample_space): FALSE
+
+  event_complement(A: event): event =
+    LAMBDA (omega: sample_space): NOT A(omega)
+
+  event_intersection(A, B: event): event =
+    LAMBDA (omega: sample_space):
+      A(omega) AND B(omega)
+
+  countable_union(events: event_sequence): event =
+    LAMBDA (omega: sample_space):
+      EXISTS (n: nat): events(n)(omega)
+
+  pairwise_disjoint(events: event_sequence): bool =
+    FORALL (i, j: nat):
+      i /= j IMPLIES
+        FORALL (omega: sample_space):
+          NOT (events(i)(omega) AND events(j)(omega))
+
+  pairwise_disjoint_below(
+      events: event_sequence,
+      count: nat): bool =
+    FORALL (i, j: nat):
+      i < count AND j < count AND i /= j IMPLIES
+        FORALL (omega: sample_space):
+          NOT (events(i)(omega) AND events(j)(omega))
+
+  finite_real_sum(values: real_sequence, count: nat):
+      RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      finite_real_sum(values, count - 1)
+        + values(count - 1)
+    ENDIF
+  MEASURE count
+
+  converges_to_real(values: real_sequence, limit: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(values(index) - limit) < epsilon_value
+
+  unbounded_above(values: real_sequence): bool =
+    FORALL (bound: real):
+      EXISTS (index: nat):
+        bound < values(index)
+
+  partial_measure_sum(
+      values: measure_value_sequence,
+      count: nat): real =
+    finite_real_sum(
+      LAMBDA (index: nat):
+        finite_part(values(index)),
+      count)
+
+  extended_nonnegative_sum(
+      values: measure_value_sequence,
+      total: measure_value): bool =
+    canonical_measure_value(total)
+      AND (FORALL (index: nat):
+        canonical_measure_value(values(index)))
+      AND IF infinite_flag(total) THEN
+        (EXISTS (index: nat):
+          infinite_flag(values(index)))
+          OR ((FORALL (index: nat):
+                NOT infinite_flag(values(index)))
+            AND unbounded_above(
+              LAMBDA (count: nat):
+                partial_measure_sum(values, count)))
+      ELSE
+        (FORALL (index: nat):
+          NOT infinite_flag(values(index)))
+          AND converges_to_real(
+            LAMBDA (count: nat):
+              partial_measure_sum(values, count),
+            finite_part(total))
+      ENDIF
+
+  is_sigma_algebra(Sigma: sigma_algebra): bool =
+    Sigma(full_event)
+      AND (FORALL (A: event):
+        Sigma(A) IMPLIES Sigma(event_complement(A)))
+      AND (FORALL (events: event_sequence):
+        (FORALL (index: nat): Sigma(events(index)))
+          IMPLIES Sigma(countable_union(events)))
+
+  is_measure(
+      M: measure_map,
+      Sigma: sigma_algebra): bool =
+    is_sigma_algebra(Sigma)
+      AND measure_value_is_zero(M(empty_event))
+      AND (FORALL (A: event):
+        Sigma(A) IMPLIES canonical_measure_value(M(A)))
+      AND (FORALL (events: event_sequence):
+        ((FORALL (index: nat): Sigma(events(index)))
+          AND pairwise_disjoint(events))
+        IMPLIES
+          extended_nonnegative_sum(
+            LAMBDA (index: nat): M(events(index)),
+            M(countable_union(events))))
+
+  measure_space(
+      M: measure_map,
+      Sigma: sigma_algebra): bool =
+    is_measure(M, Sigma)
+
+  restricted_measure(
+      M: measure_map,
+      A: event): measure_map =
+    LAMBDA (B: event):
+      M(event_intersection(B, A))
+
+  sublevel_event(
+      function_value: nonnegative_function,
+      bound: real): event =
+    LAMBDA (omega: sample_space):
+      NOT infinite_flag(function_value(omega))
+        AND finite_part(function_value(omega)) <= bound
+
+  measurable_nonnegative_function(
+      Sigma: sigma_algebra,
+      function_value: nonnegative_function): bool =
+    canonical_nonnegative_function(function_value)
+      AND (FORALL (bound: real):
+        0 <= bound IMPLIES
+          Sigma(sublevel_event(function_value, bound)))
+
+  finite_simple_value(
+      coefficients: measure_value_sequence,
+      pieces: event_sequence,
+      count: nat,
+      omega: sample_space): RECURSIVE measure_value =
+    IF count = 0 THEN
+      zero_measure_value
+    ELSE
+      measure_value_add(
+        finite_simple_value(
+          coefficients, pieces, count - 1, omega),
+        IF pieces(count - 1)(omega) THEN
+          coefficients(count - 1)
+        ELSE
+          zero_measure_value
+        ENDIF)
+    ENDIF
+  MEASURE count
+
+  measurable_simple_function(
+      Sigma: sigma_algebra,
+      coefficients: measure_value_sequence,
+      pieces: event_sequence,
+      count: nat): bool =
+    pairwise_disjoint_below(pieces, count)
+      AND (FORALL (index: nat):
+        index < count IMPLIES
+          canonical_measure_value(coefficients(index))
+            AND Sigma(pieces(index)))
+
+  measurable_simple_minorant(
+      Sigma: sigma_algebra,
+      function_value: nonnegative_function,
+      coefficients: measure_value_sequence,
+      pieces: event_sequence,
+      count: nat): bool =
+    canonical_nonnegative_function(function_value)
+      AND measurable_simple_function(
+        Sigma, coefficients, pieces, count)
+      AND (FORALL (omega: sample_space):
+        measure_value_le(
+          finite_simple_value(
+            coefficients, pieces, count, omega),
+          function_value(omega)))
+
+  finite_simple_integral(
+      M: measure_map,
+      coefficients: measure_value_sequence,
+      pieces: event_sequence,
+      count: nat): RECURSIVE measure_value =
+    IF count = 0 THEN
+      zero_measure_value
+    ELSE
+      measure_value_add(
+        finite_simple_integral(
+          M, coefficients, pieces, count - 1),
+        measure_value_product(
+          coefficients(count - 1),
+          M(pieces(count - 1))))
+    ENDIF
+  MEASURE count
+
+  lower_integral_upper_bound(
+      M: measure_map,
+      Sigma: sigma_algebra,
+      function_value: nonnegative_function,
+      upper: measure_value): bool =
+    canonical_measure_value(upper)
+      AND FORALL
+          (coefficients: measure_value_sequence),
+          (pieces: event_sequence),
+          (count: nat):
+        measurable_simple_minorant(
+          Sigma, function_value,
+          coefficients, pieces, count)
+        IMPLIES
+          measure_value_le(
+            finite_simple_integral(
+              M, coefficients, pieces, count),
+            upper)
+
+  has_lower_lebesgue_integral(
+      M: measure_map,
+      Sigma: sigma_algebra,
+      function_value: nonnegative_function,
+      integral_value: measure_value): bool =
+    measure_space(M, Sigma)
+      AND canonical_nonnegative_function(function_value)
+      AND canonical_measure_value(integral_value)
+      AND lower_integral_upper_bound(
+        M, Sigma, function_value, integral_value)
+      AND (FORALL (upper: measure_value):
+        lower_integral_upper_bound(
+          M, Sigma, function_value, upper)
+        IMPLIES measure_value_le(integral_value, upper))
+
+  pointwise_le(
+      left, right: nonnegative_function): bool =
+    canonical_nonnegative_function(left)
+      AND canonical_nonnegative_function(right)
+      AND (FORALL (omega: sample_space):
+        measure_value_le(left(omega), right(omega)))
+
+  increasing_function_sequence(
+      functions: nonnegative_function_sequence): bool =
+    FORALL (left_index, right_index: nat):
+      left_index <= right_index IMPLIES
+        pointwise_le(
+          functions(left_index),
+          functions(right_index))
+
+  is_pointwise_supremum(
+      functions: nonnegative_function_sequence,
+      supremum_function: nonnegative_function): bool =
+    canonical_nonnegative_function(supremum_function)
+      AND (FORALL (index: nat):
+        pointwise_le(functions(index), supremum_function))
+      AND (FORALL (upper: nonnegative_function):
+        (canonical_nonnegative_function(upper)
+          AND (FORALL (index: nat):
+            pointwise_le(functions(index), upper)))
+        IMPLIES pointwise_le(supremum_function, upper))
+
+  is_sequence_supremum(
+      values: measure_value_sequence,
+      supremum_value: measure_value): bool =
+    canonical_measure_value(supremum_value)
+      AND (FORALL (index: nat):
+        canonical_measure_value(values(index))
+          AND measure_value_le(
+            values(index), supremum_value))
+      AND (FORALL (upper: measure_value):
+        (canonical_measure_value(upper)
+          AND (FORALL (index: nat):
+            measure_value_le(values(index), upper)))
+        IMPLIES measure_value_le(supremum_value, upper))
+
+  restricted_function(
+      A: event,
+      function_value: nonnegative_function):
+      nonnegative_function =
+    LAMBDA (omega: sample_space):
+      IF A(omega) THEN
+        function_value(omega)
+      ELSE
+        zero_measure_value
+      ENDIF
+
+  has_set_lower_lebesgue_integral(
+      M: measure_map,
+      Sigma: sigma_algebra,
+      A: event,
+      function_value: nonnegative_function,
+      integral_value: measure_value): bool =
+    Sigma(A)
+      AND has_lower_lebesgue_integral(
+        M, Sigma,
+        restricted_function(A, function_value),
+        integral_value)
+
+  lower_integral_exists_uniquely: bool =
+    FORALL
+        (M: measure_map),
+        (Sigma: sigma_algebra),
+        (function_value: nonnegative_function):
+      (measure_space(M, Sigma)
+        AND canonical_nonnegative_function(function_value))
+      IMPLIES
+        (EXISTS (integral_value: measure_value):
+          has_lower_lebesgue_integral(
+            M, Sigma, function_value, integral_value))
+        AND (FORALL (left_value, right_value: measure_value):
+          (has_lower_lebesgue_integral(
+              M, Sigma, function_value, left_value)
+            AND has_lower_lebesgue_integral(
+              M, Sigma, function_value, right_value))
+          IMPLIES left_value = right_value)
+
+  restricted_measure_is_measure: bool =
+    FORALL
+        (M: measure_map),
+        (Sigma: sigma_algebra),
+        (A: event):
+      (measure_space(M, Sigma) AND Sigma(A))
+      IMPLIES
+        measure_space(
+          restricted_measure(M, A), Sigma)
+
+  lower_monotone_convergence: bool =
+    FORALL
+        (M: measure_map),
+        (Sigma: sigma_algebra),
+        (functions: nonnegative_function_sequence),
+        (supremum_function: nonnegative_function):
+      (measure_space(M, Sigma)
+        AND (FORALL (index: nat):
+          measurable_nonnegative_function(
+            Sigma, functions(index)))
+        AND increasing_function_sequence(functions)
+        AND is_pointwise_supremum(
+          functions, supremum_function))
+      IMPLIES
+        EXISTS
+            (integral_values: measure_value_sequence),
+            (supremum_integral: measure_value):
+          (FORALL (index: nat):
+            has_lower_lebesgue_integral(
+              M, Sigma, functions(index),
+              integral_values(index)))
+            AND has_lower_lebesgue_integral(
+              M, Sigma, supremum_function,
+              supremum_integral)
+            AND is_sequence_supremum(
+              integral_values, supremum_integral)
+
+  set_integral_restriction_identity: bool =
+    FORALL
+        (M: measure_map),
+        (Sigma: sigma_algebra),
+        (A: event),
+        (function_value: nonnegative_function):
+      (measure_space(M, Sigma)
+        AND Sigma(A)
+        AND canonical_nonnegative_function(function_value))
+      IMPLIES
+        EXISTS
+            (indicator_integral,
+             restricted_measure_integral: measure_value):
+          has_set_lower_lebesgue_integral(
+            M, Sigma, A, function_value,
+            indicator_integral)
+            AND has_lower_lebesgue_integral(
+              restricted_measure(M, A), Sigma,
+              function_value,
+              restricted_measure_integral)
+            AND indicator_integral
+              = restricted_measure_integral
+
+  lebesgue_measure_and_integration: bool =
+    lower_integral_exists_uniquely
+      AND restricted_measure_is_measure
+      AND lower_monotone_convergence
+      AND set_integral_restriction_identity
+END lebesgue_measure_and_integration_086

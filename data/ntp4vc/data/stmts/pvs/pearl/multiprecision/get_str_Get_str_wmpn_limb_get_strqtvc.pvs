@@ -1,0 +1,585 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/multiprecision/get_str_Get_str_wmpn_limb_get_strqtvc: the verification
+% condition for converting a 64-bit limb into little-endian base digits,
+% including loop invariants, reciprocal division, byte storage, and framing.
+% This file contains no proof.
+
+get_str_Get_str_wmpn_limb_get_strqtvc[zone: TYPE+]: THEORY
+BEGIN
+
+  IMPORTING
+    bv[8], bv[32], bv[64],
+    bv_nat[8], bv_nat[32], bv_nat[64]
+
+  word8: TYPE = bvec[8]
+  word32: TYPE = bvec[32]
+  word64: TYPE = bvec[64]
+
+  ptr8: TYPE =
+    [# data_length8: nat,
+       cells8: [int -> word8],
+       offset8: int,
+       min8: int,
+       max8: int,
+       writable8: bool,
+       zone8: zone #]
+
+  base_info: TYPE =
+    [# info_base: int,
+       info_exp: word32,
+       info_bb: word64 #]
+
+  radix: int = 18446744073709551616
+  max_uint64: int = 18446744073709551615
+  max_int32: int = 2147483647
+
+  unsigned8(value1: word8): int =
+    bv2nat[8](value1)
+
+  unsigned32(value1: word32): int =
+    bv2nat[32](value1)
+
+  unsigned64(value1: word64): int =
+    bv2nat[64](value1)
+
+  signed32(value1: word32): int =
+    IF value1(31) THEN
+      bv2nat[32](value1) - 4294967296
+    ELSE
+      bv2nat[32](value1)
+    ENDIF
+
+  int_to_nat(value1: int): nat =
+    IF value1 < 0 THEN 0 ELSE value1 ENDIF
+
+  nat_power(base: int, exponent: nat): RECURSIVE int =
+    IF exponent = 0 THEN
+      1
+    ELSE
+      base * nat_power(base, exponent - 1)
+    ENDIF
+  MEASURE exponent
+
+  int_power(base, exponent: int): int =
+    nat_power(base, int_to_nat(exponent))
+
+  positive_div(numerator, denominator: int): int =
+    IF denominator <= 0 THEN
+      0
+    ELSE
+      floor((numerator :: real) / (denominator :: real))
+    ENDIF
+
+  positive_mod(numerator, denominator: int): int =
+    numerator - denominator * positive_div(numerator, denominator)
+
+  int32_in_bounds(value1: int): bool =
+    -2147483648 <= value1 AND value1 <= max_int32
+
+  uint64_in_bounds(value1: int): bool =
+    0 <= value1 AND value1 <= max_uint64
+
+  valid8(p: ptr8, count: int): bool =
+    int32_in_bounds(count)
+      AND 0 <= count
+      AND 0 <= min8(p)
+      AND min8(p) <= offset8(p)
+      AND offset8(p) + count <= max8(p)
+      AND max8(p) <= data_length8(p)
+
+  same_shape8(newer, older: ptr8): bool =
+    data_length8(newer) = data_length8(older)
+      AND offset8(newer) = offset8(older)
+      AND min8(newer) = min8(older)
+      AND max8(newer) = max8(older)
+      AND writable8(newer) = writable8(older)
+      AND zone8(newer) = zone8(older)
+
+  updated8(
+      newer, older: ptr8,
+      index: int,
+      replacement: word8): bool =
+    cells8(newer) = cells8(older) WITH [(index) := replacement]
+      AND cells8(newer)(index) = replacement
+
+  frame8(newer, original: ptr8, count: int): bool =
+    FORALL (index: int):
+      index < offset8(newer) OR offset8(newer) + count <= index
+        IMPLIES cells8(newer)(index) = cells8(original)(index)
+
+  svalue_le_from(
+      base: int,
+      values: [int -> word8],
+      start: int,
+      count: nat): RECURSIVE int =
+    IF count = 0 THEN
+      0
+    ELSE
+      unsigned8(values(start))
+        + base * svalue_le_from(base, values, start + 1, count - 1)
+    ENDIF
+  MEASURE count
+
+  svalue_le(base: int, p: ptr8, count: int): int =
+    svalue_le_from(
+      base, cells8(p), offset8(p), int_to_nat(count))
+
+  in_base(
+      base: int,
+      values: [int -> word8],
+      lower, upper: int): bool =
+    FORALL (index: int):
+      lower <= index AND index < upper
+        IMPLIES
+          0 <= unsigned8(values(index))
+            AND unsigned8(values(index)) < base
+
+  reciprocal(di, d1: word64): bool =
+    unsigned64(di)
+      = positive_div(radix * radix - 1, unsigned64(d1)) - radix
+
+  loop_invariant(
+      base: int,
+      original_w: word64,
+      current_sp: ptr8,
+      i: word32,
+      current_w: word64,
+      size: word32): bool =
+    0 <= unsigned64(current_w)
+      AND unsigned64(current_w) < radix
+      AND 0 <= signed32(i)
+      AND signed32(i) <= signed32(size)
+      AND
+        (0 < unsigned64(current_w)
+          IMPLIES
+            0 <= signed32(i)
+              AND signed32(i) < signed32(size))
+      AND
+        in_base(
+          base,
+          cells8(current_sp),
+          offset8(current_sp),
+          offset8(current_sp) + signed32(i))
+      AND
+        (unsigned64(current_w) = 0
+          IMPLIES
+            0 < signed32(i)
+              IMPLIES
+                0
+                  < unsigned8(
+                      cells8(current_sp)(
+                        offset8(current_sp) + signed32(i) - 1)))
+      AND
+        unsigned64(original_w)
+          = svalue_le(base, current_sp, signed32(i))
+              + int_power(base, signed32(i))
+                  * unsigned64(current_w)
+
+  initial_invariant(
+      base: int,
+      sp: ptr8,
+      size: word32,
+      w: word64): bool =
+    0 <= unsigned64(w)
+      AND unsigned64(w) < radix
+      AND 0 <= 0
+      AND 0 <= signed32(size)
+      AND
+        (0 < unsigned64(w)
+          IMPLIES 0 <= 0 AND 0 < signed32(size))
+      AND
+        in_base(
+          base,
+          cells8(sp),
+          offset8(sp),
+          offset8(sp) + 0)
+      AND
+        (unsigned64(w) = 0
+          IMPLIES
+            0 < 0
+              IMPLIES
+                0 < unsigned8(cells8(sp)(offset8(sp) + 0 - 1)))
+      AND
+        unsigned64(w)
+          = svalue_le(base, sp, 0)
+              + int_power(base, 0) * unsigned64(w)
+
+  shift_divisible(r, shift: word64): bool =
+    0 <= unsigned64(shift)
+      AND unsigned64(shift) < 64
+      AND
+        positive_mod(
+          unsigned64(r),
+          int_power(2, unsigned64(shift)))
+          = 0
+
+  after_increment(
+      base: int,
+      original_w: word64,
+      original_sp: ptr8,
+      size, i: word32,
+      current_w, quotient: word64,
+      stored_sp: ptr8): bool =
+    FORALL (next_i: word32):
+      signed32(next_i) = signed32(i) + 1
+        IMPLIES
+          unsigned64(quotient) < unsigned64(current_w)
+            AND
+              loop_invariant(
+                base,
+                original_w,
+                stored_sp,
+                next_i,
+                quotient,
+                size)
+            AND frame8(stored_sp, original_sp, signed32(next_i))
+
+  after_store(
+      base: int,
+      original_w: word64,
+      original_sp: ptr8,
+      size, i: word32,
+      current_w, quotient: word64,
+      current_sp: ptr8,
+      digit: word8): bool =
+    FORALL (stored_sp: ptr8):
+      same_shape8(stored_sp, current_sp)
+        IMPLIES
+          updated8(
+            stored_sp,
+            current_sp,
+            offset8(stored_sp) + signed32(i),
+            digit)
+          IMPLIES
+            int32_in_bounds(signed32(i) + 1)
+              AND
+                after_increment(
+                  base,
+                  original_w,
+                  original_sp,
+                  size,
+                  i,
+                  current_w,
+                  quotient,
+                  stored_sp)
+
+  after_byte_conversion(
+      base: int,
+      original_w: word64,
+      original_sp: ptr8,
+      size, i: word32,
+      current_w, quotient, digit_value: word64,
+      current_sp: ptr8): bool =
+    FORALL (digit: word8):
+      unsigned8(digit) = unsigned64(digit_value)
+        IMPLIES
+          (min8(current_sp)
+              <= offset8(current_sp) + signed32(i)
+            AND
+              offset8(current_sp) + signed32(i)
+                < max8(current_sp))
+            AND writable8(current_sp) = TRUE
+            AND
+              after_store(
+                base,
+                original_w,
+                original_sp,
+                size,
+                i,
+                current_w,
+                quotient,
+                current_sp,
+                digit)
+
+  after_digit_extraction(
+      base: int,
+      original_w: word64,
+      original_sp: ptr8,
+      size, i: word32,
+      current_w, shift, quotient, remainder: word64,
+      current_sp: ptr8): bool =
+    FORALL (digit_value: word64):
+      unsigned64(remainder)
+        = int_power(2, unsigned64(shift))
+            * unsigned64(digit_value)
+        IMPLIES
+          0 <= unsigned64(digit_value)
+            AND unsigned64(digit_value) <= 255
+            AND
+              after_byte_conversion(
+                base,
+                original_w,
+                original_sp,
+                size,
+                i,
+                current_w,
+                quotient,
+                digit_value,
+                current_sp)
+
+  after_remainder_shift(
+      base: int,
+      original_w: word64,
+      original_sp: ptr8,
+      size, i: word32,
+      current_w, shift, quotient, remainder: word64,
+      current_sp: ptr8): bool =
+    FORALL (shifted_remainder: word64):
+      unsigned64(remainder)
+        = int_power(2, unsigned64(shift))
+            * unsigned64(shifted_remainder)
+        IMPLIES
+          shift_divisible(remainder, shift)
+            AND
+              after_digit_extraction(
+                base,
+                original_w,
+                original_sp,
+                size,
+                i,
+                current_w,
+                shift,
+                quotient,
+                remainder,
+                current_sp)
+
+  after_division(
+      base: int,
+      original_w: word64,
+      original_sp: ptr8,
+      size, i: word32,
+      current_w, shift, d1, low, high: word64,
+      current_sp: ptr8): bool =
+    FORALL (quotient, remainder: word64):
+      unsigned64(quotient) * unsigned64(d1)
+          + unsigned64(remainder)
+        = unsigned64(low) + radix * unsigned64(high)
+        AND 0 <= unsigned64(remainder)
+        AND unsigned64(remainder) < unsigned64(d1)
+        IMPLIES
+          shift_divisible(remainder, shift)
+            AND
+              after_remainder_shift(
+                base,
+                original_w,
+                original_sp,
+                size,
+                i,
+                current_w,
+                shift,
+                quotient,
+                remainder,
+                current_sp)
+
+  after_low_word(
+      base: int,
+      original_w: word64,
+      original_sp: ptr8,
+      size, i: word32,
+      current_w, shift, d1, di, high: word64,
+      current_sp: ptr8): bool =
+    FORALL (low: word64):
+      unsigned64(low)
+        = positive_mod(
+            unsigned64(current_w)
+              * int_power(2, unsigned64(shift)),
+            radix)
+        IMPLIES
+          (positive_div(radix, 2) <= unsigned64(d1)
+            AND unsigned64(high) < unsigned64(d1)
+            AND reciprocal(di, d1))
+            AND
+              after_division(
+                base,
+                original_w,
+                original_sp,
+                size,
+                i,
+                current_w,
+                shift,
+                d1,
+                low,
+                high,
+                current_sp)
+
+  after_high_word(
+      base: int,
+      original_w: word64,
+      original_sp: ptr8,
+      size, i: word32,
+      current_w, shift, d1, di, right_shift: word64,
+      current_sp: ptr8): bool =
+    FORALL (high: word64):
+      unsigned64(high)
+        = positive_div(
+            unsigned64(current_w),
+            int_power(2, unsigned64(right_shift)))
+        IMPLIES
+          (0 <= unsigned64(shift) AND unsigned64(shift) < 64)
+            AND
+              after_low_word(
+                base,
+                original_w,
+                original_sp,
+                size,
+                i,
+                current_w,
+                shift,
+                d1,
+                di,
+                high,
+                current_sp)
+
+  positive_iteration(
+      base: int,
+      original_w: word64,
+      original_sp: ptr8,
+      size, i: word32,
+      current_w, shift, d1, di: word64,
+      current_sp: ptr8): bool =
+    uint64_in_bounds(64 - unsigned64(shift))
+      AND
+        (FORALL (right_shift: word64):
+          unsigned64(right_shift) = 64 - unsigned64(shift)
+            IMPLIES
+              (0 <= unsigned64(right_shift)
+                AND unsigned64(right_shift) < 64)
+                AND
+                  after_high_word(
+                    base,
+                    original_w,
+                    original_sp,
+                    size,
+                    i,
+                    current_w,
+                    shift,
+                    d1,
+                    di,
+                    right_shift,
+                    current_sp))
+
+  final_result(
+      base: int,
+      original_w: word64,
+      original_sp, current_sp: ptr8,
+      size: word32,
+      result: word32): bool =
+    svalue_le(base, current_sp, unsigned32(result))
+        = unsigned64(original_w)
+      AND 0 <= unsigned32(result)
+      AND unsigned32(result) <= signed32(size)
+      AND
+        (0 < unsigned32(result)
+          IMPLIES
+            0
+              < unsigned8(
+                  cells8(current_sp)(
+                    offset8(current_sp) + unsigned32(result) - 1)))
+      AND frame8(current_sp, original_sp, unsigned32(result))
+      AND
+        in_base(
+          base,
+          cells8(current_sp),
+          offset8(current_sp),
+          offset8(current_sp) + unsigned32(result))
+
+  zero_iteration(
+      base: int,
+      original_w: word64,
+      original_sp, current_sp: ptr8,
+      size, i: word32): bool =
+    0 <= signed32(i)
+      AND
+        (FORALL (result: word32):
+          unsigned32(result) = signed32(i)
+            IMPLIES
+              final_result(
+                base,
+                original_w,
+                original_sp,
+                current_sp,
+                size,
+                result))
+
+  loop_step(
+      base: int,
+      original_w: word64,
+      original_sp, current_sp: ptr8,
+      size, i: word32,
+      current_w, shift, d1, di: word64): bool =
+    IF 0 < unsigned64(current_w) THEN
+      positive_iteration(
+        base,
+        original_w,
+        original_sp,
+        size,
+        i,
+        current_w,
+        shift,
+        d1,
+        di,
+        current_sp)
+    ELSE
+      zero_iteration(
+        base,
+        original_w,
+        original_sp,
+        current_sp,
+        size,
+        i)
+    ENDIF
+
+  wmpn_limb_get_str_vc: bool =
+    FORALL (
+        binfo: base_info,
+        sp: ptr8,
+        d1, shift, di: word64,
+        size: word32,
+        w: word64):
+      2 <= info_base(binfo)
+        AND info_base(binfo) <= 256
+        AND writable8(sp) = TRUE
+        AND positive_div(radix, 2) <= unsigned64(d1)
+        AND 0 <= unsigned64(shift)
+        AND unsigned64(shift) <= 63
+        AND
+          info_base(binfo) * int_power(2, unsigned64(shift))
+            = unsigned64(d1)
+        AND reciprocal(di, d1)
+        AND valid8(sp, signed32(size))
+        AND 0 < signed32(size)
+        AND
+          unsigned64(w)
+            < int_power(info_base(binfo), signed32(size))
+      IMPLIES
+        initial_invariant(info_base(binfo), sp, size, w)
+          AND
+            (FORALL (
+                i: word32,
+                current_w: word64,
+                current_sp: ptr8):
+              same_shape8(current_sp, sp)
+                IMPLIES
+                  loop_invariant(
+                    info_base(binfo),
+                    w,
+                    current_sp,
+                    i,
+                    current_w,
+                    size)
+                    AND
+                      frame8(current_sp, sp, signed32(i))
+                    IMPLIES
+                      loop_step(
+                        info_base(binfo),
+                        w,
+                        sp,
+                        current_sp,
+                        size,
+                        i,
+                        current_w,
+                        shift,
+                        d1,
+                        di))
+
+END get_str_Get_str_wmpn_limb_get_strqtvc

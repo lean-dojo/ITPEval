@@ -1,0 +1,412 @@
+% Statement-only formalization of the Thousand Theorems artifact Q3229352,
+% "Vitali covering theorem": a fine indexed family of closed sets satisfying
+% a uniform enlarged-ball measure bound has a countable pairwise-disjoint
+% subfamily covering the source set almost everywhere. This file contains no proof.
+
+vitali_covering_theorem_Q3229352[
+  X: TYPE+,
+  point_carrier: [X -> bool],
+  I: TYPE+,
+  index_carrier: [I -> bool],
+  distance: [X, X -> real]
+]: THEORY
+BEGIN
+  event: TYPE = [X -> bool]
+  event_sequence: TYPE = [nat -> event]
+  sigma_algebra: TYPE = [event -> bool]
+  index_set: TYPE = [I -> bool]
+  indexed_events: TYPE = [I -> event]
+  center_function: TYPE = [I -> X]
+  radius_function: TYPE = [I -> real]
+
+  measure_value: TYPE =
+    [# infinite_flag: bool, finite_part: real #]
+  measure_value_sequence: TYPE = [nat -> measure_value]
+  measure_map: TYPE = [event -> measure_value]
+  real_sequence: TYPE = [nat -> real]
+
+  zero_measure_value: measure_value =
+    (# infinite_flag := FALSE, finite_part := 0 #)
+
+  infinite_measure_value: measure_value =
+    (# infinite_flag := TRUE, finite_part := 0 #)
+
+  finite_measure_value(value: real): measure_value =
+    (# infinite_flag := FALSE, finite_part := value #)
+
+  canonical_measure_value(value: measure_value): bool =
+    IF infinite_flag(value) THEN
+      finite_part(value) = 0
+    ELSE
+      finite_part(value) >= 0
+    ENDIF
+
+  measure_value_is_zero(value: measure_value): bool =
+    canonical_measure_value(value)
+      AND NOT infinite_flag(value)
+      AND finite_part(value) = 0
+
+  measure_value_le(left, right: measure_value): bool =
+    canonical_measure_value(left)
+      AND canonical_measure_value(right)
+      AND IF infinite_flag(right) THEN
+        TRUE
+      ELSIF infinite_flag(left) THEN
+        FALSE
+      ELSE
+        finite_part(left) <= finite_part(right)
+      ENDIF
+
+  measure_value_add(left, right: measure_value): measure_value =
+    IF infinite_flag(left) OR infinite_flag(right) THEN
+      infinite_measure_value
+    ELSE
+      finite_measure_value(
+        finite_part(left) + finite_part(right))
+    ENDIF
+
+  measure_value_scale(
+      factor: real,
+      value: measure_value): measure_value =
+    IF factor <= 0 OR measure_value_is_zero(value) THEN
+      zero_measure_value
+    ELSIF infinite_flag(value) THEN
+      infinite_measure_value
+    ELSE
+      finite_measure_value(factor * finite_part(value))
+    ENDIF
+
+  carrier_event(E: event): bool =
+    FORALL (x: X):
+      E(x) IMPLIES point_carrier(x)
+
+  carrier_index_set(A: index_set): bool =
+    FORALL (a: I):
+      A(a) IMPLIES index_carrier(a)
+
+  full_event: event =
+    LAMBDA (x: X):
+      point_carrier(x)
+
+  empty_event: event =
+    LAMBDA (x: X):
+      FALSE
+
+  event_subset(E, F: event): bool =
+    FORALL (x: X):
+      point_carrier(x) AND E(x) IMPLIES F(x)
+
+  event_complement(E: event): event =
+    LAMBDA (x: X):
+      point_carrier(x) AND NOT E(x)
+
+  event_intersection(E, F: event): event =
+    LAMBDA (x: X):
+      point_carrier(x) AND E(x) AND F(x)
+
+  event_difference(E, F: event): event =
+    LAMBDA (x: X):
+      point_carrier(x) AND E(x) AND NOT F(x)
+
+  countable_union(events: event_sequence): event =
+    LAMBDA (x: X):
+      point_carrier(x)
+        AND EXISTS (n: nat):
+          events(n)(x)
+
+  disjoint_events(E, F: event): bool =
+    FORALL (x: X):
+      point_carrier(x) IMPLIES
+        NOT (E(x) AND F(x))
+
+  index_subset(A, B: index_set): bool =
+    FORALL (a: I):
+      index_carrier(a) AND A(a) IMPLIES B(a)
+
+  countable_index_set(A: index_set): bool =
+    carrier_index_set(A)
+      AND EXISTS (code: [I -> nat]):
+        FORALL (a, b: I):
+          index_carrier(a)
+            AND index_carrier(b)
+            AND A(a)
+            AND A(b)
+            AND code(a) = code(b)
+          IMPLIES a = b
+
+  indexed_events_well_typed(B: indexed_events): bool =
+    FORALL (a: I):
+      index_carrier(a) IMPLIES carrier_event(B(a))
+
+  centers_well_typed(c: center_function): bool =
+    FORALL (a: I):
+      index_carrier(a) IMPLIES point_carrier(c(a))
+
+  indexed_union(
+      selected: index_set,
+      B: indexed_events): event =
+    LAMBDA (x: X):
+      point_carrier(x)
+        AND EXISTS (a: I):
+          index_carrier(a)
+            AND selected(a)
+            AND B(a)(x)
+
+  selected_pairwise_disjoint(
+      selected: index_set,
+      B: indexed_events): bool =
+    FORALL (a, b: I):
+      index_carrier(a)
+        AND index_carrier(b)
+        AND selected(a)
+        AND selected(b)
+        AND a /= b
+      IMPLIES disjoint_events(B(a), B(b))
+
+  finite_real_sum(values: real_sequence, count: nat):
+      RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      finite_real_sum(values, count - 1)
+        + values(count - 1)
+    ENDIF
+  MEASURE count
+
+  converges_to_real(values: real_sequence, limit: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (n: nat):
+          cutoff <= n IMPLIES
+            abs(values(n) - limit) < epsilon_value
+
+  unbounded_above(values: real_sequence): bool =
+    FORALL (bound: real):
+      EXISTS (n: nat):
+        bound < values(n)
+
+  partial_measure_sum(
+      values: measure_value_sequence,
+      count: nat): real =
+    finite_real_sum(
+      LAMBDA (n: nat):
+        finite_part(values(n)),
+      count)
+
+  extended_nonnegative_sum(
+      values: measure_value_sequence,
+      total: measure_value): bool =
+    canonical_measure_value(total)
+      AND (FORALL (n: nat):
+        canonical_measure_value(values(n)))
+      AND IF infinite_flag(total) THEN
+        (EXISTS (n: nat):
+          infinite_flag(values(n)))
+          OR ((FORALL (n: nat):
+                NOT infinite_flag(values(n)))
+            AND unbounded_above(
+              LAMBDA (count: nat):
+                partial_measure_sum(values, count)))
+      ELSE
+        (FORALL (n: nat):
+          NOT infinite_flag(values(n)))
+          AND converges_to_real(
+            LAMBDA (count: nat):
+              partial_measure_sum(values, count),
+            finite_part(total))
+      ENDIF
+
+  is_sigma_algebra(Sigma: sigma_algebra): bool =
+    (FORALL (E: event):
+      Sigma(E) IMPLIES carrier_event(E))
+      AND Sigma(full_event)
+      AND (FORALL (E: event):
+        Sigma(E) IMPLIES Sigma(event_complement(E)))
+      AND (FORALL (events: event_sequence):
+        (FORALL (n: nat):
+          Sigma(events(n)))
+        IMPLIES Sigma(countable_union(events)))
+
+  outer_measure_laws(M: measure_map): bool =
+    measure_value_is_zero(M(empty_event))
+      AND (FORALL (E: event):
+        carrier_event(E) IMPLIES
+          canonical_measure_value(M(E)))
+      AND (FORALL (E, F: event):
+        carrier_event(E)
+          AND carrier_event(F)
+          AND event_subset(E, F)
+        IMPLIES measure_value_le(M(E), M(F)))
+      AND (FORALL (events: event_sequence):
+        (FORALL (n: nat):
+          carrier_event(events(n)))
+        IMPLIES
+          EXISTS (total: measure_value):
+            extended_nonnegative_sum(
+              LAMBDA (n: nat):
+                M(events(n)),
+              total)
+              AND measure_value_le(
+                M(countable_union(events)),
+                total))
+
+  caratheodory_measurable(
+      M: measure_map,
+      E: event): bool =
+    carrier_event(E)
+      AND FORALL (test: event):
+        carrier_event(test) IMPLIES
+          M(test) =
+            measure_value_add(
+              M(event_intersection(test, E)),
+              M(event_difference(test, E)))
+
+  is_measure(
+      M: measure_map,
+      Sigma: sigma_algebra): bool =
+    is_sigma_algebra(Sigma)
+      AND outer_measure_laws(M)
+      AND (FORALL (E: event):
+        Sigma(E) IMPLIES
+          caratheodory_measurable(M, E))
+
+  pseudo_metric_space: bool =
+    (FORALL (x, y: X):
+      point_carrier(x) AND point_carrier(y)
+        IMPLIES distance(x, y) >= 0)
+      AND (FORALL (x: X):
+        point_carrier(x) IMPLIES
+          distance(x, x) = 0)
+      AND (FORALL (x, y: X):
+        point_carrier(x) AND point_carrier(y)
+          IMPLIES distance(x, y) = distance(y, x))
+      AND (FORALL (x, y, z: X):
+        point_carrier(x)
+          AND point_carrier(y)
+          AND point_carrier(z)
+        IMPLIES
+          distance(x, z)
+            <= distance(x, y) + distance(y, z))
+
+  open_ball(center: X, radius: real): event =
+    LAMBDA (x: X):
+      point_carrier(x)
+        AND distance(x, center) < radius
+
+  closed_ball(center: X, radius: real): event =
+    LAMBDA (x: X):
+      point_carrier(x)
+        AND distance(x, center) <= radius
+
+  metric_open(U: event): bool =
+    carrier_event(U)
+      AND FORALL (x: X):
+        point_carrier(x) AND U(x) IMPLIES
+          EXISTS (epsilon_value: posreal):
+            event_subset(
+              open_ball(x, epsilon_value),
+              U)
+
+  metric_closed(E: event): bool =
+    carrier_event(E)
+      AND metric_open(event_complement(E))
+
+  interior_nonempty(E: event): bool =
+    carrier_event(E)
+      AND EXISTS
+          (x: X),
+          (epsilon_value: posreal):
+        point_carrier(x)
+          AND event_subset(
+            open_ball(x, epsilon_value),
+            E)
+
+  second_countable_metric: bool =
+    EXISTS (basis: event_sequence):
+      (FORALL (n: nat):
+        metric_open(basis(n)))
+        AND (FORALL (U: event), (x: X):
+          metric_open(U)
+            AND point_carrier(x)
+            AND U(x)
+          IMPLIES
+            EXISTS (n: nat):
+              basis(n)(x)
+                AND event_subset(basis(n), U))
+
+  opens_measurable(Sigma: sigma_algebra): bool =
+    FORALL (U: event):
+      metric_open(U) IMPLIES Sigma(U)
+
+  locally_finite_measure(
+      M: measure_map): bool =
+    FORALL (x: X):
+      point_carrier(x) IMPLIES
+        EXISTS (epsilon_value: posreal):
+          NOT infinite_flag(
+            M(open_ball(x, epsilon_value)))
+
+  family_fine_on(
+      source: event,
+      family: index_set,
+      r: radius_function,
+      c: center_function): bool =
+    FORALL
+        (x: X),
+        (epsilon_value: posreal):
+      point_carrier(x) AND source(x)
+      IMPLIES
+        EXISTS (a: I):
+          index_carrier(a)
+            AND family(a)
+            AND r(a) <= epsilon_value
+            AND c(a) = x
+
+  vitali_covering_statement: bool =
+    pseudo_metric_space
+      AND second_countable_metric
+    IMPLIES
+      FORALL
+          (M: measure_map),
+          (Sigma: sigma_algebra),
+          (source: event),
+          (family: index_set),
+          (C: real),
+          (r: radius_function),
+          (c: center_function),
+          (B: indexed_events):
+        (is_measure(M, Sigma)
+          AND opens_measurable(Sigma)
+          AND locally_finite_measure(M)
+          AND carrier_event(source)
+          AND carrier_index_set(family)
+          AND centers_well_typed(c)
+          AND indexed_events_well_typed(B)
+          AND C >= 0
+          AND (FORALL (a: I):
+            index_carrier(a) AND family(a) IMPLIES
+              event_subset(
+                B(a),
+                closed_ball(c(a), r(a))))
+          AND (FORALL (a: I):
+            index_carrier(a) AND family(a) IMPLIES
+              measure_value_le(
+                M(closed_ball(c(a), 3 * r(a))),
+                measure_value_scale(C, M(B(a)))))
+          AND (FORALL (a: I):
+            index_carrier(a) AND family(a) IMPLIES
+              interior_nonempty(B(a)))
+          AND (FORALL (a: I):
+            index_carrier(a) AND family(a) IMPLIES
+              metric_closed(B(a)))
+          AND family_fine_on(source, family, r, c))
+        IMPLIES
+          EXISTS (selected: index_set):
+            index_subset(selected, family)
+              AND countable_index_set(selected)
+              AND selected_pairwise_disjoint(selected, B)
+              AND measure_value_is_zero(
+                M(event_difference(
+                  source,
+                  indexed_union(selected, B))))
+END vitali_covering_theorem_Q3229352

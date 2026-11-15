@@ -1,0 +1,965 @@
+(** {1 A Formally Verified Symbolic Interpreter}
+
+This example is presented in the paper "Ghost Code in Action:
+Automated Verification of a Symbolic Interpreter" by Benedikt Becker
+and Claude Marché.
+
+*)
+
+
+(** {2 Abstract Syntax Trees} *)
+
+module Syntax
+
+  type program_var
+
+  type expr =
+    | Elit int                 (* literals n *)
+    | Evar program_var         (* program variables x *)
+    | Esub expr expr           (* subtraction e1-e2 *)
+
+  type cmd =
+    | Cskip                    (* no effect *)
+    | Cassign program_var expr (* assignment x := e *)
+    | Cseq cmd cmd             (* sequence c1;c2 *)
+    | Cif expr cmd cmd         (* conditional if e<>0 then c1 else c2 *)
+    | Cwhile expr cmd          (* loop while e<>0 do c *)
+end
+
+(** {2 Semantics of concrete execution}
+
+    This is a basic big-step execution semantics using inductive
+    predicates.
+
+
+*)
+
+module ConcreteSemantics
+
+  use int.Int
+  use option.Option
+  use set.Fset
+  use map.Map
+  use Syntax
+
+  (** execution environment is a partial map from program variables to
+      values *)
+  type environment = program_var -> option int
+
+  (** The expressions may have two different behaviors: a normal
+    behaviour holding a value, or an abnormal behaviour when an
+    unbound variable is met. *)
+
+  type expr_behaviour = Enormal int | Eunbound_var
+
+  inductive eval_expr environment expr expr_behaviour =
+    | eval_lit : forall env n.
+        eval_expr env (Elit n) (Enormal n)
+    | eval_var : forall env x n.
+        env[x] = Some n ->
+        eval_expr env (Evar x) (Enormal n)
+    | eval_var_undefined : forall env x.
+        env[x] = None ->
+        eval_expr env (Evar x) Eunbound_var
+    | eval_sub : forall env e1 e2 n1 n2.
+        eval_expr env e1 (Enormal n1) ->
+        eval_expr env e2 (Enormal n2) ->
+        let n = n1 - n2 in
+        eval_expr env (Esub e1 e2) (Enormal n)
+    | eval_sub_error1 : forall env e1 e2.
+        eval_expr env e1 Eunbound_var ->
+        eval_expr env (Esub e1 e2) Eunbound_var
+    | eval_sub_error2 : forall env e1 e2 n1.
+        eval_expr env e1 (Enormal n1) ->
+        eval_expr env e2 Eunbound_var ->
+        eval_expr env (Esub e1 e2) Eunbound_var
+
+  let rec ghost function identifiers_in_expr (e:expr) =
+    match e with
+    | Elit _ -> empty
+    | Evar v -> singleton v
+    | Esub e1 e2 -> union (identifiers_in_expr e1) (identifiers_in_expr e2)
+    end
+
+  (** A lemma: semantics of expressions is functional. Proved by
+      induction on the given expression. *)
+  let ghost eval_expr_functional (env:environment) (e:expr) : unit
+    ensures { forall n1 n2.
+      eval_expr env e n1 ->
+      eval_expr env e n2 ->
+      n1 = n2
+    }
+  = ()
+
+  (** For any environment and expression, evaluation ends in normal behaviour or error
+      behaviour *)
+  let ghost eval_expr_total (e:expr) : unit
+    ensures { forall gamma.
+      eval_expr gamma e Eunbound_var \/
+      exists n. eval_expr gamma e (Enormal n)
+    }
+  = ()
+
+  (** The semantics of instructions is paramterised by a bound on the
+     number of loop iterations.  The instructions may thus have an
+     additional abnormal behaviour when this limit is reached.  *)
+
+  type behavior = Cnormal | Cunbound_var | Cloop_limit
+
+  (** Loop limit only for symbolic interpretation but not for concrete interpretation *)
+  type config = { loop_limit: option int }
+    invariant { match loop_limit with None -> true | Some n -> 0 <= n end }
+    by { loop_limit = None }
+
+  let constant no_limit_cnf = { loop_limit=None }
+
+  let ghost function mk_loop_cnf n
+    requires { 0 <= n }
+  = { loop_limit=Some n }
+
+  inductive exec_cmd config environment cmd environment behavior =
+
+    | exec_skip : forall env cnf.
+         exec_cmd cnf env Cskip env Cnormal
+
+    | exec_assign : forall cnf env v e n.
+        eval_expr env e (Enormal n) ->
+        let env' = env[v <- Some n] in
+        exec_cmd cnf env (Cassign v e) env' Cnormal
+
+    | exec_assign_error : forall cnf env v e.
+        eval_expr env e Eunbound_var ->
+        let env' = env in
+        exec_cmd cnf env (Cassign v e) env' Cunbound_var
+
+    | exec_seq : forall cnf env1 c1 c2 env2 env3 bhv.
+        exec_cmd cnf env1 c1 env2 Cnormal ->
+        exec_cmd cnf env2 c2 env3 bhv ->
+        exec_cmd cnf env1 (Cseq c1 c2) env3 bhv
+
+    | exec_seq_error : forall cnf env1 c1 c2 env2 bhv.
+        exec_cmd cnf env1 c1 env2 bhv ->
+        bhv <> Cnormal ->
+        exec_cmd cnf env1 (Cseq c1 c2) env2 bhv
+
+    | exec_if_false : forall cnf env e c1 c2 env' bhv.
+        eval_expr env e (Enormal 0) ->
+        exec_cmd cnf env c2 env' bhv ->
+        exec_cmd cnf env (Cif e c1 c2) env' bhv
+
+    | exec_if_true : forall cnf env e c1 c2 n env' bhv.
+        n <> 0 ->
+        eval_expr env e (Enormal n) ->
+        exec_cmd cnf env c1 env' bhv ->
+        exec_cmd cnf env (Cif e c1 c2) env' bhv
+
+    | exec_if_error : forall cnf env e c1 c2.
+        eval_expr env e Eunbound_var ->
+        exec_cmd cnf env (Cif e c1 c2) env Cunbound_var
+
+    | exec_while: forall cnf env e c env' bhv.
+        exec_while cnf 0 env e c env' bhv ->
+        exec_cmd cnf env (Cwhile e c) env' bhv
+
+  with exec_while config int environment expr cmd environment behavior =
+
+    | exec_while_overflow: forall cnf ctr env e c.
+        (match cnf.loop_limit with None -> false | Some n -> n <= ctr end) ->
+        exec_while cnf ctr env e c env Cloop_limit
+
+    | exec_while_false : forall cnf env ctr e c.
+        (match cnf.loop_limit with None -> true | Some n -> ctr < n end) ->
+        eval_expr env e (Enormal 0) ->
+        exec_while cnf ctr env e c env Cnormal
+
+    | exec_while_test_error : forall cnf env ctr e c.
+        (match cnf.loop_limit with None -> true | Some n -> ctr < n end) ->
+        eval_expr env e Eunbound_var ->
+        exec_while cnf ctr env e c env Cunbound_var
+
+    | exec_while_body_error : forall cnf env1 ctr e c v env2 bhv.
+        (match cnf.loop_limit with None -> true | Some n -> ctr < n end) ->
+        eval_expr env1 e (Enormal v) ->
+        v <> 0 ->
+        exec_cmd cnf env1 c env2 bhv ->
+        bhv <> Cnormal ->
+        exec_while cnf ctr env1 e c env2 bhv
+
+    | exec_while_loop : forall cnf env1 ctr e c v env2 env3 bhv.
+        (match cnf.loop_limit with None -> true | Some n -> ctr < n end) ->
+        eval_expr env1 e (Enormal v) ->
+        v <> 0 ->
+        exec_cmd cnf env1 c env2 Cnormal ->
+        exec_while cnf (ctr+1) env2 e c env3 bhv ->
+        exec_while cnf ctr env1 e c env3 bhv
+
+  let ghost no_loop_limits () : unit
+    ensures {
+      (forall cnf env1 c env2 bhv.
+       exec_cmd cnf env1 c env2 bhv ->
+       cnf.loop_limit = None ->
+       bhv <> Cloop_limit) /\
+      (forall cnf ctr env1 e c env2 bhv.
+       exec_while cnf ctr env1 e c env2 bhv ->
+       cnf.loop_limit = None ->
+       bhv <> Cloop_limit)
+    }
+  = ()
+end
+
+
+(** {2 Concrete interpreter of expressions} *)
+
+module ConcreteInterpreter
+
+  use int.Int
+  use Syntax
+  use ConcreteSemantics
+  use dict.Imperative as Env
+
+  (** A concrete execution environment is an imperative finite map mapping program
+      variables to integer values. *)
+  type env = Env.t program_var int
+
+  (** Global, imperative variable environemnt. Reset with Env.reset *)
+  let env : env = Env.empty ()
+
+  let rec interp_expr (e:expr) : int
+    variant { e }
+    ensures { eval_expr env e (Enormal result) }
+    raises  { Env.Var_unbound -> eval_expr env e Eunbound_var }
+  = match e with
+      | Elit n -> n
+      | Evar x -> Env.find env x
+      | Esub e1 e2 -> interp_expr e1 - interp_expr e2
+    end
+
+  let rec interp_cmd (c:cmd) : unit
+    diverges
+    ensures {
+      exec_cmd no_limit_cnf (old env) c env Cnormal
+    }
+    raises  { Env.Var_unbound ->
+      exec_cmd no_limit_cnf (old env) c env Cunbound_var
+    }
+  = match c with
+    | Cskip -> ()
+    | Cassign x e -> Env.set env x (interp_expr e)
+    | Cseq c1 c2 ->
+      interp_cmd c1;
+      interp_cmd c2
+    | Cif e c1 c2 ->
+      if interp_expr e <> 0
+      then interp_cmd c1
+      else interp_cmd c2
+    | Cwhile e c ->
+      let ghost env0 = env.Env.model in
+      let ghost ref ctr = 0 in
+      while interp_expr e <> 0 do
+        invariant { forall env1 bhv.
+          exec_while no_limit_cnf ctr env e c env1 bhv ->
+          exec_while no_limit_cnf 0 env0 e c env1 bhv
+        }
+        interp_cmd c;
+        ctr <- ctr + 1
+      done
+    end
+end
+
+(** {2 Constraints}
+
+    Constraints for the symbolic execution. *)
+
+module Svar
+  type svar
+
+  val predicate eq (v1 v2:svar) ensures { result <-> v1 = v2 }
+
+  clone set.SetApp as SvarSet with
+    type elt = svar, val eq = eq
+end
+
+module Constraint
+
+  use int.Int
+  use set.Fset
+  use option.Option
+  use map.Map
+  use Syntax
+  use Svar
+
+  (** A symbolic variable environment `Sigma.t` is a partial function from program
+      variables to symbolic variables. *)
+
+  clone dict.Functional as Sigma
+    with type key = program_var, type value = svar, axiom empty
+
+  function ([]') (sigma:Sigma.t) (x:program_var) : option svar =
+    Sigma.get sigma x
+
+  function ([<-]') (sigma:Sigma.t) (x:program_var) (v:svar) : Sigma.t =
+    Sigma.set sigma x v
+
+  (** Total interpretation function for symbolic variables *)
+
+  type rho = map svar int
+
+  type symbolic_expr =
+    | Slit int                         (* literal *)
+    | Svar svar                (* variable *)
+    | Ssub symbolic_expr symbolic_expr (* subtraction *)
+
+  function interp_symbolic_expr (rho:rho) (e:symbolic_expr) : int =
+    match e with
+    | Slit n -> n
+    | Svar v -> rho[v]
+    | Ssub e1 e2 ->
+      interp_symbolic_expr rho e1 - interp_symbolic_expr rho e2
+    end
+
+  type constr =
+    | Ctrue
+    | Cfalse
+    | Ceq symbolic_expr symbolic_expr
+    | Cneq symbolic_expr symbolic_expr
+    | Cconj constr constr
+    | Cexists svar constr
+
+  (** Predicate for the interpretation of a constraint, ρ ⊧ C. *)
+
+  predicate is_solution (rho:rho) (c:constr) =
+    match c with
+    | Ctrue -> true
+    | Cfalse -> false
+    | Ceq e1 e2 ->
+      interp_symbolic_expr rho e1 = interp_symbolic_expr rho e2
+    | Cneq e1 e2 ->
+      interp_symbolic_expr rho e1 <> interp_symbolic_expr rho e2
+    | Cconj c1 c2 ->
+      is_solution rho c1 /\ is_solution rho c2
+    | Cexists _ c ->
+      is_solution rho c
+      (* exists n. is_solution rho[v <- n] c *)
+    end
+
+  function vars_in_symbolic_expr (e:symbolic_expr) : fset svar =
+    match e with
+    | Slit _ -> empty
+    | Svar v -> singleton v
+    | Ssub e1 e2 -> union (vars_in_symbolic_expr e1) (vars_in_symbolic_expr e2)
+    end
+
+  function vars_in_constraint (c: constr) : fset svar =
+    match c with
+    | Ctrue | Cfalse -> empty
+    | Ceq e1 e2 | Cneq e1 e2 ->
+      union (vars_in_symbolic_expr e1) (vars_in_symbolic_expr e2)
+    | Cconj c1 c2 ->
+      union (vars_in_constraint c1) (vars_in_constraint c2)
+    | Cexists v c ->
+      add v (vars_in_constraint c)
+    end
+
+  function existential_vars_in_constraint (c: constr) : fset svar =
+    match c with
+    | Ctrue | Cfalse -> empty
+    | Ceq e1 e2 | Cneq e1 e2 ->
+      union (vars_in_symbolic_expr e1) (vars_in_symbolic_expr e2)
+    | Cconj c1 c2 ->
+      union (existential_vars_in_constraint c1) (existential_vars_in_constraint c2)
+    | Cexists v c ->
+      remove v (existential_vars_in_constraint c)
+    end
+
+  function free_vars_in_constraint (c: constr) : fset svar =
+    diff (vars_in_constraint c) (existential_vars_in_constraint c)
+
+  predicate entails (c1 c2:constr) =
+    forall rho.
+      is_solution rho c1 ->
+      is_solution rho c2
+
+  (** Interface of a semi-decidable predicate for constraint satisfiability. *)
+
+  val check_sat (c:constr) : bool
+    ensures {
+       result = False ->
+       forall rho.
+       not is_solution rho c
+    }
+end
+
+module SymState
+
+  use option.Option
+  use Constraint
+  use Syntax
+  use set.Fset
+  use map.Map as M
+  use Svar
+
+  (** Symbolic state is an immutable record holding σ ([sigma]), a partial function from
+      program variables to symbolic variable, a constraint C ([constr]), and
+      interpretation ρ ([rho]), a partial function of symbolic variables to integers with
+      domain V ([vars]).
+
+      [sigma] is a functional dict and extracted to a OCaml map type. [rho] is a ghost
+      fieldand not extracted. *)
+  type sym_state = {
+    sigma : Sigma.t;
+    constr : constr;
+    ghost rho : rho;
+    ghost vars : SvarSet.set ;
+  }
+  (** vars(constr) ⊆ vars *)
+  invariant {
+    subset (vars_in_constraint constr) vars
+  }
+  (** domain(sigma) ⊆ vars *)
+  invariant {
+    (* forall v. Sigma.(exists x. sigma[x] = Some v) -> mem v vars *)
+    forall x v. sigma[x]' = Some v -> mem v vars
+  }
+  by {
+    sigma = Sigma.empty;
+    constr = Ctrue;
+    vars = SvarSet.empty ();
+    rho = fun _ -> 0;
+  }
+
+  val predicate eq (s1 s2:sym_state) ensures { result <-> s1 = s2 }
+
+  (** Constructor function required due to inviariants *)
+  let ghost function mk_sym_state
+    (sigma:Sigma.t) (constr:constr)
+    (ghost vars:SvarSet.set) (ghost rho:rho)
+  : sym_state
+    requires { subset (vars_in_constraint constr) vars }
+    requires { forall x v. sigma[x]' = Some v -> mem v vars }
+    ensures { result.sigma = sigma }
+    ensures { result.constr = constr }
+    ensures { result.vars = vars }
+    ensures { result.rho = rho }
+  = {sigma = sigma; constr = constr; vars = vars; rho = rho}
+end
+
+module FreshSvar
+
+  use option.Option
+  use SymState
+  use Svar
+  use Constraint
+  use set.Fset
+
+  (** A variable is fresh when it is not element of the set of known variables *)
+  predicate is_fresh (v:svar) (vars:fset svar) =
+    not mem v vars
+
+  (** [fresh_svar s] returns a symbolic variable that does not
+      occur yet in [s] *)
+  val fresh_svar (s:sym_state) : svar
+    ensures { is_fresh result s.vars }
+
+  let _dummy (x:int) : int = 42
+end
+
+module SymStateSet
+
+  use set.Fset
+  use list.ListRich
+  use SymState
+
+  clone export set.SetApp
+    with type elt = sym_state, val eq = eq
+
+  val function to_list (s:set) : list sym_state
+    ensures { forall e:sym_state. Fset.mem e s <-> ListRich.mem e result }
+
+  val function of_list (l:list sym_state) : set
+    ensures { forall e:sym_state. Fset.mem e result <-> ListRich.mem e l }
+
+  let ghost of_list_to_list () : unit
+    ensures { forall s.
+      (of_list (to_list s)).to_fset = s.to_fset
+    }
+  = ()
+end
+
+(** {2 The symbolic  interpreter} *)
+
+module SymbolicInterpreter
+
+  use option.Option
+  use list.List
+  use list.Mem as ListMem
+  use map.Map
+  use set.Fset
+  use Syntax
+  use Constraint
+  use SymState
+  use SymStateSet
+  use ConcreteSemantics
+  use Svar
+  use FreshSvar
+
+  val existentially_quantify (v:svar) (c:constr) : constr
+    ensures {
+      forall rho. is_solution rho result <-> is_solution rho (Cexists v c)
+    }
+    ensures {
+      subset (vars_in_constraint result) (vars_in_constraint (Cexists v c))
+    }
+
+  exception UnboundVariable program_var
+
+  let lookup_sym_state (s:sym_state) (x:program_var) : svar
+     ensures {
+       s.sigma[x]' = Some result
+     }
+     raises { UnboundVariable i ->
+       x = i /\ s.sigma[x]' = None
+     }
+  = try
+      Sigma.find s.sigma x
+    with
+      Sigma.NotFound ->
+        raise (UnboundVariable x)
+    end
+
+  (** The composition of a rho and a sigma results in a concrete environment *)
+  function compose (rho:rho) (sigma:Sigma.t) : environment =
+    fun x ->
+      match sigma[x]' with
+      | Some v -> Some rho[v]
+      | None -> None
+      end
+
+  (** Translate a program expression into a symbolic expression by looking up variables in
+      [s.sigma], e[σ∘ρ] *)
+  let rec symbolic_interp_expr (s:sym_state) (e:expr) : symbolic_expr
+    variant { e }
+    ensures { exists n.
+      eval_expr (compose s.rho s.sigma) e (Enormal n) /\
+      interp_symbolic_expr s.rho result = n
+    }
+    ensures { forall v:svar.
+      mem v (vars_in_symbolic_expr result) ->
+      exists x. s.sigma[x]' = Some v
+    }
+    raises { UnboundVariable x ->
+      eval_expr (compose s.rho s.sigma) e Eunbound_var
+    }
+  = match e with
+    | Elit n ->
+      Slit n
+    | Evar x ->
+      Svar (lookup_sym_state s x)
+    | Esub e1 e2 ->
+      Ssub (symbolic_interp_expr s e1) (symbolic_interp_expr s e2)
+    end
+
+  (** {3 The state extension relation} *)
+
+  (** A state (σ|C,ρ,V) extends another state (σ'|C',ρ',V'), when
+
+      - V ⊆ V', and
+      - ∀ v ∈ V ⋅ ρ[v] = ρ'[v]
+
+      State-extension is reflexive and transitive relation.
+   *)
+  predicate state_extends (s s': sym_state) =
+    SvarSet.subset s.vars s'.vars /\
+    (forall v. mem v s.vars -> s.rho[v] = s'.rho[v])
+
+  let ghost state_extends_reflexive () : unit
+    ensures { forall s.
+      state_extends s s
+    }
+  = ()
+
+  let ghost state_extends_transitive () : unit
+    ensures { forall s1 s2 s3.
+      state_extends s1 s2 ->
+      state_extends s2 s3 ->
+      state_extends s1 s3
+    }
+  = ()
+
+  (** {3 Lemmas about invariability for changes to fresh variables} *)
+
+  (** The interpretation of a symbolic expression is invariant to changing the value of
+      symbolic variables that do not appear in the symbolic expression. *)
+  let ghost interp_symb_expr_fresh (v:svar) (se:symbolic_expr) : unit
+    requires {
+      is_fresh v (vars_in_symbolic_expr se)
+    }
+    ensures { forall rho n m.
+      interp_symbolic_expr rho se = n ->
+      interp_symbolic_expr rho[v <- m] se = n
+    }
+  = ()
+
+  (* Auxiliary: The order of setting two different symbolic variables in an interpretation
+     does not matter. *)
+  let ghost rho_set_two () : unit
+    ensures { forall rho:rho, v1 n1 v2 n2.
+      v1 <> v2 ->
+      rho[v1 <- n1][v2 <- n2] = rho[v2 <- n2][v1 <- n1]
+    }
+  = ()
+
+  (** The interpretation of a symbolic constraint is invariant to changing the value of
+      symbolic variables that do not appear in the symbolic constraint. *)
+  let ghost interp_constraint_fresh (v:svar) (c:constr) : unit
+    requires {
+      is_fresh v (vars_in_constraint c)
+    }
+    ensures { forall rho n.
+      is_solution rho c <->
+      is_solution rho[v <- n] c
+    }
+  = ()
+
+  (** The composition ρ∘σ is invariant to changing the value of symbolic variables in the
+      interpretation ρ that are not in the codomain of symbolic environment σ. *)
+  let ghost compose_set_fresh_in_rho () : unit
+    ensures { forall rho: rho, sigma: Sigma.t, v: svar, n:int.
+      (forall x. sigma[x]' <> Some v) ->
+      compose rho[v <- n] sigma =
+      compose rho sigma
+    }
+  = ()
+
+  (** (ρ∘σ)[x ← n]' = ρ[v ← n] ∘ σ[x ← v]' for v ∉ codom(σ) *)
+  let ghost compose_set_fresh_in_env () : unit
+    ensures { forall rho sigma x v n.
+      (forall x. sigma[x]' <> Some v) ->
+      (compose rho sigma)[x <- Some n] =
+      compose rho[v <- n] sigma[x <- v]'
+    }
+  = ()
+
+  (* Auxiliary. Obsolete with alt-ergo 2.3? (adding support for algebraic datatypes) *)
+  let ghost none_or_option (o : option 'a) : unit
+    ensures { o = None \/ exists x. o = Some x
+    }
+  = ()
+
+  (* Auxiliary. *)
+  let ghost subset_add (s: fset 'a) (x: 'a) : unit
+    ensures { 
+      Fset.(subset s (add x s))
+    }
+  = ()
+
+  let function svar_set_add (v:svar) (vs:SvarSet.set) : SvarSet.set = SvarSet.add v vs
+
+  (** Lemma for the state extension in the assignment case *)
+  let ghost state_extends_fresh () : unit
+    ensures { forall s v c x n.
+      is_fresh v s.vars ->
+      vars_in_constraint c = SvarSet.singleton v ->
+      let s' = mk_sym_state
+        s.sigma[x <- v]'
+        (Cconj s.constr c)
+        (svar_set_add v s.vars)
+        s.rho[v <- n]
+      in
+      state_extends s s'
+    }
+  = ()
+
+  use int.Int, int.MinMax
+  use list.Length
+
+  (* Auxiliary *)
+  let ghost some_sigma_model () : unit
+    ensures { forall s x v.
+      match s.sigma x with
+      | None -> false
+      | Some v' -> v' = v
+      end -> s.sigma x = Some v
+    }
+  = ()
+
+  (** Membership of state s in a state set corresponding to behaviour bhv, s ∈ Σ_bhv *)
+  predicate mem_results (s:sym_state) (bhv:behavior) (normals unbounds limits:fset sym_state) =
+    [@inline:trivial]
+    match bhv with
+     | Cnormal -> mem s normals
+     | Cunbound_var -> mem s unbounds
+     | Cloop_limit -> mem s limits
+     end
+
+  predicate mem_results' (s:sym_state) (normals unbounds limits:fset sym_state) =
+    [@inline:trivial]
+    mem s normals \/ mem s unbounds \/ mem s limits
+
+  let ghost mem_results_mem () : unit
+    ensures { forall s normals unbounds limits.
+      mem_results' s normals unbounds limits <->
+      exists bhv. mem_results s bhv normals unbounds limits
+    }
+  = ()
+
+  let ghost bhv_union () : unit
+    ensures { forall s bhv normals1 unbounds1 limits1 normals2 unbounds2 limits2.
+      mem_results s bhv (union normals1 normals2) (union unbounds1 unbounds2) (union limits1 limits2) ->
+      (mem_results s bhv normals1 unbounds1 limits1 \/
+       mem_results s bhv normals2 unbounds2 limits2)
+    }
+  = ()
+
+  let ghost bhv_union' () : unit
+    ensures { forall s bhv normals2 unbounds1 unbounds2 limits1 limits2.
+      mem_results s bhv normals2 (union unbounds1 unbounds2) (union limits1 limits2) ->
+      mem_results s bhv normals2 unbounds2 limits2 \/
+      (bhv = Cunbound_var /\ mem s unbounds1) \/
+      (bhv = Cloop_limit /\ mem s limits1)
+    }
+  = ()
+
+  predicate results_extend (s:sym_state) (normals unbounds limits:fset sym_state) =
+    forall s'. (mem s' normals \/ mem s' unbounds \/ mem s' limits) ->
+    state_extends s s'
+
+  let ghost results_extend_seq () : unit
+    ensures { forall s s1 normals1 normals2 unbounds1 unbounds2 limits1 limits2.
+      results_extend s normals1 unbounds1 limits1 ->
+      mem s1 normals1 ->
+      results_extend s1 normals2 unbounds2 limits2 ->
+      results_extend s normals2 (union unbounds1 unbounds2) (union limits1 limits2)
+    }
+  = ()
+
+  let ghost update_rho_interp_symbolic_expr () : unit
+    ensures { forall rho v se.
+      is_fresh v (vars_in_symbolic_expr se) ->
+      interp_symbolic_expr rho[v <- interp_symbolic_expr rho se] (Svar v) =
+      interp_symbolic_expr rho[v <- interp_symbolic_expr rho se] se
+    }
+  = ()
+
+  let ghost assign_solution1 () : unit
+    ensures { forall s se v'.
+      is_fresh v' s.vars ->
+      is_fresh v' (vars_in_symbolic_expr se) ->
+      is_solution s.rho s.constr ->
+      is_solution s.rho[v' <- interp_symbolic_expr s.rho se] (Cconj s.constr (Ceq (Svar v') se))
+    }
+  = ()
+
+  let ghost assign_solution2 () : unit
+    ensures { forall s se v v'.
+      is_fresh v' s.vars ->
+      is_fresh v' (vars_in_symbolic_expr se) ->
+      is_solution s.rho s.constr ->
+      is_solution s.rho[v' <- interp_symbolic_expr s.rho se] (Cexists v (Cconj s.constr (Ceq (Svar v') se)))
+    }
+  = ()
+
+  let ghost union_empty (s: fset 'a) : unit
+    ensures {
+      union s empty = s
+    }
+  = ()
+
+  let ghost union_singleton (s : fset 'a) : unit
+    ensures { forall x.
+      union s (singleton x) = add x s
+    }
+  = ()
+
+  let rec symbolic_interp_cmd (n:int) (s:sym_state) (c:cmd)
+    : (normals: SymStateSet.set, unbounds: SymStateSet.set, limits: SymStateSet.set)
+    variant { c, n+1, 0 }
+    requires { 0 <= n }
+    ensures { results_extend s normals unbounds limits }
+    ensures { (* Over-approximation *)
+      is_solution s.rho s.constr ->
+      forall gamma' bhv. exec_cmd (mk_loop_cnf n) (compose s.rho s.sigma) c gamma' bhv ->
+      exists s'. mem_results s' bhv normals unbounds limits /\
+      is_solution s'.rho s'.constr /\
+      gamma' = compose s'.rho s'.sigma
+    }
+    ensures { (* Under-approximation *)
+      forall bhv s'. mem_results s' bhv normals unbounds limits ->
+      is_solution s'.rho s'.constr ->
+      (is_solution s.rho s.constr /\ exec_cmd (mk_loop_cnf n) (compose s.rho s.sigma) c (compose s'.rho s'.sigma) bhv)
+    }
+  = match c with
+    | Cskip ->
+      SymStateSet.(singleton s, empty (), empty ())
+    | Cassign x e ->
+      try
+        let se = symbolic_interp_expr s e in
+        let v' = fresh_svar s in
+        let sigma' = Sigma.set s.sigma x v' in
+        let constr' =
+          let constr = Cconj s.constr (Ceq (Svar v') se) in
+          try
+            let v = Sigma.find s.sigma x in
+            existentially_quantify v constr
+          with Sigma.NotFound ->
+            constr
+          end
+        in
+        let ghost rho' =
+          let ghost n' = interp_symbolic_expr s.rho se in
+          s.rho[v' <-  n']
+        in
+        let vars' = SvarSet.add v' s.vars in
+        let s' = {sigma = sigma'; constr = constr'; rho = rho'; vars = vars'} in
+        SymStateSet.(singleton s', empty (), empty ())
+      with UnboundVariable _ ->
+        SymStateSet.(empty (), singleton s, empty ())
+      end
+    | Cseq c1 c2 ->
+      let (normals1, unbounds1, limits1) = symbolic_interp_cmd n s c1 in
+      let (normals2, unbounds2, limits2) = symbolic_interp_cmd_list n (SymStateSet.to_list normals1) c2 in
+      SymStateSet.(normals2, union unbounds1 unbounds2, union limits1 limits2)
+    | Cif e c1 c2 ->
+      try
+        let se = symbolic_interp_expr s e in
+        let s1 = {s with constr=Cconj s.constr (Cneq se (Slit 0))} in
+        let s2 = {s with constr=Cconj s.constr (Ceq se (Slit 0))} in
+        let (normals1, unbounds1, limits1) =
+          if check_sat s1.constr then
+            symbolic_interp_cmd n s1 c1
+          else
+            SymStateSet.(empty (), empty (), empty ())
+          in
+        let (normals2, unbounds2, limits2) =
+          if check_sat s2.constr then
+            symbolic_interp_cmd n s2 c2
+          else
+            SymStateSet.(empty (), empty (), empty ())
+          in
+        SymStateSet.(union normals1 normals2, union unbounds1 unbounds2, union limits1 limits2)
+      with UnboundVariable _id ->
+        SymStateSet.(empty (), singleton s, empty ())
+      end
+    | Cwhile e c ->
+      symbolic_interp_while n 0 s e c
+    end
+
+  with symbolic_interp_cmd_list n (ss:list sym_state) c
+    : (normals: SymStateSet.set, unbounds: SymStateSet.set, limits: SymStateSet.set)
+    requires { 0 <= n }
+    variant {
+      c, n+1, length ss
+    }
+    ensures {
+      forall s'. mem_results' s' normals unbounds limits ->
+      exists s. mem s (SymStateSet.of_list ss) /\ state_extends s s'
+    }
+    ensures { (** Over-approximation *)
+      forall s. mem s (SymStateSet.of_list ss) ->
+      is_solution s.rho s.constr ->
+      forall gamma' bhv. exec_cmd (mk_loop_cnf n) (compose s.rho s.sigma) c gamma' bhv ->
+      exists s'. mem_results s' bhv normals unbounds limits /\
+      is_solution s'.rho s'.constr /\
+      gamma' = compose s'.rho s'.sigma
+    }
+    ensures { (** Under-approximation *)
+      forall bhv s'. mem_results s' bhv normals unbounds limits ->
+      is_solution s'.rho s'.constr ->
+      exists s. mem s (SymStateSet.of_list ss) /\
+      is_solution s.rho s.constr /\
+      exec_cmd (mk_loop_cnf n) (compose s.rho s.sigma) c (compose s'.rho s'.sigma) bhv
+    }
+    = match ss with
+      | Nil ->
+        SymStateSet.(empty (), empty (), empty ())
+      | Cons s ss' ->
+        let normals1, unbounds1, limits1 = symbolic_interp_cmd n s c in
+        let normals2, unbounds2, limits2 = symbolic_interp_cmd_list n ss' c in
+        SymStateSet.(union normals1 normals2, union unbounds1 unbounds2, union limits1 limits2)
+    end
+
+  with symbolic_interp_while n ctr s e c
+    : (normals: SymStateSet.set, unbounds: SymStateSet.set, limits: SymStateSet.set)
+    requires { 0 <= ctr <= n }
+    variant { Cwhile e c, n-ctr, 0 }
+    ensures { results_extend s normals unbounds limits }
+    ensures { (* Over-approximation *)
+      is_solution s.rho s.constr ->
+      forall gamma' bhv. exec_while (mk_loop_cnf n) ctr (compose s.rho s.sigma) e c gamma' bhv ->
+      exists s'. mem_results s' bhv normals unbounds limits /\
+      is_solution s'.rho s'.constr /\
+      gamma' = compose s'.rho s'.sigma
+    }
+    ensures { (** Under-approximation *)
+      forall bhv s'. mem_results s' bhv normals unbounds limits ->
+      is_solution s'.rho s'.constr ->
+      (is_solution s.rho s.constr /\
+      exec_while (mk_loop_cnf n) ctr (compose s.rho s.sigma) e c (compose s'.rho s'.sigma) bhv)
+    }
+  = if ctr = n
+    then SymStateSet.(empty (), empty (), singleton s)
+    else
+      try
+        let sym_cond = symbolic_interp_expr s e in
+        let s1 = {s with constr=Cconj s.constr (Cneq sym_cond (Slit 0))} in
+        let s2 = {s with constr=Cconj s.constr (Ceq  sym_cond (Slit 0))} in
+        (* Results for running the loop *)
+        let normals1, unbounds1, limits1 =
+          if check_sat s1.constr then
+            (* Results for running the body once *)
+            let normals1, unbounds1, limits1 = symbolic_interp_cmd n s1 c in
+            (* Results for rest of loop *)
+            let normals2, unbounds2, limits2 =
+              symbolic_interp_while_list n (ctr+1) (SymStateSet.to_list normals1) e c
+            in
+            SymStateSet.(normals2, union unbounds1 unbounds2, union limits1 limits2)
+          else
+            (** [s1] is not satisfiable: no results for running the loop *)
+            SymStateSet.(empty (), empty (), empty ())
+        in
+        (** Result for not running the loop *)
+        let normals2, unbounds2, limits2 =
+          if check_sat s2.constr then
+            (* Only a result for not running the loop if s2 may be satisfiable *)
+            SymStateSet.(singleton s2, empty (), empty ())
+          else
+            (** [s2] is not satisfiable: no results for not running the loop :O *)
+            SymStateSet.(empty (), empty (), empty ())
+        in
+        SymStateSet.(union normals1 normals2, union unbounds1 unbounds2, union limits1 limits2)
+      with UnboundVariable _ ->
+        SymStateSet.(empty (), singleton s, empty ())
+      end
+
+  with symbolic_interp_while_list n ctr ss e c
+    : (normals: SymStateSet.set, unbounds: SymStateSet.set, limits: SymStateSet.set)
+    requires { 0 <= ctr <= n }
+    variant { Cwhile e c, n-ctr, length ss }
+    ensures {
+      forall s'. mem_results' s' normals unbounds limits ->
+      exists s. mem s (SymStateSet.of_list ss) /\ state_extends s s'
+    }
+    ensures { (** Over-approximation *)
+      forall s. mem s (SymStateSet.of_list ss) ->
+      is_solution s.rho s.constr ->
+      forall gamma' bhv. exec_while (mk_loop_cnf n) ctr (compose s.rho s.sigma) e c gamma' bhv ->
+      exists s'. mem_results s' bhv normals unbounds limits /\
+      is_solution s'.rho s'.constr /\
+      gamma' = compose s'.rho s'.sigma
+    }
+    ensures { (** Under-approximation *)
+      forall bhv s'. mem_results s' bhv normals unbounds limits ->
+      is_solution s'.rho s'.constr ->
+      exists s. mem s (SymStateSet.of_list ss) /\
+      is_solution s.rho s.constr /\
+      exec_while (mk_loop_cnf n) ctr (compose s.rho s.sigma) e c (compose s'.rho s'.sigma) bhv
+    }
+  = match ss with
+    | Nil -> SymStateSet.(empty (), empty () , empty ())
+    | Cons s ss' ->
+      (** Compute normal and error states from state [s] *)
+      let normals1, unbounds1, limits1 = symbolic_interp_while n ctr s e c in
+      (** Compute normal and error states from remaining states [ss'] by recursion *)
+      let normals2, unbounds2, limits2 = symbolic_interp_while_list n ctr ss' e c in
+      SymStateSet.(union normals1 normals2, union unbounds1 unbounds2, union limits1 limits2)
+    end
+end

@@ -1,0 +1,150 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2023_b4:
+% 29 is the least nonnegative time at which a piecewise twice differentiable
+% function with the prescribed accelerations and reset derivative limits can
+% rise from 1/2 to 2023. This file contains no proof.
+
+putnam_2023_b4: THEORY
+BEGIN
+  real_function: TYPE = [real -> real]
+  real_sequence: TYPE = [nat -> real]
+
+  has_derivative_at(
+      f: real_function,
+      derivative, x: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (delta: posreal):
+        FORALL (h: real):
+          (h /= 0 AND abs(h) < delta)
+            IMPLIES
+              abs(f(x + h) - f(x) - derivative * h)
+                < epsilon_value * abs(h)
+
+  differentiable_at(f: real_function, x: real): bool =
+    EXISTS (derivative: real):
+      has_derivative_at(f, derivative, x)
+
+  derivative_value(f: real_function, x: real): real =
+    IF differentiable_at(f, x) THEN
+      epsilon(
+        LAMBDA (derivative: real):
+          has_derivative_at(f, derivative, x))
+    ELSE
+      0
+    ENDIF
+
+  derivative_function(f: real_function): real_function =
+    LAMBDA (x: real):
+      derivative_value(f, x)
+
+  second_derivative_value(
+      f: real_function,
+      x: real): real =
+    derivative_value(derivative_function(f), x)
+
+  continuous_on_right_ray(
+      f: real_function,
+      start: real): bool =
+    FORALL (x: real):
+      x >= start IMPLIES
+        FORALL (epsilon_value: posreal):
+          EXISTS (delta: posreal):
+            FORALL (z: real):
+              (z >= start AND abs(z - x) < delta)
+                IMPLIES
+                  abs(f(z) - f(x)) < epsilon_value
+
+  away_from_breakpoints(
+      n: nat,
+      times: real_sequence,
+      x: real): bool =
+    x > times(0)
+      AND
+    FORALL (index: nat):
+      (1 <= index AND index <= n)
+        IMPLIES x /= times(index)
+
+  twice_differentiable_away_from_breakpoints(
+      n: nat,
+      times: real_sequence,
+      f: real_function): bool =
+    FORALL (x: real):
+      away_from_breakpoints(n, times, x)
+        IMPLIES
+          (differentiable_at(f, x)
+            AND differentiable_at(
+              derivative_function(f), x))
+
+  has_right_limit(
+      f: real_function,
+      x, limit_value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (delta: posreal):
+        FORALL (h: real):
+          (0 < h AND h < delta)
+            IMPLIES
+              abs(f(x + h) - limit_value)
+                < epsilon_value
+
+  separated_times(
+      n: nat,
+      times: real_sequence): bool =
+    FORALL (index: nat):
+      index < n IMPLIES
+        times(index + 1) >= times(index) + 1
+
+  prescribed_right_derivative_limits(
+      n: nat,
+      times: real_sequence,
+      f: real_function): bool =
+    FORALL (index: nat):
+      index <= n IMPLIES
+        has_right_limit(
+          derivative_function(f),
+          times(index),
+          0)
+
+  prescribed_second_derivatives(
+      n: nat,
+      times: real_sequence,
+      f: real_function): bool =
+    (FORALL (index: nat):
+      index < n IMPLIES
+        FORALL (x: real):
+          (times(index) < x
+            AND x < times(index + 1))
+          IMPLIES
+            second_derivative_value(f, x)
+              = ((index + 1) :: real))
+      AND
+    (FORALL (x: real):
+      x > times(n) IMPLIES
+        second_derivative_value(f, x)
+          = ((n + 1) :: real))
+
+  admissible_time(time: real): bool =
+    time >= 0
+      AND
+    EXISTS
+        (n: nat),
+        (times: real_sequence),
+        (f: real_function):
+      separated_times(n, times)
+        AND continuous_on_right_ray(f, times(0))
+        AND twice_differentiable_away_from_breakpoints(
+          n, times, f)
+        AND f(times(0)) = 1 / 2
+        AND prescribed_right_derivative_limits(
+          n, times, f)
+        AND prescribed_second_derivatives(
+          n, times, f)
+        AND f(times(0) + time) = 2023
+
+  putnam_2023_b4_solution: real = 29
+
+  putnam_2023_b4_statement: bool =
+    admissible_time(putnam_2023_b4_solution)
+      AND
+    FORALL (time: real):
+      admissible_time(time)
+        IMPLIES putnam_2023_b4_solution <= time
+END putnam_2023_b4

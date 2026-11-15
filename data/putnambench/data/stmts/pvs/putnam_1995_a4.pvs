@@ -1,0 +1,61 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1995_a4:
+% an integer-labeled cyclic necklace of positive length and total label sum
+% n - 1 admits a cut whose nonempty prefix sums have the stated bounds.
+% This file contains no proof.
+
+putnam_1995_a4: THEORY
+BEGIN
+  integer_sequence: TYPE = [nat -> int]
+
+  prefix_sum(
+      values: integer_sequence,
+      count: nat): RECURSIVE int =
+    IF count = 0 THEN
+      0
+    ELSE
+      prefix_sum(values, count - 1) + values(count - 1)
+    ENDIF
+  MEASURE count
+
+  remainder_aux(
+      numerator, denominator, fuel: nat): RECURSIVE nat =
+    IF fuel = 0
+        OR denominator = 0
+        OR numerator < denominator THEN
+      numerator
+    ELSE
+      remainder_aux(
+        numerator - denominator,
+        denominator,
+        fuel - 1)
+    ENDIF
+  MEASURE fuel
+
+  safe_mod(numerator, denominator: nat): nat =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      remainder_aux(
+        numerator,
+        denominator,
+        numerator + 1)
+    ENDIF
+
+  rotated(
+      necklace: integer_sequence,
+      length, cut: nat): integer_sequence =
+    LAMBDA (index: nat):
+      necklace(safe_mod(cut + index, length))
+
+  putnam_1995_a4: bool =
+    FORALL (n: nat), (necklace: integer_sequence):
+      (n > 0
+        AND prefix_sum(necklace, n) = (n :: int) - 1)
+      IMPLIES
+        EXISTS (cut: nat):
+          cut < n
+            AND FORALL (k: nat):
+              k < n IMPLIES
+                prefix_sum(rotated(necklace, n, cut), k + 1)
+                  <= (k :: int)
+END putnam_1995_a4

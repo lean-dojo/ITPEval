@@ -1,0 +1,106 @@
+% Statement-only formalization of Hundred Theorems artifact 092, "Pick's Theorem":
+% the area enclosed by a simple lattice polygon is its number of interior lattice
+% points plus half its number of boundary lattice points minus one. This file contains no proof.
+
+pick_s_theorem_092: THEORY
+BEGIN
+  point: TYPE = [# x_coord: real, y_coord: real #]
+  vertices: TYPE = [nat -> point]
+
+  IMPORTING finite_sets[point], finite_sets[nat]
+
+  lattice_point(p: point): bool =
+    EXISTS (m, k: int):
+      x_coord(p) = (m :: real)
+        AND y_coord(p) = (k :: real)
+
+  cross(a, b, p: point): real =
+    (x_coord(b) - x_coord(a)) * (y_coord(p) - y_coord(a))
+      - (y_coord(b) - y_coord(a)) * (x_coord(p) - x_coord(a))
+
+  affine_point(t: real, a, b: point): point =
+    (# x_coord := (1 - t) * x_coord(a) + t * x_coord(b),
+       y_coord := (1 - t) * y_coord(a) + t * y_coord(b) #)
+
+  next_index(i, n: nat): nat =
+    IF i + 1 = n THEN 0 ELSE i + 1 ENDIF
+
+  on_edge(p, a, b: point): bool =
+    EXISTS (t: real):
+      0 <= t AND t <= 1 AND p = affine_point(t, a, b)
+
+  on_polygon_boundary(n: nat, v: vertices, p: point): bool =
+    EXISTS (i: nat):
+      i < n AND on_edge(p, v(i), v(next_index(i, n)))
+
+  simple_lattice_polygon(n: nat, v: vertices): bool =
+    n >= 3
+      AND
+        (FORALL (i: nat):
+          i < n IMPLIES lattice_point(v(i)))
+      AND
+        (FORALL (i, j: nat):
+          i < n AND j < n AND v(i) = v(j) IMPLIES i = j)
+      AND
+        (FORALL (i, j: nat), (p: point):
+          i < n
+            AND j < n
+            AND on_edge(p, v(i), v(next_index(i, n)))
+            AND on_edge(p, v(j), v(next_index(j, n)))
+          IMPLIES
+            i = j
+              OR (next_index(i, n) = j AND p = v(j))
+              OR (next_index(j, n) = i AND p = v(i)))
+
+  ray_crosses_edge(p, a, b: point): bool =
+    (y_coord(a) <= y_coord(p)
+      AND y_coord(p) < y_coord(b)
+      AND cross(a, b, p) > 0)
+    OR
+    (y_coord(b) <= y_coord(p)
+      AND y_coord(p) < y_coord(a)
+      AND cross(a, b, p) < 0)
+
+  inside_polygon(n: nat, v: vertices, p: point): bool =
+    NOT on_polygon_boundary(n, v, p)
+      AND
+        EXISTS (crossed_edges: finite_set[nat]), (half_count: nat):
+          (FORALL (i: nat):
+            crossed_edges(i) IFF
+              i < n
+                AND ray_crosses_edge(
+                  p, v(i), v(next_index(i, n))))
+            AND card(crossed_edges) = 2 * half_count + 1
+
+  edge_cross_sum(n: nat, v: vertices, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      edge_cross_sum(n, v, count - 1)
+        + x_coord(v(count - 1))
+            * y_coord(v(next_index(count - 1, n)))
+        - y_coord(v(count - 1))
+            * x_coord(v(next_index(count - 1, n)))
+    ENDIF
+  MEASURE count
+
+  polygon_area(n: nat, v: vertices): real =
+    abs(edge_cross_sum(n, v, n)) / 2
+
+  pick_s_theorem: bool =
+    FORALL (n: nat), (v: vertices):
+      simple_lattice_polygon(n, v)
+      IMPLIES
+        EXISTS (interior_points, boundary_points: finite_set[point]):
+          (FORALL (p: point):
+            interior_points(p) IFF
+              lattice_point(p) AND inside_polygon(n, v, p))
+          AND
+            (FORALL (p: point):
+              boundary_points(p) IFF
+                lattice_point(p) AND on_polygon_boundary(n, v, p))
+          AND polygon_area(n, v)
+            = (card(interior_points) :: real)
+              + (card(boundary_points) :: real) / 2
+              - 1
+END pick_s_theorem_092

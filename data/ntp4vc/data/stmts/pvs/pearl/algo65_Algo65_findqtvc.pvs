@@ -1,0 +1,191 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/algo65_Algo65_findqtvc: an integer-list selection verification
+% condition combining partition invariants, subarray permutation, recursive
+% decrease, and ordering around a selected pivot. This file contains no proof.
+
+algo65_Algo65_findqtvc: THEORY
+BEGIN
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  nth_default(values: list[int], index: nat): RECURSIVE int =
+    CASES values OF
+      null: 0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          nth_default(tail, index - 1)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  list_take(count: nat, values: list[int]): RECURSIVE list[int] =
+    IF count = 0 THEN
+      null
+    ELSE
+      CASES values OF
+        null: null,
+        cons(head, tail):
+          cons(head, list_take(count - 1, tail))
+      ENDCASES
+    ENDIF
+  MEASURE count
+
+  list_drop(count: nat, values: list[int]): RECURSIVE list[int] =
+    IF count = 0 THEN
+      values
+    ELSE
+      CASES values OF
+        null: null,
+        cons(head, tail):
+          list_drop(count - 1, tail)
+      ENDCASES
+    ENDIF
+  MEASURE count
+
+  nat_minus(left, right: nat): RECURSIVE nat =
+    IF left = 0 OR right = 0 THEN
+      left
+    ELSE
+      nat_minus(left - 1, right - 1)
+    ENDIF
+  MEASURE left + right
+
+  list_slice(values: list[int], lower, upper: nat): list[int] =
+    list_take(nat_minus(upper, lower), list_drop(lower, values))
+
+  occurrence_count(value: int, values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null: 0,
+      cons(head, tail):
+        (IF value = head THEN 1 ELSE 0 ENDIF)
+          + occurrence_count(value, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  list_permutation(left, right: list[int]): bool =
+    FORALL (value: int):
+      occurrence_count(value, left) = occurrence_count(value, right)
+
+  permut_sub_prime(
+      left, right: list[int],
+      lower, upper: nat): bool =
+    length(left) = length(right)
+      AND list_slice(left, 0, lower) = list_slice(right, 0, lower)
+      AND list_slice(left, upper, length(left))
+        = list_slice(right, upper, length(right))
+      AND list_permutation(
+        list_slice(left, lower, upper),
+        list_slice(right, lower, upper))
+
+  pivot_ordered(
+      values: list[int],
+      lower, pivot, upper: int): bool =
+    (FORALL (r: int):
+      (lower <= r AND r <= pivot)
+        IMPLIES
+          nth_default(values, int_to_nat(r))
+            <= nth_default(values, int_to_nat(pivot)))
+      AND
+    (FORALL (r: int):
+      (pivot <= r AND r <= upper)
+        IMPLIES
+          nth_default(values, int_to_nat(pivot))
+            <= nth_default(values, int_to_nat(r)))
+
+  partition_step(
+      source, result: list[int],
+      lower, pivot, upper: int): bool =
+    permut_sub_prime(
+      source, result, int_to_nat(lower), int_to_nat(upper + 1))
+      AND pivot_ordered(result, lower, pivot, upper)
+
+  partition_invariant(
+      source, result: list[int],
+      lower, upper, j, i: int): bool =
+    (lower <= j AND j < i AND i <= upper)
+      AND permut_sub_prime(
+        source, result, int_to_nat(lower), int_to_nat(upper + 1))
+      AND
+    (FORALL (r: int):
+      (lower <= r AND r <= j)
+        IMPLIES nth_default(result, int_to_nat(r)) <= 42)
+      AND
+    (FORALL (r: int):
+      (j < r AND r < i)
+        IMPLIES nth_default(result, int_to_nat(r)) = 42)
+      AND
+    (FORALL (r: int):
+      (i <= r AND r <= upper)
+        IMPLIES 42 <= nth_default(result, int_to_nat(r)))
+
+  final_condition(
+      original, result: list[int],
+      lower, pivot, upper: int): bool =
+    permut_sub_prime(
+      original, result, int_to_nat(lower), int_to_nat(upper + 1))
+      AND pivot_ordered(result, lower, pivot, upper)
+
+  left_decrease_bounds(
+      lower, pivot, upper, j: int,
+      values: list[int]): bool =
+    (0 <= upper - lower AND j - lower < upper - lower)
+      AND 0 <= lower
+      AND lower <= pivot
+      AND pivot <= j
+      AND j < length(values)
+
+  right_decrease_bounds(
+      lower, pivot, upper, i: int,
+      values: list[int]): bool =
+    (0 <= upper - lower AND upper - i < upper - lower)
+      AND 0 <= i
+      AND i <= pivot
+      AND pivot <= upper
+      AND upper < length(values)
+
+  find_vc: bool =
+    FORALL (m, k, n: int), (a: list[int]):
+      0 <= m IMPLIES
+      m <= k IMPLIES
+      k <= n IMPLIES
+      n < length(a) IMPLIES
+      IF m < n THEN
+        (0 <= m AND m < n AND n < length(a))
+          AND
+        (FORALL (j, i: int), (a1: list[int]):
+          length(a1) = length(a) IMPLIES
+          partition_invariant(a, a1, m, n, j, i) IMPLIES
+          IF k <= j THEN
+            left_decrease_bounds(m, k, n, j, a1)
+              AND
+            (FORALL (a2: list[int]):
+              length(a2) = length(a1) IMPLIES
+              partition_step(a1, a2, m, k, j) IMPLIES
+              IF i <= k THEN
+                right_decrease_bounds(m, k, n, i, a2)
+                  AND
+                (FORALL (a3: list[int]):
+                  length(a3) = length(a2) IMPLIES
+                  partition_step(a2, a3, i, k, n) IMPLIES
+                  final_condition(a, a3, m, k, n))
+              ELSE
+                final_condition(a, a2, m, k, n)
+              ENDIF)
+          ELSE
+            IF i <= k THEN
+              right_decrease_bounds(m, k, n, i, a1)
+                AND
+              (FORALL (a2: list[int]):
+                length(a2) = length(a1) IMPLIES
+                partition_step(a1, a2, i, k, n) IMPLIES
+                final_condition(a, a2, m, k, n))
+            ELSE
+              final_condition(a, a1, m, k, n)
+            ENDIF
+          ENDIF)
+      ELSE
+        final_condition(a, a, m, k, n)
+      ENDIF
+END algo65_Algo65_findqtvc

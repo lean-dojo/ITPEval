@@ -1,0 +1,122 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/dyck_Check_is_dyck_recqtvc: the recursive verification condition for
+% finding the unique Dyck-word prefix of a parenthesis word. This file contains
+% no proof.
+
+dyck_Check_is_dyck_recqtvc: THEORY
+BEGIN
+
+  paren: DATATYPE
+  BEGIN
+    L: L?
+    R: R?
+  END paren
+
+  dyck_derivation: DATATYPE
+  BEGIN
+    Dyck_nil: Dyck_nil?
+    Dyck_ind(
+      left_derivation,
+      right_derivation: dyck_derivation): Dyck_ind?
+  END dyck_derivation
+
+  generated_word(
+      derivation: dyck_derivation): RECURSIVE list[paren] =
+    CASES derivation OF
+      Dyck_nil:
+        null,
+      Dyck_ind(left_derivation, right_derivation):
+        cons(
+          L,
+          append(
+            generated_word(left_derivation),
+            cons(R, generated_word(right_derivation))))
+    ENDCASES
+  MEASURE derivation BY <<
+
+  dyck(word: list[paren]): bool =
+    EXISTS (derivation: dyck_derivation):
+      generated_word(derivation) = word
+
+  fall(prefix, suffix: list[paren]): bool =
+    dyck(prefix)
+      AND
+    CASES suffix OF
+      null:
+        TRUE,
+      cons(head, tail):
+        head /= L
+    ENDCASES
+
+  unique_fall_split(
+      source_word,
+      prefix,
+      suffix: list[paren]): bool =
+    source_word = append(prefix, suffix)
+      AND fall(prefix, suffix)
+      AND
+    (FORALL (other_prefix, other_suffix: list[paren]):
+      (source_word = append(other_prefix, other_suffix)
+        AND fall(other_prefix, other_suffix))
+        IMPLIES
+          other_prefix = prefix AND other_suffix = suffix)
+
+  no_fall_split(source_word: list[paren]): bool =
+    FORALL (prefix, suffix: list[paren]):
+      source_word = append(prefix, suffix)
+        IMPLIES NOT fall(prefix, suffix)
+
+  decreases_from(
+      original,
+      remainder: list[paren]): bool =
+    0 <= (length(original) :: int)
+      AND length(remainder) < length(original)
+
+  is_dyck_rec_vc: bool =
+    FORALL (word: list[paren]):
+      CASES word OF
+        null:
+          unique_fall_split(word, null, word),
+        cons(head, word_tail):
+          IF head = L THEN
+            decreases_from(word, word_tail)
+              AND
+            (FORALL (first_prefix: list[paren]):
+              (FORALL (first_suffix: list[paren]):
+                unique_fall_split(
+                  word_tail, first_prefix, first_suffix)
+                  IMPLIES
+                    CASES first_suffix OF
+                      null:
+                        no_fall_split(word),
+                      cons(suffix_head, suffix_tail):
+                        decreases_from(word, suffix_tail)
+                          AND
+                        (FORALL (second_prefix: list[paren]):
+                          (FORALL (second_suffix: list[paren]):
+                            unique_fall_split(
+                              suffix_tail,
+                              second_prefix,
+                              second_suffix)
+                              IMPLIES
+                                unique_fall_split(
+                                  word,
+                                  cons(
+                                    L,
+                                    append(
+                                      first_prefix,
+                                      cons(R, second_prefix))),
+                                  second_suffix))
+                            AND
+                          (no_fall_split(suffix_tail)
+                            IMPLIES no_fall_split(word)))
+                    ENDCASES)
+                AND
+              (no_fall_split(word_tail)
+                IMPLIES no_fall_split(word)))
+          ELSE
+            unique_fall_split(word, null, word)
+          ENDIF
+      ENDCASES
+
+END dyck_Check_is_dyck_recqtvc

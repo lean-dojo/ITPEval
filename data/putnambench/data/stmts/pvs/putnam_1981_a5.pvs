@@ -1,0 +1,138 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1981_a5:
+% the asserted lower bound on the number of distinct real roots of a
+% polynomial expression involving a real polynomial and its derivative.
+% This file contains no proof.
+
+putnam_1981_a5: THEORY
+BEGIN
+  real_set: TYPE = [real -> bool]
+  real_sequence: TYPE = [nat -> real]
+
+  polynomial_value(p: list[real], x: real): RECURSIVE real =
+    CASES p OF
+      null: 0,
+      cons(coefficient, tail):
+        coefficient + x * polynomial_value(tail, x)
+    ENDCASES
+  MEASURE p BY <<
+
+  polynomial_add(p, q: list[real]): RECURSIVE list[real] =
+    CASES p OF
+      null: q,
+      cons(left_coefficient, left_tail):
+        CASES q OF
+          null: p,
+          cons(right_coefficient, right_tail):
+            cons(
+              left_coefficient + right_coefficient,
+              polynomial_add(left_tail, right_tail))
+        ENDCASES
+    ENDCASES
+  MEASURE p BY <<
+
+  polynomial_scale(value: real, p: list[real]): RECURSIVE list[real] =
+    CASES p OF
+      null: null,
+      cons(coefficient, tail):
+        cons(
+          value * coefficient,
+          polynomial_scale(value, tail))
+    ENDCASES
+  MEASURE p BY <<
+
+  polynomial_multiply(p, q: list[real]): RECURSIVE list[real] =
+    CASES p OF
+      null: null,
+      cons(coefficient, tail):
+        polynomial_add(
+          polynomial_scale(coefficient, q),
+          cons(0, polynomial_multiply(tail, q)))
+    ENDCASES
+  MEASURE p BY <<
+
+  derivative_from(
+      p: list[real],
+      degree: nat): RECURSIVE list[real] =
+    CASES p OF
+      null: null,
+      cons(coefficient, tail):
+        cons(
+          (degree :: real) * coefficient,
+          derivative_from(tail, degree + 1))
+    ENDCASES
+  MEASURE p BY <<
+
+  polynomial_derivative(p: list[real]): list[real] =
+    CASES p OF
+      null: null,
+      cons(coefficient, tail): derivative_from(tail, 1)
+    ENDCASES
+
+  X: list[real] = cons(0, cons(1, null))
+
+  X_squared_plus_one: list[real] =
+    cons(1, cons(0, cons(1, null)))
+
+  Q(P: list[real]): list[real] =
+    LET derivative: list[real] = polynomial_derivative(P) IN
+      polynomial_add(
+        polynomial_multiply(
+          polynomial_multiply(X_squared_plus_one, P),
+          derivative),
+        polynomial_multiply(
+          X,
+          polynomial_add(
+            polynomial_multiply(P, P),
+            polynomial_multiply(derivative, derivative))))
+
+  injective_below(
+      enumeration: real_sequence,
+      cardinality: nat): bool =
+    FORALL (i, j: nat):
+      (i < cardinality
+        AND j < cardinality
+        AND enumeration(i) = enumeration(j))
+      IMPLIES i = j
+
+  enumerates_exactly(
+      enumeration: real_sequence,
+      set_value: real_set,
+      cardinality: nat): bool =
+    FORALL (x: real):
+      set_value(x) IFF
+        EXISTS (index: nat):
+          index < cardinality AND enumeration(index) = x
+
+  has_cardinality(
+      set_value: real_set,
+      cardinality: nat): bool =
+    EXISTS (enumeration: real_sequence):
+      injective_below(enumeration, cardinality)
+        AND enumerates_exactly(
+          enumeration, set_value, cardinality)
+
+  is_finite(set_value: real_set): bool =
+    EXISTS (cardinality: nat):
+      has_cardinality(set_value, cardinality)
+
+  ncard_is(set_value: real_set, cardinality: nat): bool =
+    has_cardinality(set_value, cardinality)
+      OR (NOT is_finite(set_value) AND cardinality = 0)
+
+  roots(P: list[real]): real_set =
+    LAMBDA (x: real): polynomial_value(P, x) = 0
+
+  roots_greater_than_one(P: list[real]): real_set =
+    LAMBDA (x: real):
+      x > 1 AND polynomial_value(P, x) = 0
+
+  putnam_1981_a5_solution: bool = TRUE
+
+  putnam_1981_a5_statement: bool =
+    ((FORALL (P: list[real]), (q_count, p_count: nat):
+      (ncard_is(roots(Q(P)), q_count)
+        AND ncard_is(roots_greater_than_one(P), p_count))
+      IMPLIES
+        (q_count :: real) >= 2 * (p_count :: real) - 1)
+      IFF putnam_1981_a5_solution)
+END putnam_1981_a5

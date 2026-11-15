@@ -1,0 +1,101 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2022_a1:
+% the ordered real pairs whose lines meet y = ln(1 + x^2) exactly once are
+% characterized by the stated slope and intercept conditions. This file
+% contains no proof.
+
+putnam_2022_a1: THEORY
+BEGIN
+  real_sequence: TYPE = [nat -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  nat_factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * nat_factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  exponential_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        exponential_partial(x, count - 1)
+          + safe_div(
+              x ^ index,
+              nat_factorial(index) :: real)
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  real_exponential(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat):
+            exponential_partial(x, count),
+          value))
+
+  natural_log(x: real): real =
+    IF x > 0 THEN
+      epsilon(
+        LAMBDA (value: real):
+          real_exponential(value) = x)
+    ELSE
+      0
+    ENDIF
+
+  nonnegative_sqrt(x: real): real =
+    IF x >= 0 THEN
+      epsilon(
+        LAMBDA (root: real):
+          root >= 0 AND root * root = x)
+    ELSE
+      0
+    ENDIF
+
+  curve_value(x: real): real =
+    natural_log(1 + x ^ 2)
+
+  unique_intersection(a, b: real): bool =
+    EXISTS (x: real):
+      a * x + b = curve_value(x)
+        AND FORALL (y: real):
+          a * y + b = curve_value(y) IMPLIES y = x
+
+  classified_pair(a, b: real): bool =
+    (a = 0 AND b = 0)
+      OR abs(a) >= 1
+      OR (0 < abs(a)
+        AND abs(a) < 1
+        AND LET discriminant_root: real =
+                  nonnegative_sqrt(1 - a ^ 2),
+                lower_critical_point: real =
+                  safe_div(1 - discriminant_root, a),
+                upper_critical_point: real =
+                  safe_div(1 + discriminant_root, a)
+            IN
+              b
+                < curve_value(lower_critical_point)
+                    - a * lower_critical_point
+                OR b
+                  > curve_value(upper_critical_point)
+                      - a * upper_critical_point)
+
+  putnam_2022_a1: bool =
+    FORALL (a, b: real):
+      unique_intersection(a, b) IFF classified_pair(a, b)
+END putnam_2022_a1

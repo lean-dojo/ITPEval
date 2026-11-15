@@ -1,0 +1,65 @@
+% Statement-only formalization of PutnamBench artifact putnam_1974_b5:
+% for every natural n, the sum of n^i / i! from i = 0 through n is greater
+% than half of exp(n). This file contains no proof.
+
+putnam_1974_b5: THEORY
+BEGIN
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  nat_factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * nat_factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  power_factorial_sum(n, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        power_factorial_sum(n, count - 1)
+          + safe_div(
+              (n :: real) ^ index,
+              nat_factorial(index) :: real)
+    ENDIF
+  MEASURE count
+
+  exponential_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        exponential_partial(x, count - 1)
+          + safe_div(
+              x ^ index,
+              nat_factorial(index) :: real)
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: [nat -> real], value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  real_exponential(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat):
+            exponential_partial(x, count),
+          value))
+
+  putnam_1974_b5: bool =
+    FORALL (n: nat):
+      power_factorial_sum(n, n + 1)
+        > real_exponential(n :: real) / 2
+END putnam_1974_b5

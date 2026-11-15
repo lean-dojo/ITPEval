@@ -1,0 +1,67 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% frama_c/klibc_string/strndup_Why3_ide_VCstrndup_call_memcpy_pre_4_goal5:
+% a strndup memcpy precondition deriving write-validity for the interval at
+% address a with length i_1. This file contains no proof.
+
+strndup_Why3_ide_VCstrndup_call_memcpy_pre_4_goal5: THEORY
+BEGIN
+  addr: TYPE = [# base: int, offset: int #]
+  allocation_table: TYPE = [int -> int]
+  integer_memory: TYPE = [addr -> int]
+  integer_conversion: TYPE = [int -> int]
+
+  shift(p: addr, k: int): addr =
+    (# base := base(p), offset := offset(p) + k #)
+
+  valid_rw(malloc: allocation_table, p: addr, size: int): bool =
+    0 < size IMPLIES
+      0 < base(p)
+        AND 0 <= offset(p)
+        AND offset(p) + size <= malloc(base(p))
+
+  is_uint32(value: int): bool =
+    0 <= value AND value < 4294967296
+
+  uint32_conversion_axioms(to_uint32: integer_conversion): bool =
+    (FORALL (value: int): is_uint32(to_uint32(value)))
+      AND
+    (FORALL (value: int):
+      is_uint32(value) IMPLIES to_uint32(value) = value)
+
+  goal5: bool =
+    FORALL
+      (region: [int -> int]),
+      (linked: [allocation_table -> bool]),
+      (sconst: [integer_memory -> bool]),
+      (to_uint32: integer_conversion),
+      (i_1: int),
+      (a, a_1: addr),
+      (i: int),
+      (t: allocation_table),
+      (t_1: integer_memory):
+      uint32_conversion_axioms(to_uint32) IMPLIES
+      LET x: int = to_uint32(1 + i_1),
+          a_2: addr = shift(a, 0)
+      IN
+        (# base := 0, offset := 0 #) /= a_1 IMPLIES
+        x /= 0 IMPLIES
+        0 <= i IMPLIES
+        region(base(a)) <= 0 IMPLIES
+        linked(t) IMPLIES
+        sconst(t_1) IMPLIES
+        is_uint32(i) IMPLIES
+        is_uint32(i_1) IMPLIES
+        valid_rw(t, a_2, i) IMPLIES
+        (0 < x IMPLIES valid_rw(t, shift(a_1, 0), x)) IMPLIES
+        ((FORALL (i_2: int):
+          0 <= i_2 IMPLIES
+          i_2 < i IMPLIES
+          t_1(shift(a, i_2)) /= 0)
+          IMPLIES i_1 = i) IMPLIES
+        ((EXISTS (i_2: int):
+          t_1(shift(a, i_2)) = 0
+            AND 0 <= i_2
+            AND i_2 < i)
+          IMPLIES i_1 <= i) IMPLIES
+        valid_rw(t, a_2, i_1)
+END strndup_Why3_ide_VCstrndup_call_memcpy_pre_4_goal5

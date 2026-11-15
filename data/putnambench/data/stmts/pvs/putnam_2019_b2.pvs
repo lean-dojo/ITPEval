@@ -1,0 +1,126 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2019_b2:
+% the normalized cubic-scale limit of a finite trigonometric sum is 8/pi^3.
+% This file contains no proof.
+
+putnam_2019_b2: THEORY
+BEGIN
+  real_sequence: TYPE = [nat -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  nat_factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * nat_factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  sine_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        sine_partial(x, count - 1)
+          + safe_div(
+              ((-1 :: real) ^ index) * x ^ (2 * index + 1),
+              nat_factorial(2 * index + 1) :: real)
+    ENDIF
+  MEASURE count
+
+  cosine_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        cosine_partial(x, count - 1)
+          + safe_div(
+              ((-1 :: real) ^ index) * x ^ (2 * index),
+              nat_factorial(2 * index) :: real)
+    ENDIF
+  MEASURE count
+
+  leibniz_partial_sum(count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        leibniz_partial_sum(count - 1)
+          + safe_div(
+              (-1 :: real) ^ index,
+              (2 * index + 1) :: real)
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  sine(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat): sine_partial(x, count),
+          value))
+
+  cosine(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat): cosine_partial(x, count),
+          value))
+
+  is_pi(value: real): bool =
+    converges_to(
+      LAMBDA (count: nat):
+        4 * leibniz_partial_sum(count),
+      value)
+
+  pi: real =
+    epsilon(
+      LAMBDA (value: real):
+        is_pi(value))
+
+  summand(n, k: nat): real =
+    safe_div(
+      sine(
+        safe_div(
+          (2 * (k :: real) - 1) * pi,
+          2 * (n :: real))),
+      cosine(
+        safe_div(
+          ((k :: real) - 1) * pi,
+          2 * (n :: real))) ^ 2
+        * cosine(
+            safe_div(
+              (k :: real) * pi,
+              2 * (n :: real))) ^ 2)
+
+  finite_sum(n, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      finite_sum(n, count - 1) + summand(n, count)
+    ENDIF
+  MEASURE count
+
+  putnam_2019_b2: bool =
+    converges_to(
+      LAMBDA (n: nat):
+        IF n = 0 THEN
+          0
+        ELSE
+          safe_div(
+            finite_sum(n, n - 1),
+            (n :: real) ^ 3)
+        ENDIF,
+      safe_div(8, pi ^ 3))
+END putnam_2019_b2

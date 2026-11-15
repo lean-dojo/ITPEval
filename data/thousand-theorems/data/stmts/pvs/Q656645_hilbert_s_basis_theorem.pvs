@@ -1,0 +1,164 @@
+% Statement-only formalization of the thousand-theorems corpus artifact Q656645
+% (thousand-theorems__pvs__Q656645), "Hilbert's basis theorem": a polynomial
+% ring over a commutative Noetherian ring is Noetherian. This file contains no
+% proof.
+
+Q656645_hilbert_s_basis_theorem[
+  R: TYPE+,
+  zero, one: R,
+  neg: [R -> R],
+  add, mul: [R, R -> R]
+]: THEORY
+BEGIN
+
+  coefficient_sequence: TYPE = [nat -> R]
+  ring_ideal: TYPE = [R -> bool]
+  polynomial_ideal: TYPE = [coefficient_sequence -> bool]
+
+  IMPORTING finite_sets[R], finite_sets[coefficient_sequence]
+
+  commutative_ring_laws: bool =
+    (FORALL (x, y, z: R):
+      add(add(x, y), z) = add(x, add(y, z)))
+      AND (FORALL (x, y: R):
+        add(x, y) = add(y, x))
+      AND (FORALL (x: R):
+        add(zero, x) = x
+          AND add(x, zero) = x)
+      AND (FORALL (x: R):
+        add(neg(x), x) = zero
+          AND add(x, neg(x)) = zero)
+      AND (FORALL (x, y, z: R):
+        mul(mul(x, y), z) = mul(x, mul(y, z)))
+      AND (FORALL (x, y: R):
+        mul(x, y) = mul(y, x))
+      AND (FORALL (x: R):
+        mul(one, x) = x
+          AND mul(x, one) = x)
+      AND (FORALL (x, y, z: R):
+        mul(x, add(y, z)) =
+          add(mul(x, y), mul(x, z)))
+      AND (FORALL (x, y, z: R):
+        mul(add(x, y), z) =
+          add(mul(x, z), mul(y, z)))
+
+  is_ring_ideal(I: ring_ideal): bool =
+    I(zero)
+      AND (FORALL (x, y: R):
+        I(x) AND I(y) IMPLIES I(add(x, y)))
+      AND (FORALL (x: R):
+        I(x) IMPLIES I(neg(x)))
+      AND (FORALL (a, x: R):
+        I(x) IMPLIES I(mul(a, x)))
+
+  ring_ideal_subset(I, J: ring_ideal): bool =
+    FORALL (x: R):
+      I(x) IMPLIES J(x)
+
+  ring_ideal_generated_by(
+      generators: finite_set[R],
+      I: ring_ideal): bool =
+    is_ring_ideal(I)
+      AND (FORALL (x: R):
+        member(x, generators) IMPLIES I(x))
+      AND (FORALL (J: ring_ideal):
+        is_ring_ideal(J)
+          AND (FORALL (x: R):
+            member(x, generators) IMPLIES J(x))
+          IMPLIES ring_ideal_subset(I, J))
+
+  noetherian_base_ring: bool =
+    FORALL (I: ring_ideal):
+      is_ring_ideal(I)
+        IMPLIES
+          EXISTS (generators: finite_set[R]):
+            ring_ideal_generated_by(generators, I)
+
+  finitely_supported(p: coefficient_sequence): bool =
+    EXISTS (bound: nat):
+      FORALL (degree: nat):
+        degree > bound IMPLIES p(degree) = zero
+
+  polynomial_zero: coefficient_sequence =
+    LAMBDA (degree: nat): zero
+
+  polynomial_one: coefficient_sequence =
+    LAMBDA (degree: nat):
+      IF degree = 0 THEN one ELSE zero ENDIF
+
+  polynomial_negate(
+      p: coefficient_sequence): coefficient_sequence =
+    LAMBDA (degree: nat):
+      neg(p(degree))
+
+  polynomial_add(
+      p, q: coefficient_sequence): coefficient_sequence =
+    LAMBDA (degree: nat):
+      add(p(degree), q(degree))
+
+  ring_sum(
+      values: [nat -> R],
+      count: nat): RECURSIVE R =
+    IF count = 0 THEN
+      zero
+    ELSE
+      add(
+        ring_sum(values, count - 1),
+        values(count - 1))
+    ENDIF
+  MEASURE count
+
+  polynomial_multiply(
+      p, q: coefficient_sequence): coefficient_sequence =
+    LAMBDA (degree: nat):
+      ring_sum(
+        (LAMBDA (index: nat):
+          IF index <= degree THEN
+            mul(p(index), q(degree - index))
+          ELSE
+            zero
+          ENDIF),
+        degree + 1)
+
+  is_polynomial_ideal(I: polynomial_ideal): bool =
+    I(polynomial_zero)
+      AND (FORALL (p: coefficient_sequence):
+        I(p) IMPLIES finitely_supported(p))
+      AND (FORALL (p, q: coefficient_sequence):
+        I(p) AND I(q) IMPLIES I(polynomial_add(p, q)))
+      AND (FORALL (p: coefficient_sequence):
+        I(p) IMPLIES I(polynomial_negate(p)))
+      AND (FORALL (a, p: coefficient_sequence):
+        finitely_supported(a)
+          AND I(p)
+          IMPLIES I(polynomial_multiply(a, p)))
+
+  polynomial_ideal_subset(
+      I, J: polynomial_ideal): bool =
+    FORALL (p: coefficient_sequence):
+      I(p) IMPLIES J(p)
+
+  polynomial_ideal_generated_by(
+      generators: finite_set[coefficient_sequence],
+      I: polynomial_ideal): bool =
+    is_polynomial_ideal(I)
+      AND (FORALL (p: coefficient_sequence):
+        member(p, generators) IMPLIES I(p))
+      AND (FORALL (J: polynomial_ideal):
+        is_polynomial_ideal(J)
+          AND (FORALL (p: coefficient_sequence):
+            member(p, generators) IMPLIES J(p))
+          IMPLIES polynomial_ideal_subset(I, J))
+
+  noetherian_polynomial_ring: bool =
+    FORALL (I: polynomial_ideal):
+      is_polynomial_ideal(I)
+        IMPLIES
+          EXISTS (generators: finite_set[coefficient_sequence]):
+            polynomial_ideal_generated_by(generators, I)
+
+  hilberts_basis_theorem: bool =
+    (commutative_ring_laws AND noetherian_base_ring)
+      IMPLIES noetherian_polynomial_ring
+
+END Q656645_hilbert_s_basis_theorem

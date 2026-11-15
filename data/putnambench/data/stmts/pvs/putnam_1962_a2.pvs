@@ -1,0 +1,265 @@
+% Statement-only formalization of PutnamBench artifact putnam_1962_a2:
+% classification of nonnegative real functions whose interval average equals
+% the geometric mean of the endpoint values. This file contains no proof.
+
+putnam_1962_a2: THEORY
+BEGIN
+  real_set: TYPE = [real -> bool]
+  real_function: TYPE = [real -> real]
+  real_sequence: TYPE = [nat -> real]
+  set_sequence: TYPE = [nat -> real_set]
+
+  set_intersection(A, B: real_set): real_set =
+    LAMBDA (x: real): A(x) AND B(x)
+
+  set_difference(A, B: real_set): real_set =
+    LAMBDA (x: real): A(x) AND NOT B(x)
+
+  bounded(A: real_set): bool =
+    EXISTS (bound: nonneg_real):
+      FORALL (x: real): A(x) IMPLIES abs(x) <= bound
+
+  partial_sum(values: real_sequence, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      partial_sum(values, count - 1) + values(count - 1)
+    ENDIF
+  MEASURE count
+
+  nonnegative_series_sum(
+      values: real_sequence,
+      total: real): bool =
+    (FORALL (index: nat): 0 <= values(index))
+      AND FORALL (eps: posreal):
+        EXISTS (start: nat):
+          FORALL (count: nat):
+            start <= count IMPLIES
+              abs(partial_sum(values, count) - total) < eps
+
+  interval_cover(
+      A: real_set,
+      lefts, rights: real_sequence): bool =
+    (FORALL (index: nat): lefts(index) < rights(index))
+      AND FORALL (x: real):
+        A(x) IMPLIES
+          EXISTS (index: nat):
+            lefts(index) < x AND x < rights(index)
+
+  cover_lengths(
+      lefts, rights: real_sequence): real_sequence =
+    LAMBDA (index: nat): rights(index) - lefts(index)
+
+  finite_cover_total(
+      A: real_set,
+      lefts, rights: real_sequence,
+      total: real): bool =
+    interval_cover(A, lefts, rights)
+      AND nonnegative_series_sum(
+        cover_lengths(lefts, rights), total)
+
+  lebesgue_outer_measure(A: real_set, measure_value: real): bool =
+    bounded(A)
+      AND 0 <= measure_value
+      AND (FORALL
+          (lefts, rights: real_sequence),
+          (cover_total: real):
+        finite_cover_total(A, lefts, rights, cover_total)
+          IMPLIES measure_value <= cover_total)
+      AND (FORALL (eps: posreal):
+        EXISTS
+            (lefts, rights: real_sequence),
+            (cover_total: real):
+          finite_cover_total(A, lefts, rights, cover_total)
+            AND cover_total < measure_value + eps)
+
+  lebesgue_measurable(A: real_set): bool =
+    FORALL (E: real_set):
+      bounded(E) IMPLIES
+        EXISTS (whole, inside, outside: real):
+          lebesgue_outer_measure(E, whole)
+            AND lebesgue_outer_measure(
+              set_intersection(E, A), inside)
+            AND lebesgue_outer_measure(
+              set_difference(E, A), outside)
+            AND whole = inside + outside
+
+  outer_measure_value(A: real_set): real =
+    epsilon(
+      LAMBDA (measure_value: real):
+        lebesgue_outer_measure(A, measure_value))
+
+  closed_interval(left, right: real): real_set =
+    LAMBDA (x: real): left <= x AND x <= right
+
+  open_interval(left, right: real): real_set =
+    LAMBDA (x: real): left < x AND x < right
+
+  positive_reals: real_set =
+    LAMBDA (x: real): 0 < x
+
+  measurable_nonnegative_on(
+      f: real_function,
+      A: real_set): bool =
+    (FORALL (x: real): A(x) IMPLIES 0 <= f(x))
+      AND FORALL (level: real):
+        lebesgue_measurable(
+          LAMBDA (x: real): A(x) AND level < f(x))
+
+  simple_value(
+      coefficients: real_sequence,
+      pieces: set_sequence,
+      count: nat,
+      x: real): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSIF pieces(count - 1)(x) THEN
+      simple_value(coefficients, pieces, count - 1, x)
+        + coefficients(count - 1)
+    ELSE
+      simple_value(coefficients, pieces, count - 1, x)
+    ENDIF
+  MEASURE count
+
+  simple_integral(
+      coefficients: real_sequence,
+      pieces: set_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      simple_integral(coefficients, pieces, count - 1)
+        + coefficients(count - 1)
+            * outer_measure_value(pieces(count - 1))
+    ENDIF
+  MEASURE count
+
+  valid_simple_minorant(
+      f: real_function,
+      left, right: real,
+      coefficients: real_sequence,
+      pieces: set_sequence,
+      count: nat): bool =
+    left <= right
+      AND (FORALL (index: nat):
+        index < count IMPLIES
+          (0 <= coefficients(index)
+            AND lebesgue_measurable(pieces(index))
+            AND FORALL (x: real):
+              pieces(index)(x) IMPLIES
+                closed_interval(left, right)(x)))
+      AND (FORALL (first, second: nat):
+        first < count AND second < count AND first /= second
+          IMPLIES
+            FORALL (x: real):
+              NOT (pieces(first)(x) AND pieces(second)(x)))
+      AND FORALL (x: real):
+        closed_interval(left, right)(x) IMPLIES
+          simple_value(coefficients, pieces, count, x) <= f(x)
+
+  finite_nonnegative_lebesgue_integral(
+      f: real_function,
+      left, right, integral_value: real): bool =
+    left <= right
+      AND measurable_nonnegative_on(
+        f, closed_interval(left, right))
+      AND 0 <= integral_value
+      AND (FORALL
+          (coefficients: real_sequence),
+          (pieces: set_sequence),
+          (count: nat):
+        valid_simple_minorant(
+          f, left, right, coefficients, pieces, count)
+          IMPLIES
+            simple_integral(coefficients, pieces, count)
+              <= integral_value)
+      AND (FORALL (eps: posreal):
+        EXISTS
+            (coefficients: real_sequence),
+            (pieces: set_sequence),
+            (count: nat):
+          valid_simple_minorant(
+            f, left, right, coefficients, pieces, count)
+            AND integral_value - eps
+              < simple_integral(coefficients, pieces, count))
+
+  interval_lebesgue_integral(
+      f: real_function,
+      left, right: real): real =
+    IF EXISTS (integral_value: real):
+        finite_nonnegative_lebesgue_integral(
+          f, left, right, integral_value)
+    THEN
+      epsilon(
+        LAMBDA (integral_value: real):
+          finite_nonnegative_lebesgue_integral(
+            f, left, right, integral_value))
+    ELSE
+      0
+    ENDIF
+
+  nonnegative_square_root(value: real): real =
+    IF 0 <= value
+    THEN
+      epsilon(
+        LAMBDA (root: real):
+          0 <= root AND root * root = value)
+    ELSE
+      0
+    ENDIF
+
+  nonnegative_function(f: real_function): bool =
+    FORALL (x: real): 0 <= f(x)
+
+  inverse_or_zero(value: real): real =
+    IF value = 0 THEN 0 ELSE 1 / value ENDIF
+
+  average_geometric_mean_property(
+      domain: real_set,
+      f: real_function): bool =
+    nonnegative_function(f)
+      AND FORALL (x: real):
+        domain(x) IMPLIES
+          inverse_or_zero(x)
+            * interval_lebesgue_integral(f, 0, x)
+            = nonnegative_square_root(f(0) * f(x))
+
+  solution_function(f: real_function): bool =
+    EXISTS (a, c: real):
+      0 <= a
+        AND FORALL (x: real):
+          f(x) =
+            a * inverse_or_zero((1 - c * x) ^ 2)
+
+  agree_on(f, g: real_function, domain: real_set): bool =
+    FORALL (x: real): domain(x) IMPLIES f(x) = g(x)
+
+  putnam_1962_a2: bool =
+    (FORALL (f: real_function):
+      (average_geometric_mean_property(positive_reals, f)
+        IMPLIES
+          EXISTS (g: real_function):
+            solution_function(g)
+              AND agree_on(
+                f, g, LAMBDA (x: real): 0 <= x))
+      AND
+      (FORALL (endpoint: real):
+        0 < endpoint IMPLIES
+          (average_geometric_mean_property(
+            open_interval(0, endpoint), f)
+            IMPLIES
+              EXISTS (g: real_function):
+                solution_function(g)
+                  AND agree_on(
+                    f, g,
+                    LAMBDA (x: real):
+                      0 <= x AND x < endpoint))))
+    AND
+    FORALL (f: real_function):
+      solution_function(f) IMPLIES
+        (average_geometric_mean_property(positive_reals, f)
+          OR EXISTS (endpoint: real):
+            0 < endpoint
+              AND average_geometric_mean_property(
+                open_interval(0, endpoint), f))
+END putnam_1962_a2

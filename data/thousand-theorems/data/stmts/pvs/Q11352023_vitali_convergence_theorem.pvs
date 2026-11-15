@@ -1,0 +1,624 @@
+% Statement-only formalization of the Thousand Theorems artifact Q11352023,
+% "Vitali convergence theorem": for any finite exponent p at least one on an arbitrary measure space,
+% Lp convergence is equivalent to convergence in measure together with uniform integrability
+% and uniform tightness. This file contains no proof.
+
+vitali_convergence_theorem_Q11352023[
+  A: TYPE,
+  G: TYPE+,
+  zeroG: G,
+  addG: [G, G -> G],
+  negG: [G -> G],
+  normG: [G -> real]
+]: THEORY
+BEGIN
+  event: TYPE = [A -> bool]
+  event_sequence: TYPE = [nat -> event]
+  sigma_algebra: TYPE = [event -> bool]
+
+  measure_value: TYPE =
+    [# infinite_flag: bool, finite_part: real #]
+  measure_value_sequence: TYPE = [nat -> measure_value]
+  measure_map: TYPE = [event -> measure_value]
+
+  real_sequence: TYPE = [nat -> real]
+  g_function: TYPE = [A -> G]
+  g_function_sequence: TYPE = [nat -> g_function]
+  g_sequence: TYPE = [nat -> G]
+  nonnegative_function: TYPE = [A -> measure_value]
+
+  subG(x, y: G): G =
+    addG(x, negG(y))
+
+  normed_add_comm_group: bool =
+    (FORALL (x, y: G): addG(x, y) = addG(y, x))
+      AND (FORALL (x, y, z: G):
+        addG(addG(x, y), z) = addG(x, addG(y, z)))
+      AND (FORALL (x: G): addG(x, zeroG) = x)
+      AND (FORALL (x: G): addG(x, negG(x)) = zeroG)
+      AND (FORALL (x: G): normG(x) >= 0)
+      AND (FORALL (x: G):
+        normG(x) = 0 IFF x = zeroG)
+      AND (FORALL (x: G):
+        normG(negG(x)) = normG(x))
+      AND (FORALL (x, y: G):
+        normG(addG(x, y)) <= normG(x) + normG(y))
+
+  converges_to_g(values: g_sequence, limit: G): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            normG(subG(values(index), limit)) < epsilon_value
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  nat_factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * nat_factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  exponential_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        exponential_partial(x, count - 1)
+          + safe_div(
+              x ^ index,
+              nat_factorial(index) :: real)
+    ENDIF
+  MEASURE count
+
+  converges_to_real(values: real_sequence, limit: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(values(index) - limit) < epsilon_value
+
+  real_exponential(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to_real(
+          LAMBDA (count: nat):
+            exponential_partial(x, count),
+          value))
+
+  natural_log(x: real): real =
+    IF x > 0 THEN
+      epsilon(
+        LAMBDA (value: real):
+          real_exponential(value) = x)
+    ELSE
+      0
+    ENDIF
+
+  real_power(base, exponent: real): real =
+    IF base > 0 THEN
+      real_exponential(exponent * natural_log(base))
+    ELSIF base = 0 AND exponent = 0 THEN
+      1
+    ELSE
+      0
+    ENDIF
+
+  zero_measure_value: measure_value =
+    (# infinite_flag := FALSE, finite_part := 0 #)
+
+  infinite_measure_value: measure_value =
+    (# infinite_flag := TRUE, finite_part := 0 #)
+
+  finite_measure_value(value: real): measure_value =
+    (# infinite_flag := FALSE, finite_part := value #)
+
+  canonical_measure_value(value: measure_value): bool =
+    IF infinite_flag(value) THEN
+      finite_part(value) = 0
+    ELSE
+      finite_part(value) >= 0
+    ENDIF
+
+  measure_value_is_zero(value: measure_value): bool =
+    NOT infinite_flag(value)
+      AND finite_part(value) = 0
+
+  measure_value_is_finite(value: measure_value): bool =
+    canonical_measure_value(value)
+      AND NOT infinite_flag(value)
+
+  measure_value_le(left, right: measure_value): bool =
+    canonical_measure_value(left)
+      AND canonical_measure_value(right)
+      AND IF infinite_flag(right) THEN
+        TRUE
+      ELSIF infinite_flag(left) THEN
+        FALSE
+      ELSE
+        finite_part(left) <= finite_part(right)
+      ENDIF
+
+  measure_value_add(left, right: measure_value): measure_value =
+    IF infinite_flag(left) OR infinite_flag(right) THEN
+      infinite_measure_value
+    ELSE
+      finite_measure_value(
+        finite_part(left) + finite_part(right))
+    ENDIF
+
+  measure_value_product(left, right: measure_value): measure_value =
+    IF measure_value_is_zero(left)
+        OR measure_value_is_zero(right) THEN
+      zero_measure_value
+    ELSIF infinite_flag(left)
+        OR infinite_flag(right) THEN
+      infinite_measure_value
+    ELSE
+      finite_measure_value(
+        finite_part(left) * finite_part(right))
+    ENDIF
+
+  full_event: event =
+    LAMBDA (omega: A): TRUE
+
+  empty_event: event =
+    LAMBDA (omega: A): FALSE
+
+  event_complement(E: event): event =
+    LAMBDA (omega: A): NOT E(omega)
+
+  event_intersection(E, F: event): event =
+    LAMBDA (omega: A): E(omega) AND F(omega)
+
+  event_difference(E, F: event): event =
+    LAMBDA (omega: A): E(omega) AND NOT F(omega)
+
+  event_subset(E, F: event): bool =
+    FORALL (omega: A):
+      E(omega) IMPLIES F(omega)
+
+  countable_union(events: event_sequence): event =
+    LAMBDA (omega: A):
+      EXISTS (index: nat): events(index)(omega)
+
+  finite_real_sum(values: real_sequence, count: nat):
+      RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      finite_real_sum(values, count - 1)
+        + values(count - 1)
+    ENDIF
+  MEASURE count
+
+  unbounded_above(values: real_sequence): bool =
+    FORALL (bound: real):
+      EXISTS (index: nat):
+        bound < values(index)
+
+  partial_measure_sum(
+      values: measure_value_sequence,
+      count: nat): real =
+    finite_real_sum(
+      LAMBDA (index: nat):
+        finite_part(values(index)),
+      count)
+
+  extended_nonnegative_sum(
+      values: measure_value_sequence,
+      total: measure_value): bool =
+    canonical_measure_value(total)
+      AND (FORALL (index: nat):
+        canonical_measure_value(values(index)))
+      AND IF infinite_flag(total) THEN
+        (EXISTS (index: nat):
+          infinite_flag(values(index)))
+          OR ((FORALL (index: nat):
+                NOT infinite_flag(values(index)))
+            AND unbounded_above(
+              LAMBDA (count: nat):
+                partial_measure_sum(values, count)))
+      ELSE
+        (FORALL (index: nat):
+          NOT infinite_flag(values(index)))
+          AND converges_to_real(
+            LAMBDA (count: nat):
+              partial_measure_sum(values, count),
+            finite_part(total))
+      ENDIF
+
+  is_sigma_algebra(Sigma: sigma_algebra): bool =
+    Sigma(full_event)
+      AND (FORALL (E: event):
+        Sigma(E) IMPLIES Sigma(event_complement(E)))
+      AND (FORALL (events: event_sequence):
+        (FORALL (index: nat): Sigma(events(index)))
+          IMPLIES Sigma(countable_union(events)))
+
+  outer_measure_laws(M: measure_map): bool =
+    measure_value_is_zero(M(empty_event))
+      AND (FORALL (E: event):
+        canonical_measure_value(M(E)))
+      AND (FORALL (E, F: event):
+        event_subset(E, F) IMPLIES
+          measure_value_le(M(E), M(F)))
+      AND (FORALL
+          (events: event_sequence),
+          (total: measure_value):
+        extended_nonnegative_sum(
+          LAMBDA (index: nat): M(events(index)),
+          total)
+        IMPLIES
+          measure_value_le(M(countable_union(events)), total))
+
+  caratheodory_measurable(
+      M: measure_map,
+      E: event): bool =
+    FORALL (test_event: event):
+      M(test_event)
+        = measure_value_add(
+            M(event_intersection(test_event, E)),
+            M(event_difference(test_event, E)))
+
+  sigma_outer_measure_extension(
+      M: measure_map,
+      Sigma: sigma_algebra): bool =
+    FORALL (E: event):
+      (FORALL (measurable_cover: event):
+        (Sigma(measurable_cover)
+          AND event_subset(E, measurable_cover))
+        IMPLIES
+          measure_value_le(M(E), M(measurable_cover)))
+      AND
+        (FORALL (lower_bound: measure_value):
+          (canonical_measure_value(lower_bound)
+            AND (FORALL (measurable_cover: event):
+              (Sigma(measurable_cover)
+                AND event_subset(E, measurable_cover))
+              IMPLIES
+                measure_value_le(
+                  lower_bound,
+                  M(measurable_cover))))
+          IMPLIES measure_value_le(lower_bound, M(E)))
+
+  is_measure(
+      M: measure_map,
+      Sigma: sigma_algebra): bool =
+    is_sigma_algebra(Sigma)
+      AND outer_measure_laws(M)
+      AND (FORALL (E: event):
+        Sigma(E) IMPLIES caratheodory_measurable(M, E))
+      AND sigma_outer_measure_extension(M, Sigma)
+
+  null_event(
+      M: measure_map,
+      Sigma: sigma_algebra,
+      E: event): bool =
+    EXISTS (measurable_cover: event):
+      Sigma(measurable_cover)
+        AND event_subset(E, measurable_cover)
+        AND measure_value_is_zero(M(measurable_cover))
+
+  almost_everywhere(
+      M: measure_map,
+      Sigma: sigma_algebra,
+      property: [A -> bool]): bool =
+    null_event(
+      M,
+      Sigma,
+      LAMBDA (omega: A): NOT property(omega))
+
+  pairwise_disjoint_below(
+      pieces: event_sequence,
+      count: nat): bool =
+    FORALL (left_index, right_index: nat):
+      left_index < count
+        AND right_index < count
+        AND left_index /= right_index
+      IMPLIES
+        FORALL (omega: A):
+          NOT (pieces(left_index)(omega)
+            AND pieces(right_index)(omega))
+
+  finite_g_sum(values: g_sequence, count: nat):
+      RECURSIVE G =
+    IF count = 0 THEN
+      zeroG
+    ELSE
+      addG(
+        finite_g_sum(values, count - 1),
+        values(count - 1))
+    ENDIF
+  MEASURE count
+
+  finite_simple_g_value(
+      coefficients: g_sequence,
+      pieces: event_sequence,
+      count: nat,
+      omega: A): G =
+    finite_g_sum(
+      LAMBDA (index: nat):
+        IF index < count AND pieces(index)(omega) THEN
+          coefficients(index)
+        ELSE
+          zeroG
+        ENDIF,
+      count)
+
+  measurable_simple_g(
+      Sigma: sigma_algebra,
+      function_value: g_function): bool =
+    EXISTS
+        (coefficients: g_sequence),
+        (pieces: event_sequence),
+        (count: nat):
+      pairwise_disjoint_below(pieces, count)
+        AND (FORALL (index: nat):
+          index < count IMPLIES Sigma(pieces(index)))
+        AND (FORALL (omega: A):
+          function_value(omega)
+            = finite_simple_g_value(
+                coefficients, pieces, count, omega))
+
+  strongly_measurable_g(
+      Sigma: sigma_algebra,
+      function_value: g_function): bool =
+    EXISTS (approximants: g_function_sequence):
+      (FORALL (index: nat):
+        measurable_simple_g(
+          Sigma, approximants(index)))
+        AND (FORALL (omega: A):
+          converges_to_g(
+            LAMBDA (index: nat):
+              approximants(index)(omega),
+            function_value(omega)))
+
+  ae_strongly_measurable_g(
+      M: measure_map,
+      Sigma: sigma_algebra,
+      function_value: g_function): bool =
+    EXISTS (measurable_version: g_function):
+      strongly_measurable_g(Sigma, measurable_version)
+        AND almost_everywhere(
+          M,
+          Sigma,
+          LAMBDA (omega: A):
+            function_value(omega)
+              = measurable_version(omega))
+
+  canonical_nonnegative_function(
+      function_value: nonnegative_function): bool =
+    FORALL (omega: A):
+      canonical_measure_value(function_value(omega))
+
+  finite_simple_nonnegative_value(
+      coefficients: measure_value_sequence,
+      pieces: event_sequence,
+      count: nat,
+      omega: A): RECURSIVE measure_value =
+    IF count = 0 THEN
+      zero_measure_value
+    ELSE
+      measure_value_add(
+        finite_simple_nonnegative_value(
+          coefficients, pieces, count - 1, omega),
+        IF pieces(count - 1)(omega) THEN
+          coefficients(count - 1)
+        ELSE
+          zero_measure_value
+        ENDIF)
+    ENDIF
+  MEASURE count
+
+  measurable_simple_nonnegative(
+      Sigma: sigma_algebra,
+      coefficients: measure_value_sequence,
+      pieces: event_sequence,
+      count: nat): bool =
+    pairwise_disjoint_below(pieces, count)
+      AND (FORALL (index: nat):
+        index < count IMPLIES
+          canonical_measure_value(coefficients(index))
+            AND NOT infinite_flag(coefficients(index))
+            AND Sigma(pieces(index)))
+
+  measurable_simple_minorant(
+      Sigma: sigma_algebra,
+      function_value: nonnegative_function,
+      coefficients: measure_value_sequence,
+      pieces: event_sequence,
+      count: nat): bool =
+    canonical_nonnegative_function(function_value)
+      AND measurable_simple_nonnegative(
+        Sigma, coefficients, pieces, count)
+      AND (FORALL (omega: A):
+        measure_value_le(
+          finite_simple_nonnegative_value(
+            coefficients, pieces, count, omega),
+          function_value(omega)))
+
+  finite_simple_nonnegative_integral(
+      M: measure_map,
+      coefficients: measure_value_sequence,
+      pieces: event_sequence,
+      count: nat): RECURSIVE measure_value =
+    IF count = 0 THEN
+      zero_measure_value
+    ELSE
+      measure_value_add(
+        finite_simple_nonnegative_integral(
+          M, coefficients, pieces, count - 1),
+        measure_value_product(
+          coefficients(count - 1),
+          M(pieces(count - 1))))
+    ENDIF
+  MEASURE count
+
+  lower_integral_upper_bound(
+      M: measure_map,
+      Sigma: sigma_algebra,
+      function_value: nonnegative_function,
+      upper: measure_value): bool =
+    canonical_measure_value(upper)
+      AND FORALL
+          (coefficients: measure_value_sequence),
+          (pieces: event_sequence),
+          (count: nat):
+        measurable_simple_minorant(
+          Sigma, function_value,
+          coefficients, pieces, count)
+        IMPLIES
+          measure_value_le(
+            finite_simple_nonnegative_integral(
+              M, coefficients, pieces, count),
+            upper)
+
+  powered_norm(
+      function_value: g_function,
+      p: real): nonnegative_function =
+    LAMBDA (omega: A):
+      finite_measure_value(
+        real_power(normG(function_value(omega)), p))
+
+  lp_norm_at_most(
+      M: measure_map,
+      Sigma: sigma_algebra,
+      function_value: g_function,
+      p, bound: real): bool =
+    bound >= 0
+      AND lower_integral_upper_bound(
+        M,
+        Sigma,
+        powered_norm(function_value, p),
+        finite_measure_value(real_power(bound, p)))
+
+  mem_lp(
+      M: measure_map,
+      Sigma: sigma_algebra,
+      function_value: g_function,
+      p: real): bool =
+    ae_strongly_measurable_g(
+      M, Sigma, function_value)
+      AND EXISTS (finite_bound: real):
+        finite_bound >= 0
+          AND lp_norm_at_most(
+            M, Sigma, function_value, p, finite_bound)
+
+  event_indicator(
+      E: event,
+      function_value: g_function): g_function =
+    LAMBDA (omega: A):
+      IF E(omega) THEN
+        function_value(omega)
+      ELSE
+        zeroG
+      ENDIF
+
+  error_function(
+      left, right: g_function): g_function =
+    LAMBDA (omega: A):
+      subG(left(omega), right(omega))
+
+  exceeds_error(
+      left, right: g_function,
+      threshold: real): event =
+    LAMBDA (omega: A):
+      threshold <= normG(subG(left(omega), right(omega)))
+
+  converges_in_measure(
+      M: measure_map,
+      F: g_function_sequence,
+      limit_function: g_function): bool =
+    FORALL
+        (error_threshold: posreal),
+        (measure_tolerance: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            measure_value_le(
+              M(exceeds_error(
+                F(index), limit_function,
+                error_threshold)),
+              finite_measure_value(measure_tolerance))
+
+  uniformly_integrable(
+      M: measure_map,
+      Sigma: sigma_algebra,
+      F: g_function_sequence,
+      p: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (delta_value: posreal):
+        FORALL (index: nat), (E: event):
+          (Sigma(E)
+            AND measure_value_le(
+              M(E), finite_measure_value(delta_value)))
+          IMPLIES
+            lp_norm_at_most(
+              M,
+              Sigma,
+              event_indicator(E, F(index)),
+              p,
+              epsilon_value)
+
+  uniformly_tight(
+      M: measure_map,
+      Sigma: sigma_algebra,
+      F: g_function_sequence,
+      p: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (E: event):
+        measure_value_is_finite(M(E))
+          AND (FORALL (index: nat):
+            lp_norm_at_most(
+              M,
+              Sigma,
+              event_indicator(
+                event_complement(E), F(index)),
+              p,
+              epsilon_value))
+
+  converges_in_lp(
+      M: measure_map,
+      Sigma: sigma_algebra,
+      F: g_function_sequence,
+      limit_function: g_function,
+      p: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            lp_norm_at_most(
+              M,
+              Sigma,
+              error_function(F(index), limit_function),
+              p,
+              epsilon_value)
+
+  tendstoInMeasure_iff_tendsto_Lp: bool =
+    normed_add_comm_group IMPLIES
+      FORALL
+          (M: measure_map),
+          (Sigma: sigma_algebra),
+          (p: real),
+          (F: g_function_sequence),
+          (limit_function: g_function):
+        (is_measure(M, Sigma)
+          AND 1 <= p
+          AND (FORALL (index: nat):
+            mem_lp(M, Sigma, F(index), p))
+          AND mem_lp(M, Sigma, limit_function, p))
+        IMPLIES
+          ((converges_in_measure(M, F, limit_function)
+              AND uniformly_integrable(M, Sigma, F, p)
+              AND uniformly_tight(M, Sigma, F, p))
+            IFF converges_in_lp(
+              M, Sigma, F, limit_function, p))
+END vitali_convergence_theorem_Q11352023

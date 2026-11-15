@@ -1,0 +1,67 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/defunctionalization_ReductionSemantics_reduceqtvc: the reduction
+% semantics verification condition preserves direct evaluation when a redex
+% is replaced by an expression of equal value inside a subtraction context.
+% This file contains no proof.
+
+defunctionalization_ReductionSemantics_reduceqtvc: THEORY
+BEGIN
+
+  expr: DATATYPE
+  BEGIN
+    Cte(constant_value: int): Cte?
+    Sub(left_expression, right_expression: expr): Sub?
+  END expr
+
+  context: DATATYPE
+  BEGIN
+    Empty: Empty?
+    Left(previous_context: context, pending_expression: expr): Left?
+    Right(saved_value: int, previous_context: context): Right?
+  END context
+
+  eval_0(expression: expr): RECURSIVE int =
+    CASES expression OF
+      Cte(value):
+        value,
+      Sub(left, right):
+        eval_0(left) - eval_0(right)
+    ENDCASES
+  MEASURE expression BY <<
+
+  recompose(
+      current_context: context,
+      expression: expr): RECURSIVE expr =
+    CASES current_context OF
+      Empty:
+        expression,
+      Left(previous, right):
+        recompose(previous, Sub(expression, right)),
+      Right(left_value, previous):
+        recompose(previous, Sub(Cte(left_value), expression))
+    ENDCASES
+  MEASURE current_context BY <<
+
+  is_a_redex(expression: expr): bool =
+    CASES expression OF
+      Cte(value):
+        FALSE,
+      Sub(left, right):
+        Cte?(left) AND Cte?(right)
+    ENDCASES
+
+  reduce_vc: bool =
+    FORALL (current_context: context), (redex, expression: expr):
+      (recompose(current_context, redex) = expression
+        AND is_a_redex(redex))
+        IMPLIES
+      (is_a_redex(redex)
+        AND
+      (FORALL (result: expr):
+        (EXISTS (replacement: expr):
+          eval_0(replacement) = eval_0(redex)
+            AND result = recompose(current_context, replacement))
+          IMPLIES
+        eval_0(result) = eval_0(expression)))
+
+END defunctionalization_ReductionSemantics_reduceqtvc

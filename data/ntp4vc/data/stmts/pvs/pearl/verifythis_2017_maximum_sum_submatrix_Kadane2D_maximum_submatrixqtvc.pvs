@@ -1,0 +1,700 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/verifythis_2017_maximum_sum_submatrix_Kadane2D_maximum_submatrixqtvc:
+% the verification condition for Kadane's two-dimensional maximum-sum
+% submatrix algorithm, including its nested-loop and maximality invariants.
+% This file contains no proof.
+
+verifythis_2017_maximum_sum_submatrix_Kadane2D_maximum_submatrixqtvc: THEORY
+BEGIN
+
+  int_array: TYPE =
+    [# array_length: int,
+       array_values: [int -> int] #]
+
+  array_update(
+      values: int_array,
+      index, value: int): int_array =
+    (# array_length := array_length(values),
+       array_values :=
+         array_values(values) WITH [(index) := value] #)
+
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  sum_span(
+      f: [int -> int],
+      lower: int,
+      span: nat): RECURSIVE int =
+    IF span = 0 THEN
+      0
+    ELSE
+      f(lower) + sum_span(f, lower + 1, span - 1)
+    ENDIF
+  MEASURE span
+
+  sum_range(f: [int -> int], lower, upper: int): int =
+    sum_span(f, lower, int_to_nat(upper - lower))
+
+  array_sum(values: int_array, lower, upper: int): int =
+    sum_range(array_values(values), lower, upper)
+
+  matrix_sum(
+      elts: [int, int -> int],
+      row_lower, row_upper, column_lower, column_upper: int): int =
+    sum_range(
+      LAMBDA (column: int):
+        sum_range(
+          LAMBDA (row: int): elts(row, column),
+          row_lower,
+          row_upper),
+      column_lower,
+      column_upper)
+
+  valid_index(
+      rows, columns: int,
+      row, column: int): bool =
+    (0 <= row AND row < rows)
+      AND (0 <= column AND column < columns)
+
+  candidate(
+      elts: [int, int -> int],
+      rows, columns: int,
+      row_lower, row_upper, column_lower, column_upper, maximum: int): bool =
+    (0 <= row_lower AND row_lower <= row_upper AND row_upper <= rows)
+      AND
+    (0 <= column_lower
+      AND column_lower <= column_upper
+      AND column_upper <= columns)
+      AND
+    (maximum =
+       matrix_sum(
+         elts,
+         row_lower,
+         row_upper,
+         column_lower,
+         column_upper)
+      AND
+     0 <=
+       matrix_sum(
+         elts,
+         row_lower,
+         row_upper,
+         column_lower,
+         column_upper))
+
+  outer_bound(
+      elts: [int, int -> int],
+      rows, columns, next_row, maximum: int): bool =
+    FORALL (row_lower, row_upper: int):
+      (0 <= row_lower AND row_lower < next_row)
+        IMPLIES
+          (row_lower <= row_upper AND row_upper <= rows)
+            IMPLIES
+              (FORALL (column_lower, column_upper: int):
+                (0 <= column_lower
+                  AND column_lower <= column_upper
+                  AND column_upper <= columns)
+                    IMPLIES
+                      matrix_sum(
+                        elts,
+                        row_lower,
+                        row_upper,
+                        column_lower,
+                        column_upper)
+                        <= maximum)
+
+  before_pair(
+      current_row, current_upper, row_lower, row_upper: int): bool =
+    row_lower < current_row
+      OR (row_lower = current_row AND row_upper < current_upper)
+
+  inner_bound(
+      elts: [int, int -> int],
+      rows, columns, current_row, next_upper, maximum: int): bool =
+    FORALL (row_lower, row_upper: int):
+      (0 <= row_lower AND row_lower <= row_upper AND row_upper <= rows)
+        IMPLIES
+          before_pair(
+            current_row,
+            next_upper,
+            row_lower,
+            row_upper)
+            IMPLIES
+              (FORALL (column_lower, column_upper: int):
+                (0 <= column_lower
+                  AND column_lower <= column_upper
+                  AND column_upper <= columns)
+                    IMPLIES
+                      matrix_sum(
+                        elts,
+                        row_lower,
+                        row_upper,
+                        column_lower,
+                        column_upper)
+                        <= maximum)
+
+  all_bound(
+      elts: [int, int -> int],
+      rows, columns, maximum: int): bool =
+    FORALL (row_lower, row_upper: int):
+      (0 <= row_lower AND row_lower <= row_upper AND row_upper <= rows)
+        IMPLIES
+          (FORALL (column_lower, column_upper: int):
+            (0 <= column_lower
+              AND column_lower <= column_upper
+              AND column_upper <= columns)
+                IMPLIES
+                  matrix_sum(
+                    elts,
+                    row_lower,
+                    row_upper,
+                    column_lower,
+                    column_upper)
+                    <= maximum)
+
+  column_values(
+      values: int_array,
+      elts: [int, int -> int],
+      columns, row_lower, row_upper: int): bool =
+    FORALL (column: int):
+      (0 <= column AND column < columns)
+        IMPLIES
+          array_values(values)(column)
+            =
+          sum_range(
+            LAMBDA (row: int): elts(row, column),
+            row_lower,
+            row_upper)
+
+  column_invariant(
+      values: int_array,
+      elts: [int, int -> int],
+      columns, row_lower, row_upper, current_column: int): bool =
+    (FORALL (column: int):
+      (0 <= column AND column < current_column)
+        IMPLIES
+          array_values(values)(column)
+            =
+          sum_range(
+            LAMBDA (row: int): elts(row, column),
+            row_lower,
+            row_upper))
+      AND
+    (FORALL (column: int):
+      (current_column <= column AND column < columns)
+        IMPLIES
+          array_values(values)(column)
+            =
+          sum_range(
+            LAMBDA (row: int): elts(row, column),
+            row_lower,
+            row_upper - 1))
+
+  maximum_subarray(
+      values: int_array,
+      lower, upper: int): bool =
+    (0 <= lower
+      AND lower <= upper
+      AND upper <= array_length(values))
+      AND
+    (FORALL (other_lower, other_upper: int):
+      (0 <= other_lower
+        AND other_lower <= other_upper
+        AND other_upper <= array_length(values))
+          IMPLIES
+            array_sum(values, other_lower, other_upper)
+              <= array_sum(values, lower, upper))
+
+  after_maximum_subarray(
+      values: int_array,
+      elts: [int, int -> int],
+      rows, columns, row_lower, row_upper: int,
+      best_row_lower, best_row_upper: int,
+      best_column_lower, best_column_upper, maximum: int,
+      lower, upper: int): bool =
+    IF maximum < array_sum(values, lower, upper) THEN
+      candidate(
+        elts,
+        rows,
+        columns,
+        row_lower,
+        row_upper,
+        lower,
+        upper,
+        array_sum(values, lower, upper))
+        AND
+      inner_bound(
+        elts,
+        rows,
+        columns,
+        row_lower,
+        row_upper + 1,
+        array_sum(values, lower, upper))
+        AND
+      column_values(
+        values,
+        elts,
+        columns,
+        row_lower,
+        row_upper + 1 - 1)
+    ELSE
+      candidate(
+        elts,
+        rows,
+        columns,
+        best_row_lower,
+        best_row_upper,
+        best_column_lower,
+        best_column_upper,
+        maximum)
+        AND
+      inner_bound(
+        elts,
+        rows,
+        columns,
+        row_lower,
+        row_upper + 1,
+        maximum)
+        AND
+      column_values(
+        values,
+        elts,
+        columns,
+        row_lower,
+        row_upper + 1 - 1)
+    ENDIF
+
+  update_function_equation(
+      before, after: int_array,
+      index, value: int): bool =
+    array_values(after)
+      = array_values(before) WITH [(index) := value]
+
+  column_step(
+      values: int_array,
+      elts: [int, int -> int],
+      rows, columns, row_lower, row_upper, column: int): bool =
+    LET matrix_row: int = row_upper - 1
+    IN
+      valid_index(rows, columns, matrix_row, column)
+        AND
+      (0 <= column AND column < array_length(values))
+        AND
+      (LET next_value: int =
+         array_values(values)(column)
+           + elts(matrix_row, column)
+       IN
+         (0 <= column AND column < array_length(values))
+           AND
+         (array_length(
+            array_update(values, column, next_value))
+            = array_length(values)
+          IMPLIES
+          update_function_equation(
+            values,
+            array_update(values, column, next_value),
+            column,
+            next_value)
+          IMPLIES
+          column_invariant(
+            array_update(values, column, next_value),
+            elts,
+            columns,
+            row_lower,
+            row_upper,
+            column + 1)))
+
+  maximum_submatrix_vc: bool =
+    FORALL
+      (rows, columns: int),
+      (elts: [int, int -> int]):
+        (0 <= rows AND 0 <= columns)
+          IMPLIES
+            (LET column_count: int = columns
+             IN
+               0 <= column_count
+                 AND
+               (FORALL (initial: int_array):
+                 ((FORALL (index: int):
+                    (0 <= index AND index < column_count)
+                      IMPLIES
+                        array_values(initial)(index) = 0)
+                    AND array_length(initial) = column_count)
+                   IMPLIES
+                     (LET last_row: int = rows - 1
+                      IN
+                        ((0 <= last_row + 1)
+                          IMPLIES
+                            (candidate(
+                               elts,
+                               rows,
+                               columns,
+                               0,
+                               0,
+                               0,
+                               0,
+                               0)
+                              AND
+                             outer_bound(
+                               elts,
+                               rows,
+                               columns,
+                               0,
+                               0)))
+                          AND
+                        (FORALL
+                          (best_column_upper,
+                           best_column_lower,
+                           best_row_upper,
+                           best_row_lower,
+                           maximum: int),
+                          (outer_values: int_array):
+                            array_length(outer_values)
+                              = array_length(initial)
+                              IMPLIES
+                            ((FORALL (row_lower: int):
+                              ((0 <= row_lower
+                                AND row_lower <= last_row)
+                                AND
+                               candidate(
+                                 elts,
+                                 rows,
+                                 columns,
+                                 best_row_lower,
+                                 best_row_upper,
+                                 best_column_lower,
+                                 best_column_upper,
+                                 maximum)
+                                AND
+                               outer_bound(
+                                 elts,
+                                 rows,
+                                 columns,
+                                 row_lower,
+                                 maximum))
+                                IMPLIES
+                                  (LET fill_length: int = columns
+                                   IN
+                                     (0 <= 0
+                                       AND 0 <= fill_length
+                                       AND 0 + fill_length
+                                         <= array_length(outer_values))
+                                       AND
+                                     (FORALL (filled: int_array):
+                                       array_length(filled)
+                                         = array_length(outer_values)
+                                         IMPLIES
+                                       ((FORALL (index: int):
+                                          ((0 <= index
+                                            AND index < 0)
+                                            OR
+                                           (0 + fill_length <= index
+                                            AND index
+                                              < array_length(filled)))
+                                            IMPLIES
+                                              array_values(filled)(index)
+                                                =
+                                              array_values(
+                                                outer_values)(index))
+                                          AND
+                                        (FORALL (index: int):
+                                          (0 <= index
+                                            AND index
+                                              < 0 + fill_length)
+                                            IMPLIES
+                                              array_values(filled)(index)
+                                                = 0))
+                                         IMPLIES
+                                           (LET row_count: int = rows,
+                                                first_upper: int =
+                                                  row_lower + 1
+                                            IN
+                                              ((first_upper
+                                                  <= row_count + 1)
+                                                IMPLIES
+                                                  (candidate(
+                                                     elts,
+                                                     rows,
+                                                     columns,
+                                                     best_row_lower,
+                                                     best_row_upper,
+                                                     best_column_lower,
+                                                     best_column_upper,
+                                                     maximum)
+                                                    AND
+                                                   inner_bound(
+                                                     elts,
+                                                     rows,
+                                                     columns,
+                                                     row_lower,
+                                                     first_upper,
+                                                     maximum)
+                                                    AND
+                                                   column_values(
+                                                     filled,
+                                                     elts,
+                                                     columns,
+                                                     row_lower,
+                                                     first_upper - 1)))
+                                                AND
+                                              (FORALL
+                                                (next_column_upper,
+                                                 next_column_lower,
+                                                 next_row_upper,
+                                                 next_row_lower,
+                                                 next_maximum: int),
+                                                (inner_values: int_array):
+                                                  array_length(inner_values)
+                                                    = array_length(filled)
+                                                    IMPLIES
+                                                  (FORALL (row_upper: int):
+                                                    ((first_upper
+                                                      <= row_upper
+                                                      AND row_upper
+                                                        <= row_count)
+                                                      AND
+                                                     candidate(
+                                                       elts,
+                                                       rows,
+                                                       columns,
+                                                       next_row_lower,
+                                                       next_row_upper,
+                                                       next_column_lower,
+                                                       next_column_upper,
+                                                       next_maximum)
+                                                      AND
+                                                     inner_bound(
+                                                       elts,
+                                                       rows,
+                                                       columns,
+                                                       row_lower,
+                                                       row_upper,
+                                                       next_maximum)
+                                                      AND
+                                                     column_values(
+                                                       inner_values,
+                                                       elts,
+                                                       columns,
+                                                       row_lower,
+                                                       row_upper - 1))
+                                                      IMPLIES
+                                                        (LET last_column: int =
+                                                           columns - 1
+                                                         IN
+                                                           ((0
+                                                             <= last_column
+                                                                  + 1)
+                                                             IMPLIES
+                                                               (column_invariant(
+                                                                  inner_values,
+                                                                  elts,
+                                                                  columns,
+                                                                  row_lower,
+                                                                  row_upper,
+                                                                  0)
+                                                                AND
+                                                                (FORALL
+                                                                  (updated_values:
+                                                                    int_array):
+                                                                  array_length(
+                                                                    updated_values)
+                                                                    =
+                                                                  array_length(
+                                                                    inner_values)
+                                                                  IMPLIES
+                                                                  ((FORALL
+                                                                    (column:
+                                                                      int):
+                                                                    ((0
+                                                                      <= column
+                                                                      AND column
+                                                                        <=
+                                                                          last_column)
+                                                                      AND
+                                                                     column_invariant(
+                                                                       updated_values,
+                                                                       elts,
+                                                                       columns,
+                                                                       row_lower,
+                                                                       row_upper,
+                                                                       column))
+                                                                    IMPLIES
+                                                                      column_step(
+                                                                        updated_values,
+                                                                        elts,
+                                                                        rows,
+                                                                        columns,
+                                                                        row_lower,
+                                                                        row_upper,
+                                                                        column))
+                                                                    AND
+                                                                  (column_invariant(
+                                                                     updated_values,
+                                                                     elts,
+                                                                     columns,
+                                                                     row_lower,
+                                                                     row_upper,
+                                                                     last_column
+                                                                       + 1)
+                                                                    IMPLIES
+                                                                      (FORALL
+                                                                        (lower,
+                                                                         upper:
+                                                                          int):
+                                                                        maximum_subarray(
+                                                                          updated_values,
+                                                                          lower,
+                                                                          upper)
+                                                                        IMPLIES
+                                                                          after_maximum_subarray(
+                                                                            updated_values,
+                                                                            elts,
+                                                                            rows,
+                                                                            columns,
+                                                                            row_lower,
+                                                                            row_upper,
+                                                                            next_row_lower,
+                                                                            next_row_upper,
+                                                                            next_column_lower,
+                                                                            next_column_upper,
+                                                                            next_maximum,
+                                                                            lower,
+                                                                            upper)))))))
+                                                             AND
+                                                           (last_column + 1 < 0
+                                                             IMPLIES
+                                                               (FORALL
+                                                                 (lower,
+                                                                  upper: int):
+                                                                 maximum_subarray(
+                                                                   inner_values,
+                                                                   lower,
+                                                                   upper)
+                                                                 IMPLIES
+                                                                   after_maximum_subarray(
+                                                                     inner_values,
+                                                                     elts,
+                                                                     rows,
+                                                                     columns,
+                                                                     row_lower,
+                                                                     row_upper,
+                                                                     next_row_lower,
+                                                                     next_row_upper,
+                                                                     next_column_lower,
+                                                                     next_column_upper,
+                                                                     next_maximum,
+                                                                     lower,
+                                                                     upper)))))
+                                                  AND
+                                                ((candidate(
+                                                    elts,
+                                                    rows,
+                                                    columns,
+                                                    next_row_lower,
+                                                    next_row_upper,
+                                                    next_column_lower,
+                                                    next_column_upper,
+                                                    next_maximum)
+                                                  AND
+                                                  inner_bound(
+                                                    elts,
+                                                    rows,
+                                                    columns,
+                                                    row_lower,
+                                                    row_count + 1,
+                                                    next_maximum)
+                                                  AND
+                                                  column_values(
+                                                    inner_values,
+                                                    elts,
+                                                    columns,
+                                                    row_lower,
+                                                    row_count + 1 - 1))
+                                                  IMPLIES
+                                                    (candidate(
+                                                       elts,
+                                                       rows,
+                                                       columns,
+                                                       next_row_lower,
+                                                       next_row_upper,
+                                                       next_column_lower,
+                                                       next_column_upper,
+                                                       next_maximum)
+                                                     AND
+                                                     outer_bound(
+                                                       elts,
+                                                       rows,
+                                                       columns,
+                                                       row_lower + 1,
+                                                       next_maximum)))
+                                                AND
+                                              ((row_count + 1 < first_upper)
+                                                IMPLIES
+                                                  (candidate(
+                                                     elts,
+                                                     rows,
+                                                     columns,
+                                                     best_row_lower,
+                                                     best_row_upper,
+                                                     best_column_lower,
+                                                     best_column_upper,
+                                                     maximum)
+                                                    AND
+                                                   outer_bound(
+                                                     elts,
+                                                     rows,
+                                                     columns,
+                                                     row_lower + 1,
+                                                     maximum)))))))))
+                              AND
+                            ((candidate(
+                                elts,
+                                rows,
+                                columns,
+                                best_row_lower,
+                                best_row_upper,
+                                best_column_lower,
+                                best_column_upper,
+                                maximum)
+                              AND
+                              outer_bound(
+                                elts,
+                                rows,
+                                columns,
+                                last_row + 1,
+                                maximum))
+                              IMPLIES
+                                ((0 <= best_row_lower
+                                  AND best_row_lower <= best_row_upper
+                                  AND best_row_upper <= rows)
+                                  AND
+                                 (0 <= best_column_lower
+                                  AND best_column_lower
+                                    <= best_column_upper
+                                  AND best_column_upper <= columns)
+                                  AND
+                                 maximum =
+                                   matrix_sum(
+                                     elts,
+                                     best_row_lower,
+                                     best_row_upper,
+                                     best_column_lower,
+                                     best_column_upper)
+                                  AND
+                                 all_bound(
+                                   elts,
+                                   rows,
+                                   columns,
+                                   maximum))))
+                          AND
+                        ((last_row + 1 < 0)
+                          IMPLIES
+                            ((0 <= 0 AND 0 <= 0 AND 0 <= rows)
+                              AND
+                             (0 <= 0 AND 0 <= 0 AND 0 <= columns)
+                              AND
+                             0 = matrix_sum(elts, 0, 0, 0, 0)
+                              AND
+                             all_bound(elts, rows, columns, 0))))))
+
+END verifythis_2017_maximum_sum_submatrix_Kadane2D_maximum_submatrixqtvc

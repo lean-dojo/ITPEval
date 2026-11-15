@@ -1,0 +1,134 @@
+% Statement-only formalization of the VERINA corpus artifact verina_basic_82
+% (verina__pvs__verina_basic_82), catalog title "remove_front": the executable
+% integer-array copy removes the first element of a nonempty array and satisfies
+% its exact length and indexwise correctness contract. This file contains no proof.
+
+verina_basic_82: THEORY
+BEGIN
+
+  % Finite PVS lists preserve exactly the contents and order of Lean arrays.
+  int_list_length(
+      values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        int_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  % Lean Array.get! on integer arrays returns zero outside the array.
+  int_list_get_bang(
+      index: nat,
+      values: list[int]): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          int_list_get_bang(index - 1, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  % Lean natural-number subtraction is truncated at zero.
+  nat_subtract(
+      first, second: nat): nat =
+    IF first >= second THEN
+      first - second
+    ELSE
+      0
+    ENDIF
+
+  % This is Lean Array.push: append one value at the end.
+  int_list_push(
+      values: list[int],
+      value: int): RECURSIVE list[int] =
+    CASES values OF
+      null:
+        cons(value, null[int]),
+      cons(head, tail):
+        cons(head, int_list_push(tail, value))
+    ENDCASES
+  MEASURE values BY <<
+
+  int_list_drop(
+      count: nat,
+      values: list[int]): RECURSIVE list[int] =
+    IF count = 0 THEN
+      values
+    ELSE
+      CASES values OF
+        null:
+          null[int],
+        cons(head, tail):
+          int_list_drop(count - 1, tail)
+      ENDCASES
+    ENDIF
+  MEASURE count
+
+  remove_front_precond(
+      a: list[int]): bool =
+    int_list_length(a) > 0
+
+  % Consuming the suffix and pushing each head preserves exactly the source
+  % copyFrom recursion, including an arbitrary initial accumulator.
+  copyFrom_remaining(
+      remaining, acc: list[int]): RECURSIVE list[int] =
+    CASES remaining OF
+      null:
+        acc,
+      cons(head, tail):
+        copyFrom_remaining(
+          tail,
+          int_list_push(acc, head))
+    ENDCASES
+  MEASURE remaining BY <<
+
+  copyFrom(
+      a: list[int],
+      i: nat,
+      acc: list[int]): list[int] =
+    copyFrom_remaining(
+      int_list_drop(i, a),
+      acc)
+
+  % The proof argument is computationally irrelevant, and Array.mkEmpty has
+  % empty contents regardless of its reserved capacity. Lean panic supplies
+  % the inhabited empty array in the precondition-violating branch.
+  remove_front(
+      a: list[int]): list[int] =
+    IF int_list_length(a) > 0 THEN
+      copyFrom(
+        a,
+        1,
+        null[int])
+    ELSE
+      null[int]
+    ENDIF
+
+  % The source proof argument to the postcondition is logically irrelevant.
+  remove_front_postcond(
+      a, result: list[int]): bool =
+    int_list_length(a) > 0
+      AND
+        int_list_length(result)
+          = nat_subtract(int_list_length(a), 1)
+      AND
+        (FORALL (i: nat):
+          i < int_list_length(result)
+            IMPLIES
+              int_list_get_bang(i, result)
+                = int_list_get_bang(i + 1, a))
+
+  remove_front_spec_satisfied: bool =
+    FORALL (a: list[int]):
+      remove_front_precond(a)
+        IMPLIES
+          remove_front_postcond(
+            a,
+            remove_front(a))
+
+END verina_basic_82

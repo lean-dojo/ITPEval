@@ -1,0 +1,194 @@
+% Statement-only formalization of PutnamBench artifact putnam_1965_b1:
+% the sequence of unit-hypercube integrals of the squared cosine of the
+% normalized coordinate sum converges to one half. This file contains no proof.
+
+putnam_1965_b1: THEORY
+BEGIN
+  real_function: TYPE = [real -> real]
+  real_sequence: TYPE = [nat -> real]
+  real_vector: TYPE = [nat -> real]
+  vector_function: TYPE = [real_vector -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  alternating_sign(index: nat): RECURSIVE real =
+    IF index = 0 THEN
+      1
+    ELSE
+      -alternating_sign(index - 1)
+    ENDIF
+  MEASURE index
+
+  cosine_partial_sum(count: nat, x: real): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        cosine_partial_sum(count - 1, x)
+          + safe_div(
+              alternating_sign(index) * x ^ (2 * index),
+              factorial(2 * index) :: real)
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  cosine(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat):
+            cosine_partial_sum(count, x),
+          value))
+
+  pi: real =
+    epsilon(
+      LAMBDA (value: real):
+        3 < value
+          AND value < 4
+          AND cosine(value / 2) = 0)
+
+  valid_partition(
+      points: real_sequence,
+      count: nat): bool =
+    count > 0
+      AND points(0) = 0
+      AND points(count) = 1
+      AND FORALL (index: nat):
+        index < count IMPLIES
+          points(index) < points(index + 1)
+
+  valid_tags(
+      points, tags: real_sequence,
+      count: nat): bool =
+    FORALL (index: nat):
+      index < count IMPLIES
+        points(index) <= tags(index)
+          AND tags(index) <= points(index + 1)
+
+  mesh_less_than(
+      points: real_sequence,
+      count: nat,
+      bound: real): bool =
+    FORALL (index: nat):
+      index < count IMPLIES
+        points(index + 1) - points(index) < bound
+
+  riemann_sum(
+      f: real_function,
+      points, tags: real_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      riemann_sum(f, points, tags, count - 1)
+        + f(tags(count - 1))
+            * (points(count) - points(count - 1))
+    ENDIF
+  MEASURE count
+
+  has_unit_interval_integral(
+      f: real_function,
+      integral_value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (mesh_bound: posreal):
+        FORALL
+            (points, tags: real_sequence),
+            (count: nat):
+          (valid_partition(points, count)
+            AND valid_tags(points, tags, count)
+            AND mesh_less_than(
+              points, count, mesh_bound))
+          IMPLIES
+            abs(
+              riemann_sum(f, points, tags, count)
+                - integral_value)
+              < epsilon_value
+
+  unit_interval_integral(f: real_function): real =
+    IF EXISTS (integral_value: real):
+        has_unit_interval_integral(f, integral_value)
+    THEN
+      epsilon(
+        LAMBDA (integral_value: real):
+          has_unit_interval_integral(
+            f, integral_value))
+    ELSE
+      0
+    ENDIF
+
+  zero_vector: real_vector =
+    LAMBDA (index: nat): 0
+
+  set_coordinate(
+      x: real_vector,
+      index: nat,
+      value: real): real_vector =
+    LAMBDA (coordinate: nat):
+      IF coordinate = index THEN value ELSE x(coordinate) ENDIF
+
+  iterated_unit_cube_integral(
+      f: vector_function,
+      dimension: nat): RECURSIVE real =
+    IF dimension = 0 THEN
+      f(zero_vector)
+    ELSE
+      unit_interval_integral(
+        LAMBDA (coordinate_value: real):
+          iterated_unit_cube_integral(
+            LAMBDA (x: real_vector):
+              f(set_coordinate(
+                x, dimension - 1, coordinate_value)),
+            dimension - 1))
+    ENDIF
+  MEASURE dimension
+
+  coordinate_sum(
+      x: real_vector,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      coordinate_sum(x, count - 1) + x(count - 1)
+    ENDIF
+  MEASURE count
+
+  cube_integrand(
+      dimension: nat,
+      x: real_vector): real =
+    cosine(
+      safe_div(pi, 2 * (dimension :: real))
+        * coordinate_sum(x, dimension)) ^ 2
+
+  integral_sequence(index: nat): real =
+    LET dimension: nat = index + 1 IN
+      iterated_unit_cube_integral(
+        LAMBDA (x: real_vector):
+          cube_integrand(dimension, x),
+        dimension)
+
+  putnam_1965_b1_solution: real = 1 / 2
+
+  putnam_1965_b1: bool =
+    converges_to(
+      LAMBDA (index: nat): integral_sequence(index),
+      putnam_1965_b1_solution)
+END putnam_1965_b1

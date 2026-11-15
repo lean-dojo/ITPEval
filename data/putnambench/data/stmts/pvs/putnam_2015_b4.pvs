@@ -1,0 +1,75 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2015_b4:
+% the sum of 2^a/(3^b 5^c) over positive integer triples that are side
+% lengths of a triangle is 17/21. This file contains no proof.
+
+putnam_2015_b4: THEORY
+BEGIN
+  real_sequence: TYPE = [nat -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  triangle_sides(a, b, c: nat): bool =
+    a > 0
+      AND b > 0
+      AND c > 0
+      AND a < b + c
+      AND b < c + a
+      AND c < a + b
+
+  triangle_term(a, b, c: nat): real =
+    IF triangle_sides(a, b, c) THEN
+      safe_div(
+        (2 :: real) ^ a,
+        ((3 :: real) ^ b) * ((5 :: real) ^ c))
+    ELSE
+      0
+    ENDIF
+
+  sum_over_c(a, b, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      sum_over_c(a, b, count - 1)
+        + triangle_term(a, b, count - 1)
+    ENDIF
+  MEASURE count
+
+  sum_over_b(a, bound, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      sum_over_b(a, bound, count - 1)
+        + sum_over_c(a, count - 1, bound)
+    ENDIF
+  MEASURE count
+
+  sum_over_a(bound, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      sum_over_a(bound, count - 1)
+        + sum_over_b(count - 1, bound, bound)
+    ENDIF
+  MEASURE count
+
+  cube_partial_sum(bound: nat): real =
+    sum_over_a(bound, bound)
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (bound: nat):
+          cutoff <= bound IMPLIES
+            abs(sequence(bound) - value) < epsilon_value
+
+  putnam_2015_b4_solution: real =
+    safe_div(17, 21)
+
+  putnam_2015_b4: bool =
+    converges_to(cube_partial_sum, putnam_2015_b4_solution)
+END putnam_2015_b4

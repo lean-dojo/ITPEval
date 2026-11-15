@@ -1,0 +1,235 @@
+:: Statement-only formalization of the NTP4VC corpus artifact
+:: pearl/search_Bfs_bfsqtvc: the breadth-first-search verification condition
+:: maintains exact path-depth queue invariants while expanding successor
+:: states and characterizes exhaustion when no successful state is reachable.
+:: This file contains no proof.
+
+environ
+  vocabularies TARSKI, XBOOLE_0, SUBSET_1, RELAT_1, FUNCT_1,
+    FUNCT_2, PARTFUN1, ZFMISC_1, NUMBERS, XREAL_0, CARD_1,
+    XXREAL_0, ARYTM_1, ARYTM_3, REAL_1, INT_1, NAT_1,
+    VALUED_0, VALUED_1, ORDINAL1, ORDINAL4, FINSEQ_1,
+    FINSEQ_2, MCART_1;
+  notations TARSKI, XBOOLE_0, SUBSET_1, ZFMISC_1, XTUPLE_0,
+    MCART_1, RELAT_1, FUNCT_1, RELSET_1, PARTFUN1, FUNCT_2,
+    ORDINAL1, CARD_1, NUMBERS, XCMPLX_0, XREAL_0, REAL_1,
+    INT_1, NAT_1, XXREAL_0, FINSEQ_1, FINSEQ_2;
+  constructors FUNCT_1, RELSET_1, PARTFUN1, FUNCT_2, CARD_1,
+    REAL_1, INT_1, XXREAL_0, ZFMISC_1, MCART_1, NAT_1,
+    FINSEQ_1, FINSEQ_2;
+  registrations XBOOLE_0, SUBSET_1, RELAT_1, FUNCT_1,
+    RELSET_1, FUNCT_2, NUMBERS, CARD_1, XXREAL_0, MEMBERED,
+    VALUED_0, VALUED_1, XCMPLX_0, XREAL_0, ORDINAL1, INT_1,
+    NAT_1, FINSEQ_1, FINSEQ_2;
+  requirements REAL, NUMERALS, SUBSET, BOOLE, ARITHM;
+
+begin
+
+::$P-
+theorem
+  for S being non empty set,
+      moves being Function of S,S*,
+      start,default being Element of S,
+      Success being Subset of S,
+      nthElem being Function of [:S*,INT:],S,
+      Move being Subset of [:S,S:],
+      Path being Subset of [:S,[:S,INT:]:]
+  st
+    (for xs being FinSequence of S, i being Integer holds
+       (0 <= i & i < len xs implies
+          nthElem.[xs,i] = xs.(i+1)) &
+       (i < 0 & 0 < len xs implies
+          nthElem.[xs,i] = xs.1) &
+       (((i < 0 & len xs = 0) or len xs <= i) implies
+          nthElem.[xs,i] = default)) &
+    (for s,t being Element of S holds
+       ([s,t] in Move iff
+          ex i being Integer st
+            0 <= i & i < len (moves.s) &
+            t = nthElem.[moves.s,i])) &
+    (for s,t being Element of S, n being Integer holds
+       ([s,[t,n]] in Path iff
+          0 <= n &
+          ex q being FinSequence of S st
+            len q = n+1 &
+            nthElem.[q,0] = s &
+            nthElem.[q,n] = t &
+            for k being Integer
+              st 0 <= k & k < n
+              holds
+                [nthElem.[q,k],nthElem.[q,k+1]] in Move))
+  holds
+    len <*start*> = 1 + len (<*>S) &
+    nthElem.[<*start*>,0] = start &
+    (for i being Integer
+       st 0 < i & i <= len (<*>S)
+       holds
+         nthElem.[<*start*>,i] =
+           nthElem.[<*>S,i-1])
+    implies
+      (0 <= 0 &
+       (for i being Integer
+          st 0 <= i & i < len <*start*>
+          holds
+            [start,[nthElem.[<*start*>,i],0]] in Path) &
+       (for t being Element of S
+          st [start,[t,0]] in Path
+          holds t in rng <*start*>) &
+       (for t being Element of S, n being Integer
+          st [start,[t,n]] in Path & t in Success
+          holds 0 <= n)) &
+      (for p being Integer,
+           cur being FinSequence of S
+         st
+           0 <= p &
+           (for i being Integer
+              st 0 <= i & i < len cur
+              holds
+                [start,[nthElem.[cur,i],p]] in Path) &
+           (for t being Element of S
+              st [start,[t,p]] in Path
+              holds t in rng cur) &
+           (for t being Element of S, n being Integer
+              st [start,[t,n]] in Path & t in Success
+              holds p <= n)
+         holds
+           (0 < len cur implies
+             (0 <= (len cur - 1) + 1 implies
+               ((for l being Integer
+                   st 0 <= l & l < len (<*>S)
+                   holds
+                     ex j being Integer st
+                       0 <= j & j < 0 &
+                       [nthElem.[cur,j],
+                        nthElem.[<*>S,l]] in Move) &
+                (for j,k being Integer
+                   st 0 <= j & j < 0 &
+                      0 <= k & k < len (moves.(nthElem.[cur,j]))
+                   holds
+                     nthElem.[moves.(nthElem.[cur,j]),k]
+                       in rng (<*>S)) &
+                (for j being Integer
+                   st 0 <= j & j < 0
+                   holds
+                     not nthElem.[cur,j] in Success)) &
+               (for nxt being FinSequence of S holds
+                 (for i being Integer
+                    st
+                      0 <= i & i <= len cur - 1 &
+                      (for l being Integer
+                         st 0 <= l & l < len nxt
+                         holds
+                           ex j being Integer st
+                             0 <= j & j < i &
+                             [nthElem.[cur,j],
+                              nthElem.[nxt,l]] in Move) &
+                      (for j,k being Integer
+                         st 0 <= j & j < i &
+                            0 <= k &
+                            k < len (moves.(nthElem.[cur,j]))
+                         holds
+                           nthElem.[moves.(nthElem.[cur,j]),k]
+                             in rng nxt) &
+                      (for j being Integer
+                         st 0 <= j & j < i
+                         holds
+                           not nthElem.[cur,j] in Success)
+                    holds
+                      (nthElem.[cur,i] in Success implies
+                         [start,[nthElem.[cur,i],p]] in Path) &
+                      (not nthElem.[cur,i] in Success implies
+                        (len ((moves.(nthElem.[cur,i])) ^ nxt) =
+                           len (moves.(nthElem.[cur,i])) + len nxt &
+                         (for i1 being Integer
+                            st 0 <= i1 &
+                               i1 < len (moves.(nthElem.[cur,i]))
+                            holds
+                              nthElem.
+                                [(moves.(nthElem.[cur,i])) ^ nxt,i1] =
+                              nthElem.
+                                [moves.(nthElem.[cur,i]),i1]) &
+                         (for i1 being Integer
+                            st len (moves.(nthElem.[cur,i])) <= i1 &
+                               i1 <
+                                 len ((moves.(nthElem.[cur,i])) ^ nxt)
+                            holds
+                              nthElem.
+                                [(moves.(nthElem.[cur,i])) ^ nxt,i1] =
+                              nthElem.
+                                [nxt,
+                                 i1-len (moves.(nthElem.[cur,i]))])
+                         implies
+                           (for l being Integer
+                              st 0 <= l &
+                                 l <
+                                   len
+                                     ((moves.(nthElem.[cur,i])) ^ nxt)
+                              holds
+                                ex j being Integer st
+                                  0 <= j & j < i+1 &
+                                  [nthElem.[cur,j],
+                                   nthElem.
+                                     [(moves.(nthElem.[cur,i])) ^ nxt,
+                                      l]] in Move) &
+                           (for j,k being Integer
+                              st 0 <= j & j < i+1 &
+                                 0 <= k &
+                                 k < len (moves.(nthElem.[cur,j]))
+                              holds
+                                nthElem.
+                                  [moves.(nthElem.[cur,j]),k]
+                                  in rng
+                                    ((moves.(nthElem.[cur,i])) ^ nxt)) &
+                           (for j being Integer
+                              st 0 <= j & j < i+1
+                              holds
+                                not nthElem.[cur,j] in Success)))) &
+                 (((for l being Integer
+                      st 0 <= l & l < len nxt
+                      holds
+                        ex j being Integer st
+                          0 <= j & j < (len cur - 1) + 1 &
+                          [nthElem.[cur,j],
+                           nthElem.[nxt,l]] in Move) &
+                   (for j,k being Integer
+                      st 0 <= j & j < (len cur - 1) + 1 &
+                         0 <= k &
+                         k < len (moves.(nthElem.[cur,j]))
+                      holds
+                        nthElem.[moves.(nthElem.[cur,j]),k]
+                          in rng nxt) &
+                   (for j being Integer
+                      st 0 <= j & j < (len cur - 1) + 1
+                      holds
+                        not nthElem.[cur,j] in Success))
+                  implies
+                    0 <= p+1 &
+                    (for i being Integer
+                       st 0 <= i & i < len nxt
+                       holds
+                         [start,[nthElem.[nxt,i],p+1]] in Path) &
+                    (for t being Element of S
+                       st [start,[t,p+1]] in Path
+                       holds t in rng nxt) &
+                    (for t being Element of S, n being Integer
+                       st [start,[t,n]] in Path & t in Success
+                       holds p+1 <= n)))) &
+             ((len cur - 1) + 1 < 0 implies
+               0 <= p+1 &
+               (for i being Integer
+                  st 0 <= i & i < len (<*>S)
+                  holds
+                    [start,[nthElem.[<*>S,i],p+1]] in Path) &
+               (for t being Element of S
+                  st [start,[t,p+1]] in Path
+                  holds t in rng (<*>S)) &
+               (for t being Element of S, n being Integer
+                  st [start,[t,n]] in Path & t in Success
+                  holds p+1 <= n))) &
+           (not 0 < len cur implies
+             for t being Element of S, n being Integer
+               st t in Success
+               holds not [start,[t,n]] in Path))
+proof
+end;
+::$P+

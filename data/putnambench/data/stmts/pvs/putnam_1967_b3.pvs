@@ -1,0 +1,119 @@
+% Statement-only formalization of PutnamBench artifact putnam_1967_b3:
+% asymptotic factorization of unit-interval integrals for two continuous
+% real-valued functions of period one. This file contains no proof.
+
+putnam_1967_b3: THEORY
+BEGIN
+  real_function: TYPE = [real -> real]
+  real_sequence: TYPE = [nat -> real]
+  integer_real_sequence: TYPE = [int -> real]
+
+  continuous(f: real_function): bool =
+    FORALL (x: real), (epsilon_value: posreal):
+      EXISTS (delta: posreal):
+        FORALL (y: real):
+          abs(y - x) < delta IMPLIES
+            abs(f(y) - f(x)) < epsilon_value
+
+  periodic_with_period_one(f: real_function): bool =
+    FORALL (x: real):
+      f(x + 1) = f(x)
+
+  valid_partition(
+      points: real_sequence,
+      count: nat): bool =
+    count > 0
+      AND points(0) = 0
+      AND points(count) = 1
+      AND FORALL (index: nat):
+        index < count IMPLIES
+          points(index) < points(index + 1)
+
+  valid_tags(
+      points, tags: real_sequence,
+      count: nat): bool =
+    FORALL (index: nat):
+      index < count IMPLIES
+        points(index) <= tags(index)
+          AND tags(index) <= points(index + 1)
+
+  mesh_less_than(
+      points: real_sequence,
+      count: nat,
+      bound: real): bool =
+    FORALL (index: nat):
+      index < count IMPLIES
+        points(index + 1) - points(index) < bound
+
+  riemann_sum(
+      f: real_function,
+      points, tags: real_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      riemann_sum(f, points, tags, count - 1)
+        + f(tags(count - 1))
+            * (points(count) - points(count - 1))
+    ENDIF
+  MEASURE count
+
+  has_unit_interval_integral(
+      f: real_function,
+      integral_value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (mesh_bound: posreal):
+        FORALL
+            (points, tags: real_sequence),
+            (count: nat):
+          (valid_partition(points, count)
+            AND valid_tags(points, tags, count)
+            AND mesh_less_than(
+              points, count, mesh_bound))
+          IMPLIES
+            abs(
+              riemann_sum(f, points, tags, count)
+                - integral_value)
+              < epsilon_value
+
+  unit_interval_integral(f: real_function): real =
+    IF EXISTS (integral_value: real):
+        has_unit_interval_integral(f, integral_value)
+    THEN
+      epsilon(
+        LAMBDA (integral_value: real):
+          has_unit_interval_integral(
+            f, integral_value))
+    ELSE
+      0
+    ENDIF
+
+  converges_at_integer_top(
+      sequence: integer_real_sequence,
+      value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: int):
+        FORALL (index: int):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  oscillatory_integral(
+      f, g: real_function,
+      index: int): real =
+    unit_interval_integral(
+      LAMBDA (x: real):
+        f(x) * g((index :: real) * x))
+
+  putnam_1967_b3: bool =
+    FORALL (f, g: real_function):
+      (continuous(f)
+        AND continuous(g)
+        AND periodic_with_period_one(f)
+        AND periodic_with_period_one(g))
+      IMPLIES
+        converges_at_integer_top(
+          LAMBDA (index: int):
+            oscillatory_integral(f, g, index),
+          unit_interval_integral(f)
+            * unit_interval_integral(g))
+END putnam_1967_b3

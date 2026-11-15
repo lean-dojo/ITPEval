@@ -1,0 +1,169 @@
+% Statement-only formalization of the VERINA corpus artifact verina_basic_60
+% (verina__pvs__verina_basic_60), catalog title "FindEvenNumbers": the
+% executable array scan retains exactly the even integers in input order and
+% satisfies its evenness, sublist, and cardinality contract. This file contains
+% no proof.
+
+verina_basic_60: THEORY
+BEGIN
+
+  isEven(n: int): bool =
+    mod(n, 2) = 0
+
+  % Finite PVS lists preserve exactly the contents and order of Lean arrays.
+  int_list_length(
+      values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        int_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  % This is Lean Array.getD on the finite-list representation of an array.
+  int_list_get_default(
+      index: nat,
+      values: list[int],
+      default_value: int): RECURSIVE int =
+    CASES values OF
+      null:
+        default_value,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          int_list_get_default(
+            index - 1,
+            tail,
+            default_value)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  % This is Array.push on the finite-list representation of a Lean array.
+  int_list_snoc(
+      values: list[int],
+      value: int): RECURSIVE list[int] =
+    CASES values OF
+      null:
+        cons(value, null[int]),
+      cons(head, tail):
+        cons(head, int_list_snoc(tail, value))
+    ENDCASES
+  MEASURE values BY <<
+
+  % Lean natural-number subtraction is truncated at zero.
+  nat_subtract(first, second: nat): nat =
+    IF first >= second THEN first - second ELSE 0 ENDIF
+
+  FindEvenNumbers_precond(
+      arr: list[int]): bool =
+    TRUE
+
+  % The remaining argument is the exact number of source loop iterations
+  % before the index reaches arr.size.
+  FindEvenNumbers_loop_steps(
+      arr: list[int],
+      index: nat,
+      accumulator: list[int],
+      remaining: nat): RECURSIVE list[int] =
+    IF remaining = 0 THEN
+      accumulator
+    ELSE
+      LET value: int =
+            int_list_get_default(index, arr, 0)
+      IN
+        FindEvenNumbers_loop_steps(
+          arr,
+          index + 1,
+          IF isEven(value) THEN
+            int_list_snoc(accumulator, value)
+          ELSE
+            accumulator
+          ENDIF,
+          remaining - 1)
+    ENDIF
+  MEASURE remaining
+
+  % Exact proof-erased rendering of the source local loop for every starting
+  % index and accumulator.
+  FindEvenNumbers_loop(
+      arr: list[int],
+      index: nat,
+      accumulator: list[int]): list[int] =
+    FindEvenNumbers_loop_steps(
+      arr,
+      index,
+      accumulator,
+      nat_subtract(int_list_length(arr), index))
+
+  % The source precondition proof argument is computationally irrelevant.
+  FindEvenNumbers(
+      arr: list[int]): list[int] =
+    FindEvenNumbers_loop(arr, 0, null[int])
+
+  % This is Array.all (fun x => isEven x).
+  int_list_all_even(
+      values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        isEven(head)
+          AND int_list_all_even(tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  % This is exactly Lean List.Sublist: the first list is obtained from the
+  % second by deleting zero or more entries without changing order.
+  int_list_sublist(
+      candidate, source: list[int]): RECURSIVE bool =
+    CASES source OF
+      null:
+        null?(candidate),
+      cons(source_head, source_tail):
+        CASES candidate OF
+          null:
+            TRUE,
+          cons(candidate_head, candidate_tail):
+            (candidate_head = source_head
+              AND int_list_sublist(
+                    candidate_tail,
+                    source_tail))
+              OR int_list_sublist(
+                   candidate,
+                   source_tail)
+        ENDCASES
+    ENDCASES
+  MEASURE source BY <<
+
+  % This is List.countP isEven.
+  int_list_count_even(
+      values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        (IF isEven(head) THEN 1 ELSE 0 ENDIF)
+          + int_list_count_even(tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  % The source precondition proof argument is logically irrelevant here.
+  FindEvenNumbers_postcond(
+      arr, result: list[int]): bool =
+    int_list_all_even(result)
+      AND int_list_sublist(result, arr)
+      AND int_list_length(result)
+            = int_list_count_even(arr)
+
+  FindEvenNumbers_spec_satisfied: bool =
+    FORALL (arr: list[int]):
+      FindEvenNumbers_precond(arr)
+        IMPLIES
+          FindEvenNumbers_postcond(
+            arr,
+            FindEvenNumbers(arr))
+
+END verina_basic_60

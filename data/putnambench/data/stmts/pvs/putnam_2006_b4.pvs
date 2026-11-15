@@ -1,0 +1,94 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2006_b4:
+% the maximum number of vertices of the Boolean n-cube contained in a
+% k-dimensional real linear subspace is 2^k. This file contains no proof.
+
+putnam_2006_b4[n: posnat]: THEORY
+BEGIN
+  coordinate: TYPE = below(n)
+  vector: TYPE = [coordinate -> real]
+  vector_set: TYPE = [vector -> bool]
+  basis_sequence: TYPE = [nat -> vector]
+  coefficient_sequence: TYPE = [nat -> real]
+
+  zero_vector: vector =
+    LAMBDA (j: coordinate): 0
+
+  vector_add(u, v: vector): vector =
+    LAMBDA (j: coordinate): u(j) + v(j)
+
+  scalar_multiply(a: real, v: vector): vector =
+    LAMBDA (j: coordinate): a * v(j)
+
+  is_subspace(V: vector_set): bool =
+    V(zero_vector)
+      AND
+        (FORALL (u, v: vector):
+          V(u) AND V(v) IMPLIES V(vector_add(u, v)))
+      AND
+        (FORALL (a: real), (v: vector):
+          V(v) IMPLIES V(scalar_multiply(a, v)))
+
+  linear_combination(
+      B: basis_sequence,
+      a: coefficient_sequence,
+      count: nat): RECURSIVE vector =
+    IF count = 0 THEN
+      zero_vector
+    ELSE
+      vector_add(
+        linear_combination(B, a, count - 1),
+        scalar_multiply(a(count - 1), B(count - 1)))
+    ENDIF
+  MEASURE count
+
+  linearly_independent_through(
+      B: basis_sequence,
+      count: nat): bool =
+    FORALL (a: coefficient_sequence):
+      linear_combination(B, a, count) = zero_vector
+        IMPLIES
+          (FORALL (index: nat):
+            index < count IMPLIES a(index) = 0)
+
+  spans_through(
+      B: basis_sequence,
+      count: nat,
+      V: vector_set): bool =
+    FORALL (v: vector):
+      V(v) IFF
+        EXISTS (a: coefficient_sequence):
+          v = linear_combination(B, a, count)
+
+  has_dimension(V: vector_set, count: nat): bool =
+    EXISTS (B: basis_sequence):
+      linearly_independent_through(B, count)
+        AND spans_through(B, count, V)
+
+  cube_vertex(code: nat): vector =
+    LAMBDA (j: coordinate):
+      IF mod(ndiv(code, 2 ^ j), 2) = 0 THEN 0 ELSE 1 ENDIF
+
+  cube_intersection_count(
+      V: vector_set,
+      limit: nat): RECURSIVE nat =
+    IF limit = 0 THEN
+      0
+    ELSE
+      cube_intersection_count(V, limit - 1)
+        + IF V(cube_vertex(limit - 1)) THEN 1 ELSE 0 ENDIF
+    ENDIF
+  MEASURE limit
+
+  putnam_2006_b4: bool =
+    FORALL (k: nat):
+      k <= n IMPLIES
+        (EXISTS (V: vector_set):
+          is_subspace(V)
+            AND has_dimension(V, k)
+            AND cube_intersection_count(V, 2 ^ n) = 2 ^ k)
+        AND
+          (FORALL (V: vector_set):
+            is_subspace(V)
+              AND has_dimension(V, k)
+            IMPLIES cube_intersection_count(V, 2 ^ n) <= 2 ^ k)
+END putnam_2006_b4

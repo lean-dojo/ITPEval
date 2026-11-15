@@ -1,0 +1,133 @@
+% Statement-only formalization of the VERINA corpus artifact
+% verina_advanced_15, "increasingTriplet": a deterministic two-threshold scan
+% decides whether an integer list has three strictly increasing values at
+% strictly increasing indices. This file contains no proof.
+
+verina_advanced_15: THEORY
+BEGIN
+
+  int_option: DATATYPE
+  BEGIN
+    NoneInt: NoneInt?
+    SomeInt(option_value: int): SomeInt?
+  END int_option
+
+  increasingTriplet_precond(nums: list[int]): bool =
+    TRUE
+
+  int_list_length(nums: list[int]): RECURSIVE nat =
+    CASES nums OF
+      null:
+        0,
+      cons(head, tail):
+        int_list_length(tail) + 1
+    ENDCASES
+  MEASURE nums BY <<
+
+  increasingTriplet_loop(
+      xs: list[int],
+      first, second: int_option): RECURSIVE bool =
+    CASES xs OF
+      null:
+        FALSE,
+      cons(x, rest):
+        CASES first OF
+          NoneInt:
+            increasingTriplet_loop(
+              rest,
+              SomeInt(x),
+              NoneInt),
+          SomeInt(f):
+            IF x <= f THEN
+              increasingTriplet_loop(
+                rest,
+                SomeInt(x),
+                second)
+            ELSE
+              CASES second OF
+                NoneInt:
+                  increasingTriplet_loop(
+                    rest,
+                    first,
+                    SomeInt(x)),
+                SomeInt(s):
+                  IF x <= s THEN
+                    increasingTriplet_loop(
+                      rest,
+                      first,
+                      SomeInt(x))
+                  ELSE
+                    TRUE
+                  ENDIF
+              ENDCASES
+            ENDIF
+        ENDCASES
+    ENDCASES
+  MEASURE xs BY <<
+
+  increasingTriplet(nums: list[int]): bool =
+    IF int_list_length(nums) < 3 THEN
+      FALSE
+    ELSE
+      increasingTriplet_loop(
+        nums,
+        NoneInt,
+        NoneInt)
+    ENDIF
+
+  int_list_nth_default(
+      index: nat,
+      nums: list[int]): RECURSIVE int =
+    CASES nums OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          int_list_nth_default(index - 1, tail)
+        ENDIF
+    ENDCASES
+  MEASURE nums BY <<
+
+  has_increasing_indexed_triplet(nums: list[int]): bool =
+    EXISTS (i, j, k: nat):
+      i < int_list_length(nums)
+        AND j < int_list_length(nums)
+        AND k < int_list_length(nums)
+        AND i < j
+        AND j < k
+        AND int_list_nth_default(i, nums)
+              < int_list_nth_default(j, nums)
+        AND int_list_nth_default(j, nums)
+              < int_list_nth_default(k, nums)
+
+  all_indexed_triplets_fail(nums: list[int]): bool =
+    FORALL (i, j, k: nat):
+      (i < int_list_length(nums)
+        AND j < int_list_length(nums)
+        AND k < int_list_length(nums))
+      IMPLIES
+        (i >= j
+          OR j >= k
+          OR int_list_nth_default(i, nums)
+               >= int_list_nth_default(j, nums)
+          OR int_list_nth_default(j, nums)
+               >= int_list_nth_default(k, nums))
+
+  increasingTriplet_postcond(
+      nums: list[int],
+      result: bool): bool =
+    (result IMPLIES
+      has_increasing_indexed_triplet(nums))
+      AND (NOT result IMPLIES
+        all_indexed_triplets_fail(nums))
+
+  increasingTriplet_spec_satisfied: bool =
+    FORALL (nums: list[int]):
+      increasingTriplet_precond(nums) IMPLIES
+        increasingTriplet_postcond(
+          nums,
+          increasingTriplet(nums))
+
+END verina_advanced_15

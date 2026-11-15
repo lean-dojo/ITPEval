@@ -1,0 +1,199 @@
+% Statement-only formalization of PutnamBench artifact putnam_1968_a6:
+% the nonconstant complex polynomials with coefficients all equal to 1 or -1
+% and with only real roots are exactly twelve explicitly listed polynomials.
+% This file contains no proof.
+
+putnam_1968_a6: THEORY
+BEGIN
+  complex: TYPE = [# real_part: real, imag_part: real #]
+  coefficient_sequence: TYPE = [nat -> complex]
+
+  complex_zero: complex =
+    (# real_part := 0, imag_part := 0 #)
+
+  complex_one: complex =
+    (# real_part := 1, imag_part := 0 #)
+
+  complex_minus_one: complex =
+    (# real_part := -1, imag_part := 0 #)
+
+  complex_add(x, y: complex): complex =
+    (# real_part := real_part(x) + real_part(y),
+       imag_part := imag_part(x) + imag_part(y) #)
+
+  complex_neg(x: complex): complex =
+    (# real_part := -real_part(x),
+       imag_part := -imag_part(x) #)
+
+  complex_mul(x, y: complex): complex =
+    (# real_part := real_part(x) * real_part(y)
+                       - imag_part(x) * imag_part(y),
+       imag_part := real_part(x) * imag_part(y)
+                       + imag_part(x) * real_part(y) #)
+
+  complex_power(z: complex, exponent: nat): RECURSIVE complex =
+    IF exponent = 0 THEN
+      complex_one
+    ELSE
+      complex_mul(complex_power(z, exponent - 1), z)
+    ENDIF
+  MEASURE exponent
+
+  polynomial_value(
+      coefficients: coefficient_sequence,
+      z: complex,
+      count: nat): RECURSIVE complex =
+    IF count = 0 THEN
+      complex_zero
+    ELSE
+      LET k: nat = count - 1 IN
+        complex_add(
+          polynomial_value(coefficients, z, count - 1),
+          complex_mul(coefficients(k), complex_power(z, k)))
+    ENDIF
+  MEASURE count
+
+  zero_polynomial(coefficients: coefficient_sequence): bool =
+    FORALL (k: nat): coefficients(k) = complex_zero
+
+  canonical_polynomial(
+      coefficients: coefficient_sequence,
+      degree: nat): bool =
+    (degree = 0 AND zero_polynomial(coefficients))
+      OR
+    (NOT (coefficients(degree) = complex_zero)
+      AND FORALL (k: nat):
+        degree < k IMPLIES coefficients(k) = complex_zero)
+
+  coefficient_is_one_or_minus_one(value: complex): bool =
+    value = complex_one OR value = complex_minus_one
+
+  has_one_or_minus_one_coefficients(
+      coefficients: coefficient_sequence,
+      degree: nat): bool =
+    FORALL (k: nat):
+      k <= degree IMPLIES
+        coefficient_is_one_or_minus_one(coefficients(k))
+
+  is_real_complex(z: complex): bool =
+    imag_part(z) = 0
+
+  all_roots_real(
+      coefficients: coefficient_sequence,
+      degree: nat): bool =
+    FORALL (z: complex):
+      polynomial_value(coefficients, z, degree + 1) = complex_zero
+        IMPLIES is_real_complex(z)
+
+  admissible_polynomial(
+      coefficients: coefficient_sequence,
+      degree: nat): bool =
+    1 <= degree
+      AND has_one_or_minus_one_coefficients(coefficients, degree)
+      AND all_roots_real(coefficients, degree)
+
+  x_minus_one(k: nat): complex =
+    IF k = 0 THEN complex_minus_one
+    ELSIF k = 1 THEN complex_one
+    ELSE complex_zero
+    ENDIF
+
+  x_plus_one(k: nat): complex =
+    IF k = 0 THEN complex_one
+    ELSIF k = 1 THEN complex_one
+    ELSE complex_zero
+    ENDIF
+
+  x_squared_plus_x_minus_one(k: nat): complex =
+    IF k = 0 THEN complex_minus_one
+    ELSIF k = 1 THEN complex_one
+    ELSIF k = 2 THEN complex_one
+    ELSE complex_zero
+    ENDIF
+
+  x_squared_minus_x_minus_one(k: nat): complex =
+    IF k = 0 THEN complex_minus_one
+    ELSIF k = 1 THEN complex_minus_one
+    ELSIF k = 2 THEN complex_one
+    ELSE complex_zero
+    ENDIF
+
+  x_cubed_plus_x_squared_minus_x_minus_one(k: nat): complex =
+    IF k = 0 THEN complex_minus_one
+    ELSIF k = 1 THEN complex_minus_one
+    ELSIF k = 2 THEN complex_one
+    ELSIF k = 3 THEN complex_one
+    ELSE complex_zero
+    ENDIF
+
+  x_cubed_minus_x_squared_minus_x_plus_one(k: nat): complex =
+    IF k = 0 THEN complex_one
+    ELSIF k = 1 THEN complex_minus_one
+    ELSIF k = 2 THEN complex_minus_one
+    ELSIF k = 3 THEN complex_one
+    ELSE complex_zero
+    ENDIF
+
+  negated_coefficients(
+      coefficients: coefficient_sequence): coefficient_sequence =
+    LAMBDA (k: nat): complex_neg(coefficients(k))
+
+  same_polynomial(
+      coefficients, target: coefficient_sequence,
+      degree, target_degree: nat): bool =
+    degree = target_degree
+      AND FORALL (k: nat): coefficients(k) = target(k)
+
+  putnam_1968_a6_solution(
+      coefficients: coefficient_sequence,
+      degree: nat): bool =
+    same_polynomial(coefficients, x_minus_one, degree, 1)
+      OR same_polynomial(
+        coefficients, negated_coefficients(x_minus_one), degree, 1)
+      OR same_polynomial(coefficients, x_plus_one, degree, 1)
+      OR same_polynomial(
+        coefficients, negated_coefficients(x_plus_one), degree, 1)
+      OR same_polynomial(
+        coefficients, x_squared_plus_x_minus_one, degree, 2)
+      OR same_polynomial(
+        coefficients,
+        negated_coefficients(x_squared_plus_x_minus_one),
+        degree,
+        2)
+      OR same_polynomial(
+        coefficients, x_squared_minus_x_minus_one, degree, 2)
+      OR same_polynomial(
+        coefficients,
+        negated_coefficients(x_squared_minus_x_minus_one),
+        degree,
+        2)
+      OR same_polynomial(
+        coefficients,
+        x_cubed_plus_x_squared_minus_x_minus_one,
+        degree,
+        3)
+      OR same_polynomial(
+        coefficients,
+        negated_coefficients(
+          x_cubed_plus_x_squared_minus_x_minus_one),
+        degree,
+        3)
+      OR same_polynomial(
+        coefficients,
+        x_cubed_minus_x_squared_minus_x_plus_one,
+        degree,
+        3)
+      OR same_polynomial(
+        coefficients,
+        negated_coefficients(
+          x_cubed_minus_x_squared_minus_x_plus_one),
+        degree,
+        3)
+
+  putnam_1968_a6: bool =
+    FORALL (coefficients: coefficient_sequence), (degree: nat):
+      canonical_polynomial(coefficients, degree)
+        IMPLIES
+          (admissible_polynomial(coefficients, degree)
+            IFF putnam_1968_a6_solution(coefficients, degree))
+END putnam_1968_a6

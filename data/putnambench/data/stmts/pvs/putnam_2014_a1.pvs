@@ -1,0 +1,151 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2014_a1:
+% every nonzero Taylor coefficient at zero of (1 - x + x^2) * exp(x) is
+% rational with reduced numerator equal to 1 or a prime. This file contains no proof.
+
+putnam_2014_a1: THEORY
+BEGIN
+  real_function: TYPE = [real -> real]
+  real_sequence: TYPE = [nat -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  nat_factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * nat_factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  exponential_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        exponential_partial(x, count - 1)
+          + safe_div(
+              x ^ index,
+              nat_factorial(index) :: real)
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  real_exponential(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat):
+            exponential_partial(x, count),
+          value))
+
+  has_derivative_at(
+      f: real_function,
+      derivative, x: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (delta: posreal):
+        FORALL (h: real):
+          (h /= 0 AND abs(h) < delta)
+            IMPLIES
+              abs(
+                f(x + h) - f(x)
+                  - derivative * h)
+                < epsilon_value * abs(h)
+
+  differentiable_at(f: real_function, x: real): bool =
+    EXISTS (derivative: real):
+      has_derivative_at(f, derivative, x)
+
+  derivative_value(f: real_function, x: real): real =
+    IF differentiable_at(f, x) THEN
+      epsilon(
+        LAMBDA (derivative: real):
+          has_derivative_at(f, derivative, x))
+    ELSE
+      0
+    ENDIF
+
+  derivative_function(f: real_function): real_function =
+    LAMBDA (x: real): derivative_value(f, x)
+
+  iterated_derivative(
+      f: real_function,
+      order: nat): RECURSIVE real_function =
+    IF order = 0 THEN
+      f
+    ELSE
+      derivative_function(
+        iterated_derivative(f, order - 1))
+    ENDIF
+  MEASURE order
+
+  continuous(f: real_function): bool =
+    FORALL (x: real), (epsilon_value: posreal):
+      EXISTS (delta: posreal):
+        FORALL (y: real):
+          abs(y - x) < delta IMPLIES
+            abs(f(y) - f(x)) < epsilon_value
+
+  infinitely_continuously_differentiable(
+      f: real_function): bool =
+    FORALL (order: nat):
+      continuous(iterated_derivative(f, order))
+        AND FORALL (x: real):
+          differentiable_at(
+            iterated_derivative(f, order), x)
+
+  taylor_coefficient(
+      f: real_function,
+      order: nat): real =
+    safe_div(
+      iterated_derivative(f, order)(0),
+      nat_factorial(order) :: real)
+
+  nat_divides(divisor: posnat, value: nat): bool =
+    EXISTS (quotient: nat):
+      value = divisor * quotient
+
+  coprime_nat(left, right: nat): bool =
+    FORALL (divisor: posnat):
+      nat_divides(divisor, left)
+        AND nat_divides(divisor, right)
+        IMPLIES divisor = 1
+
+  prime_nat(value: nat): bool =
+    value >= 2
+      AND FORALL (divisor: posnat):
+        nat_divides(divisor, value)
+          IMPLIES divisor = 1 OR divisor = value
+
+  has_prime_or_one_reduced_numerator(q: rat): bool =
+    EXISTS (numerator: nat), (denominator: posnat):
+      q = (numerator :: rat) / (denominator :: rat)
+        AND coprime_nat(numerator, denominator)
+        AND (numerator = 1 OR prime_nat(numerator))
+
+  putnam_2014_a1: bool =
+    FORALL (f: real_function), (coefficients: real_sequence):
+      ((FORALL (x: real):
+          f(x) =
+            (1 - x + x ^ 2) * real_exponential(x))
+        AND infinitely_continuously_differentiable(f)
+        AND (FORALL (order: nat):
+          coefficients(order) =
+            taylor_coefficient(f, order)))
+      IMPLIES
+        FORALL (order: nat):
+          coefficients(order) /= 0 IMPLIES
+            EXISTS (q: rat):
+              coefficients(order) = q
+                AND has_prime_or_one_reduced_numerator(q)
+END putnam_2014_a1

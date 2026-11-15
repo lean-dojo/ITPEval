@@ -1,0 +1,84 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1987_b4:
+% the real sequences beginning at (4/5, 3/5) and updated by rotation through
+% angle y(n) converge to -1 and 0, respectively. This file contains no proof.
+
+putnam_1987_b4: THEORY
+BEGIN
+  real_sequence: TYPE = [nat -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  sine_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        sine_partial(x, count - 1)
+          + safe_div(
+              ((-1 :: real) ^ index) * x ^ (2 * index + 1),
+              factorial(2 * index + 1) :: real)
+    ENDIF
+  MEASURE count
+
+  cosine_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        cosine_partial(x, count - 1)
+          + safe_div(
+              ((-1 :: real) ^ index) * x ^ (2 * index),
+              factorial(2 * index) :: real)
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  sine(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat): sine_partial(x, count),
+          value))
+
+  cosine(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat): cosine_partial(x, count),
+          value))
+
+  putnam_1987_b4: bool =
+    FORALL (x, y: real_sequence):
+      (x(1) = (4 :: real) / 5
+        AND y(1) = (3 :: real) / 5
+        AND (FORALL (n: nat):
+          n >= 1 IMPLIES
+            x(n + 1) =
+              x(n) * cosine(y(n)) - y(n) * sine(y(n)))
+        AND (FORALL (n: nat):
+          n >= 1 IMPLIES
+            y(n + 1) =
+              x(n) * sine(y(n)) + y(n) * cosine(y(n))))
+      IMPLIES
+        converges_to(x, -1)
+          AND converges_to(y, 0)
+END putnam_1987_b4

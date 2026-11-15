@@ -1,0 +1,109 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1985_b6:
+% a finite multiplicative group of positive-dimensional real square matrices
+% with zero total trace has zero matrix sum. This file contains no proof.
+
+putnam_1985_b6[n: posnat]: THEORY
+BEGIN
+  matrix: TYPE = [below(n), below(n) -> real]
+
+  IMPORTING finite_sets[matrix]
+
+  bounded_real_sum(
+      values: [below(n) -> real],
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      bounded_real_sum(values, count - 1)
+        + IF count <= n THEN
+            values(count - 1)
+          ELSE
+            0
+          ENDIF
+    ENDIF
+  MEASURE count
+
+  zero_matrix: matrix =
+    LAMBDA (row, column: below(n)): 0
+
+  identity_matrix: matrix =
+    LAMBDA (row, column: below(n)):
+      IF row = column THEN 1 ELSE 0 ENDIF
+
+  matrix_add(A, B: matrix): matrix =
+    LAMBDA (row, column: below(n)):
+      A(row, column) + B(row, column)
+
+  matrix_multiply(A, B: matrix): matrix =
+    LAMBDA (row, column: below(n)):
+      bounded_real_sum(
+        LAMBDA (index: below(n)):
+          A(row, index) * B(index, column),
+        n)
+
+  matrix_trace(A: matrix): real =
+    bounded_real_sum(
+      LAMBDA (index: below(n)): A(index, index),
+      n)
+
+  distinct_entries(values: list[matrix]): RECURSIVE bool =
+    CASES values OF
+      null: TRUE,
+      cons(value, tail):
+        NOT member(value, tail) AND distinct_entries(tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  enumerates_set(
+      values: list[matrix],
+      G: finite_set[matrix]): bool =
+    distinct_entries(values)
+      AND (FORALL (A: matrix):
+        G(A) IFF member(A, values))
+
+  matrix_list_sum(values: list[matrix]): RECURSIVE matrix =
+    CASES values OF
+      null: zero_matrix,
+      cons(value, tail):
+        matrix_add(value, matrix_list_sum(tail))
+    ENDCASES
+  MEASURE values BY <<
+
+  trace_list_sum(values: list[matrix]): RECURSIVE real =
+    CASES values OF
+      null: 0,
+      cons(value, tail):
+        matrix_trace(value) + trace_list_sum(tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  finite_matrix_sum(
+      G: finite_set[matrix],
+      total: matrix): bool =
+    EXISTS (values: list[matrix]):
+      enumerates_set(values, G)
+        AND matrix_list_sum(values) = total
+
+  finite_trace_sum(
+      G: finite_set[matrix],
+      total: real): bool =
+    EXISTS (values: list[matrix]):
+      enumerates_set(values, G)
+        AND trace_list_sum(values) = total
+
+  is_multiplicative_group(G: finite_set[matrix]): bool =
+    (FORALL (A, B: matrix):
+      G(A) AND G(B) IMPLIES G(matrix_multiply(A, B)))
+      AND G(identity_matrix)
+      AND (FORALL (A: matrix):
+        G(A) IMPLIES
+          EXISTS (B: matrix):
+            G(B)
+              AND matrix_multiply(A, B) = identity_matrix)
+
+  putnam_1985_b6: bool =
+    FORALL (G: finite_set[matrix]):
+      (is_multiplicative_group(G)
+        AND finite_trace_sum(G, 0))
+      IMPLIES finite_matrix_sum(G, zero_matrix)
+END putnam_1985_b6

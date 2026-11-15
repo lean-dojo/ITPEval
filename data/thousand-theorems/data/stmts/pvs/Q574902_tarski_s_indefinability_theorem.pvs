@@ -1,0 +1,265 @@
+% Statement-only formalization of the Thousand Theorems corpus artifact Q574902,
+% "Tarski's indefinability theorem": no unary first-order arithmetic formula
+% defines truth for every closed arithmetic sentence in the standard
+% natural-number model. This file contains no proof.
+
+q574902_arithmetic_term: DATATYPE
+BEGIN
+  q574902_variable(variable_index: nat): q574902_variable?
+  q574902_zero: q574902_zero?
+  q574902_one: q574902_one?
+  q574902_add(add_left, add_right: q574902_arithmetic_term): q574902_add?
+  q574902_multiply(
+      multiply_left,
+      multiply_right: q574902_arithmetic_term): q574902_multiply?
+END q574902_arithmetic_term
+
+q574902_arithmetic_formula: DATATYPE
+BEGIN
+  IMPORTING q574902_arithmetic_term
+  q574902_false: q574902_false?
+  q574902_equal(
+      equal_left,
+      equal_right: q574902_arithmetic_term): q574902_equal?
+  q574902_less(
+      less_left,
+      less_right: q574902_arithmetic_term): q574902_less?
+  q574902_implies(
+      implication_left,
+      implication_right: q574902_arithmetic_formula): q574902_implies?
+  q574902_forall(
+      universal_body: q574902_arithmetic_formula): q574902_forall?
+END q574902_arithmetic_formula
+
+Q574902_tarski_s_indefinability_theorem: THEORY
+BEGIN
+  IMPORTING q574902_arithmetic_term, q574902_arithmetic_formula
+
+  term: TYPE = q574902_arithmetic_term
+  arith_formula: TYPE = q574902_arithmetic_formula
+
+  term_bounded(bound: nat, t: term): RECURSIVE bool =
+    CASES t OF
+      q574902_variable(index):
+        index < bound,
+      q574902_zero:
+        TRUE,
+      q574902_one:
+        TRUE,
+      q574902_add(left, right):
+        term_bounded(bound, left)
+          AND term_bounded(bound, right),
+      q574902_multiply(left, right):
+        term_bounded(bound, left)
+          AND term_bounded(bound, right)
+    ENDCASES
+  MEASURE t BY <<
+
+  formula_bounded(bound: nat, phi: arith_formula): RECURSIVE bool =
+    CASES phi OF
+      q574902_false:
+        TRUE,
+      q574902_equal(left, right):
+        term_bounded(bound, left)
+          AND term_bounded(bound, right),
+      q574902_less(left, right):
+        term_bounded(bound, left)
+          AND term_bounded(bound, right),
+      q574902_implies(left, right):
+        formula_bounded(bound, left)
+          AND formula_bounded(bound, right),
+      q574902_forall(body):
+        formula_bounded(bound + 1, body)
+    ENDCASES
+  MEASURE phi BY <<
+
+  unary_formula: TYPE =
+    {phi: arith_formula | formula_bounded(1, phi)}
+
+  sentence: TYPE =
+    {phi: arith_formula | formula_bounded(0, phi)}
+
+  lift_term_at(
+      t: term,
+      amount: nat,
+      cutoff: nat): RECURSIVE term =
+    CASES t OF
+      q574902_variable(index):
+        q574902_variable(
+          IF cutoff <= index THEN index + amount ELSE index ENDIF),
+      q574902_zero:
+        q574902_zero,
+      q574902_one:
+        q574902_one,
+      q574902_add(left, right):
+        q574902_add(
+          lift_term_at(left, amount, cutoff),
+          lift_term_at(right, amount, cutoff)),
+      q574902_multiply(left, right):
+        q574902_multiply(
+          lift_term_at(left, amount, cutoff),
+          lift_term_at(right, amount, cutoff))
+    ENDCASES
+  MEASURE t BY <<
+
+  substitute_term(
+      t: term,
+      replacement: term,
+      index: nat): RECURSIVE term =
+    CASES t OF
+      q574902_variable(variable_index):
+        IF variable_index < index THEN
+          q574902_variable(variable_index)
+        ELSIF variable_index = index THEN
+          lift_term_at(replacement, index, 0)
+        ELSE
+          q574902_variable(variable_index - 1)
+        ENDIF,
+      q574902_zero:
+        q574902_zero,
+      q574902_one:
+        q574902_one,
+      q574902_add(left, right):
+        q574902_add(
+          substitute_term(left, replacement, index),
+          substitute_term(right, replacement, index)),
+      q574902_multiply(left, right):
+        q574902_multiply(
+          substitute_term(left, replacement, index),
+          substitute_term(right, replacement, index))
+    ENDCASES
+  MEASURE t BY <<
+
+  substitute_formula(
+      phi: arith_formula,
+      replacement: term,
+      index: nat): RECURSIVE arith_formula =
+    CASES phi OF
+      q574902_false:
+        q574902_false,
+      q574902_equal(left, right):
+        q574902_equal(
+          substitute_term(left, replacement, index),
+          substitute_term(right, replacement, index)),
+      q574902_less(left, right):
+        q574902_less(
+          substitute_term(left, replacement, index),
+          substitute_term(right, replacement, index)),
+      q574902_implies(left, right):
+        q574902_implies(
+          substitute_formula(left, replacement, index),
+          substitute_formula(right, replacement, index)),
+      q574902_forall(body):
+        q574902_forall(
+          substitute_formula(body, replacement, index + 1))
+    ENDCASES
+  MEASURE phi BY <<
+
+  numeral(value: nat): RECURSIVE term =
+    IF value = 0 THEN
+      q574902_zero
+    ELSE
+      q574902_add(q574902_one, numeral(value - 1))
+    ENDIF
+  MEASURE value
+
+  natural_pair(left, right: nat): nat =
+    IF left < right THEN
+      right * right + left
+    ELSE
+      left * left + left + right
+    ENDIF
+
+  term_code(t: term): RECURSIVE nat =
+    CASES t OF
+      q574902_variable(index):
+        5 * index,
+      q574902_zero:
+        1,
+      q574902_one:
+        2,
+      q574902_add(left, right):
+        5 * natural_pair(term_code(left), term_code(right)) + 3,
+      q574902_multiply(left, right):
+        5 * natural_pair(term_code(left), term_code(right)) + 4
+    ENDCASES
+  MEASURE t BY <<
+
+  formula_code(phi: arith_formula): RECURSIVE nat =
+    CASES phi OF
+      q574902_false:
+        0,
+      q574902_equal(left, right):
+        5 * natural_pair(term_code(left), term_code(right)) + 1,
+      q574902_less(left, right):
+        5 * natural_pair(term_code(left), term_code(right)) + 2,
+      q574902_implies(left, right):
+        5 * natural_pair(formula_code(left), formula_code(right)) + 3,
+      q574902_forall(body):
+        5 * formula_code(body) + 4
+    ENDCASES
+  MEASURE phi BY <<
+
+  evaluate_term(
+      t: term,
+      assignment: [nat -> nat]): RECURSIVE nat =
+    CASES t OF
+      q574902_variable(index):
+        assignment(index),
+      q574902_zero:
+        0,
+      q574902_one:
+        1,
+      q574902_add(left, right):
+        evaluate_term(left, assignment)
+          + evaluate_term(right, assignment),
+      q574902_multiply(left, right):
+        evaluate_term(left, assignment)
+          * evaluate_term(right, assignment)
+    ENDCASES
+  MEASURE t BY <<
+
+  standard_holds(
+      phi: arith_formula,
+      assignment: [nat -> nat]): RECURSIVE bool =
+    CASES phi OF
+      q574902_false:
+        FALSE,
+      q574902_equal(left, right):
+        evaluate_term(left, assignment)
+          = evaluate_term(right, assignment),
+      q574902_less(left, right):
+        evaluate_term(left, assignment)
+          < evaluate_term(right, assignment),
+      q574902_implies(left, right):
+        standard_holds(left, assignment)
+          IMPLIES standard_holds(right, assignment),
+      q574902_forall(body):
+        FORALL (value: nat):
+          standard_holds(
+            body,
+            LAMBDA (other_index: nat):
+              IF other_index = 0 THEN
+                value
+              ELSE
+                assignment(other_index - 1)
+              ENDIF)
+    ENDCASES
+  MEASURE phi BY <<
+
+  standard_true(phi: arith_formula): bool =
+    standard_holds(
+      phi,
+      LAMBDA (index: nat): 0)
+
+  tarski_undefinability_of_truth: bool =
+    NOT EXISTS (tau: unary_formula):
+      FORALL (sigma: sentence):
+        standard_true(sigma)
+          IFF
+        standard_true(
+          substitute_formula(
+            tau,
+            numeral(formula_code(sigma)),
+            0))
+END Q574902_tarski_s_indefinability_theorem

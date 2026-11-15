@@ -1,0 +1,251 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/imp/imp_SymbolicInterpreter_symbolic_interp_exprqtvc: the
+% symbolic-expression interpreter verification condition for integer
+% literals, variables, and subtraction, including symbolic-variable support
+% and propagation of unbound-variable behavior. This file contains no proof.
+
+imp_SymbolicInterpreter_symbolic_interp_exprqtvc[
+  program_var: TYPE+,
+  svar: TYPE+
+]: THEORY
+BEGIN
+
+  IMPORTING finite_sets[svar]
+
+  int_option: DATATYPE
+  BEGIN
+    NoInt: NoInt?
+    SomeInt(int_value: int): SomeInt?
+  END int_option
+
+  svar_option: DATATYPE
+  BEGIN
+    NoSvar: NoSvar?
+    SomeSvar(svar_value: svar): SomeSvar?
+  END svar_option
+
+  expr: DATATYPE
+  BEGIN
+    Elit(literal_value: int): Elit?
+    Evar(variable_value: program_var): Evar?
+    Esub(left_expression, right_expression: expr): Esub?
+  END expr
+
+  expr_behaviour: DATATYPE
+  BEGIN
+    Enormal(normal_value: int): Enormal?
+    Eunbound_var: Eunbound_var?
+  END expr_behaviour
+
+  environment: TYPE = [program_var -> int_option]
+
+  eval_expr(
+      env: environment,
+      expression: expr): RECURSIVE expr_behaviour =
+    CASES expression OF
+      Elit(n):
+        Enormal(n),
+      Evar(x):
+        CASES env(x) OF
+          NoInt:
+            Eunbound_var,
+          SomeInt(n):
+            Enormal(n)
+        ENDCASES,
+      Esub(e1, e2):
+        CASES eval_expr(env, e1) OF
+          Eunbound_var:
+            Eunbound_var,
+          Enormal(n1):
+            CASES eval_expr(env, e2) OF
+              Eunbound_var:
+                Eunbound_var,
+              Enormal(n2):
+                Enormal(n1 - n2)
+            ENDCASES
+        ENDCASES
+    ENDCASES
+  MEASURE expression BY <<
+
+  symbolic_expr: DATATYPE
+  BEGIN
+    Slit(symbolic_literal: int): Slit?
+    Svar(symbolic_variable: svar): Svar?
+    Ssub(
+      left_symbolic_expression,
+      right_symbolic_expression: symbolic_expr): Ssub?
+  END symbolic_expr
+
+  constraint_value: DATATYPE
+  BEGIN
+    Ctrue: Ctrue?
+    Cfalse: Cfalse?
+    Ceq(left_equal, right_equal: symbolic_expr): Ceq?
+    Cneq(left_unequal, right_unequal: symbolic_expr): Cneq?
+    Cconj(left_constraint, right_constraint: constraint_value): Cconj?
+    Cexists(bound_variable: svar, existential_body: constraint_value):
+      Cexists?
+  END constraint_value
+
+  interp_symbolic_expr(
+      rho: [svar -> int],
+      expression: symbolic_expr): RECURSIVE int =
+    CASES expression OF
+      Slit(n):
+        n,
+      Svar(variable):
+        rho(variable),
+      Ssub(e1, e2):
+        interp_symbolic_expr(rho, e1)
+          - interp_symbolic_expr(rho, e2)
+    ENDCASES
+  MEASURE expression BY <<
+
+  vars_in_symbolic_expr(
+      expression: symbolic_expr): RECURSIVE finite_set[svar] =
+    CASES expression OF
+      Slit(n):
+        emptyset[svar],
+      Svar(variable):
+        add(variable, emptyset[svar]),
+      Ssub(e1, e2):
+        union(
+          vars_in_symbolic_expr(e1),
+          vars_in_symbolic_expr(e2))
+    ENDCASES
+  MEASURE expression BY <<
+
+  vars_in_constraint(
+      constraint: constraint_value): RECURSIVE finite_set[svar] =
+    CASES constraint OF
+      Ctrue:
+        emptyset[svar],
+      Cfalse:
+        emptyset[svar],
+      Ceq(e1, e2):
+        union(
+          vars_in_symbolic_expr(e1),
+          vars_in_symbolic_expr(e2)),
+      Cneq(e1, e2):
+        union(
+          vars_in_symbolic_expr(e1),
+          vars_in_symbolic_expr(e2)),
+      Cconj(c1, c2):
+        union(vars_in_constraint(c1), vars_in_constraint(c2)),
+      Cexists(variable, body):
+        add(variable, vars_in_constraint(body))
+    ENDCASES
+  MEASURE constraint BY <<
+
+  raw_sym_state: TYPE =
+    [# state_sigma: [program_var -> svar_option],
+       state_constraint: constraint_value,
+       state_rho: [svar -> int],
+       state_vars: finite_set[svar] #]
+
+  state_invariant(state: raw_sym_state): bool =
+    subset?(
+      vars_in_constraint(state_constraint(state)),
+      state_vars(state))
+      AND
+    (FORALL (x: program_var), (variable: svar):
+      state_sigma(state)(x) = SomeSvar(variable)
+        IMPLIES state_vars(state)(variable))
+
+  sym_state: TYPE =
+    {state: raw_sym_state | state_invariant(state)}
+
+  compose(
+      rho: [svar -> int],
+      sigma: [program_var -> svar_option]): environment =
+    LAMBDA (x: program_var):
+      CASES sigma(x) OF
+        NoSvar:
+          NoInt,
+        SomeSvar(variable):
+          SomeInt(rho(variable))
+      ENDCASES
+
+  supported_variables(
+      state: sym_state,
+      result: symbolic_expr): bool =
+    FORALL (variable: svar):
+      vars_in_symbolic_expr(result)(variable)
+        IMPLIES
+      (EXISTS (x: program_var):
+        state_sigma(state)(x) = SomeSvar(variable))
+
+  symbolic_result(
+      state: sym_state,
+      expression: expr,
+      result: symbolic_expr): bool =
+    eval_expr(
+      compose(state_rho(state), state_sigma(state)),
+      expression)
+      = Enormal(
+          interp_symbolic_expr(state_rho(state), result))
+      AND supported_variables(state, result)
+
+  sub_component_matches(
+      expression, component: expr): bool =
+    CASES expression OF
+      Elit(n):
+        FALSE,
+      Evar(x):
+        FALSE,
+      Esub(first, second):
+        first = component OR second = component
+    ENDCASES
+
+  symbolic_interp_expr_vc: bool =
+    FORALL (expression: expr), (state: sym_state):
+      CASES expression OF
+        Elit(n):
+          symbolic_result(state, expression, Slit(n)),
+        Evar(x):
+          (FORALL (variable: svar):
+            state_sigma(state)(x) = SomeSvar(variable)
+              IMPLIES
+            symbolic_result(
+              state, expression, Svar(variable)))
+            AND
+          (state_sigma(state)(x) = NoSvar
+            IMPLIES
+          eval_expr(
+            compose(state_rho(state), state_sigma(state)),
+            expression)
+            = Eunbound_var),
+        Esub(e1, e2):
+          sub_component_matches(expression, e2)
+            AND
+          (FORALL (result2: symbolic_expr):
+            symbolic_result(state, e2, result2)
+              IMPLIES
+            sub_component_matches(expression, e1)
+              AND
+            (FORALL (result1: symbolic_expr):
+              symbolic_result(state, e1, result1)
+                IMPLIES
+              symbolic_result(
+                state,
+                expression,
+                Ssub(result1, result2)))
+              AND
+            (eval_expr(
+              compose(state_rho(state), state_sigma(state)),
+              e1) = Eunbound_var
+                IMPLIES
+              eval_expr(
+                compose(state_rho(state), state_sigma(state)),
+                expression) = Eunbound_var))
+            AND
+          (eval_expr(
+            compose(state_rho(state), state_sigma(state)),
+            e2) = Eunbound_var
+              IMPLIES
+            eval_expr(
+              compose(state_rho(state), state_sigma(state)),
+              expression) = Eunbound_var)
+      ENDCASES
+
+END imp_SymbolicInterpreter_symbolic_interp_exprqtvc

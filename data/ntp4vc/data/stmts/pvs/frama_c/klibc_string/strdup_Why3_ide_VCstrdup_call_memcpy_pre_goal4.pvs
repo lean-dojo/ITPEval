@@ -1,0 +1,94 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% frama_c/klibc_string/strdup_Why3_ide_VCstrdup_call_memcpy_pre_goal4:
+% a strdup verification condition requiring separation of the source and
+% destination intervals for the memcpy call. This file contains no proof.
+
+strdup_Why3_ide_VCstrdup_call_memcpy_pre_goal4: THEORY
+BEGIN
+  addr: TYPE = [# base: int, offset: int #]
+  integer_memory: TYPE = [addr -> int]
+  allocation_table: TYPE = [int -> int]
+  integer_conversion: TYPE = [int -> int]
+  string_length_function: TYPE = [integer_memory, addr -> int]
+
+  shift(p: addr, k: int): addr =
+    (# base := base(p), offset := offset(p) + k #)
+
+  valid_rw(malloc: allocation_table, p: addr, size: int): bool =
+    0 < size IMPLIES
+      0 < base(p)
+        AND 0 <= offset(p)
+        AND offset(p) + size <= malloc(base(p))
+
+  separated(p: addr, p_size: int, q: addr, q_size: int): bool =
+    p_size <= 0
+      OR q_size <= 0
+      OR base(p) /= base(q)
+      OR offset(q) + q_size <= offset(p)
+      OR offset(p) + p_size <= offset(q)
+
+  is_uint32(value: int): bool =
+    0 <= value AND value < 4294967296
+
+  is_sint32(value: int): bool =
+    -2147483648 <= value AND value < 2147483648
+
+  p_length_of_str_is(
+      malloc: allocation_table,
+      mchar: integer_memory,
+      s: addr,
+      n: int): bool =
+    mchar(shift(s, n)) = 0
+      AND 0 <= n
+      AND valid_rw(malloc, shift(s, 0), 1 + n)
+      AND (FORALL (j: int):
+        0 <= j IMPLIES
+        j < n IMPLIES
+        mchar(shift(s, j)) /= 0)
+
+  uint32_conversion_axioms(to_uint32: integer_conversion): bool =
+    (FORALL (value: int): is_uint32(to_uint32(value)))
+      AND
+    (FORALL (value: int):
+      is_uint32(value) IMPLIES to_uint32(value) = value)
+
+  string_length_axiom(l_length: string_length_function): bool =
+    FORALL
+      (malloc: allocation_table),
+      (mchar: integer_memory),
+      (s: addr),
+      (n: int):
+      p_length_of_str_is(malloc, mchar, s, n) IMPLIES
+        l_length(mchar, s) = n
+
+  goal4: bool =
+    FORALL
+      (region: [int -> int]),
+      (linked: [allocation_table -> bool]),
+      (sconst: [integer_memory -> bool]),
+      (to_uint32: integer_conversion),
+      (l_length: string_length_function),
+      (t_1: integer_memory),
+      (a, a_1: addr),
+      (t: allocation_table),
+      (i, i_1, i_2: int):
+      uint32_conversion_axioms(to_uint32) IMPLIES
+      string_length_axiom(l_length) IMPLIES
+      LET x: int = l_length(t_1, a),
+          x_1: int = 1 + x,
+          x_2: int = to_uint32(x_1),
+          a_2: addr = shift(a_1, 0)
+      IN
+        (# base := 0, offset := 0 #) /= a_1 IMPLIES
+        x_2 /= 0 IMPLIES
+        region(base(a)) <= 0 IMPLIES
+        linked(t) IMPLIES
+        sconst(t_1) IMPLIES
+        is_sint32(x) IMPLIES
+        p_length_of_str_is(t, t_1, a, i) IMPLIES
+        p_length_of_str_is(t, t_1, a, i_1) IMPLIES
+        p_length_of_str_is(t, t_1, a, i_2) IMPLIES
+        is_sint32(x_1) IMPLIES
+        (0 < x_2 IMPLIES valid_rw(t, a_2, x_2)) IMPLIES
+        separated(shift(a, 0), x_2, a_2, x_2)
+END strdup_Why3_ide_VCstrdup_call_memcpy_pre_goal4

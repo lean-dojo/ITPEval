@@ -1,0 +1,243 @@
+% Statement-only formalization of the Thousand Theorems corpus artifact Q537618,
+% "Banach–Alaoglu theorem": the polar of a neighborhood of zero in a
+% seminormed vector space is compact in the weak-star topology of its
+% continuous dual when the scalar field is proper. This file contains no proof.
+
+banach_alaoglu_theorem_Q537618[
+  K: TYPE+,
+  E: TYPE+,
+  zeroK: K,
+  oneK: K,
+  addK: [K, K -> K],
+  mulK: [K, K -> K],
+  negK: [K -> K],
+  invK: [K -> K],
+  normK: [K -> real],
+  zeroE: E,
+  addE: [E, E -> E],
+  negE: [E -> E],
+  smulE: [K, E -> E],
+  normE: [E -> real]
+]: THEORY
+BEGIN
+  point_set: TYPE = [E -> bool]
+  scalar_set: TYPE = [K -> bool]
+  scalar_set_family: TYPE = [scalar_set -> bool]
+  scalar_set_sequence: TYPE = [nat -> scalar_set]
+  dual_point: TYPE = [E -> K]
+  dual_set: TYPE = [dual_point -> bool]
+  dual_set_family: TYPE = [dual_set -> bool]
+  dual_set_sequence: TYPE = [nat -> dual_set]
+  point_sequence: TYPE = [nat -> E]
+  radius_sequence: TYPE = [nat -> real]
+
+  subK(a, b: K): K =
+    addK(a, negK(b))
+
+  subE(x, y: E): E =
+    addE(x, negE(y))
+
+  nontrivially_normed_field: bool =
+    (FORALL (a, b: K):
+      addK(a, b) = addK(b, a))
+      AND (FORALL (a, b, c: K):
+        addK(addK(a, b), c) = addK(a, addK(b, c)))
+      AND (FORALL (a: K):
+        addK(a, zeroK) = a)
+      AND (FORALL (a: K):
+        addK(a, negK(a)) = zeroK)
+      AND (FORALL (a, b: K):
+        mulK(a, b) = mulK(b, a))
+      AND (FORALL (a, b, c: K):
+        mulK(mulK(a, b), c) = mulK(a, mulK(b, c)))
+      AND (FORALL (a: K):
+        mulK(a, oneK) = a)
+      AND zeroK /= oneK
+      AND (FORALL (a, b, c: K):
+        mulK(a, addK(b, c)) =
+          addK(mulK(a, b), mulK(a, c)))
+      AND invK(zeroK) = zeroK
+      AND (FORALL (a: K):
+        a /= zeroK IMPLIES
+          mulK(a, invK(a)) = oneK)
+      AND normK(zeroK) = 0
+      AND normK(oneK) = 1
+      AND (FORALL (a: K):
+        0 <= normK(a))
+      AND (FORALL (a: K):
+        normK(a) = 0 IFF a = zeroK)
+      AND (FORALL (a: K):
+        normK(negK(a)) = normK(a))
+      AND (FORALL (a, b: K):
+        normK(addK(a, b)) <= normK(a) + normK(b))
+      AND (FORALL (a, b: K):
+        normK(mulK(a, b)) = normK(a) * normK(b))
+      AND (EXISTS (a: K):
+        1 < normK(a))
+
+  seminormed_space: bool =
+    (FORALL (x, y: E):
+      addE(x, y) = addE(y, x))
+      AND (FORALL (x, y, z: E):
+        addE(addE(x, y), z) = addE(x, addE(y, z)))
+      AND (FORALL (x: E):
+        addE(x, zeroE) = x)
+      AND (FORALL (x: E):
+        addE(x, negE(x)) = zeroE)
+      AND normE(zeroE) = 0
+      AND (FORALL (x: E):
+        0 <= normE(x))
+      AND (FORALL (x: E):
+        normE(negE(x)) = normE(x))
+      AND (FORALL (x, y: E):
+        normE(addE(x, y)) <= normE(x) + normE(y))
+      AND (FORALL (a: K), (x, y: E):
+        smulE(a, addE(x, y)) =
+          addE(smulE(a, x), smulE(a, y)))
+      AND (FORALL (a, b: K), (x: E):
+        smulE(addK(a, b), x) =
+          addE(smulE(a, x), smulE(b, x)))
+      AND (FORALL (a, b: K), (x: E):
+        smulE(mulK(a, b), x) =
+          smulE(a, smulE(b, x)))
+      AND (FORALL (x: E):
+        smulE(oneK, x) = x)
+      AND (FORALL (x: E):
+        smulE(zeroK, x) = zeroE)
+      AND (FORALL (a: K):
+        smulE(a, zeroE) = zeroE)
+      AND (FORALL (a: K), (x: E):
+        normE(smulE(a, x)) = normK(a) * normE(x))
+
+  scalar_open(U: scalar_set): bool =
+    FORALL (a: K):
+      U(a) IMPLIES
+        EXISTS (radius: real):
+          0 < radius
+            AND FORALL (b: K):
+              normK(subK(b, a)) < radius IMPLIES U(b)
+
+  scalar_open_cover(
+      cover: scalar_set_family,
+      S: scalar_set): bool =
+    (FORALL (U: scalar_set):
+      cover(U) IMPLIES scalar_open(U))
+      AND (FORALL (a: K):
+        S(a) IMPLIES
+          EXISTS (U: scalar_set):
+            cover(U) AND U(a))
+
+  scalar_finite_subcover(
+      cover: scalar_set_family,
+      S: scalar_set): bool =
+    EXISTS
+        (count: nat),
+        (chosen: scalar_set_sequence):
+      (FORALL (index: nat):
+        index < count IMPLIES cover(chosen(index)))
+        AND (FORALL (a: K):
+          S(a) IMPLIES
+            EXISTS (index: nat):
+              index < count AND chosen(index)(a))
+
+  scalar_compact(S: scalar_set): bool =
+    FORALL (cover: scalar_set_family):
+      scalar_open_cover(cover, S) IMPLIES
+        scalar_finite_subcover(cover, S)
+
+  scalar_closed_ball(center: K, radius: real): scalar_set =
+    LAMBDA (a: K):
+      normK(subK(a, center)) <= radius
+
+  proper_scalar_space: bool =
+    FORALL (center: K), (radius: real):
+      scalar_compact(scalar_closed_ball(center, radius))
+
+  continuous_linear_functional(f: dual_point): bool =
+    (FORALL (x, y: E):
+      f(addE(x, y)) = addK(f(x), f(y)))
+      AND (FORALL (a: K), (x: E):
+        f(smulE(a, x)) = mulK(a, f(x)))
+      AND (FORALL (x: E), (epsilon_value: real):
+        0 < epsilon_value IMPLIES
+          EXISTS (delta: real):
+            0 < delta
+              AND FORALL (y: E):
+                normE(subE(y, x)) < delta IMPLIES
+                  normK(subK(f(y), f(x))) < epsilon_value)
+
+  dual_carrier_set(S: dual_set): bool =
+    FORALL (f: dual_point):
+      S(f) IMPLIES continuous_linear_functional(f)
+
+  weak_star_open(U: dual_set): bool =
+    dual_carrier_set(U)
+      AND FORALL (f: dual_point):
+        continuous_linear_functional(f) AND U(f) IMPLIES
+          EXISTS
+              (count: nat),
+              (points: point_sequence),
+              (radii: radius_sequence):
+            (FORALL (index: nat):
+              index < count IMPLIES 0 < radii(index))
+              AND (FORALL (g: dual_point):
+                continuous_linear_functional(g)
+                  AND (FORALL (index: nat):
+                    index < count IMPLIES
+                      normK(
+                        subK(
+                          g(points(index)),
+                          f(points(index))))
+                        < radii(index))
+                IMPLIES U(g))
+
+  dual_open_cover(
+      cover: dual_set_family,
+      S: dual_set): bool =
+    (FORALL (U: dual_set):
+      cover(U) IMPLIES weak_star_open(U))
+      AND (FORALL (f: dual_point):
+        S(f) IMPLIES
+          EXISTS (U: dual_set):
+            cover(U) AND U(f))
+
+  dual_finite_subcover(
+      cover: dual_set_family,
+      S: dual_set): bool =
+    EXISTS
+        (count: nat),
+        (chosen: dual_set_sequence):
+      (FORALL (index: nat):
+        index < count IMPLIES cover(chosen(index)))
+        AND (FORALL (f: dual_point):
+          S(f) IMPLIES
+            EXISTS (index: nat):
+              index < count AND chosen(index)(f))
+
+  weak_star_compact(S: dual_set): bool =
+    dual_carrier_set(S)
+      AND FORALL (cover: dual_set_family):
+        dual_open_cover(cover, S) IMPLIES
+          dual_finite_subcover(cover, S)
+
+  neighborhood_of_zero(S: point_set): bool =
+    EXISTS (radius: real):
+      0 < radius
+        AND FORALL (x: E):
+          normE(x) < radius IMPLIES S(x)
+
+  polar(S: point_set): dual_set =
+    LAMBDA (f: dual_point):
+      continuous_linear_functional(f)
+        AND FORALL (x: E):
+          S(x) IMPLIES normK(f(x)) <= 1
+
+  banach_alaoglu_theorem: bool =
+    (nontrivially_normed_field
+      AND seminormed_space
+      AND proper_scalar_space)
+    IMPLIES
+      FORALL (S: point_set):
+        neighborhood_of_zero(S) IMPLIES
+          weak_star_compact(polar(S))
+END banach_alaoglu_theorem_Q537618

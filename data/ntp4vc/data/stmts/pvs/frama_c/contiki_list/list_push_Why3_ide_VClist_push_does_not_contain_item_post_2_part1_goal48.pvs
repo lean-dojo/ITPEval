@@ -1,0 +1,472 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% frama_c/contiki_list/list_push_Why3_ide_VClist_push_does_not_contain_item_post_2_part1_goal48:
+% preservation of the rightward array-swipe relation after inserting an item
+% absent from the relevant list range, under memory validity, linkedness,
+% unchanged-memory, uniqueness, and separation assumptions. This file contains
+% no proof.
+
+list_push_Why3_ide_VClist_push_does_not_contain_item_post_2_part1_goal48[
+  region: [int -> int],
+  linked: [[int -> int] -> bool]
+]: THEORY
+BEGIN
+  addr: TYPE = [# base: int, offset: int #]
+  pointer_memory: TYPE = [addr -> addr]
+  real_memory: TYPE = [addr -> real]
+  allocation_table: TYPE = [int -> int]
+  index_function: TYPE =
+    [pointer_memory, addr, addr, int, int -> int]
+
+  s1_list: TYPE =
+    [# list_next: addr,
+       list_x: real,
+       list_y: real,
+       list_z: real #]
+
+  shift(p: addr, k: int): addr =
+    (# base := base(p), offset := offset(p) + k #)
+
+  separated(p: addr, p_size: int, q: addr, q_size: int): bool =
+    p_size <= 0
+      OR q_size <= 0
+      OR base(p) /= base(q)
+      OR offset(q) + q_size <= offset(p)
+      OR offset(p) + p_size <= offset(q)
+
+  havoc(
+      old_memory, outside_memory: pointer_memory,
+      start: addr,
+      size: int): pointer_memory =
+    LAMBDA (q: addr):
+      IF separated(q, 1, start, size) THEN
+        outside_memory(q)
+      ELSE
+        old_memory(q)
+      ENDIF
+
+  valid_rw(malloc: allocation_table, p: addr, size: int): bool =
+    0 < size IMPLIES
+      0 < base(p)
+        AND 0 <= offset(p)
+        AND offset(p) + size <= malloc(base(p))
+
+  framed(memory: pointer_memory): bool =
+    FORALL (p: addr): region(base(memory(p))) <= 0
+
+  is_sint32(value: int): bool =
+    -2147483648 <= value AND value < 2147483648
+
+  load_s1_list(
+      p: addr,
+      float_memory: real_memory,
+      ptr_memory: pointer_memory): s1_list =
+    (# list_next := ptr_memory(shift(p, 0)),
+       list_x := float_memory(shift(p, 1)),
+       list_y := float_memory(shift(p, 2)),
+       list_z := float_memory(shift(p, 3)) #)
+
+  eqs1_list(left, right: s1_list): bool =
+    list_next(right) = list_next(left)
+      AND list_x(right) = list_x(left)
+      AND list_y(right) = list_y(left)
+      AND list_z(right) = list_z(left)
+
+  index_axioms(l_index_of: index_function): bool =
+    (FORALL (up_0, down_0: int),
+            (mptr_0: pointer_memory),
+            (item_0, array_0: addr):
+       (up_0 <= down_0 AND 0 <= up_0)
+         IMPLIES
+           l_index_of(mptr_0, item_0, array_0, down_0, up_0) = up_0)
+      AND
+    (FORALL (down_0, up_0: int),
+            (mptr_0: pointer_memory),
+            (array_0, item_0: addr):
+       (mptr_0(shift(array_0, down_0)) = item_0
+         AND 0 <= down_0
+         AND down_0 < up_0)
+         IMPLIES
+           l_index_of(mptr_0, item_0, array_0, down_0, up_0) = down_0)
+      AND
+    (FORALL (down_0, up_0: int),
+            (mptr_0: pointer_memory),
+            (array_0, item_0: addr):
+       (mptr_0(shift(array_0, down_0)) /= item_0
+         AND 0 <= down_0
+         AND down_0 < up_0)
+         IMPLIES
+           l_index_of(mptr_0, item_0, array_0, 1 + down_0, up_0)
+             = l_index_of(mptr_0, item_0, array_0, down_0, up_0))
+
+  linked_candidate: TYPE =
+    [[int -> int], pointer_memory, addr, addr, int, int, addr -> bool]
+
+  p_linked_n(
+      malloc: allocation_table,
+      ptr_memory: pointer_memory,
+      root, array_base: addr,
+      index, count: int,
+      bound: addr): bool =
+    FORALL (candidate: linked_candidate):
+      ((FORALL (base_index: int),
+               (candidate_malloc: allocation_table),
+               (candidate_memory: pointer_memory),
+               (candidate_bound, candidate_array: addr):
+          (0 <= base_index AND base_index <= 2147483646)
+            IMPLIES
+              candidate(
+                candidate_malloc,
+                candidate_memory,
+                candidate_bound,
+                candidate_array,
+                base_index,
+                0,
+                candidate_bound))
+        AND
+        (FORALL (base_index, positive_count: int),
+                (candidate_memory: pointer_memory),
+                (candidate_array, candidate_root: addr),
+                (candidate_malloc: allocation_table),
+                (candidate_bound: addr):
+          (candidate_memory(shift(candidate_array, base_index))
+              = candidate_root
+            AND 0 < positive_count
+            AND 0 <= base_index
+            AND 0 <= base_index + positive_count
+            AND base_index + positive_count <= 2147483646
+            AND valid_rw(candidate_malloc, candidate_root, 4)
+            AND candidate(
+              candidate_malloc,
+              candidate_memory,
+              candidate_memory(shift(candidate_root, 0)),
+              candidate_array,
+              1 + base_index,
+              positive_count - 1,
+              candidate_bound))
+          IMPLIES
+            candidate(
+              candidate_malloc,
+              candidate_memory,
+              candidate_root,
+              candidate_array,
+              base_index,
+              positive_count,
+              candidate_bound)))
+      IMPLIES
+        candidate(malloc, ptr_memory, root, array_base, index, count, bound)
+
+  p_array_swipe_right(
+      left_memory, right_memory: pointer_memory,
+      array_base: addr,
+      lower, upper: int): bool =
+    FORALL (position: int):
+      lower <= position IMPLIES
+        position < upper IMPLIES
+          right_memory(shift(array_base, position - 1))
+            = left_memory(shift(array_base, position))
+
+  p_unchanged(
+      malloc_0: allocation_table,
+      ptr_memory_0: pointer_memory,
+      float_memory_0: real_memory,
+      malloc_1: allocation_table,
+      ptr_memory_1: pointer_memory,
+      float_memory_1: real_memory,
+      array_base: addr,
+      lower, upper: int): bool =
+    FORALL (position: int):
+      LET slot: addr = shift(array_base, position),
+          value_0: addr = ptr_memory_0(slot),
+          value_1: addr = ptr_memory_1(slot)
+      IN
+        lower <= position IMPLIES
+          position < upper IMPLIES
+            value_0 = value_1
+              AND eqs1_list(
+                load_s1_list(value_1, float_memory_1, ptr_memory_1),
+                load_s1_list(value_0, float_memory_0, ptr_memory_0))
+              AND (valid_rw(malloc_1, value_1, 4)
+                IMPLIES valid_rw(malloc_0, value_0, 4))
+
+  goal48: bool =
+    FORALL (l_index_of: index_function):
+      index_axioms(l_index_of)
+        IMPLIES
+          (FORALL (i, i_1: int),
+                  (t_3: pointer_memory),
+                  (a_3, a_4, a_2: addr),
+                  (t_2: pointer_memory),
+                  (t_4: pointer_memory),
+                  (a, a_1: addr),
+                  (t: allocation_table),
+                  (t_1: real_memory):
+             LET x: int = i - 1,
+                 x_1: int = i + i_1 - 1,
+                 x_2: int =
+                   l_index_of(t_3, a_3, a_4, x, x_1),
+                 x_3: int = 1 + x_2,
+                 x_4: int = i + i_1,
+                 a_5: addr = shift(a_4, 0),
+                 a_6: addr = t_3(a_2),
+                 a_7: addr = shift(a_4, x),
+                 updated_memory: pointer_memory =
+                   (t_3 WITH [(a_2) := a])
+                     WITH
+                       [(shift(
+                           t_3(shift(a_4, x_2 - 1)),
+                           0)) := a_1],
+                 a_8: pointer_memory =
+                   havoc(
+                     t_2,
+                     updated_memory,
+                     shift(a_4, x_2),
+                     i + i_1 - 1 - x_2),
+                 a_9: addr = a_8(a_2),
+                 a_13: pointer_memory =
+                   havoc(t_4, a_8, shift(a_4, x), 1 + i_1),
+                 a_10: pointer_memory =
+                   (a_13 WITH [(shift(a_3, 0)) := a_9])
+                     WITH [(a_7) := a_3],
+                 a_11: pointer_memory =
+                   a_10 WITH [(a_2) := a_3]
+             IN
+               ((# base := 0, offset := 0 #) /= a_3
+                 AND x_3 = x_4
+                 AND 0 < i
+                 AND 0 <= i_1
+                 AND region(base(a_2)) <= 0
+                 AND region(base(a_3)) <= 0
+                 AND region(base(a_4)) <= 0
+                 AND x_2 < x_4
+                 AND i_1 <= 2147483645
+                 AND x_4 <= 2147483646
+                 AND i <= x_3
+                 AND framed(t_3)
+                 AND linked(t)
+                 AND is_sint32(i)
+                 AND is_sint32(i_1)
+                 AND valid_rw(t, a_2, 1)
+                 AND valid_rw(t, a_3, 4)
+                 AND separated(a_2, 1, a_3, 4)
+                 AND is_sint32(x)
+                 AND valid_rw(t, a_5, 2147483646)
+                 AND separated(a_2, 1, a_5, 2147483646)
+                 AND separated(a_3, 4, a_5, 2147483646)
+                 AND separated(a_6, 4, a_5, 2147483646)
+                 AND valid_rw(t, a_7, i_1)
+                 AND
+                   p_linked_n(
+                     t,
+                     t_3,
+                     a_6,
+                     a_4,
+                     x,
+                     i_1,
+                     (# base := 0, offset := 0 #))
+                 AND is_sint32(x_2)
+                 AND separated(a_9, 4, a_5, 2147483646)
+                 AND
+                   eqs1_list(
+                     load_s1_list(a_3, t_1, a_8),
+                     load_s1_list(a_3, t_1, t_3))
+                 AND
+                   p_linked_n(
+                     t,
+                     a_8,
+                     a_9,
+                     a_4,
+                     x,
+                     i_1,
+                     (# base := 0, offset := 0 #))
+                 AND
+                   p_unchanged(
+                     t,
+                     a_8,
+                     t_1,
+                     t,
+                     t_3,
+                     t_1,
+                     a_4,
+                     x,
+                     x_1)
+                 AND
+                   p_unchanged(
+                     t,
+                     a_11,
+                     t_1,
+                     t,
+                     a_10,
+                     t_1,
+                     a_4,
+                     x,
+                     x_4)
+                 AND
+                   (FORALL (i_2: int):
+                     i <= 1 + i_2 IMPLIES
+                       2 + i_2 <= x_4 IMPLIES
+                         t_3(shift(a_4, i_2)) /= a_3)
+                 AND
+                   (FORALL (i_2: int):
+                     i <= 1 + i_2 IMPLIES
+                       2 + i_2 <= x_4 IMPLIES
+                         is_sint32(i_2) IMPLIES
+                           t_3(shift(a_4, i_2)) /= a_3)
+                 AND
+                   (FORALL (i_2: int):
+                     i <= 1 + i_2 IMPLIES
+                       2 + i_2 <= x_4 IMPLIES
+                         separated(
+                           a_2,
+                           1,
+                           t_3(shift(a_4, i_2)),
+                           4))
+                 AND
+                   (FORALL (i_2: int):
+                     i <= 1 + i_2 IMPLIES
+                       2 + i_2 <= x_4 IMPLIES
+                         separated(
+                           t_3(shift(a_4, i_2)),
+                           4,
+                           a_5,
+                           2147483646))
+                 AND
+                   (FORALL (i_2: int):
+                     LET a_12: addr = t_3(shift(a_4, i_2))
+                     IN
+                       a_12 /= a_3 IMPLIES
+                         i <= 1 + i_2 IMPLIES
+                           2 + i_2 <= x_4 IMPLIES
+                             separated(a_3, 4, a_12, 4))
+                 AND
+                   (FORALL (i_3, i_2: int):
+                     i_3 /= i_2 IMPLIES
+                       i <= 1 + i_2 IMPLIES
+                         i <= 1 + i_3 IMPLIES
+                           2 + i_2 <= x_4 IMPLIES
+                             2 + i_3 <= x_4 IMPLIES
+                               t_3(shift(a_4, i_3))
+                                 /= t_3(shift(a_4, i_2)))
+                 AND
+                   (FORALL (i_3, i_2: int):
+                     i_3 /= i_2 IMPLIES
+                       i <= 1 + i_2 IMPLIES
+                         i <= 1 + i_3 IMPLIES
+                           2 + i_2 <= x_4 IMPLIES
+                             2 + i_3 <= x_4 IMPLIES
+                               separated(
+                                 t_3(shift(a_4, i_3)),
+                                 4,
+                                 t_3(shift(a_4, i_2)),
+                                 4))
+                 AND
+                   (FORALL (i_2: int):
+                     i <= 1 + i_2 IMPLIES
+                       2 + i_2 <= x_4 IMPLIES
+                         a_8(shift(a_4, i_2)) /= a_3)
+                 AND
+                   (FORALL (i_2: int):
+                     i <= 1 + i_2 IMPLIES
+                       2 + i_2 <= x_4 IMPLIES
+                         separated(
+                           a_2,
+                           1,
+                           a_8(shift(a_4, i_2)),
+                           4))
+                 AND
+                   (FORALL (i_2: int):
+                     i <= 1 + i_2 IMPLIES
+                       2 + i_2 <= x_4 IMPLIES
+                         separated(
+                           a_3,
+                           4,
+                           a_8(shift(a_4, i_2)),
+                           4))
+                 AND
+                   (FORALL (i_2: int):
+                     i <= 1 + i_2 IMPLIES
+                       2 + i_2 <= x_4 IMPLIES
+                         separated(
+                           a_8(shift(a_4, i_2)),
+                           4,
+                           a_5,
+                           2147483646))
+                 AND
+                   (FORALL (i_3, i_2: int):
+                     i_3 /= i_2 IMPLIES
+                       i <= 1 + i_2 IMPLIES
+                         i <= 1 + i_3 IMPLIES
+                           2 + i_2 <= x_4 IMPLIES
+                             2 + i_3 <= x_4 IMPLIES
+                               a_8(shift(a_4, i_3))
+                                 /= a_8(shift(a_4, i_2)))
+                 AND
+                   (FORALL (i_3, i_2: int):
+                     i_3 /= i_2 IMPLIES
+                       i <= 1 + i_2 IMPLIES
+                         i <= 1 + i_3 IMPLIES
+                           2 + i_2 <= x_4 IMPLIES
+                             2 + i_3 <= x_4 IMPLIES
+                               separated(
+                                 a_8(shift(a_4, i_3)),
+                                 4,
+                                 a_8(shift(a_4, i_2)),
+                                 4))
+                 AND a_13(a_2) = a_9
+                 AND separated(a_13(a_2), 4, a_5, 2147483646)
+                 AND
+                   (FORALL (j: int):
+                     i <= j IMPLIES
+                       j < x_4 IMPLIES
+                         separated(
+                           a_2,
+                           1,
+                           a_13(shift(a_4, j)),
+                           4))
+                 AND
+                   (FORALL (j: int):
+                     i <= j IMPLIES
+                       j < x_4 IMPLIES
+                         separated(
+                           a_13(shift(a_4, j)),
+                           4,
+                           a_5,
+                           2147483646))
+                 AND
+                   (FORALL (k, j: int):
+                     k /= j IMPLIES
+                       i <= j IMPLIES
+                         i <= k IMPLIES
+                           j < x_4 IMPLIES
+                             k < x_4 IMPLIES
+                               separated(
+                                 a_13(shift(a_4, k)),
+                                 4,
+                                 a_13(shift(a_4, j)),
+                                 4))
+                 AND
+                   (FORALL (k, j: int):
+                     k /= j IMPLIES
+                       x <= j IMPLIES
+                         x <= k IMPLIES
+                           j < x_4 IMPLIES
+                             k < x_4 IMPLIES
+                               a_13(shift(a_4, k))
+                                 /= a_13(shift(a_4, j)))
+                 AND p_array_swipe_right(a_13, a_8, a_4, i, x_4)
+                 AND
+                   p_linked_n(
+                     t,
+                     a_13,
+                     a_9,
+                     a_4,
+                     i,
+                     i_1,
+                     (# base := 0, offset := 0 #)))
+               IMPLIES
+                 p_array_swipe_right(
+                   a_11,
+                   t_3,
+                   a_4,
+                   i,
+                   x_4))
+END list_push_Why3_ide_VClist_push_does_not_contain_item_post_2_part1_goal48

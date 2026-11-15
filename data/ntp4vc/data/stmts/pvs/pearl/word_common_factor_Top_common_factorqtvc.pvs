@@ -1,0 +1,123 @@
+% Statement-only formalization of NTP4VC corpus artifact
+% pearl/word_common_factor_Top_common_factorqtvc: the recursive common-word
+% factor verification condition for two commuting words, including descent
+% obligations and nonnegative integer power representations. This file
+% contains no proof.
+
+word_common_factor_Top_common_factorqtvc[Char: TYPE+]: THEORY
+BEGIN
+
+  word: TYPE = list[Char]
+
+  word_drop(count: nat, values: word): RECURSIVE word =
+    IF count = 0 THEN
+      values
+    ELSE
+      CASES values OF
+        null:
+          null[Char],
+        cons(head, tail):
+          word_drop(count - 1, tail)
+      ENDCASES
+    ENDIF
+  MEASURE count
+
+  power_specification(
+      power: [word, int -> word]): bool =
+    FORALL (n: int), (w: word):
+      0 <= n
+        IMPLIES
+          IF n = 0 THEN
+            power(w, n) = null[Char]
+          ELSE
+            power(w, n) =
+              append(w, power(w, n - 1))
+          ENDIF
+
+  recursive_descent_vc(a, b: word): bool =
+    LET o1: int = length(a)
+    IN
+      o1 /= 0
+        IMPLIES
+          length(b) /= 0
+            IMPLIES
+              IF length(a) <= length(b) THEN
+                LET o2: int = length(a),
+                    c: word = word_drop(length(a), b)
+                IN
+                  (0 <= o2 AND o2 <= length(b))
+                    AND
+                  (b = append(a, c)
+                    AND
+                   (b = append(a, c)
+                      IMPLIES
+                        ((0 <= length(b)
+                            AND length(c) < length(b))
+                          AND append(a, c) = append(c, a))))
+              ELSE
+                (((0 <= length(a)
+                    AND length(b) < length(a))
+                   OR
+                  (length(a) = length(b)
+                    AND 0 <= length(b)
+                    AND length(a) < length(b)))
+                  AND append(b, a) = append(a, b))
+              ENDIF
+
+  result_premise(
+      power: [word, int -> word],
+      a, b, w: word,
+      ka, kb: int): bool =
+    LET o1: int = length(a)
+    IN
+      IF o1 = 0 THEN
+        w = b AND ka = 0 AND kb = 1
+      ELSIF length(b) = 0 THEN
+        w = a AND ka = 1 AND kb = 0
+      ELSIF length(a) <= length(b) THEN
+        LET c: word = word_drop(length(a), b)
+        IN
+          b = append(a, c)
+            AND
+          (EXISTS (kb1: int):
+            (((0 <= ka AND a = power(w, ka))
+                AND 0 <= kb1
+                AND c = power(w, kb1))
+              AND kb = ka + kb1))
+      ELSE
+        (0 <= kb AND b = power(w, kb))
+          AND 0 <= ka
+          AND a = power(w, ka)
+      ENDIF
+
+  result_postcondition(
+      power: [word, int -> word],
+      a, b, w: word,
+      ka, kb: int): bool =
+    (0 <= ka AND a = power(w, ka))
+      AND 0 <= kb
+      AND b = power(w, kb)
+
+  all_results_vc(
+      power: [word, int -> word],
+      a, b: word): bool =
+    FORALL (w: word), (ka, kb: int):
+      result_premise(power, a, b, w, ka, kb)
+        IMPLIES
+          result_postcondition(power, a, b, w, ka, kb)
+
+  common_factor_vc(
+      power: [word, int -> word],
+      a, b: word): bool =
+    recursive_descent_vc(a, b)
+      AND all_results_vc(power, a, b)
+
+  common_factor_statement: bool =
+    FORALL
+        (power: [word, int -> word]),
+        (a, b: word):
+      (power_specification(power)
+        AND append(a, b) = append(b, a))
+        IMPLIES common_factor_vc(power, a, b)
+
+END word_common_factor_Top_common_factorqtvc

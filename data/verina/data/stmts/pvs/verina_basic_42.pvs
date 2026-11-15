@@ -1,0 +1,78 @@
+% Statement-only formalization of the VERINA corpus artifact verina_basic_42
+% (verina__pvs__verina_basic_42), catalog title "countDigits": an executable
+% Unicode-scalar string program counts ASCII digit characters and satisfies
+% its exact two-sided natural-subtraction contract. This file contains no proof.
+
+verina_basic_42: THEORY
+BEGIN
+
+  % String.toList observes a Lean string as its finite list of Unicode scalar
+  % characters, preserving the full extensional source string domain.
+  lean_char: TYPE =
+    {codepoint: nat |
+      codepoint < 1114112
+        AND (codepoint < 55296 OR codepoint >= 57344)}
+
+  lean_string: TYPE = list[lean_char]
+
+  isDigit(c: lean_char): bool =
+    c >= 48 AND c <= 57
+
+  lean_char_list_filter_digits(
+      values: list[lean_char]): RECURSIVE list[lean_char] =
+    CASES values OF
+      null:
+        null[lean_char],
+      cons(head, tail):
+        IF isDigit(head) THEN
+          cons(
+            head,
+            lean_char_list_filter_digits(tail))
+        ELSE
+          lean_char_list_filter_digits(tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  lean_char_list_length(
+      values: list[lean_char]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        lean_char_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  % Lean natural-number subtraction is truncated at zero.
+  lean_nat_subtract(first, second: nat): nat =
+    IF first >= second THEN first - second ELSE 0 ENDIF
+
+  countDigits_precond(s: lean_string): bool =
+    TRUE
+
+  % The source precondition proof argument is computationally irrelevant.
+  % This is exactly List.length (List.filter isDigit s.toList).
+  countDigits(s: lean_string): nat =
+    lean_char_list_length(
+      lean_char_list_filter_digits(s))
+
+  countDigits_postcond(
+      s: lean_string,
+      result: nat): bool =
+    LET expected: nat =
+      lean_char_list_length(
+        lean_char_list_filter_digits(s))
+    IN
+      lean_nat_subtract(result, expected) = 0
+        AND lean_nat_subtract(expected, result) = 0
+
+  countDigits_spec_satisfied: bool =
+    FORALL (s: lean_string):
+      countDigits_precond(s)
+        IMPLIES
+          countDigits_postcond(
+            s,
+            countDigits(s))
+
+END verina_basic_42

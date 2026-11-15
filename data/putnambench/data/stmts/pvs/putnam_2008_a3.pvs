@@ -1,0 +1,62 @@
+% Statement-only formalization of PutnamBench artifact putnam_2008_a3:
+% repeated gcd/lcm replacements on a finite positive-integer sequence
+% terminate at a sequence independent of all choices. This file contains no proof.
+
+putnam_2008_a3[n: posnat]: THEORY
+BEGIN
+  index: TYPE = below(n)
+  sequence: TYPE = [index -> nat]
+  process: TYPE = [nat -> sequence]
+
+  nat_divides(divisor, value: nat): bool =
+    EXISTS (quotient: nat):
+      value = divisor * quotient
+
+  is_nat_gcd(gcd_value, left, right: nat): bool =
+    nat_divides(gcd_value, left)
+      AND nat_divides(gcd_value, right)
+      AND (FORALL (common_divisor: nat):
+        nat_divides(common_divisor, left)
+          AND nat_divides(common_divisor, right)
+          IMPLIES nat_divides(common_divisor, gcd_value))
+
+  is_nat_lcm(lcm_value, left, right: nat): bool =
+    nat_divides(left, lcm_value)
+      AND nat_divides(right, lcm_value)
+      AND (FORALL (common_multiple: nat):
+        nat_divides(left, common_multiple)
+          AND nat_divides(right, common_multiple)
+          IMPLIES nat_divides(lcm_value, common_multiple))
+
+  positive_sequence(a: sequence): bool =
+    FORALL (i: index):
+      a(i) > 0
+
+  can_continue(s: sequence): bool =
+    EXISTS (j, k: index):
+      j < k AND NOT nat_divides(s(j), s(k))
+
+  valid_transition(P: process, t: nat): bool =
+    EXISTS (j, k: index):
+      j < k
+        AND NOT nat_divides(P(t)(j), P(t)(k))
+        AND is_nat_gcd(P(t + 1)(j), P(t)(j), P(t)(k))
+        AND is_nat_lcm(P(t + 1)(k), P(t)(j), P(t)(k))
+        AND (FORALL (i: index):
+          i /= j AND i /= k IMPLIES P(t + 1)(i) = P(t)(i))
+
+  valid_process(P: process, a: sequence): bool =
+    P(0) = a
+      AND (FORALL (t: nat):
+        can_continue(P(t)) IMPLIES valid_transition(P, t))
+
+  putnam_2008_a3: bool =
+    FORALL (a: sequence):
+      positive_sequence(a) IMPLIES
+        EXISTS (final_sequence: sequence):
+          FORALL (P: process):
+            valid_process(P, a) IMPLIES
+              EXISTS (t: nat):
+                NOT can_continue(P(t))
+                  AND P(t) = final_sequence
+END putnam_2008_a3

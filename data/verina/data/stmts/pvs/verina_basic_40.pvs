@@ -1,0 +1,176 @@
+% Statement-only formalization of the VERINA corpus artifact verina_basic_40,
+% catalog title "secondSmallest": a deterministic one-pass scan of a finite
+% integer array returns its second-smallest distinct value under the stated
+% precondition and correctness contract. This file contains no proof.
+
+verina_basic_40: THEORY
+BEGIN
+
+  nat_option: DATATYPE
+  BEGIN
+    NoneNat: NoneNat?
+    SomeNat(option_value: nat): SomeNat?
+  END nat_option
+
+  % Finite PVS lists preserve exactly the contents and order of Lean arrays.
+  int_list_length(
+      values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        int_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  % Lean Array.get! on integer arrays returns zero outside the array.
+  int_list_get_bang(
+      index: nat,
+      values: list[int]): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          int_list_get_bang(index - 1, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  % Lean natural-number subtraction is truncated at zero.
+  nat_subtract(
+      first, second: nat): nat =
+    IF first >= second THEN first - second ELSE 0 ENDIF
+
+  secondSmallest_precond(
+      s: list[int]): bool =
+    int_list_length(s) > 1
+      AND
+        (EXISTS (i, j: nat):
+          i < int_list_length(s)
+            AND j < int_list_length(s)
+            AND int_list_get_bang(i, s)
+                  /= int_list_get_bang(j, s))
+
+  % The remaining counter is exactly s.size - i. Each recursive branch
+  % therefore performs the same indexed update as the source helper and stops
+  % precisely when i reaches the array size.
+  secondSmallestAux_steps(
+      s: list[int],
+      i, minIdx: nat,
+      secondIdx: nat_option,
+      remaining: nat): RECURSIVE int =
+    IF remaining = 0 THEN
+      CASES secondIdx OF
+        NoneNat:
+          0,
+        SomeNat(si):
+          int_list_get_bang(si, s)
+      ENDCASES
+    ELSE
+      LET x: int = int_list_get_bang(i, s),
+          m: int = int_list_get_bang(minIdx, s)
+      IN
+        CASES secondIdx OF
+          NoneNat:
+            IF x < m THEN
+              secondSmallestAux_steps(
+                s,
+                i + 1,
+                i,
+                SomeNat(minIdx),
+                remaining - 1)
+            ELSIF x > m THEN
+              secondSmallestAux_steps(
+                s,
+                i + 1,
+                minIdx,
+                SomeNat(i),
+                remaining - 1)
+            ELSE
+              secondSmallestAux_steps(
+                s,
+                i + 1,
+                minIdx,
+                NoneNat,
+                remaining - 1)
+            ENDIF,
+          SomeNat(si):
+            LET second_minimum: int =
+                  int_list_get_bang(si, s)
+            IN
+              IF x < m THEN
+                secondSmallestAux_steps(
+                  s,
+                  i + 1,
+                  i,
+                  SomeNat(minIdx),
+                  remaining - 1)
+              ELSIF x < second_minimum AND x > m THEN
+                secondSmallestAux_steps(
+                  s,
+                  i + 1,
+                  minIdx,
+                  SomeNat(i),
+                  remaining - 1)
+              ELSE
+                secondSmallestAux_steps(
+                  s,
+                  i + 1,
+                  minIdx,
+                  SomeNat(si),
+                  remaining - 1)
+              ENDIF
+        ENDCASES
+    ENDIF
+  MEASURE remaining
+
+  % Exact proof-erased source helper for arbitrary starting indices and option
+  % state. The NoneNat terminal value is Lean panic!'s inhabited integer
+  % default; it is unreachable in secondSmallest under the precondition.
+  secondSmallestAux(
+      s: list[int],
+      i, minIdx: nat,
+      secondIdx: nat_option): int =
+    secondSmallestAux_steps(
+      s,
+      i,
+      minIdx,
+      secondIdx,
+      nat_subtract(int_list_length(s), i))
+
+  % The source precondition proof argument is computationally irrelevant.
+  secondSmallest(
+      s: list[int]): int =
+    secondSmallestAux(s, 1, 0, NoneNat)
+
+  secondSmallest_postcond(
+      s: list[int],
+      result: int): bool =
+    (EXISTS (i: nat):
+      i < int_list_length(s)
+        AND int_list_get_bang(i, s) = result)
+      AND
+        (EXISTS (j: nat):
+          j < int_list_length(s)
+            AND int_list_get_bang(j, s) < result
+            AND
+              (FORALL (k: nat):
+                k < int_list_length(s)
+                  IMPLIES
+                    (int_list_get_bang(k, s)
+                        /= int_list_get_bang(j, s)
+                      IMPLIES
+                        int_list_get_bang(k, s) >= result)))
+
+  secondSmallest_spec_satisfied: bool =
+    FORALL (s: list[int]):
+      secondSmallest_precond(s)
+        IMPLIES
+          secondSmallest_postcond(
+            s,
+            secondSmallest(s))
+
+END verina_basic_40

@@ -1,0 +1,70 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2019_b5:
+% the degree-1008 real polynomial interpolating the odd-indexed Fibonacci
+% numbers satisfies p(2019) = F_j - F_k at positive natural indices exactly
+% for (j, k) = (2019, 1010). This file contains no proof.
+
+putnam_2019_b5: THEORY
+BEGIN
+  integer_sequence: TYPE = [nat -> int]
+  real_polynomial: TYPE = [nat -> real]
+
+  solution_pair: TYPE = [# first: nat, second: nat #]
+
+  putnam_2019_b5_solution: solution_pair =
+    (# first := 2019, second := 1010 #)
+
+  polynomial_value(
+      coefficients: real_polynomial,
+      degree: nat,
+      x: real): RECURSIVE real =
+    IF degree = 0 THEN
+      coefficients(0)
+    ELSE
+      polynomial_value(coefficients, degree - 1, x)
+        + coefficients(degree) * x ^ degree
+    ENDIF
+  MEASURE degree
+
+  has_exact_degree(
+      coefficients: real_polynomial,
+      degree: nat): bool =
+    coefficients(degree) /= 0
+      AND (FORALL (index: nat):
+        degree < index IMPLIES coefficients(index) = 0)
+
+  is_fibonacci_sequence(F: integer_sequence): bool =
+    F(1) = 1
+      AND F(2) = 1
+      AND (FORALL (index: nat):
+        index >= 1 IMPLIES
+          F(index + 2) = F(index + 1) + F(index))
+
+  interpolates_odd_fibonacci_values(
+      F: integer_sequence,
+      P: real_polynomial): bool =
+    FORALL (n: nat):
+      n <= 1008 IMPLIES
+        polynomial_value(P, 1008, (2 * n + 1) :: real)
+          = (F(2 * n + 1) :: real)
+
+  positive_index_equation(
+      F: integer_sequence,
+      P: real_polynomial,
+      j, k: nat): bool =
+    polynomial_value(P, 1008, 2019)
+        = (F(j) :: real) - (F(k) :: real)
+      AND 1 <= j
+      AND 1 <= k
+
+  putnam_2019_b5: bool =
+    FORALL (F: integer_sequence), (P: real_polynomial):
+      (is_fibonacci_sequence(F)
+        AND has_exact_degree(P, 1008)
+        AND interpolates_odd_fibonacci_values(F, P))
+      IMPLIES
+        (FORALL (j, k: nat):
+          positive_index_equation(F, P, j, k)
+            IFF
+              (j = first(putnam_2019_b5_solution)
+                AND k = second(putnam_2019_b5_solution)))
+END putnam_2019_b5

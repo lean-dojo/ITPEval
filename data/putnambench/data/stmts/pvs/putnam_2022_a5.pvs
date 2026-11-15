@@ -1,0 +1,127 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2022_a5:
+% the greatest number of uncovered squares Alice can guarantee in a
+% domino-placement game on a row of 2022 squares is 290. This file contains
+% no proof.
+
+putnam_2022_a5: THEORY
+BEGIN
+  square: TYPE = below(2022)
+  board_state: TYPE = [square -> bool]
+  strategy: TYPE = [board_state -> board_state]
+  game: TYPE = list[board_state]
+
+  empty_state: board_state =
+    LAMBDA (i: square): FALSE
+
+  valid_move(
+      state, next_state: board_state): bool =
+    (state = next_state
+      AND FORALL (i: square):
+        (i < 2021 AND NOT state(i))
+          IMPLIES next_state(i + 1))
+    OR
+      EXISTS (i: square):
+        i < 2021
+          AND NOT state(i)
+          AND NOT state(i + 1)
+          AND (FORALL (j: square):
+            next_state(j) IFF
+              state(j) OR j = i OR j = i + 1)
+
+  valid_chain(history: game): RECURSIVE bool =
+    CASES history OF
+      null: TRUE,
+      cons(state, tail):
+        CASES tail OF
+          null: TRUE,
+          cons(next_state, remainder):
+            valid_move(state, next_state)
+              AND valid_chain(tail)
+        ENDCASES
+    ENDCASES
+  MEASURE history BY <<
+
+  valid_game(history: game): bool =
+    CASES history OF
+      null: FALSE,
+      cons(initial_state, tail):
+        initial_state = empty_state
+          AND valid_chain(history)
+    ENDCASES
+
+  conforms_from(
+      history: game,
+      alice_strategy: strategy,
+      alice_turn: bool): RECURSIVE bool =
+    CASES history OF
+      null: TRUE,
+      cons(state, tail):
+        CASES tail OF
+          null: TRUE,
+          cons(next_state, remainder):
+            (alice_turn IMPLIES
+              next_state = alice_strategy(state))
+              AND conforms_from(
+                tail, alice_strategy, NOT alice_turn)
+        ENDCASES
+    ENDCASES
+  MEASURE history BY <<
+
+  conforms_to_strategy(
+      history: game,
+      alice_strategy: strategy): bool =
+    conforms_from(history, alice_strategy, TRUE)
+
+  uncovered_prefix_count(
+      state: board_state,
+      count: nat): RECURSIVE nat =
+    IF count = 0 THEN
+      0
+    ELSIF count <= 2022 THEN
+      uncovered_prefix_count(state, count - 1)
+        + IF state(count - 1) THEN 0 ELSE 1 ENDIF
+    ELSE
+      uncovered_prefix_count(state, 2022)
+    ENDIF
+  MEASURE count
+
+  uncovered_count(state: board_state): nat =
+    uncovered_prefix_count(state, 2022)
+
+  final_uncovered_at_least(
+      history: game,
+      guaranteed_count: nat): RECURSIVE bool =
+    CASES history OF
+      null: FALSE,
+      cons(state, tail):
+        CASES tail OF
+          null:
+            guaranteed_count <= uncovered_count(state),
+          cons(next_state, remainder):
+            final_uncovered_at_least(
+              tail, guaranteed_count)
+        ENDCASES
+    ENDCASES
+  MEASURE history BY <<
+
+  guaranteed(guaranteed_count: nat): bool =
+    EXISTS (alice_strategy: strategy):
+      (FORALL (state: board_state):
+        valid_move(state, alice_strategy(state)))
+      AND
+        (FORALL (history: game):
+          (valid_game(history)
+            AND conforms_to_strategy(
+              history, alice_strategy))
+          IMPLIES
+            final_uncovered_at_least(
+              history, guaranteed_count))
+
+  putnam_2022_a5_solution: nat = 290
+
+  putnam_2022_a5: bool =
+    guaranteed(putnam_2022_a5_solution)
+      AND FORALL (candidate: nat):
+        guaranteed(candidate)
+          IMPLIES candidate <= putnam_2022_a5_solution
+END putnam_2022_a5

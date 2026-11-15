@@ -1,0 +1,198 @@
+% Statement-only formalization of the VERINA corpus artifact verina_basic_27,
+% catalog title "findFirstRepeatedChar": scanning a Unicode-scalar string from
+% left to right returns the character whose repeated occurrence is encountered
+% first, or no character when the string has no duplicates. This file contains
+% no proof.
+
+verina_basic_27: THEORY
+BEGIN
+
+  % String.toList observes a Lean string as its finite list of Unicode scalar
+  % characters, preserving the full extensional source string domain.
+  lean_char: TYPE =
+    {codepoint: nat |
+      codepoint < 1114112
+        AND (codepoint < 55296 OR codepoint >= 57344)}
+
+  lean_string: TYPE = list[lean_char]
+
+  lean_char_option: DATATYPE
+  BEGIN
+    NoLeanChar: NoLeanChar?
+    SomeLeanChar(option_value: lean_char): SomeLeanChar?
+  END lean_char_option
+
+  findFirstRepeatedChar_precond(s: lean_string): bool =
+    TRUE
+
+  lean_char_member(
+      value: lean_char,
+      values: list[lean_char]): RECURSIVE bool =
+    CASES values OF
+      null:
+        FALSE,
+      cons(head, tail):
+        head = value OR lean_char_member(value, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  % The source HashSet is observed only through membership and insertion, so a
+  % duplicate-free list is an exact extensional representation of its state.
+  lean_char_hashset_insert(
+      value: lean_char,
+      state: list[lean_char]): list[lean_char] =
+    IF lean_char_member(value, state) THEN
+      state
+    ELSE
+      cons(value, state)
+    ENDIF
+
+  % This direct list recursion performs exactly the source indexed loop:
+  % remaining is the suffix starting at i and state is the HashSet accumulated
+  % from the preceding characters.
+  findFirstRepeatedChar_loop(
+      remaining: list[lean_char],
+      state: list[lean_char]): RECURSIVE lean_char_option =
+    CASES remaining OF
+      null:
+        NoLeanChar,
+      cons(head, tail):
+        IF lean_char_member(head, state) THEN
+          SomeLeanChar(head)
+        ELSE
+          findFirstRepeatedChar_loop(
+            tail,
+            lean_char_hashset_insert(head, state))
+        ENDIF
+    ENDCASES
+  MEASURE remaining BY <<
+
+  % The source precondition proof argument is computationally irrelevant.
+  findFirstRepeatedChar(s: lean_string): lean_char_option =
+    findFirstRepeatedChar_loop(s, null[lean_char])
+
+  lean_char_count(
+      value: lean_char,
+      values: list[lean_char]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        (IF head = value THEN 1 ELSE 0 ENDIF)
+          + lean_char_count(value, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  % This is Lean List.idxOf: if value is absent, the result is the list length.
+  lean_char_index_of(
+      value: lean_char,
+      values: list[lean_char]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF head = value THEN
+          0
+        ELSE
+          1 + lean_char_index_of(value, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  % This is findIdx on values.zipIdx for the predicate
+  % (x, i) => x = value AND i /= first_index. If there is no match, findIdx
+  % returns the list length, represented by current_index at the empty suffix.
+  second_occurrence_find_index_aux(
+      value: lean_char,
+      first_index, current_index: nat,
+      values: list[lean_char]): RECURSIVE nat =
+    CASES values OF
+      null:
+        current_index,
+      cons(head, tail):
+        IF head = value AND current_index /= first_index THEN
+          current_index
+        ELSE
+          second_occurrence_find_index_aux(
+            value,
+            first_index,
+            current_index + 1,
+            tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  second_occurrence_find_index(
+      value: lean_char,
+      values: list[lean_char]): nat =
+    second_occurrence_find_index_aux(
+      value,
+      lean_char_index_of(value, values),
+      0,
+      values)
+
+  lean_char_list_take(
+      count: nat,
+      values: list[lean_char]): RECURSIVE list[lean_char] =
+    IF count = 0 THEN
+      null[lean_char]
+    ELSE
+      CASES values OF
+        null:
+          null[lean_char],
+        cons(head, tail):
+          cons(
+            head,
+            lean_char_list_take(count - 1, tail))
+      ENDCASES
+    ENDIF
+  MEASURE count
+
+  all_different_from(
+      value: lean_char,
+      values: list[lean_char]): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        value /= head
+          AND all_different_from(value, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  % This is List.Pairwise (fun x y => x /= y).
+  pairwise_distinct(
+      values: list[lean_char]): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        all_different_from(head, tail)
+          AND pairwise_distinct(tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  findFirstRepeatedChar_postcond(
+      s: lean_string,
+      result: lean_char_option): bool =
+    CASES result OF
+      NoLeanChar:
+        pairwise_distinct(s),
+      SomeLeanChar(value):
+        lean_char_count(value, s) >= 2
+          AND
+            pairwise_distinct(
+              lean_char_list_take(
+                second_occurrence_find_index(value, s),
+                s))
+    ENDCASES
+
+  findFirstRepeatedChar_spec_satisfied: bool =
+    FORALL (s: lean_string):
+      findFirstRepeatedChar_precond(s)
+        IMPLIES
+          findFirstRepeatedChar_postcond(
+            s,
+            findFirstRepeatedChar(s))
+
+END verina_basic_27

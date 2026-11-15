@@ -1,0 +1,93 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1983_b6:
+% positive n and a nontrivial complex (2^n + 1)-st root of unity admit two
+% integer-coefficient polynomials whose squared values sum to -1. This file
+% contains no proof.
+
+putnam_1983_b6: THEORY
+BEGIN
+  complex: TYPE = [# real_part: real, imag_part: real #]
+  integer_coefficient_sequence: TYPE = [nat -> int]
+
+  complex_zero: complex =
+    (# real_part := 0, imag_part := 0 #)
+
+  complex_one: complex =
+    (# real_part := 1, imag_part := 0 #)
+
+  complex_minus_one: complex =
+    (# real_part := -1, imag_part := 0 #)
+
+  complex_of_integer(value: int): complex =
+    (# real_part := (value :: real), imag_part := 0 #)
+
+  complex_neg(z: complex): complex =
+    (# real_part := -real_part(z),
+       imag_part := -imag_part(z) #)
+
+  complex_add(z, w: complex): complex =
+    (# real_part := real_part(z) + real_part(w),
+       imag_part := imag_part(z) + imag_part(w) #)
+
+  complex_sub(z, w: complex): complex =
+    complex_add(z, complex_neg(w))
+
+  complex_mul(z, w: complex): complex =
+    (# real_part := real_part(z) * real_part(w)
+                       - imag_part(z) * imag_part(w),
+       imag_part := real_part(z) * imag_part(w)
+                       + imag_part(z) * real_part(w) #)
+
+  complex_power(z: complex, exponent: nat): RECURSIVE complex =
+    IF exponent = 0 THEN
+      complex_one
+    ELSE
+      complex_mul(complex_power(z, exponent - 1), z)
+    ENDIF
+  MEASURE exponent
+
+  integer_polynomial_value(
+      coefficients: integer_coefficient_sequence,
+      z: complex,
+      count: nat): RECURSIVE complex =
+    IF count = 0 THEN
+      complex_zero
+    ELSE
+      LET k: nat = count - 1 IN
+        complex_add(
+          integer_polynomial_value(coefficients, z, count - 1),
+          complex_mul(
+            complex_of_integer(coefficients(k)),
+            complex_power(z, k)))
+    ENDIF
+  MEASURE count
+
+  integer_polynomial_evaluates_to(
+      coefficients: integer_coefficient_sequence,
+      z, value: complex): bool =
+    EXISTS (degree_bound: nat):
+      (FORALL (k: nat):
+        degree_bound < k IMPLIES coefficients(k) = 0)
+      AND value =
+        integer_polynomial_value(
+          coefficients,
+          z,
+          degree_bound + 1)
+
+  putnam_1983_b6: bool =
+    FORALL (n: nat), (alpha: complex):
+      (n > 0
+        AND complex_sub(
+          complex_power(alpha, 2 ^ n + 1),
+          complex_one) = complex_zero
+        AND alpha /= complex_one)
+      IMPLIES
+        EXISTS
+            (p, q: integer_coefficient_sequence),
+            (p_value, q_value: complex):
+          integer_polynomial_evaluates_to(p, alpha, p_value)
+            AND integer_polynomial_evaluates_to(q, alpha, q_value)
+            AND complex_add(
+              complex_power(p_value, 2),
+              complex_power(q_value, 2))
+                = complex_minus_one
+END putnam_1983_b6

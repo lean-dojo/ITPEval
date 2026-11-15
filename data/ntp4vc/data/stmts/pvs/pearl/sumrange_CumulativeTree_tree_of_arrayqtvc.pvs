@@ -1,0 +1,189 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/sumrange_CumulativeTree_tree_of_arrayqtvc: the cumulative-tree
+% construction verification condition for recursive range splitting and the
+% correctness of the resulting range-sum tree. This file contains no proof.
+
+sumrange_CumulativeTree_tree_of_arrayqtvc: THEORY
+BEGIN
+
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  nth_default(values: list[int], index: nat): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          nth_default(tail, index - 1)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  sum_from(
+      values: list[int],
+      start, count: nat): RECURSIVE int =
+    IF count = 0 THEN
+      0
+    ELSE
+      nth_default(values, start)
+        + sum_from(values, start + 1, count - 1)
+    ENDIF
+  MEASURE count
+
+  array_sum(
+      values: list[int],
+      lower, upper: int): int =
+    sum_from(
+      values,
+      int_to_nat(lower),
+      int_to_nat(upper - lower))
+
+  why3_computer_div(numerator, denominator: int): int =
+    IF denominator = 0 THEN
+      0
+    ELSIF numerator * denominator >= 0 THEN
+      floor((numerator :: real) / (denominator :: real))
+    ELSE
+      -floor(-((numerator :: real) / (denominator :: real)))
+    ENDIF
+
+  indexes: DATATYPE
+  BEGIN
+    mk_indexes(
+      low: int,
+      high: int,
+      isum: int): mk_indexes?
+  END indexes
+
+  tree: DATATYPE
+  BEGIN
+    Leaf(leaf_indexes: indexes): Leaf?
+    Node(
+      node_indexes: indexes,
+      left_tree: tree,
+      right_tree: tree): Node?
+  END tree
+
+  indexes1(current: tree): indexes =
+    CASES current OF
+      Leaf(ind):
+        ind,
+      Node(ind, left, right):
+        ind
+    ENDCASES
+
+  is_indexes_for(
+      ind: indexes,
+      values: list[int],
+      lower, upper: int): bool =
+    low(ind) = lower
+      AND high(ind) = upper
+      AND 0 <= lower
+      AND lower < upper
+      AND upper <= length(values)
+      AND isum(ind) = array_sum(values, lower, upper)
+
+  is_tree_for(
+      current: tree,
+      values: list[int],
+      lower, upper: int): RECURSIVE bool =
+    CASES current OF
+      Leaf(ind):
+        is_indexes_for(ind, values, lower, upper)
+          AND upper = lower + 1,
+      Node(ind, left, right):
+        is_indexes_for(ind, values, lower, upper)
+          AND lower = low(indexes1(left))
+          AND upper = high(indexes1(right))
+          AND
+            (LET middle: int = high(indexes1(left))
+             IN
+               middle = low(indexes1(right))
+                 AND lower < middle
+                 AND middle < upper
+                 AND middle
+                       = why3_computer_div(lower + upper, 2)
+                 AND is_tree_for(
+                       left, values, lower, middle)
+                 AND is_tree_for(
+                       right, values, middle, upper))
+    ENDCASES
+  MEASURE current BY <<
+
+  tree_of_array_vc: bool =
+    FORALL
+      (i, j: int),
+      (values: list[int]):
+      0 <= i
+        IMPLIES
+      i < j
+        IMPLIES
+      j <= length(values)
+        IMPLIES
+          (LET o1: int = i + 1
+           IN
+             (IF o1 = j THEN
+                0 <= i
+                  AND i < length(values)
+              ELSE
+                NOT (2 = 0)
+                  AND
+                (LET middle: int =
+                       why3_computer_div(i + j, 2)
+                 IN
+                   ((0 <= j - i
+                       AND middle - i < j - i)
+                      AND 0 <= i
+                      AND i < middle
+                      AND middle <= length(values))
+                     AND
+                   (FORALL (left: tree):
+                     is_tree_for(
+                       left, values, i, middle)
+                       IMPLIES
+                         (0 <= j - i
+                            AND j - middle < j - i)
+                           AND 0 <= middle
+                           AND middle < j
+                           AND j <= length(values)))
+              ENDIF)
+               AND
+             (FORALL (result: tree):
+               (IF o1 = j THEN
+                  result =
+                    Leaf(
+                      mk_indexes(
+                        i,
+                        j,
+                        nth_default(
+                          values,
+                          int_to_nat(i))))
+                ELSE
+                  LET middle: int =
+                    why3_computer_div(i + j, 2)
+                  IN
+                    EXISTS (left: tree):
+                      is_tree_for(
+                        left, values, i, middle)
+                        AND
+                      (EXISTS (right: tree):
+                        is_tree_for(
+                          right, values, middle, j)
+                          AND
+                        result =
+                          Node(
+                            mk_indexes(
+                              i,
+                              j,
+                              isum(indexes1(left))
+                                + isum(indexes1(right))),
+                            left,
+                            right))
+                ENDIF)
+                 IMPLIES
+                   is_tree_for(result, values, i, j)))
+
+END sumrange_CumulativeTree_tree_of_arrayqtvc

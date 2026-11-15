@@ -1,0 +1,75 @@
+% Statement-only formalization of miniF2F test problem amc12a_2021_p14. This file contains no
+% proof.
+
+amc12a_2021_p14: THEORY
+BEGIN
+  safe_div(x, y: real): real =
+    IF y = 0 THEN 0 ELSE x / y ENDIF
+
+  nat_factorial(n: nat): RECURSIVE nat =
+    IF n = 0 THEN
+      1
+    ELSE
+      n * nat_factorial(n - 1)
+    ENDIF
+  MEASURE n
+
+  exponential_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET j: nat = count - 1 IN
+        exponential_partial(x, count - 1)
+          + safe_div(x^j, nat_factorial(j) :: real)
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: [nat -> real], value: real): bool =
+    FORALL (eps: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < eps
+
+  exponential_value(x, value: real): bool =
+    converges_to(
+      (LAMBDA (count: nat): exponential_partial(x, count)),
+      value)
+
+  natural_log_value(argument, value: real): bool =
+    argument > 0 AND exponential_value(value, argument)
+
+  log_base_value(base, argument, value: real): bool =
+    base > 0
+      AND base /= 1
+      AND argument > 0
+      AND EXISTS (log_argument, log_base: real):
+        natural_log_value(argument, log_argument)
+          AND natural_log_value(base, log_base)
+          AND value = safe_div(log_argument, log_base)
+
+  prefix_sum(f: [nat -> real], count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      prefix_sum(f, count - 1) + f(count - 1)
+    ENDIF
+  MEASURE count
+
+  amc12a_2021_p14: bool =
+    EXISTS (first_terms, second_terms: [nat -> real]):
+      (FORALL (i: nat):
+        i < 20 IMPLIES
+          log_base_value(
+            (5 :: real)^(i + 1),
+            (3 :: real)^((i + 1)^2),
+            first_terms(i)))
+      AND (FORALL (i: nat):
+        i < 100 IMPLIES
+          log_base_value(
+            (9 :: real)^(i + 1),
+            (25 :: real)^(i + 1),
+            second_terms(i)))
+      AND prefix_sum(first_terms, 20)
+            * prefix_sum(second_terms, 100) = (21000 :: real)
+END amc12a_2021_p14

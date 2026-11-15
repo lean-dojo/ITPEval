@@ -1,0 +1,132 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2015_a3:
+% the base-2 logarithm of a double product of complex exponential terms
+% indexed from 1 through 2015 equals 13725. This file contains no proof.
+
+putnam_2015_a3: THEORY
+BEGIN
+  complex: TYPE = [# real_part: real, imag_part: real #]
+  real_sequence: TYPE = [nat -> real]
+
+  complex_one: complex =
+    (# real_part := 1, imag_part := 0 #)
+
+  complex_of_real(value: real): complex =
+    (# real_part := value, imag_part := 0 #)
+
+  complex_add(left, right: complex): complex =
+    (# real_part := real_part(left) + real_part(right),
+       imag_part := imag_part(left) + imag_part(right) #)
+
+  complex_mul(left, right: complex): complex =
+    (# real_part :=
+         real_part(left) * real_part(right)
+           - imag_part(left) * imag_part(right),
+       imag_part :=
+         real_part(left) * imag_part(right)
+           + imag_part(left) * real_part(right) #)
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  nat_factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * nat_factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  sine_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        sine_partial(x, count - 1)
+          + safe_div(
+              ((-1 :: real) ^ index) * x ^ (2 * index + 1),
+              nat_factorial(2 * index + 1) :: real)
+    ENDIF
+  MEASURE count
+
+  cosine_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        cosine_partial(x, count - 1)
+          + safe_div(
+              ((-1 :: real) ^ index) * x ^ (2 * index),
+              nat_factorial(2 * index) :: real)
+    ENDIF
+  MEASURE count
+
+  sine(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat): sine_partial(x, count),
+          value))
+
+  cosine(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat): cosine_partial(x, count),
+          value))
+
+  pi: real =
+    epsilon(
+      LAMBDA (value: real):
+        3 < value
+          AND value < 4
+          AND cosine(value / 2) = 0)
+
+  angle(a, b: nat): real =
+    safe_div(
+      2 * pi * (a :: real) * (b :: real),
+      2015)
+
+  exponential_term(a, b: nat): complex =
+    complex_add(
+      complex_one,
+      (# real_part := cosine(angle(a, b)),
+         imag_part := sine(angle(a, b)) #))
+
+  row_product(a, count: nat): RECURSIVE complex =
+    IF count = 0 THEN
+      complex_one
+    ELSE
+      complex_mul(
+        row_product(a, count - 1),
+        exponential_term(a, count))
+    ENDIF
+  MEASURE count
+
+  double_product(count: nat): RECURSIVE complex =
+    IF count = 0 THEN
+      complex_one
+    ELSE
+      complex_mul(
+        double_product(count - 1),
+        row_product(count, 2015))
+    ENDIF
+  MEASURE count
+
+  putnam_2015_a3_solution: nat = 13725
+
+  putnam_2015_a3: bool =
+    double_product(2015)
+      = complex_of_real(
+          (2 :: real) ^ putnam_2015_a3_solution)
+END putnam_2015_a3

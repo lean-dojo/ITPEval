@@ -1,0 +1,221 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/search_Bfs_bfsqtvc: the breadth-first-search verification condition
+% for frontier path lengths, successor accumulation, minimal successful depth,
+% and the no-solution result. This file contains no proof.
+
+search_Bfs_bfsqtvc[
+  state: TYPE+,
+  state_default: state,
+  moves: [state -> list[state]],
+  start: state,
+  success: [state -> bool]
+]: THEORY
+BEGIN
+
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  nth_state(values: list[state], index: int): RECURSIVE state =
+    CASES values OF
+      null:
+        state_default,
+      cons(head, tail):
+        IF int_to_nat(index) = 0 THEN
+          head
+        ELSE
+          nth_state(tail, int_to_nat(index) - 1)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  list_member(value: state, values: list[state]): RECURSIVE bool =
+    CASES values OF
+      null:
+        FALSE,
+      cons(head, tail):
+        value = head OR list_member(value, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  path(source, destination: state, path_length: int): INDUCTIVE bool =
+    (source = destination AND path_length = 0)
+      OR
+    (EXISTS (index: int):
+      0 <= index
+        AND index < length(moves(source))
+        AND destination = nth_state(moves(source), index)
+        AND path_length = 1)
+      OR
+    (EXISTS
+        (middle: state),
+        (first_length, second_length: int):
+      path(source, middle, first_length)
+        AND path(middle, destination, second_length)
+        AND path_length = first_length + second_length)
+
+  move(source, destination: state): bool =
+    EXISTS (index: int):
+      (0 <= index AND index < length(moves(source)))
+        AND destination = nth_state(moves(source), index)
+
+  frontier_invariant(
+      depth: int,
+      frontier: list[state]): bool =
+    0 <= depth
+      AND
+    (FORALL (index: int):
+      (0 <= index AND index < length(frontier))
+        IMPLIES
+          path(start, nth_state(frontier, index), depth))
+      AND
+    (FORALL (destination: state):
+      path(start, destination, depth)
+        IMPLIES list_member(destination, frontier))
+      AND
+    (FORALL (destination: state), (path_length: int):
+      path(start, destination, path_length)
+        IMPLIES
+          success(destination)
+            IMPLIES depth <= path_length)
+
+  scan_invariant(
+      frontier, next_frontier: list[state],
+      upper: int): bool =
+    (FORALL (next_index: int):
+      (0 <= next_index
+        AND next_index < length(next_frontier))
+        IMPLIES
+          (EXISTS (frontier_index: int):
+            (0 <= frontier_index AND frontier_index < upper)
+              AND
+            move(
+              nth_state(frontier, frontier_index),
+              nth_state(next_frontier, next_index))))
+      AND
+    (FORALL (frontier_index, move_index: int):
+      (0 <= frontier_index AND frontier_index < upper)
+        IMPLIES
+          (0 <= move_index
+            AND move_index
+                  < length(
+                      moves(nth_state(frontier, frontier_index))))
+            IMPLIES
+              list_member(
+                nth_state(
+                  moves(nth_state(frontier, frontier_index)),
+                  move_index),
+                next_frontier))
+      AND
+    (FORALL (frontier_index: int):
+      (0 <= frontier_index AND frontier_index < upper)
+        IMPLIES
+          NOT success(nth_state(frontier, frontier_index)))
+
+  append_characterization(
+      first, second, combined: list[state]): bool =
+    length(combined) = length(first) + length(second)
+      AND
+    (FORALL (index: int):
+      (0 <= index AND index < length(first))
+        IMPLIES
+          nth_state(combined, index) = nth_state(first, index))
+      AND
+    (FORALL (index: int):
+      (length(first) <= index AND index < length(combined))
+        IMPLIES
+          nth_state(combined, index)
+            =
+          nth_state(second, index - length(first)))
+
+  scan_step(
+      depth: int,
+      frontier, next_frontier: list[state],
+      index: int): bool =
+    LET current: state = nth_state(frontier, index)
+    IN
+      IF success(current) THEN
+        path(start, current, depth)
+      ELSE
+        LET fresh: list[state] = moves(current),
+            combined: list[state] = append(fresh, next_frontier)
+        IN
+          append_characterization(
+            fresh, next_frontier, combined)
+            IMPLIES
+              scan_invariant(
+                frontier, combined, index + 1)
+      ENDIF
+
+  nonempty_iteration(
+      depth: int,
+      frontier: list[state]): bool =
+    LET last_index: int = length(frontier) - 1
+    IN
+      ((0 <= last_index + 1)
+        IMPLIES
+          (scan_invariant(
+            frontier, null[state], 0)
+            AND
+          (FORALL (next_frontier: list[state]):
+            (FORALL (index: int):
+              ((0 <= index AND index <= last_index)
+                AND
+               scan_invariant(
+                 frontier, next_frontier, index))
+                IMPLIES
+                  scan_step(
+                    depth, frontier, next_frontier, index))
+              AND
+            (scan_invariant(
+              frontier, next_frontier, last_index + 1)
+              IMPLIES
+                frontier_invariant(
+                  depth + 1, next_frontier)))))
+        AND
+      ((last_index + 1 < 0)
+        IMPLIES
+          frontier_invariant(depth + 1, null[state]))
+
+  iteration_result(
+      depth: int,
+      frontier: list[state]): bool =
+    IF 0 < length(frontier) THEN
+      nonempty_iteration(depth, frontier)
+    ELSE
+      FORALL (destination: state), (path_length: int):
+        success(destination)
+          IMPLIES NOT path(start, destination, path_length)
+    ENDIF
+
+  initial_cons_characterization: bool =
+    LET empty_frontier: list[state] = null[state],
+        initial_state: state = start,
+        initial_frontier: list[state] =
+          cons(initial_state, empty_frontier)
+    IN
+      length(initial_frontier)
+          = 1 + length(empty_frontier)
+        AND nth_state(initial_frontier, 0) = initial_state
+        AND
+      (FORALL (index: int):
+        (0 < index AND index <= length(empty_frontier))
+          IMPLIES
+            nth_state(initial_frontier, index)
+              =
+            nth_state(empty_frontier, index - 1))
+
+  bfs_vc: bool =
+    LET empty_frontier: list[state] = null[state],
+        initial_state: state = start,
+        initial_frontier: list[state] =
+          cons(initial_state, empty_frontier)
+    IN
+      initial_cons_characterization
+        IMPLIES
+          (frontier_invariant(0, initial_frontier)
+            AND
+          (FORALL (depth: int), (frontier: list[state]):
+            frontier_invariant(depth, frontier)
+              IMPLIES iteration_result(depth, frontier)))
+
+END search_Bfs_bfsqtvc

@@ -1,0 +1,150 @@
+% Statement-only formalization of thousand-theorems corpus artifact Q3527189,
+% "Lattice theorem": Noether's third isomorphism theorem for arbitrary groups,
+% canonically identifying (G/N)/(M/N) with G/M when N and M are normal and N is contained in M.
+% This file contains no proof.
+
+Q3527189_lattice_theorem[
+  G: TYPE+,
+  mul: [G, G -> G],
+  inv: [G -> G],
+  one: G
+]: THEORY
+BEGIN
+
+  group_set: TYPE = [G -> bool]
+  quotient_set: TYPE = [group_set -> bool]
+  iterated_quotient_relation: TYPE =
+    [quotient_set, group_set -> bool]
+
+  group_laws: bool =
+    (FORALL (x, y, z: G):
+      mul(mul(x, y), z) = mul(x, mul(y, z)))
+      AND (FORALL (x: G):
+        mul(one, x) = x
+          AND mul(x, one) = x)
+      AND (FORALL (x: G):
+        mul(inv(x), x) = one
+          AND mul(x, inv(x)) = one)
+
+  subset_of(A, B: group_set): bool =
+    FORALL (x: G): A(x) IMPLIES B(x)
+
+  is_subgroup(A: group_set): bool =
+    A(one)
+      AND (FORALL (x, y: G):
+        A(x) AND A(y) IMPLIES A(mul(x, y)))
+      AND (FORALL (x: G):
+        A(x) IMPLIES A(inv(x)))
+
+  is_normal_subgroup(A: group_set): bool =
+    is_subgroup(A)
+      AND (FORALL (g, x: G):
+        A(x) IMPLIES
+          A(mul(mul(g, x), inv(g))))
+
+  left_coset(g: G, A: group_set): group_set =
+    LAMBDA (x: G):
+      EXISTS (a: G):
+        A(a) AND x = mul(g, a)
+
+  is_coset(A: group_set, C: group_set): bool =
+    EXISTS (g: G): C = left_coset(g, A)
+
+  quotient_product(
+      A: group_set,
+      C, D, E: group_set): bool =
+    EXISTS (x, y: G):
+      C = left_coset(x, A)
+        AND D = left_coset(y, A)
+        AND E = left_coset(mul(x, y), A)
+
+  iterated_left_coset(
+      N, M: group_set,
+      g: G): quotient_set =
+    LAMBDA (C: group_set):
+      EXISTS (m: G):
+        M(m) AND C = left_coset(mul(g, m), N)
+
+  is_iterated_coset(
+      N, M: group_set,
+      Q: quotient_set): bool =
+    EXISTS (g: G):
+      Q = iterated_left_coset(N, M, g)
+
+  iterated_quotient_product(
+      N, M: group_set,
+      Q1, Q2, Q3: quotient_set): bool =
+    EXISTS (x, y: G):
+      Q1 = iterated_left_coset(N, M, x)
+        AND Q2 = iterated_left_coset(N, M, y)
+        AND Q3 = iterated_left_coset(N, M, mul(x, y))
+
+  canonical_relation(
+      N, M: group_set,
+      Q: quotient_set,
+      C: group_set): bool =
+    EXISTS (g: G):
+      Q = iterated_left_coset(N, M, g)
+        AND C = left_coset(g, M)
+
+  is_bijection(
+      relation: iterated_quotient_relation,
+      domain: [quotient_set -> bool],
+      codomain: [group_set -> bool]): bool =
+    (FORALL (Q: quotient_set), (C: group_set):
+      relation(Q, C) IMPLIES domain(Q) AND codomain(C))
+      AND (FORALL (Q: quotient_set):
+        domain(Q) IMPLIES
+          EXISTS (C: group_set):
+            codomain(C) AND relation(Q, C))
+      AND (FORALL (Q: quotient_set), (C, D: group_set):
+        domain(Q)
+          AND codomain(C)
+          AND codomain(D)
+          AND relation(Q, C)
+          AND relation(Q, D)
+          IMPLIES C = D)
+      AND (FORALL (C: group_set):
+        codomain(C) IMPLIES
+          EXISTS (Q: quotient_set):
+            domain(Q) AND relation(Q, C))
+      AND (FORALL (Q, R: quotient_set), (C: group_set):
+        domain(Q)
+          AND domain(R)
+          AND codomain(C)
+          AND relation(Q, C)
+          AND relation(R, C)
+          IMPLIES Q = R)
+
+  preserves_quotient_product(
+      N, M: group_set,
+      relation: iterated_quotient_relation): bool =
+    FORALL (Q1, Q2, Q3: quotient_set),
+           (C1, C2, C3: group_set):
+      iterated_quotient_product(N, M, Q1, Q2, Q3)
+        AND relation(Q1, C1)
+        AND relation(Q2, C2)
+        AND relation(Q3, C3)
+        IMPLIES quotient_product(M, C1, C2, C3)
+
+  quotientQuotientEquivQuotient: bool =
+    FORALL (N, M: group_set):
+      (group_laws
+        AND is_normal_subgroup(N)
+        AND is_normal_subgroup(M)
+        AND subset_of(N, M))
+      IMPLIES
+        (is_bijection(
+          LAMBDA (Q: quotient_set), (C: group_set):
+            canonical_relation(N, M, Q, C),
+          LAMBDA (Q: quotient_set):
+            is_iterated_coset(N, M, Q),
+          LAMBDA (C: group_set):
+            is_coset(M, C))
+          AND preserves_quotient_product(
+            N,
+            M,
+            LAMBDA (Q: quotient_set), (C: group_set):
+              canonical_relation(N, M, Q, C)))
+
+END Q3527189_lattice_theorem

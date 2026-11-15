@@ -1,0 +1,157 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/defunctionalization_SemWithError_continue_4qtvc: the verification
+% condition for structural decrease and semantic preservation when applying an
+% underflow-aware defunctionalized subtraction continuation. This file contains
+% no proof.
+
+defunctionalization_SemWithError_continue_4qtvc: THEORY
+BEGIN
+
+  expr: DATATYPE
+  BEGIN
+    Cte(constant_value: int): Cte?
+    Sub(left_expression, right_expression: expr): Sub?
+  END expr
+
+  value: DATATYPE
+  BEGIN
+    Vnum(numeric_value: int): Vnum?
+    Underflow: Underflow?
+  END value
+
+  cont: DATATYPE
+  BEGIN
+    I: I?
+    A(pending_expression: expr, next_continuation: cont): A?
+    B(saved_value: int, next_continuation: cont): B?
+  END cont
+
+  eval_0(expression: expr): RECURSIVE value =
+    CASES expression OF
+      Cte(n):
+        IF 0 <= n THEN Vnum(n) ELSE Underflow ENDIF,
+      Sub(left, right):
+        CASES eval_0(left) OF
+          Underflow:
+            Underflow,
+          Vnum(left_value):
+            CASES eval_0(right) OF
+              Underflow:
+                Underflow,
+              Vnum(right_value):
+                IF right_value <= left_value
+                THEN Vnum(left_value - right_value)
+                ELSE Underflow
+                ENDIF
+            ENDCASES
+        ENDCASES
+    ENDCASES
+  MEASURE expression BY <<
+
+  size_e(expression: expr): RECURSIVE int =
+    CASES expression OF
+      Cte(n):
+        1,
+      Sub(left, right):
+        3 + size_e(left) + size_e(right)
+    ENDCASES
+  MEASURE expression BY <<
+
+  size_c(continuation: cont): RECURSIVE int =
+    CASES continuation OF
+      I:
+        0,
+      A(expression, next):
+        2 + size_e(expression) + size_c(next),
+      B(saved, next):
+        1 + size_c(next)
+    ENDCASES
+  MEASURE continuation BY <<
+
+  eval_cont_closed(relation: [cont, value, value -> bool]): bool =
+    (FORALL (next: cont):
+      relation(next, Underflow, Underflow))
+      AND
+    (FORALL
+        (numeric: int),
+        (next: cont),
+        (expression: expr),
+        (result: value):
+      relation(B(numeric, next), eval_0(expression), result)
+        IMPLIES relation(A(expression, next), Vnum(numeric), result))
+      AND
+    (FORALL
+        (next: cont),
+        (numeric, saved: int),
+        (result: value):
+      relation(
+        next,
+        IF numeric <= saved
+        THEN Vnum(saved - numeric)
+        ELSE Underflow
+        ENDIF,
+        result)
+        IMPLIES relation(B(saved, next), Vnum(numeric), result))
+      AND
+    (FORALL (numeric: int):
+      relation(I, Vnum(numeric), Vnum(numeric)))
+
+  eval_cont(
+      continuation: cont,
+      current, result: value): bool =
+    FORALL (relation: [cont, value, value -> bool]):
+      eval_cont_closed(relation)
+        IMPLIES relation(continuation, current, result)
+
+  decrease_obligation(
+      continuation: cont,
+      numeric: int): bool =
+    CASES continuation OF
+      I:
+        TRUE,
+      A(expression, next):
+        0 <= size_c(continuation)
+          AND size_c(B(numeric, next)) + size_e(expression)
+                < size_c(continuation),
+      B(saved, next):
+        numeric <= saved
+          IMPLIES
+            ((0 <= size_c(continuation)
+                AND size_c(next) < size_c(continuation))
+              AND 0 <= saved - numeric)
+    ENDCASES
+
+  continuation_premise(
+      continuation: cont,
+      numeric: int,
+      result: value): bool =
+    CASES continuation OF
+      I:
+        result = Vnum(numeric),
+      A(expression, next):
+        eval_cont(B(numeric, next), eval_0(expression), result),
+      B(saved, next):
+        IF numeric <= saved
+        THEN eval_cont(next, Vnum(saved - numeric), result)
+        ELSE result = Underflow
+        ENDIF
+    ENDCASES
+
+  continue_4_vc: bool =
+    FORALL (numeric: int), (continuation: cont):
+      0 <= numeric
+        IMPLIES
+          (decrease_obligation(continuation, numeric)
+            AND
+          (FORALL (result: value):
+            continuation_premise(
+              continuation,
+              numeric,
+              result)
+              IMPLIES
+                eval_cont(
+                  continuation,
+                  Vnum(numeric),
+                  result)))
+
+END defunctionalization_SemWithError_continue_4qtvc

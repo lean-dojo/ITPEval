@@ -1,0 +1,72 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1975_b3:
+% the supremum of a normalized elementary symmetric sum over arbitrary finite
+% tuples of positive real numbers is the reciprocal factorial. This file contains no proof.
+
+putnam_1975_b3: THEORY
+BEGIN
+  real_sequence: TYPE = [nat -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  nat_factorial(k: nat): RECURSIVE nat =
+    IF k = 0 THEN
+      1
+    ELSE
+      k * nat_factorial(k - 1)
+    ENDIF
+  MEASURE k
+
+  elementary_symmetric_sum(
+      values: real_sequence,
+      degree, count: nat): RECURSIVE real =
+    IF degree = 0 THEN
+      1
+    ELSIF count = 0 THEN
+      0
+    ELSE
+      elementary_symmetric_sum(values, degree, count - 1)
+        + values(count - 1)
+            * elementary_symmetric_sum(
+                values,
+                degree - 1,
+                count - 1)
+    ENDIF
+  MEASURE count
+
+  admissible(
+      k, count: nat,
+      values: real_sequence): bool =
+    count >= k
+      AND FORALL (index: nat):
+        index < count IMPLIES values(index) > 0
+
+  normalized_symmetric_sum(
+      k, count: nat,
+      values: real_sequence): real =
+    safe_div(
+      elementary_symmetric_sum(values, k, count),
+      elementary_symmetric_sum(values, 1, count) ^ k)
+
+  solution(k: nat): real =
+    safe_div(1, nat_factorial(k) :: real)
+
+  putnam_1975_b3: bool =
+    FORALL (k: posnat):
+      (FORALL (count: nat), (values: real_sequence):
+        admissible(k, count, values)
+          IMPLIES
+            normalized_symmetric_sum(k, count, values)
+              <= solution(k))
+      AND
+        (FORALL (M: real):
+          M < solution(k)
+            IMPLIES
+              EXISTS (count: nat), (values: real_sequence):
+                admissible(k, count, values)
+                  AND normalized_symmetric_sum(k, count, values) > M)
+END putnam_1975_b3

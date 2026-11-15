@@ -1,0 +1,100 @@
+% Statement-only formalization of PutnamBench artifact putnam_1966_b1:
+% a convex polygon contained in the unit square has cyclic sum of squared
+% side lengths at most four. This file contains no proof.
+
+putnam_1966_b1: THEORY
+BEGIN
+  point: TYPE = [# x_coord: real, y_coord: real #]
+  point_set: TYPE = [point -> bool]
+  vertices: TYPE = [nat -> point]
+
+  squared_distance(P, Q: point): real =
+    (x_coord(Q) - x_coord(P)) ^ 2
+      + (y_coord(Q) - y_coord(P)) ^ 2
+
+  cross_from(P, Q, R: point): real =
+    (x_coord(Q) - x_coord(P)) * (y_coord(R) - y_coord(P))
+      - (y_coord(Q) - y_coord(P)) * (x_coord(R) - x_coord(P))
+
+  collinear(P, Q, R: point): bool =
+    cross_from(P, Q, R) = 0
+
+  affine_combination(t: real, P, Q: point): point =
+    (# x_coord := (1 - t) * x_coord(P) + t * x_coord(Q),
+       y_coord := (1 - t) * y_coord(P) + t * y_coord(Q) #)
+
+  closed_segment(P, Q: point): point_set =
+    LAMBDA (X: point):
+      EXISTS (t: real):
+        0 <= t AND t <= 1
+          AND X = affine_combination(t, P, Q)
+
+  point_subset(A, B: point_set): bool =
+    FORALL (P: point):
+      A(P) IMPLIES B(P)
+
+  convex(A: point_set): bool =
+    FORALL (P, Q: point), (t: real):
+      A(P) AND A(Q) AND 0 <= t AND t <= 1
+        IMPLIES A(affine_combination(t, P, Q))
+
+  convex_hull(A: point_set): point_set =
+    LAMBDA (P: point):
+      FORALL (C: point_set):
+        convex(C) AND point_subset(A, C) IMPLIES C(P)
+
+  euclidean_interior(A: point_set): point_set =
+    LAMBDA (P: point):
+      EXISTS (radius: real):
+        0 < radius
+          AND FORALL (Q: point):
+            squared_distance(P, Q) < radius ^ 2
+              IMPLIES A(Q)
+
+  vertex_set(n: nat, L: vertices): point_set =
+    LAMBDA (P: point):
+      EXISTS (i: nat):
+        i < n AND P = L(i)
+
+  next_index(i, n: nat): nat =
+    IF i + 1 = n THEN 0 ELSE i + 1 ENDIF
+
+  side_square_sum(
+      n: nat, L: vertices, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      side_square_sum(n, L, count - 1)
+        + squared_distance(
+            L(count - 1),
+            L(next_index(count - 1, n)))
+    ENDIF
+  MEASURE count
+
+  putnam_1966_b1: bool =
+    FORALL (n: nat), (L: vertices):
+      (n >= 3
+        AND FORALL (i: nat):
+          i < n IMPLIES
+            0 <= x_coord(L(i))
+              AND x_coord(L(i)) <= 1
+              AND 0 <= y_coord(L(i))
+              AND y_coord(L(i)) <= 1
+        AND FORALL (i, j, k: nat):
+          i < n
+            AND j < n
+            AND k < n
+            AND i /= j
+            AND j /= k
+            AND k /= i
+          IMPLIES NOT collinear(L(i), L(j), L(k))
+        AND FORALL (i: nat):
+          i < n IMPLIES
+            FORALL (P: point):
+              closed_segment(
+                L(i), L(next_index(i, n)))(P)
+              IMPLIES
+                NOT euclidean_interior(
+                  convex_hull(vertex_set(n, L)))(P))
+      IMPLIES side_square_sum(n, L, n) <= 4
+END putnam_1966_b1

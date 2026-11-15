@@ -1,0 +1,175 @@
+% Statement-only formalization of the VERINA corpus artifact verina_basic_22,
+% catalog title "dissimilarElements": computing the sorted duplicate-free
+% symmetric difference of two finite integer arrays with the exact executable
+% program and its correctness contract. This file contains no proof.
+
+verina_basic_22: THEORY
+BEGIN
+
+  % Finite PVS lists preserve the exact contents and order of Lean arrays.
+  inArray(
+      a: list[int],
+      x: int): RECURSIVE bool =
+    CASES a OF
+      null:
+        FALSE,
+      cons(head, tail):
+        head = x OR inArray(tail, x)
+    ENDCASES
+  MEASURE a BY <<
+
+  % This duplicate-free list is an extensional representation of the integer
+  % HashSet used by the source program.
+  set_insert(
+      accumulator: list[int],
+      x: int): list[int] =
+    IF inArray(accumulator, x) THEN
+      accumulator
+    ELSE
+      cons(x, accumulator)
+    ENDIF
+
+  dissimilar_fold(
+      remaining, other, accumulator: list[int]):
+        RECURSIVE list[int] =
+    CASES remaining OF
+      null:
+        accumulator,
+      cons(head, tail):
+        dissimilar_fold(
+          tail,
+          other,
+          IF NOT inArray(other, head) THEN
+            set_insert(accumulator, head)
+          ELSE
+            accumulator
+          ENDIF)
+    ENDCASES
+  MEASURE remaining BY <<
+
+  sorted_insert(
+      x: int,
+      sorted_values: list[int]): RECURSIVE list[int] =
+    CASES sorted_values OF
+      null:
+        cons(x, null[int]),
+      cons(head, tail):
+        IF x <= head THEN
+          cons(x, cons(head, tail))
+        ELSE
+          cons(head, sorted_insert(x, tail))
+        ENDIF
+    ENDCASES
+  MEASURE sorted_values BY <<
+
+  insertion_sort(
+      values: list[int]): RECURSIVE list[int] =
+    CASES values OF
+      null:
+        null[int],
+      cons(head, tail):
+        sorted_insert(head, insertion_sort(tail))
+    ENDCASES
+  MEASURE values BY <<
+
+  dissimilarElements_precond(
+      a, b: list[int]): bool =
+    TRUE
+
+  % The source precondition proof argument is computationally irrelevant.
+  % set_insert has exactly HashSet insertion semantics for integers. Sorting
+  % its duplicate-free result makes HashSet.toList iteration order irrelevant,
+  % and insertion_sort returns the same nondecreasing integer sequence as the
+  % source mergeSort.
+  dissimilarElements(
+      a, b: list[int]): list[int] =
+    insertion_sort(
+      dissimilar_fold(
+        b,
+        a,
+        dissimilar_fold(
+          a,
+          b,
+          null[int])))
+
+  result_elements_dissimilar(
+      result, a, b: list[int]): RECURSIVE bool =
+    CASES result OF
+      null:
+        TRUE,
+      cons(head, tail):
+        inArray(a, head) /= inArray(b, head)
+          AND result_elements_dissimilar(tail, a, b)
+    ENDCASES
+  MEASURE result BY <<
+
+  all_at_least(
+      lower: int,
+      values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        lower <= head
+          AND all_at_least(lower, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  pairwise_nondecreasing(
+      values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        all_at_least(head, tail)
+          AND pairwise_nondecreasing(tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  no_duplicates(
+      values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        NOT inArray(tail, head)
+          AND no_duplicates(tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  source_membership_contract(
+      source, other, result: list[int]): RECURSIVE bool =
+    CASES source OF
+      null:
+        TRUE,
+      cons(head, tail):
+        (IF inArray(other, head) THEN
+           NOT inArray(result, head)
+         ELSE
+           inArray(result, head)
+         ENDIF)
+          AND source_membership_contract(
+                tail,
+                other,
+                result)
+    ENDCASES
+  MEASURE source BY <<
+
+  dissimilarElements_postcond(
+      a, b, result: list[int]): bool =
+    result_elements_dissimilar(result, a, b)
+      AND pairwise_nondecreasing(result)
+      AND no_duplicates(result)
+      AND source_membership_contract(a, b, result)
+      AND source_membership_contract(b, a, result)
+
+  dissimilarElements_spec_satisfied: bool =
+    FORALL (a, b: list[int]):
+      dissimilarElements_precond(a, b)
+        IMPLIES
+          dissimilarElements_postcond(
+            a,
+            b,
+            dissimilarElements(a, b))
+
+END verina_basic_22

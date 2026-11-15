@@ -1,0 +1,165 @@
+% Statement-only formalization of the Thousand Theorems artifact Q1137014,
+% "Tychonoff's theorem": an arbitrary indexed product of compact subsets of
+% topological spaces is compact in the product topology. This file contains no proof.
+%
+% Coordinate types are represented as fibers in a common carrier. Every
+% dependent family of types has this representation via its disjoint sum.
+
+tychonoff_s_theorem_Q1137014[
+  Index: TYPE,
+  Value: TYPE+,
+  fiber, coordinate_set: [Index -> [Value -> bool]],
+  coordinate_open: [Index -> [[Value -> bool] -> bool]]
+]: THEORY
+BEGIN
+  point_set: TYPE = [Value -> bool]
+  point_family: TYPE = [point_set -> bool]
+  product_point: TYPE = [Index -> Value]
+  product_set: TYPE = [product_point -> bool]
+  product_family: TYPE = [product_set -> bool]
+  coordinate_neighborhoods: TYPE = [Index -> point_set]
+
+  IMPORTING finite_sets[Index]
+  IMPORTING finite_sets[point_set]
+  IMPORTING finite_sets[product_set]
+
+  finite_index_set: TYPE = finite_set[Index]
+  finite_point_family: TYPE = finite_set[point_set]
+  finite_product_family: TYPE = finite_set[product_set]
+
+  empty_point_set: point_set =
+    LAMBDA (x: Value): FALSE
+
+  fiber_set(i: Index): point_set =
+    LAMBDA (x: Value): fiber(i)(x)
+
+  point_subset(A, B: point_set): bool =
+    FORALL (x: Value):
+      A(x) IMPLIES B(x)
+
+  point_intersection(A, B: point_set): point_set =
+    LAMBDA (x: Value):
+      A(x) AND B(x)
+
+  point_union(F: point_family): point_set =
+    LAMBDA (x: Value):
+      EXISTS (U: point_set):
+        F(U) AND U(x)
+
+  finite_point_union(F: finite_point_family): point_set =
+    LAMBDA (x: Value):
+      EXISTS (U: point_set):
+        F(U) AND U(x)
+
+  coordinate_topology_law(i: Index): bool =
+    coordinate_open(i)(empty_point_set)
+      AND coordinate_open(i)(fiber_set(i))
+      AND
+        (FORALL (U: point_set):
+          coordinate_open(i)(U)
+            IMPLIES point_subset(U, fiber_set(i)))
+      AND
+        (FORALL (U, V: point_set):
+          (coordinate_open(i)(U) AND coordinate_open(i)(V))
+            IMPLIES
+              coordinate_open(i)(point_intersection(U, V)))
+      AND
+        (FORALL (F: point_family):
+          (FORALL (U: point_set):
+            F(U) IMPLIES coordinate_open(i)(U))
+          IMPLIES coordinate_open(i)(point_union(F)))
+
+  family_well_formed: bool =
+    FORALL (i: Index):
+      point_subset(coordinate_set(i), fiber_set(i))
+
+  coordinate_open_cover(
+      i: Index,
+      C: point_family,
+      A: point_set): bool =
+    (FORALL (U: point_set):
+      C(U) IMPLIES coordinate_open(i)(U))
+      AND point_subset(A, point_union(C))
+
+  coordinate_compact(i: Index): bool =
+    FORALL (C: point_family):
+      coordinate_open_cover(i, C, coordinate_set(i))
+        IMPLIES
+          EXISTS (D: finite_point_family):
+            (FORALL (U: point_set):
+              D(U) IMPLIES C(U))
+              AND point_subset(
+                coordinate_set(i),
+                finite_point_union(D))
+
+  choice_space: product_set =
+    LAMBDA (x: product_point):
+      FORALL (i: Index):
+        fiber(i)(x(i))
+
+  product_of_coordinate_sets: product_set =
+    LAMBDA (x: product_point):
+      choice_space(x)
+        AND FORALL (i: Index):
+          coordinate_set(i)(x(i))
+
+  product_subset(A, B: product_set): bool =
+    FORALL (x: product_point):
+      A(x) IMPLIES B(x)
+
+  basic_product_set(
+      J: finite_index_set,
+      U: coordinate_neighborhoods): product_set =
+    LAMBDA (x: product_point):
+      choice_space(x)
+        AND FORALL (i: Index):
+          J(i) IMPLIES U(i)(x(i))
+
+  product_open(U: product_set): bool =
+    product_subset(U, choice_space)
+      AND FORALL (x: product_point):
+        U(x)
+          IMPLIES
+            EXISTS
+              (J: finite_index_set),
+              (V: coordinate_neighborhoods):
+                (FORALL (i: Index):
+                  J(i) IMPLIES coordinate_open(i)(V(i)))
+                AND basic_product_set(J, V)(x)
+                AND product_subset(basic_product_set(J, V), U)
+
+  product_union(F: product_family): product_set =
+    LAMBDA (x: product_point):
+      EXISTS (U: product_set):
+        F(U) AND U(x)
+
+  finite_product_union(F: finite_product_family): product_set =
+    LAMBDA (x: product_point):
+      EXISTS (U: product_set):
+        F(U) AND U(x)
+
+  product_open_cover(
+      C: product_family,
+      A: product_set): bool =
+    (FORALL (U: product_set):
+      C(U) IMPLIES product_open(U))
+      AND product_subset(A, product_union(C))
+
+  product_compact(A: product_set): bool =
+    FORALL (C: product_family):
+      product_open_cover(C, A)
+        IMPLIES
+          EXISTS (D: finite_product_family):
+            (FORALL (U: product_set):
+              D(U) IMPLIES C(U))
+              AND product_subset(A, finite_product_union(D))
+
+  tychonoff_s_theorem: bool =
+    (family_well_formed
+      AND FORALL (i: Index):
+        coordinate_topology_law(i))
+      IMPLIES
+        ((FORALL (i: Index):
+          coordinate_compact(i))
+        IMPLIES product_compact(product_of_coordinate_sets))
+END tychonoff_s_theorem_Q1137014

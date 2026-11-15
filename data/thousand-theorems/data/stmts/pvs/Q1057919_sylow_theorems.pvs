@@ -1,0 +1,157 @@
+% Statement-only formalization of thousand-theorems corpus artifact Q1057919,
+% "Sylow theorems": existence of prime-power subgroups, conjugacy of Sylow
+% subgroups, and divisibility and congruence properties of their number.
+% This file contains no proof.
+
+Q1057919_sylow_theorems[
+  G: TYPE+,
+  mul: [G, G -> G],
+  inv: [G -> G],
+  one: G
+]: THEORY
+BEGIN
+
+  element_set: TYPE = [G -> bool]
+
+  IMPORTING finite_sets[G], finite_sets[element_set]
+
+  group_laws: bool =
+    (FORALL (x, y, z: G):
+      mul(mul(x, y), z) = mul(x, mul(y, z)))
+      AND (FORALL (x: G):
+        mul(one, x) = x
+          AND mul(x, one) = x)
+      AND (FORALL (x: G):
+        mul(inv(x), x) = one
+          AND mul(x, inv(x)) = one)
+
+  group_power(x: G, exponent: nat): RECURSIVE G =
+    IF exponent = 0 THEN
+      one
+    ELSE
+      mul(group_power(x, exponent - 1), x)
+    ENDIF
+  MEASURE exponent
+
+  nat_divides(divisor, value: nat): bool =
+    EXISTS (factor: nat): value = divisor * factor
+
+  prime_nat(value: nat): bool =
+    value >= 2
+      AND (FORALL (divisor: posnat):
+        nat_divides(divisor, value)
+          IMPLIES divisor = 1 OR divisor = value)
+
+  nat_congruent(left, right, modulus: nat): bool =
+    EXISTS (offset: int):
+      (left :: int) - (right :: int) =
+        (modulus :: int) * offset
+
+  subset_of(H, K: element_set): bool =
+    FORALL (x: G): H(x) IMPLIES K(x)
+
+  is_subgroup(H: element_set): bool =
+    H(one)
+      AND (FORALL (x, y: G):
+        H(x) AND H(y) IMPLIES H(mul(x, y)))
+      AND (FORALL (x: G):
+        H(x) IMPLIES H(inv(x)))
+
+  is_p_subgroup(p: nat, H: element_set): bool =
+    is_subgroup(H)
+      AND (FORALL (x: G):
+        H(x) IMPLIES
+          EXISTS (exponent: nat):
+            group_power(x, p ^ exponent) = one)
+
+  is_sylow(p: nat, P: element_set): bool =
+    is_p_subgroup(p, P)
+      AND (FORALL (Q: element_set):
+        is_p_subgroup(p, Q)
+          AND subset_of(P, Q)
+          IMPLIES Q = P)
+
+  exact_sylow_family(
+      p: nat,
+      family: finite_set[element_set]): bool =
+    FORALL (H: element_set):
+      family(H) IFF is_sylow(p, H)
+
+  conjugate_subgroup(g: G, H: element_set): element_set =
+    LAMBDA (x: G):
+      H(mul(mul(inv(g), x), g))
+
+  full_carrier(carrier: finite_set[G]): bool =
+    FORALL (x: G): carrier(x)
+
+  left_coset(g: G, H: element_set): element_set =
+    LAMBDA (x: G):
+      EXISTS (h: G):
+        H(h) AND x = mul(g, h)
+
+  exact_left_coset_family(
+      H: element_set,
+      family: finite_set[element_set]): bool =
+    FORALL (C: element_set):
+      family(C) IFF
+        EXISTS (g: G): C = left_coset(g, H)
+
+  subgroup_index(H: element_set, index: nat): bool =
+    (EXISTS (family: finite_set[element_set]):
+      exact_left_coset_family(H, family)
+        AND index = card(family))
+      OR
+    (index = 0
+      AND NOT
+        EXISTS (family: finite_set[element_set]):
+          exact_left_coset_family(H, family))
+
+  Q1057919_exists_subgroup_card_pow_prime: bool =
+    FORALL (p, exponent: nat),
+           (carrier: finite_set[G]):
+      (group_laws
+        AND full_carrier(carrier)
+        AND prime_nat(p)
+        AND nat_divides(p ^ exponent, card(carrier)))
+      IMPLIES
+        EXISTS (H: finite_set[G]):
+          is_subgroup(H)
+            AND card(H) = p ^ exponent
+
+  Q1057919_isPretransitive_of_finite: bool =
+    FORALL (p: nat),
+           (family: finite_set[element_set]):
+      (group_laws
+        AND prime_nat(p)
+        AND exact_sylow_family(p, family))
+      IMPLIES
+        FORALL (P, Q: element_set):
+          is_sylow(p, P)
+            AND is_sylow(p, Q)
+            IMPLIES
+              EXISTS (g: G):
+                conjugate_subgroup(g, P) = Q
+
+  Q1057919_card_dvd_index: bool =
+    FORALL (p: nat),
+           (family: finite_set[element_set]),
+           (P: element_set),
+           (index: nat):
+      (group_laws
+        AND prime_nat(p)
+        AND exact_sylow_family(p, family)
+        AND is_sylow(p, P)
+        AND subgroup_index(P, index))
+      IMPLIES
+        nat_divides(card(family), index)
+
+  Q1057919_card_sylow_modEq_one: bool =
+    FORALL (p: nat),
+           (family: finite_set[element_set]):
+      (group_laws
+        AND prime_nat(p)
+        AND exact_sylow_family(p, family))
+      IMPLIES
+        nat_congruent(card(family), 1, p)
+
+END Q1057919_sylow_theorems

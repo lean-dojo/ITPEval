@@ -1,0 +1,123 @@
+% Statement-only formalization of PutnamBench artifact putnam_1969_b4:
+% a continuous real plane curve of total variation one admits four vertices
+% whose convex hull covers the curve, whose adjacent side lengths multiply
+% to 1/4, and whose four vertex angles are right angles. This file contains no proof.
+
+putnam_1969_b4: THEORY
+BEGIN
+  point: TYPE = [# x_coord: real, y_coord: real #]
+  parametrized_curve: TYPE = [real -> point]
+  knot_sequence: TYPE = [nat -> real]
+
+  squared_distance(p, q: point): real =
+    (x_coord(p) - x_coord(q)) ^ 2
+      + (y_coord(p) - y_coord(q)) ^ 2
+
+  euclidean_distance(p, q: point): real =
+    epsilon(
+      LAMBDA (distance: real):
+        0 <= distance
+          AND distance ^ 2 = squared_distance(p, q))
+
+  in_unit_interval(t: real): bool =
+    0 <= t AND t <= 1
+
+  point_close(p, q: point, epsilon_value: real): bool =
+    squared_distance(p, q) < epsilon_value ^ 2
+
+  continuous_on_unit_interval(g: parametrized_curve): bool =
+    FORALL (t: real):
+      in_unit_interval(t) IMPLIES
+        FORALL (epsilon_value: posreal):
+          EXISTS (delta: posreal):
+            FORALL (s: real):
+              (in_unit_interval(s) AND abs(s - t) < delta)
+                IMPLIES point_close(g(s), g(t), epsilon_value)
+
+  partition_of_unit_interval(
+      knots: knot_sequence,
+      count: nat): bool =
+    knots(0) = 0
+      AND knots(count) = 1
+      AND FORALL (index: nat):
+        index < count IMPLIES
+          knots(index) < knots(index + 1)
+
+  polygonal_length(
+      g: parametrized_curve,
+      knots: knot_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      polygonal_length(g, knots, count - 1)
+        + euclidean_distance(
+            g(knots(count - 1)),
+            g(knots(count)))
+    ENDIF
+  MEASURE count
+
+  variation_upper_bound(g: parametrized_curve, bound: real): bool =
+    0 <= bound
+      AND FORALL (knots: knot_sequence), (count: nat):
+        partition_of_unit_interval(knots, count)
+          IMPLIES polygonal_length(g, knots, count) <= bound
+
+  is_path_length(g: parametrized_curve, length: real): bool =
+    variation_upper_bound(g, length)
+      AND FORALL (lower: real):
+        lower < length IMPLIES
+          EXISTS (knots: knot_sequence), (count: nat):
+            partition_of_unit_interval(knots, count)
+              AND lower < polygonal_length(g, knots, count)
+
+  in_four_point_convex_hull(
+      p, a, b, c, d: point): bool =
+    EXISTS (wa, wb, wc, wd: real):
+      0 <= wa
+        AND 0 <= wb
+        AND 0 <= wc
+        AND 0 <= wd
+        AND wa + wb + wc + wd = 1
+        AND x_coord(p) =
+          wa * x_coord(a)
+            + wb * x_coord(b)
+            + wc * x_coord(c)
+            + wd * x_coord(d)
+        AND y_coord(p) =
+          wa * y_coord(a)
+            + wb * y_coord(b)
+            + wc * y_coord(c)
+            + wd * y_coord(d)
+
+  curve_covered_by_convex_hull(
+      g: parametrized_curve,
+      a, b, c, d: point): bool =
+    FORALL (t: real):
+      in_unit_interval(t) IMPLIES
+        in_four_point_convex_hull(g(t), a, b, c, d)
+
+  dot_from(vertex, first, second: point): real =
+    (x_coord(first) - x_coord(vertex))
+      * (x_coord(second) - x_coord(vertex))
+      + (y_coord(first) - y_coord(vertex))
+          * (y_coord(second) - y_coord(vertex))
+
+  right_angle(first, vertex, second: point): bool =
+    dot_from(vertex, first, second) = 0
+
+  putnam_1969_b4: bool =
+    FORALL (g: parametrized_curve):
+      (continuous_on_unit_interval(g)
+        AND is_path_length(g, 1))
+      IMPLIES
+        EXISTS (a, b, c, d: point):
+          curve_covered_by_convex_hull(g, a, b, c, d)
+            AND euclidean_distance(a, b)
+                  * euclidean_distance(b, c)
+                = 1 / 4
+            AND right_angle(a, b, c)
+            AND right_angle(b, c, d)
+            AND right_angle(c, d, a)
+            AND right_angle(d, a, b)
+END putnam_1969_b4

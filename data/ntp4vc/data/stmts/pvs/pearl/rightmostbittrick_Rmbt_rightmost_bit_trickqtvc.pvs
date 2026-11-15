@@ -1,0 +1,89 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/rightmostbittrick_Rmbt_rightmost_bit_trickqtvc: the 64-bit
+% rightmost-set-bit verification condition for x AND its two's-complement
+% negation, including the zero-bit segments around the selected bit.
+% This file contains no proof.
+
+rightmostbittrick_Rmbt_rightmost_bit_trickqtvc: THEORY
+BEGIN
+
+  IMPORTING bv[64], bv_nat[64]
+
+  word64: TYPE = bvec[64]
+
+  unsigned(value: word64): int =
+    bv2nat[64](value)
+
+  zero64: word64 =
+    fill[64](FALSE)
+
+  integer_bit(value: int, index: below(64)): bool =
+    mod(
+      floor(
+        (mod(value, 18446744073709551616) :: real)
+          / (exp2(index) :: real)),
+      2)
+      = 1
+
+  word64_from_int(value: int): word64 =
+    LAMBDA (index: below(64)):
+      integer_bit(value, index)
+
+  word_neg(value: word64): word64 =
+    word64_from_int(-unsigned(value))
+
+  word_and(left, right: word64): word64 =
+    LAMBDA (index: below(64)):
+      left(index) AND right(index)
+
+  bit_at(value: word64, index: int): bool =
+    IF 0 <= index AND index < 64 THEN
+      value(index)
+    ELSE
+      FALSE
+    ENDIF
+
+  equal_segment(
+      left, right: word64,
+      start, segment_length: int): bool =
+    FORALL (offset: int):
+      0 <= offset AND offset < segment_length
+        IMPLIES
+          bit_at(left, start + offset)
+            =
+          bit_at(right, start + offset)
+
+  rightmost_bit_trick_vc: bool =
+    FORALL (x: word64):
+      x /= zero64
+        IMPLIES
+          x /= zero64
+            AND
+          (FORALL (p_bv: word64):
+            (unsigned(p_bv) < 64
+              AND
+             equal_segment(x, zero64, 0, unsigned(p_bv))
+              AND
+             bit_at(x, unsigned(p_bv)) = TRUE)
+              IMPLIES
+                (LET r: word64 =
+                   word_and(x, word_neg(x))
+                 IN
+                   (0 <= unsigned(p_bv)
+                     AND unsigned(p_bv) < 64)
+                     AND
+                   equal_segment(x, zero64, 0, unsigned(p_bv))
+                     AND
+                   bit_at(x, unsigned(p_bv)) = TRUE
+                     AND
+                   equal_segment(r, zero64, 0, unsigned(p_bv))
+                     AND
+                   equal_segment(
+                     r,
+                     zero64,
+                     unsigned(p_bv) + 1,
+                     63 - unsigned(p_bv))
+                     AND
+                   bit_at(r, unsigned(p_bv)) = TRUE))
+
+END rightmostbittrick_Rmbt_rightmost_bit_trickqtvc

@@ -1,0 +1,832 @@
+% Statement-only formalization of the Thousand Theorems artifact Q1149022,
+% "Fubini's theorem": an integrable normed-real-vector-space-valued function on
+% the product of two s-finite measure spaces has product integral equal to its iterated integral.
+% This file contains no proof.
+
+fubini_s_theorem_Q1149022[
+  A: TYPE+,
+  carrierA: [A -> bool],
+  B: TYPE+,
+  carrierB: [B -> bool],
+  G: TYPE+,
+  zeroG: G,
+  addG: [G, G -> G],
+  negG: [G -> G],
+  smulG: [real, G -> G],
+  normG: [G -> real]
+]: THEORY
+BEGIN
+  point: TYPE =
+    [# point_tag: nat, a_coordinate: A, b_coordinate: B #]
+
+  defaultA: A =
+    epsilon(LAMBDA (value: A): TRUE)
+
+  defaultB: B =
+    epsilon(LAMBDA (value: B): TRUE)
+
+  a_point(value: A): point =
+    (# point_tag := 0,
+       a_coordinate := value,
+       b_coordinate := defaultB #)
+
+  b_point(value: B): point =
+    (# point_tag := 1,
+       a_coordinate := defaultA,
+       b_coordinate := value #)
+
+  pair_point(left: A, right: B): point =
+    (# point_tag := 2,
+       a_coordinate := left,
+       b_coordinate := right #)
+
+  event: TYPE = [point -> bool]
+  event_sequence: TYPE = [nat -> event]
+  sigma_algebra: TYPE = [event -> bool]
+
+  measure_value: TYPE =
+    [# infinite_flag: bool, finite_part: real #]
+  measure_value_sequence: TYPE = [nat -> measure_value]
+  measure_map: TYPE = [event -> measure_value]
+  measure_sequence: TYPE = [nat -> measure_map]
+
+  real_sequence: TYPE = [nat -> real]
+  g_sequence: TYPE = [nat -> G]
+  g_function: TYPE = [point -> G]
+  g_function_sequence: TYPE = [nat -> g_function]
+  nonnegative_function: TYPE = [point -> measure_value]
+
+  a_domain: event =
+    LAMBDA (p: point):
+      point_tag(p) = 0
+        AND b_coordinate(p) = defaultB
+        AND carrierA(a_coordinate(p))
+
+  b_domain: event =
+    LAMBDA (p: point):
+      point_tag(p) = 1
+        AND a_coordinate(p) = defaultA
+        AND carrierB(b_coordinate(p))
+
+  product_domain: event =
+    LAMBDA (p: point):
+      point_tag(p) = 2
+        AND carrierA(a_coordinate(p))
+        AND carrierB(b_coordinate(p))
+
+  subG(x, y: G): G =
+    addG(x, negG(y))
+
+  normed_real_vector_space: bool =
+    (FORALL (x, y: G): addG(x, y) = addG(y, x))
+      AND (FORALL (x, y, z: G):
+        addG(addG(x, y), z) = addG(x, addG(y, z)))
+      AND (FORALL (x: G): addG(x, zeroG) = x)
+      AND (FORALL (x: G): addG(x, negG(x)) = zeroG)
+      AND (FORALL (a: real), (x, y: G):
+        smulG(a, addG(x, y)) =
+          addG(smulG(a, x), smulG(a, y)))
+      AND (FORALL (a, b: real), (x: G):
+        smulG(a + b, x) =
+          addG(smulG(a, x), smulG(b, x)))
+      AND (FORALL (a, b: real), (x: G):
+        smulG(a * b, x) = smulG(a, smulG(b, x)))
+      AND (FORALL (x: G): smulG(1, x) = x)
+      AND (FORALL (x: G): normG(x) >= 0)
+      AND (FORALL (x: G): normG(x) = 0 IFF x = zeroG)
+      AND (FORALL (a: real), (x: G):
+        normG(smulG(a, x)) = abs(a) * normG(x))
+      AND (FORALL (x, y: G):
+        normG(addG(x, y)) <= normG(x) + normG(y))
+
+  converges_to_g(values: g_sequence, limit: G): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            normG(subG(values(index), limit)) < epsilon_value
+
+  cauchy_g(values: g_sequence): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (left_index, right_index: nat):
+          cutoff <= left_index AND cutoff <= right_index
+            IMPLIES
+              normG(
+                subG(values(left_index), values(right_index)))
+                < epsilon_value
+
+  complete_space_g: bool =
+    FORALL (values: g_sequence):
+      cauchy_g(values) IMPLIES
+        EXISTS (limit: G): converges_to_g(values, limit)
+
+  converges_to_real(values: real_sequence, limit: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(values(index) - limit) < epsilon_value
+
+  zero_measure_value: measure_value =
+    (# infinite_flag := FALSE, finite_part := 0 #)
+
+  infinite_measure_value: measure_value =
+    (# infinite_flag := TRUE, finite_part := 0 #)
+
+  finite_measure_value(value: real): measure_value =
+    (# infinite_flag := FALSE, finite_part := value #)
+
+  canonical_measure_value(value: measure_value): bool =
+    IF infinite_flag(value) THEN
+      finite_part(value) = 0
+    ELSE
+      finite_part(value) >= 0
+    ENDIF
+
+  measure_value_is_zero(value: measure_value): bool =
+    NOT infinite_flag(value)
+      AND finite_part(value) = 0
+
+  measure_value_is_finite(value: measure_value): bool =
+    canonical_measure_value(value)
+      AND NOT infinite_flag(value)
+
+  measure_value_le(left, right: measure_value): bool =
+    canonical_measure_value(left)
+      AND canonical_measure_value(right)
+      AND IF infinite_flag(right) THEN
+        TRUE
+      ELSIF infinite_flag(left) THEN
+        FALSE
+      ELSE
+        finite_part(left) <= finite_part(right)
+      ENDIF
+
+  measure_value_add(left, right: measure_value): measure_value =
+    IF infinite_flag(left) OR infinite_flag(right) THEN
+      infinite_measure_value
+    ELSE
+      finite_measure_value(
+        finite_part(left) + finite_part(right))
+    ENDIF
+
+  measure_value_product(left, right: measure_value): measure_value =
+    IF measure_value_is_zero(left)
+        OR measure_value_is_zero(right) THEN
+      zero_measure_value
+    ELSIF infinite_flag(left)
+        OR infinite_flag(right) THEN
+      infinite_measure_value
+    ELSE
+      finite_measure_value(
+        finite_part(left) * finite_part(right))
+    ENDIF
+
+  empty_event: event =
+    LAMBDA (p: point): FALSE
+
+  event_complement(domain, E: event): event =
+    LAMBDA (p: point):
+      domain(p) AND NOT E(p)
+
+  countable_union(domain: event, events: event_sequence): event =
+    LAMBDA (p: point):
+      domain(p)
+        AND EXISTS (index: nat): events(index)(p)
+
+  event_subset(E, F: event): bool =
+    FORALL (p: point):
+      E(p) IMPLIES F(p)
+
+  carrier_event(domain, E: event): bool =
+    event_subset(E, domain)
+
+  pairwise_disjoint(
+      domain: event,
+      events: event_sequence): bool =
+    FORALL (left_index, right_index: nat):
+      left_index /= right_index IMPLIES
+        FORALL (p: point):
+          domain(p) IMPLIES
+            NOT (events(left_index)(p)
+              AND events(right_index)(p))
+
+  pairwise_disjoint_below(
+      domain: event,
+      events: event_sequence,
+      count: nat): bool =
+    FORALL (left_index, right_index: nat):
+      left_index < count
+        AND right_index < count
+        AND left_index /= right_index
+      IMPLIES
+        FORALL (p: point):
+          domain(p) IMPLIES
+            NOT (events(left_index)(p)
+              AND events(right_index)(p))
+
+  finite_real_sum(values: real_sequence, count: nat):
+      RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      finite_real_sum(values, count - 1)
+        + values(count - 1)
+    ENDIF
+  MEASURE count
+
+  unbounded_above(values: real_sequence): bool =
+    FORALL (bound: real):
+      EXISTS (index: nat):
+        bound < values(index)
+
+  partial_measure_sum(
+      values: measure_value_sequence,
+      count: nat): real =
+    finite_real_sum(
+      LAMBDA (index: nat):
+        finite_part(values(index)),
+      count)
+
+  extended_nonnegative_sum(
+      values: measure_value_sequence,
+      total: measure_value): bool =
+    canonical_measure_value(total)
+      AND (FORALL (index: nat):
+        canonical_measure_value(values(index)))
+      AND IF infinite_flag(total) THEN
+        (EXISTS (index: nat):
+          infinite_flag(values(index)))
+          OR ((FORALL (index: nat):
+                NOT infinite_flag(values(index)))
+            AND unbounded_above(
+              LAMBDA (count: nat):
+                partial_measure_sum(values, count)))
+      ELSE
+        (FORALL (index: nat):
+          NOT infinite_flag(values(index)))
+          AND converges_to_real(
+            LAMBDA (count: nat):
+              partial_measure_sum(values, count),
+            finite_part(total))
+      ENDIF
+
+  is_sigma_algebra(
+      domain: event,
+      Sigma: sigma_algebra): bool =
+    (FORALL (E: event):
+      Sigma(E) IMPLIES carrier_event(domain, E))
+      AND Sigma(domain)
+      AND (FORALL (E: event):
+        Sigma(E) IMPLIES
+          Sigma(event_complement(domain, E)))
+      AND (FORALL (events: event_sequence):
+        (FORALL (index: nat): Sigma(events(index)))
+          IMPLIES Sigma(countable_union(domain, events)))
+
+  is_measure(
+      domain: event,
+      M: measure_map,
+      Sigma: sigma_algebra): bool =
+    is_sigma_algebra(domain, Sigma)
+      AND measure_value_is_zero(M(empty_event))
+      AND (FORALL (E: event):
+        Sigma(E) IMPLIES canonical_measure_value(M(E)))
+      AND (FORALL (events: event_sequence):
+        ((FORALL (index: nat): Sigma(events(index)))
+          AND pairwise_disjoint(domain, events))
+        IMPLIES
+          extended_nonnegative_sum(
+            LAMBDA (index: nat): M(events(index)),
+            M(countable_union(domain, events))))
+
+  finite_measure(
+      domain: event,
+      M: measure_map,
+      Sigma: sigma_algebra): bool =
+    is_measure(domain, M, Sigma)
+      AND measure_value_is_finite(M(domain))
+
+  is_measure_sum(
+      Sigma: sigma_algebra,
+      summands: measure_sequence,
+      total: measure_map): bool =
+    FORALL (E: event):
+      Sigma(E) IMPLIES
+        extended_nonnegative_sum(
+          LAMBDA (index: nat): summands(index)(E),
+          total(E))
+
+  s_finite_measure(
+      domain: event,
+      M: measure_map,
+      Sigma: sigma_algebra): bool =
+    is_measure(domain, M, Sigma)
+      AND EXISTS (summands: measure_sequence):
+        (FORALL (index: nat):
+          finite_measure(
+            domain, summands(index), Sigma))
+          AND is_measure_sum(Sigma, summands, M)
+
+  sigma_subset(left, right: sigma_algebra): bool =
+    FORALL (E: event):
+      left(E) IMPLIES right(E)
+
+  rectangle(E, F: event): event =
+    LAMBDA (p: point):
+      product_domain(p)
+        AND E(a_point(a_coordinate(p)))
+        AND F(b_point(b_coordinate(p)))
+
+  contains_measurable_rectangles(
+      SigmaAB, SigmaA, SigmaB: sigma_algebra): bool =
+    FORALL (E, F: event):
+      SigmaA(E) AND SigmaB(F) IMPLIES
+        SigmaAB(rectangle(E, F))
+
+  is_product_sigma_algebra(
+      SigmaAB, SigmaA, SigmaB: sigma_algebra): bool =
+    is_sigma_algebra(product_domain, SigmaAB)
+      AND contains_measurable_rectangles(
+        SigmaAB, SigmaA, SigmaB)
+      AND (FORALL (candidate: sigma_algebra):
+        (is_sigma_algebra(product_domain, candidate)
+          AND contains_measurable_rectangles(
+            candidate, SigmaA, SigmaB))
+        IMPLIES sigma_subset(SigmaAB, candidate))
+
+  product_sigma_algebra(
+      SigmaA, SigmaB: sigma_algebra): sigma_algebra =
+    epsilon(
+      LAMBDA (SigmaAB: sigma_algebra):
+        is_product_sigma_algebra(
+          SigmaAB, SigmaA, SigmaB))
+
+  null_event(
+      domain: event,
+      M: measure_map,
+      Sigma: sigma_algebra,
+      E: event): bool =
+    carrier_event(domain, E)
+      AND EXISTS (measurable_cover: event):
+        Sigma(measurable_cover)
+          AND event_subset(E, measurable_cover)
+          AND measure_value_is_zero(M(measurable_cover))
+
+  almost_everywhere(
+      domain: event,
+      M: measure_map,
+      Sigma: sigma_algebra,
+      property_value: [point -> bool]): bool =
+    null_event(
+      domain,
+      M,
+      Sigma,
+      LAMBDA (p: point):
+        domain(p) AND NOT property_value(p))
+
+  finite_g_sum(values: g_sequence, count: nat):
+      RECURSIVE G =
+    IF count = 0 THEN
+      zeroG
+    ELSE
+      addG(
+        finite_g_sum(values, count - 1),
+        values(count - 1))
+    ENDIF
+  MEASURE count
+
+  finite_simple_g_value(
+      coefficients: g_sequence,
+      pieces: event_sequence,
+      count: nat,
+      p: point): G =
+    finite_g_sum(
+      LAMBDA (index: nat):
+        IF index < count AND pieces(index)(p) THEN
+          coefficients(index)
+        ELSE
+          zeroG
+        ENDIF,
+      count)
+
+  measurable_simple_g_data(
+      domain: event,
+      Sigma: sigma_algebra,
+      coefficients: g_sequence,
+      pieces: event_sequence,
+      count: nat): bool =
+    pairwise_disjoint_below(domain, pieces, count)
+      AND (FORALL (index: nat):
+        index < count IMPLIES Sigma(pieces(index)))
+
+  measurable_simple_g(
+      domain: event,
+      Sigma: sigma_algebra,
+      function_value: g_function): bool =
+    EXISTS
+        (coefficients: g_sequence),
+        (pieces: event_sequence),
+        (count: nat):
+      measurable_simple_g_data(
+        domain, Sigma, coefficients, pieces, count)
+        AND (FORALL (p: point):
+          domain(p) IMPLIES
+            function_value(p) =
+              finite_simple_g_value(
+                coefficients, pieces, count, p))
+
+  strongly_measurable_g(
+      domain: event,
+      Sigma: sigma_algebra,
+      function_value: g_function): bool =
+    EXISTS (approximants: g_function_sequence):
+      (FORALL (index: nat):
+        measurable_simple_g(
+          domain, Sigma, approximants(index)))
+        AND (FORALL (p: point):
+          domain(p) IMPLIES
+            converges_to_g(
+              LAMBDA (index: nat):
+                approximants(index)(p),
+              function_value(p)))
+
+  ae_strongly_measurable_g(
+      domain: event,
+      M: measure_map,
+      Sigma: sigma_algebra,
+      function_value: g_function): bool =
+    EXISTS (measurable_version: g_function):
+      strongly_measurable_g(
+        domain, Sigma, measurable_version)
+        AND almost_everywhere(
+          domain,
+          M,
+          Sigma,
+          LAMBDA (p: point):
+            function_value(p) = measurable_version(p))
+
+  canonical_nonnegative_function(
+      domain: event,
+      function_value: nonnegative_function): bool =
+    FORALL (p: point):
+      domain(p) IMPLIES
+        canonical_measure_value(function_value(p))
+
+  finite_simple_nonnegative_value(
+      coefficients: measure_value_sequence,
+      pieces: event_sequence,
+      count: nat,
+      p: point): RECURSIVE measure_value =
+    IF count = 0 THEN
+      zero_measure_value
+    ELSE
+      measure_value_add(
+        finite_simple_nonnegative_value(
+          coefficients, pieces, count - 1, p),
+        IF pieces(count - 1)(p) THEN
+          coefficients(count - 1)
+        ELSE
+          zero_measure_value
+        ENDIF)
+    ENDIF
+  MEASURE count
+
+  measurable_simple_nonnegative(
+      domain: event,
+      Sigma: sigma_algebra,
+      coefficients: measure_value_sequence,
+      pieces: event_sequence,
+      count: nat): bool =
+    pairwise_disjoint_below(domain, pieces, count)
+      AND (FORALL (index: nat):
+        index < count IMPLIES
+          canonical_measure_value(coefficients(index))
+            AND NOT infinite_flag(coefficients(index))
+            AND Sigma(pieces(index)))
+
+  measurable_simple_minorant(
+      domain: event,
+      Sigma: sigma_algebra,
+      function_value: nonnegative_function,
+      coefficients: measure_value_sequence,
+      pieces: event_sequence,
+      count: nat): bool =
+    canonical_nonnegative_function(domain, function_value)
+      AND measurable_simple_nonnegative(
+        domain, Sigma, coefficients, pieces, count)
+      AND (FORALL (p: point):
+        domain(p) IMPLIES
+          measure_value_le(
+            finite_simple_nonnegative_value(
+              coefficients, pieces, count, p),
+            function_value(p)))
+
+  finite_simple_nonnegative_integral(
+      M: measure_map,
+      coefficients: measure_value_sequence,
+      pieces: event_sequence,
+      count: nat): RECURSIVE measure_value =
+    IF count = 0 THEN
+      zero_measure_value
+    ELSE
+      measure_value_add(
+        finite_simple_nonnegative_integral(
+          M, coefficients, pieces, count - 1),
+        measure_value_product(
+          coefficients(count - 1),
+          M(pieces(count - 1))))
+    ENDIF
+  MEASURE count
+
+  lower_integral_upper_bound(
+      domain: event,
+      M: measure_map,
+      Sigma: sigma_algebra,
+      function_value: nonnegative_function,
+      upper: measure_value): bool =
+    canonical_measure_value(upper)
+      AND FORALL
+          (coefficients: measure_value_sequence),
+          (pieces: event_sequence),
+          (count: nat):
+        measurable_simple_minorant(
+          domain, Sigma, function_value,
+          coefficients, pieces, count)
+        IMPLIES
+          measure_value_le(
+            finite_simple_nonnegative_integral(
+              M, coefficients, pieces, count),
+            upper)
+
+  has_lower_lebesgue_integral(
+      domain: event,
+      M: measure_map,
+      Sigma: sigma_algebra,
+      function_value: nonnegative_function,
+      integral_value: measure_value): bool =
+    canonical_nonnegative_function(domain, function_value)
+      AND canonical_measure_value(integral_value)
+      AND lower_integral_upper_bound(
+        domain, M, Sigma, function_value, integral_value)
+      AND (FORALL (upper: measure_value):
+        lower_integral_upper_bound(
+          domain, M, Sigma, function_value, upper)
+        IMPLIES measure_value_le(integral_value, upper))
+
+  lower_lebesgue_integral(
+      domain: event,
+      M: measure_map,
+      Sigma: sigma_algebra,
+      function_value: nonnegative_function): measure_value =
+    epsilon(
+      LAMBDA (integral_value: measure_value):
+        has_lower_lebesgue_integral(
+          domain,
+          M,
+          Sigma,
+          function_value,
+          integral_value))
+
+  vertical_section(S: event, x: A): event =
+    LAMBDA (p: point):
+      b_domain(p)
+        AND S(pair_point(x, b_coordinate(p)))
+
+  section_measure_function(
+      N: measure_map,
+      SigmaB: sigma_algebra,
+      S: event): nonnegative_function =
+    LAMBDA (p: point):
+      IF a_domain(p)
+          AND SigmaB(
+            vertical_section(S, a_coordinate(p))) THEN
+        N(vertical_section(S, a_coordinate(p)))
+      ELSE
+        zero_measure_value
+      ENDIF
+
+  product_measure(
+      M, N: measure_map,
+      SigmaA, SigmaB: sigma_algebra): measure_map =
+    LAMBDA (S: event):
+      lower_lebesgue_integral(
+        a_domain,
+        M,
+        SigmaA,
+        section_measure_function(N, SigmaB, S))
+
+  enorm_g(
+      domain: event,
+      function_value: g_function): nonnegative_function =
+    LAMBDA (p: point):
+      IF domain(p) THEN
+        finite_measure_value(normG(function_value(p)))
+      ELSE
+        zero_measure_value
+      ENDIF
+
+  has_finite_integral_g(
+      domain: event,
+      M: measure_map,
+      Sigma: sigma_algebra,
+      function_value: g_function): bool =
+    EXISTS (integral_value: measure_value):
+      has_lower_lebesgue_integral(
+        domain,
+        M,
+        Sigma,
+        enorm_g(domain, function_value),
+        integral_value)
+        AND NOT infinite_flag(integral_value)
+
+  integrable_g(
+      domain: event,
+      M: measure_map,
+      Sigma: sigma_algebra,
+      function_value: g_function): bool =
+    is_measure(domain, M, Sigma)
+      AND ae_strongly_measurable_g(
+        domain, M, Sigma, function_value)
+      AND has_finite_integral_g(
+        domain, M, Sigma, function_value)
+
+  integrable_simple_g_data(
+      domain: event,
+      M: measure_map,
+      Sigma: sigma_algebra,
+      coefficients: g_sequence,
+      pieces: event_sequence,
+      count: nat): bool =
+    measurable_simple_g_data(
+      domain, Sigma, coefficients, pieces, count)
+      AND (FORALL (index: nat):
+        index < count IMPLIES
+          coefficients(index) = zeroG
+            OR NOT infinite_flag(M(pieces(index))))
+
+  finite_simple_g_integral(
+      M: measure_map,
+      coefficients: g_sequence,
+      pieces: event_sequence,
+      count: nat): RECURSIVE G =
+    IF count = 0 THEN
+      zeroG
+    ELSE
+      addG(
+        finite_simple_g_integral(
+          M, coefficients, pieces, count - 1),
+        smulG(
+          finite_part(M(pieces(count - 1))),
+          coefficients(count - 1)))
+    ENDIF
+  MEASURE count
+
+  has_simple_g_integral(
+      domain: event,
+      M: measure_map,
+      Sigma: sigma_algebra,
+      function_value: g_function,
+      integral_value: G): bool =
+    EXISTS
+        (coefficients: g_sequence),
+        (pieces: event_sequence),
+        (count: nat):
+      integrable_simple_g_data(
+        domain, M, Sigma, coefficients, pieces, count)
+        AND (FORALL (p: point):
+          domain(p) IMPLIES
+            function_value(p) =
+              finite_simple_g_value(
+                coefficients, pieces, count, p))
+        AND integral_value =
+          finite_simple_g_integral(
+            M, coefficients, pieces, count)
+
+  l1_error(
+      domain: event,
+      M: measure_map,
+      Sigma: sigma_algebra,
+      function_value,
+      approximant: g_function,
+      error_value: real): bool =
+    error_value >= 0
+      AND has_lower_lebesgue_integral(
+        domain,
+        M,
+        Sigma,
+        enorm_g(
+          domain,
+          LAMBDA (p: point):
+            subG(function_value(p), approximant(p))),
+        finite_measure_value(error_value))
+
+  approximates_in_l1(
+      domain: event,
+      M: measure_map,
+      Sigma: sigma_algebra,
+      function_value: g_function,
+      approximants: g_function_sequence): bool =
+    (FORALL (index: nat):
+      measurable_simple_g(
+        domain, Sigma, approximants(index)))
+      AND EXISTS (errors: real_sequence):
+        (FORALL (index: nat):
+          l1_error(
+            domain,
+            M,
+            Sigma,
+            function_value,
+            approximants(index),
+            errors(index)))
+          AND converges_to_real(errors, 0)
+
+  has_bochner_integral(
+      domain: event,
+      M: measure_map,
+      Sigma: sigma_algebra,
+      function_value: g_function,
+      integral_value: G): bool =
+    EXISTS
+        (approximants: g_function_sequence),
+        (simple_integrals: g_sequence):
+      approximates_in_l1(
+        domain, M, Sigma, function_value, approximants)
+        AND (FORALL (index: nat):
+          has_simple_g_integral(
+            domain,
+            M,
+            Sigma,
+            approximants(index),
+            simple_integrals(index)))
+        AND converges_to_g(simple_integrals, integral_value)
+
+  bochner_integral(
+      domain: event,
+      M: measure_map,
+      Sigma: sigma_algebra,
+      function_value: g_function): G =
+    IF complete_space_g
+        AND integrable_g(domain, M, Sigma, function_value) THEN
+      epsilon(
+        LAMBDA (integral_value: G):
+          has_bochner_integral(
+            domain,
+            M,
+            Sigma,
+            function_value,
+            integral_value))
+    ELSE
+      zeroG
+    ENDIF
+
+  right_section(f: g_function, x: A): g_function =
+    LAMBDA (p: point):
+      IF b_domain(p) THEN
+        f(pair_point(x, b_coordinate(p)))
+      ELSE
+        zeroG
+      ENDIF
+
+  iterated_integral_function(
+      N: measure_map,
+      SigmaB: sigma_algebra,
+      f: g_function): g_function =
+    LAMBDA (p: point):
+      IF a_domain(p) THEN
+        bochner_integral(
+          b_domain,
+          N,
+          SigmaB,
+          right_section(f, a_coordinate(p)))
+      ELSE
+        zeroG
+      ENDIF
+
+  fubini_s_theorem: bool =
+    normed_real_vector_space IMPLIES
+      FORALL
+          (M, N: measure_map),
+          (SigmaA, SigmaB: sigma_algebra),
+          (f: g_function):
+        (s_finite_measure(a_domain, M, SigmaA)
+          AND s_finite_measure(b_domain, N, SigmaB)
+          AND integrable_g(
+            product_domain,
+            product_measure(M, N, SigmaA, SigmaB),
+            product_sigma_algebra(SigmaA, SigmaB),
+            f))
+        IMPLIES
+          bochner_integral(
+            product_domain,
+            product_measure(M, N, SigmaA, SigmaB),
+            product_sigma_algebra(SigmaA, SigmaB),
+            f)
+            =
+          bochner_integral(
+            a_domain,
+            M,
+            SigmaA,
+            iterated_integral_function(N, SigmaB, f))
+END fubini_s_theorem_Q1149022

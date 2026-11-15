@@ -1,0 +1,57 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2010_b3:
+% redistribution among 2010 labeled boxes can always reach the uniform
+% distribution exactly when the positive integer n is at least 1005.
+% This file contains no proof.
+
+putnam_2010_b3: THEORY
+BEGIN
+  box_index: TYPE = below(2010)
+  distribution: TYPE = [box_index -> nat]
+  process: TYPE = [nat -> distribution]
+
+  total_balls(
+      boxes: distribution,
+      count: upto(2010)): RECURSIVE nat =
+    IF count = 0 THEN
+      0
+    ELSE
+      total_balls(boxes, count - 1) + boxes(count - 1)
+    ENDIF
+  MEASURE count
+
+  valid_transition(P: process, time: nat): bool =
+    EXISTS (source, destination: box_index):
+      source /= destination
+        AND P(time)(source) >= source + 1
+        AND P(time + 1)(source)
+          = P(time)(source) - (source + 1)
+        AND P(time + 1)(destination)
+          = P(time)(destination) + (source + 1)
+        AND (FORALL (box: box_index):
+          box /= source AND box /= destination IMPLIES
+            P(time + 1)(box) = P(time)(box))
+
+  reaches_uniform(
+      initial: distribution,
+      n: nat): bool =
+    EXISTS (P: process), (final_time: nat):
+      P(0) = initial
+        AND (FORALL (time: nat):
+          time < final_time IMPLIES valid_transition(P, time))
+        AND (FORALL (box: box_index):
+          P(final_time)(box) = n)
+
+  uniform_reachable_from_every_distribution(n: nat): bool =
+    FORALL (initial: distribution):
+      total_balls(initial, 2010) = 2010 * n IMPLIES
+        reaches_uniform(initial, n)
+
+  putnam_2010_b3_solution(n: nat): bool =
+    n >= 1005
+
+  putnam_2010_b3: bool =
+    FORALL (n: nat):
+      n > 0 IMPLIES
+        (uniform_reachable_from_every_distribution(n)
+          IFF putnam_2010_b3_solution(n))
+END putnam_2010_b3

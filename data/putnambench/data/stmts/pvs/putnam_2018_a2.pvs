@@ -1,0 +1,199 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2018_a2:
+% the determinant of the intersection-incidence matrix indexed by all
+% nonempty subsets of {1,...,n} is 1 for n = 1 and -1 otherwise. This file
+% contains no proof.
+
+putnam_2018_a2: THEORY
+BEGIN
+  IMPORTING finite_sets[nat]
+
+  natural_set: TYPE = finite_set[nat]
+  subset_enumeration(dimension: posnat): TYPE =
+    [below(dimension) -> natural_set]
+  matrix(dimension: posnat): TYPE =
+    [below(dimension), below(dimension) -> real]
+  unbounded_matrix: TYPE = [nat, nat -> real]
+
+  quotient_aux(
+      numerator, denominator, fuel: nat): RECURSIVE nat =
+    IF fuel = 0
+        OR denominator = 0
+        OR numerator < denominator THEN
+      0
+    ELSE
+      1
+        + quotient_aux(
+            numerator - denominator,
+            denominator,
+            fuel - 1)
+    ENDIF
+  MEASURE fuel
+
+  remainder_aux(
+      numerator, denominator, fuel: nat): RECURSIVE nat =
+    IF fuel = 0
+        OR denominator = 0
+        OR numerator < denominator THEN
+      numerator
+    ELSE
+      remainder_aux(
+        numerator - denominator,
+        denominator,
+        fuel - 1)
+    ENDIF
+  MEASURE fuel
+
+  safe_ndiv(numerator, denominator: nat): nat =
+    quotient_aux(
+      numerator,
+      denominator,
+      numerator + 1)
+
+  safe_mod(numerator, denominator: nat): nat =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      remainder_aux(
+        numerator,
+        denominator,
+        numerator + 1)
+    ENDIF
+
+  function_code_count(size: nat): nat =
+    IF size = 0 THEN 1 ELSE size ^ size ENDIF
+
+  permutation_entry(code, row, size: nat): nat =
+    IF size = 0 THEN
+      0
+    ELSE
+      safe_mod(safe_ndiv(code, size ^ row), size)
+    ENDIF
+
+  permutation_code(code, size: nat): bool =
+    code < function_code_count(size)
+      AND (FORALL (row_1, row_2: nat):
+        (row_1 < size
+          AND row_2 < size
+          AND permutation_entry(code, row_1, size)
+            = permutation_entry(code, row_2, size))
+        IMPLIES row_1 = row_2)
+
+  pair_row(pair, size: nat): nat =
+    safe_ndiv(pair, size)
+
+  pair_column(pair, size: nat): nat =
+    safe_mod(pair, size)
+
+  inversion_at(code, pair, size: nat): bool =
+    pair_row(pair, size) < size
+      AND pair_column(pair, size) < size
+      AND pair_row(pair, size) < pair_column(pair, size)
+      AND permutation_entry(code, pair_row(pair, size), size)
+        > permutation_entry(code, pair_column(pair, size), size)
+
+  count_true(
+      property: [nat -> bool],
+      count: nat): RECURSIVE nat =
+    IF count = 0 THEN
+      0
+    ELSE
+      count_true(property, count - 1)
+        + IF property(count - 1) THEN 1 ELSE 0 ENDIF
+    ENDIF
+  MEASURE count
+
+  inversion_count(code, size: nat): nat =
+    count_true(
+      (LAMBDA (pair: nat): inversion_at(code, pair, size)),
+      size * size)
+
+  permutation_sign(code, size: nat): real =
+    IF mod(inversion_count(code, size), 2) = 0 THEN
+      1
+    ELSE
+      -1
+    ENDIF
+
+  permutation_product(
+      A: unbounded_matrix,
+      code, size, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      1
+    ELSE
+      permutation_product(A, code, size, count - 1)
+        * A(
+            count - 1,
+            permutation_entry(code, count - 1, size))
+    ENDIF
+  MEASURE count
+
+  determinant_sum(
+      A: unbounded_matrix,
+      size, limit: nat): RECURSIVE real =
+    IF limit = 0 THEN
+      0
+    ELSE
+      LET code: nat = limit - 1 IN
+        determinant_sum(A, size, limit - 1)
+          + IF permutation_code(code, size) THEN
+              permutation_sign(code, size)
+                * permutation_product(A, code, size, size)
+            ELSE
+              0
+            ENDIF
+    ENDIF
+  MEASURE limit
+
+  determinant(A: unbounded_matrix, size: nat): real =
+    determinant_sum(A, size, function_code_count(size))
+
+  extend_matrix(
+      dimension: posnat)(
+      M: matrix(dimension)): unbounded_matrix =
+    LAMBDA (row, column: nat):
+      IF row < dimension AND column < dimension THEN
+        M(row, column)
+      ELSE
+        0
+      ENDIF
+
+  initial_segment_subset(S: natural_set, n: posnat): bool =
+    FORALL (value: nat):
+      S(value) IMPLIES 1 <= value AND value <= n
+
+  enumerates_nonempty_subsets(
+      dimension: posnat,
+      S: subset_enumeration(dimension),
+      n: posnat): bool =
+    FORALL (T: natural_set):
+      (EXISTS (index: below(dimension)): S(index) = T)
+        IFF
+          (NOT empty?(T) AND initial_segment_subset(T, n))
+
+  has_intersection_entries(
+      dimension: posnat,
+      S: subset_enumeration(dimension),
+      M: matrix(dimension)): bool =
+    FORALL (row, column: below(dimension)):
+      M(row, column) =
+        IF empty?(intersection(S(row), S(column))) THEN
+          0
+        ELSE
+          1
+        ENDIF
+
+  putnam_2018_a2_solution(n: posnat): real =
+    IF n = 1 THEN 1 ELSE -1 ENDIF
+
+  putnam_2018_a2: bool =
+    FORALL
+        (n, dimension: posnat),
+        (S: subset_enumeration(dimension)),
+        (M: matrix(dimension)):
+      (dimension = 2 ^ n - 1
+        AND enumerates_nonempty_subsets(dimension, S, n)
+        AND has_intersection_entries(dimension, S, M))
+      IMPLIES
+        determinant(extend_matrix(dimension)(M), dimension)
+          = putnam_2018_a2_solution(n)
+END putnam_2018_a2

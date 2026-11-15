@@ -1,0 +1,72 @@
+% Statement-only formalization of the VERINA corpus artifact verina_basic_10,
+% catalog title "isGreater": deciding whether an integer is strictly greater
+% than every element of a nonempty integer array. This file contains no proof.
+
+verina_basic_10: THEORY
+BEGIN
+
+  int_list_length(values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        int_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  int_list_nth_default(
+      index: nat,
+      values: list[int]): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          int_list_nth_default(index - 1, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  isGreater_precond(
+      n: int,
+      a: list[int]): bool =
+    int_list_length(a) > 0
+
+  all_strictly_less_than(
+      n: int,
+      a: list[int]): RECURSIVE bool =
+    CASES a OF
+      null:
+        TRUE,
+      cons(head, tail):
+        n > head
+          AND all_strictly_less_than(n, tail)
+    ENDCASES
+  MEASURE a BY <<
+
+  isGreater(
+      n: int,
+      a: list[int]): bool =
+    all_strictly_less_than(n, a)
+
+  isGreater_postcond(
+      n: int,
+      a: list[int],
+      result: bool): bool =
+    (FORALL (i: nat):
+      i < int_list_length(a) IMPLIES
+        n > int_list_nth_default(i, a))
+      IFF result
+
+  isGreater_spec_satisfied: bool =
+    FORALL (n: int, a: list[int]):
+      isGreater_precond(n, a)
+        IMPLIES
+          isGreater_postcond(
+            n,
+            a,
+            isGreater(n, a))
+
+END verina_basic_10

@@ -1,0 +1,168 @@
+% Statement-only formalization of thousand-theorems corpus artifact
+% thousand-theorems__pvs__Q5171652, "Corners theorem": every sufficiently
+% dense finite subset of an initial square of natural numbers contains a
+% nontrivial additive corner once the side length meets the explicit
+% regularity-lemma bound. This file contains no proof.
+
+Q5171652_corners_theorem: THEORY
+BEGIN
+  point: TYPE = [# first_nat: nat, second_nat: nat #]
+
+  IMPORTING finite_sets[point]
+
+  point_set: TYPE = finite_set[point]
+  real_sequence: TYPE = [nat -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  exponential_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        exponential_partial(x, count - 1)
+          + safe_div(x ^ index, factorial(index) :: real)
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (tolerance: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < tolerance
+
+  real_exponential(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat): exponential_partial(x, count),
+          value))
+
+  real_logarithm(x: real): real =
+    IF x = 0 THEN
+      0
+    ELSE
+      epsilon(
+        LAMBDA (value: real):
+          real_exponential(value) = abs(x))
+    ENDIF
+
+  nat_floor(x: real): nat =
+    epsilon(
+      LAMBDA (value: nat):
+        (x <= 0 AND value = 0)
+          OR
+        (0 <= x
+          AND (value :: real) <= x
+          AND x < ((value + 1) :: real)))
+
+  nat_ceiling(x: real): nat =
+    epsilon(
+      LAMBDA (value: nat):
+        (x <= 0 AND value = 0)
+          OR
+        EXISTS (predecessor: nat):
+          value = predecessor + 1
+            AND (predecessor :: real) < x
+            AND x <= ((predecessor + 1) :: real))
+
+  nat_max(left, right: nat): nat =
+    IF left <= right THEN right ELSE left ENDIF
+
+  real_minimum(left, right: real): real =
+    IF left <= right THEN left ELSE right ENDIF
+
+  step_bound(value: nat): nat =
+    value * 4 ^ value
+
+  iterate_step_bound(count, start: nat): RECURSIVE nat =
+    IF count = 0 THEN
+      start
+    ELSE
+      iterate_step_bound(count - 1, step_bound(start))
+    ENDIF
+  MEASURE count
+
+  initial_regularity_bound(epsilon: real, lower: nat): nat =
+    nat_max(
+      7,
+      nat_max(
+        lower,
+        nat_floor(
+          safe_div(
+            real_logarithm(safe_div(100, epsilon ^ 5)),
+            real_logarithm(4)))
+          + 1))
+
+  regularity_bound(epsilon: real, lower: nat): nat =
+    LET iterated: nat =
+      iterate_step_bound(
+        nat_floor(safe_div(4, epsilon ^ 5)),
+        initial_regularity_bound(epsilon, lower))
+    IN iterated * 16 ^ iterated
+
+  triangle_removal_bound(epsilon: real): real =
+    LET ceiling_four_over_epsilon: nat =
+      nat_ceiling(safe_div(4, epsilon))
+    IN
+      LET regularity: nat =
+        regularity_bound(
+          safe_div(epsilon, 8),
+          ceiling_four_over_epsilon)
+      IN
+        LET first_term: real =
+          safe_div(
+            1,
+            2 * (ceiling_four_over_epsilon :: real) ^ 3),
+            epsilon_minimum: real =
+              real_minimum(1, epsilon)
+        IN
+          LET second_term: real =
+            (1 - safe_div(epsilon_minimum, 4))
+              * safe_div(
+                epsilon,
+                16 * (regularity :: real)) ^ 3
+          IN real_minimum(first_term, second_term)
+
+  corners_theorem_bound(epsilon: real): nat =
+    nat_floor(
+      safe_div(
+        1,
+        triangle_removal_bound(safe_div(epsilon, 9)) * 27))
+      + 1
+
+  contained_in_initial_square(A: point_set, n: nat): bool =
+    FORALL (p: point):
+      member(p, A) IMPLIES
+        first_nat(p) < n AND second_nat(p) < n
+
+  corner_free(A: point_set): bool =
+    FORALL (x1, y1, x2, y2: nat):
+      (member((# first_nat := x1, second_nat := y1 #), A)
+        AND member((# first_nat := x1, second_nat := y2 #), A)
+        AND member((# first_nat := x2, second_nat := y1 #), A)
+        AND x1 + y2 = x2 + y1)
+      IMPLIES x1 = x2
+
+  corners_theorem_nat: bool =
+    FORALL (epsilon: real), (n: nat), (A: point_set):
+      (0 < epsilon
+        AND corners_theorem_bound(safe_div(epsilon, 9)) <= n
+        AND contained_in_initial_square(A, n)
+        AND epsilon * (n :: real) ^ 2 <= (card(A) :: real))
+      IMPLIES NOT corner_free(A)
+END Q5171652_corners_theorem

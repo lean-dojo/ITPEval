@@ -1,0 +1,178 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1995_b3:
+% the sum of determinants obtained by arranging the digits of every positive
+% n^2-digit decimal integer row by row has the stated value. This file contains
+% no proof.
+
+putnam_1995_b3: THEORY
+BEGIN
+  integer_matrix: TYPE = [nat, nat -> int]
+
+  digit(code, position: nat): nat =
+    mod(ndiv(code, 10 ^ position), 10)
+
+  digit_matrix(code, n: nat): integer_matrix =
+    LAMBDA (row, column: nat):
+      digit(code, row * n + column) :: int
+
+  quotient_aux(
+      numerator, denominator, fuel: nat): RECURSIVE nat =
+    IF fuel = 0
+        OR denominator = 0
+        OR numerator < denominator THEN
+      0
+    ELSE
+      1
+        + quotient_aux(
+            numerator - denominator,
+            denominator,
+            fuel - 1)
+    ENDIF
+  MEASURE fuel
+
+  remainder_aux(
+      numerator, denominator, fuel: nat): RECURSIVE nat =
+    IF fuel = 0
+        OR denominator = 0
+        OR numerator < denominator THEN
+      numerator
+    ELSE
+      remainder_aux(
+        numerator - denominator,
+        denominator,
+        fuel - 1)
+    ENDIF
+  MEASURE fuel
+
+  safe_ndiv(numerator, denominator: nat): nat =
+    quotient_aux(
+      numerator,
+      denominator,
+      numerator + 1)
+
+  safe_mod(numerator, denominator: nat): nat =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      remainder_aux(
+        numerator,
+        denominator,
+        numerator + 1)
+    ENDIF
+
+  permutation_code_count(n: nat): nat =
+    IF n = 0 THEN 1 ELSE n ^ n ENDIF
+
+  permutation_entry(code, row, n: nat): nat =
+    IF n = 0 THEN
+      0
+    ELSE
+      safe_mod(safe_ndiv(code, n ^ row), n)
+    ENDIF
+
+  permutation_code(code, n: nat): bool =
+    code < permutation_code_count(n)
+      AND (FORALL (row_1, row_2: nat):
+        (row_1 < n
+          AND row_2 < n
+          AND permutation_entry(code, row_1, n)
+            = permutation_entry(code, row_2, n))
+        IMPLIES row_1 = row_2)
+
+  pair_row(pair, n: nat): nat =
+    safe_ndiv(pair, n)
+
+  pair_column(pair, n: nat): nat =
+    safe_mod(pair, n)
+
+  inversion_at(code, pair, n: nat): bool =
+    pair_row(pair, n) < n
+      AND pair_column(pair, n) < n
+      AND pair_row(pair, n) < pair_column(pair, n)
+      AND permutation_entry(code, pair_row(pair, n), n)
+        > permutation_entry(code, pair_column(pair, n), n)
+
+  count_true(
+      property: [nat -> bool],
+      count: nat): RECURSIVE nat =
+    IF count = 0 THEN
+      0
+    ELSE
+      count_true(property, count - 1)
+        + IF property(count - 1) THEN 1 ELSE 0 ENDIF
+    ENDIF
+  MEASURE count
+
+  inversion_count(code, n: nat): nat =
+    count_true(
+      LAMBDA (pair: nat): inversion_at(code, pair, n),
+      n * n)
+
+  permutation_sign(code, n: nat): int =
+    IF mod(inversion_count(code, n), 2) = 0 THEN
+      1
+    ELSE
+      -1
+    ENDIF
+
+  permutation_product(
+      A: integer_matrix,
+      code, n, count: nat): RECURSIVE int =
+    IF count = 0 THEN
+      1
+    ELSE
+      permutation_product(A, code, n, count - 1)
+        * A(
+            count - 1,
+            permutation_entry(code, count - 1, n))
+    ENDIF
+  MEASURE count
+
+  determinant_sum(
+      A: integer_matrix,
+      n, limit: nat): RECURSIVE int =
+    IF limit = 0 THEN
+      0
+    ELSE
+      LET code: nat = limit - 1 IN
+        determinant_sum(A, n, limit - 1)
+          + IF permutation_code(code, n) THEN
+              permutation_sign(code, n)
+                * permutation_product(A, code, n, n)
+            ELSE
+              0
+            ENDIF
+    ENDIF
+  MEASURE limit
+
+  determinant(A: integer_matrix, n: nat): int =
+    determinant_sum(A, n, permutation_code_count(n))
+
+  decimal_matrix_sum(n, limit: nat): RECURSIVE int =
+    IF limit = 0 THEN
+      0
+    ELSE
+      LET code: nat = limit - 1 IN
+        decimal_matrix_sum(n, limit - 1)
+          + IF digit(code, 0) /= 0 THEN
+              determinant(digit_matrix(code, n), n)
+            ELSE
+              0
+            ENDIF
+    ENDIF
+  MEASURE limit
+
+  putnam_1995_b3_solution(n: nat): int =
+    IF n = 1 THEN
+      45
+    ELSIF n = 2 THEN
+      10 * 45 ^ 2
+    ELSE
+      0
+    ENDIF
+
+  putnam_1995_b3: bool =
+    FORALL (n: nat):
+      n > 0 IMPLIES
+        decimal_matrix_sum(n, 10 ^ (n * n))
+          = putnam_1995_b3_solution(n)
+END putnam_1995_b3

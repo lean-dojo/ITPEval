@@ -1,0 +1,68 @@
+% Statement-only formalization of "The Prime Number Theorem" from Hundred Theorems item 005.
+% This file contains no proof.
+
+the_prime_number_theorem: THEORY
+BEGIN
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN 0 ELSE numerator / denominator ENDIF
+
+  nat_divides(divisor, value: nat): bool =
+    divisor > 0
+      AND EXISTS (quotient: nat): value = divisor * quotient
+
+  prime_nat(value: nat): bool =
+    value >= 2
+      AND FORALL (divisor: posnat):
+        nat_divides(divisor, value)
+          IMPLIES divisor = 1 OR divisor = value
+
+  prime_count(bound: nat): RECURSIVE nat =
+    IF bound = 0 THEN
+      0
+    ELSE
+      prime_count(bound - 1)
+        + IF prime_nat(bound) THEN 1 ELSE 0 ENDIF
+    ENDIF
+  MEASURE bound
+
+  natural_log_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET j: nat = count - 1,
+          ratio: real = safe_div(x - 1, x + 1)
+      IN
+        natural_log_partial(x, count - 1)
+          + 2 * safe_div(
+              ratio ^ (2 * j + 1),
+              (2 * j + 1) :: real)
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: [nat -> real], value: real): bool =
+    FORALL (eps: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < eps
+
+  natural_log_value(x, value: real): bool =
+    x > 0
+      AND converges_to(
+        (LAMBDA (count: nat): natural_log_partial(x, count)),
+        value)
+
+  prime_ratio(index: nat, log_index: real): real =
+    safe_div(
+      prime_count(index) :: real,
+      safe_div(index :: real, log_index))
+
+  the_prime_number_theorem: bool =
+    FORALL (eps: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            EXISTS (log_index: real):
+              natural_log_value(index :: real, log_index)
+                AND abs(prime_ratio(index, log_index) - 1) < eps
+END the_prime_number_theorem

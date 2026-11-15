@@ -1,0 +1,212 @@
+% Statement-only formalization of the Thousand Theorems corpus artifact Q318767,
+% "Abel's theorem": convergent coefficient sums determine the boundary limit of
+% real power series from the left and complex power series within Stolz cones.
+% This file contains no proof.
+
+Q318767_abel_s_theorem: THEORY
+BEGIN
+  complex: TYPE = [# real_part: real, imag_part: real #]
+  complex_sequence: TYPE = [nat -> complex]
+  real_sequence: TYPE = [nat -> real]
+
+  complex_zero: complex =
+    (# real_part := 0, imag_part := 0 #)
+
+  complex_one: complex =
+    (# real_part := 1, imag_part := 0 #)
+
+  complex_add(x, y: complex): complex =
+    (# real_part := real_part(x) + real_part(y),
+       imag_part := imag_part(x) + imag_part(y) #)
+
+  complex_mul(x, y: complex): complex =
+    (# real_part := real_part(x) * real_part(y)
+                       - imag_part(x) * imag_part(y),
+       imag_part := real_part(x) * imag_part(y)
+                       + imag_part(x) * real_part(y) #)
+
+  complex_power(z: complex, exponent: nat): RECURSIVE complex =
+    IF exponent = 0 THEN
+      complex_one
+    ELSE
+      complex_mul(complex_power(z, exponent - 1), z)
+    ENDIF
+  MEASURE exponent
+
+  complex_distance_squared(x, y: complex): real =
+    (real_part(x) - real_part(y)) ^ 2
+      + (imag_part(x) - imag_part(y)) ^ 2
+
+  complex_coefficient_partial_sum(
+      coefficients: complex_sequence,
+      count: nat): RECURSIVE complex =
+    IF count = 0 THEN
+      complex_zero
+    ELSE
+      complex_add(
+        complex_coefficient_partial_sum(coefficients, count - 1),
+        coefficients(count - 1))
+    ENDIF
+  MEASURE count
+
+  complex_power_series_partial_sum(
+      coefficients: complex_sequence,
+      z: complex,
+      count: nat): RECURSIVE complex =
+    IF count = 0 THEN
+      complex_zero
+    ELSE
+      LET index: nat = count - 1 IN
+        complex_add(
+          complex_power_series_partial_sum(
+            coefficients, z, count - 1),
+          complex_mul(
+            coefficients(index),
+            complex_power(z, index)))
+    ENDIF
+  MEASURE count
+
+  converges_to_complex(
+      sequence: complex_sequence,
+      value: complex): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            complex_distance_squared(sequence(index), value)
+              < epsilon_value ^ 2
+
+  complex_series_sum(sequence: complex_sequence): complex =
+    IF EXISTS (value: complex):
+         converges_to_complex(sequence, value)
+    THEN
+      epsilon(
+        LAMBDA (value: complex):
+          converges_to_complex(sequence, value))
+    ELSE
+      complex_zero
+    ENDIF
+
+  complex_power_series_value(
+      coefficients: complex_sequence,
+      z: complex): complex =
+    complex_series_sum(
+      LAMBDA (count: nat):
+        complex_power_series_partial_sum(
+          coefficients, z, count))
+
+  in_stolz_cone(z: complex, aperture: real): bool =
+    abs(imag_part(z))
+      < aperture * (1 - real_part(z))
+
+  tends_to_within_stolz_cone(
+      function_value: [complex -> complex],
+      limit_value: complex,
+      aperture: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (delta: posreal):
+        FORALL (z: complex):
+          (in_stolz_cone(z, aperture)
+            AND complex_distance_squared(z, complex_one)
+              < delta ^ 2)
+          IMPLIES
+            complex_distance_squared(
+              function_value(z), limit_value)
+                < epsilon_value ^ 2
+
+  complex_abel_stolz_cone: bool =
+    FORALL
+        (coefficients: complex_sequence),
+        (limit_value: complex),
+        (aperture: real):
+      (converges_to_complex(
+          (LAMBDA (count: nat):
+            complex_coefficient_partial_sum(
+              coefficients, count)),
+          limit_value)
+        AND 0 < aperture)
+      IMPLIES
+        tends_to_within_stolz_cone(
+          (LAMBDA (z: complex):
+            complex_power_series_value(coefficients, z)),
+          limit_value,
+          aperture)
+
+  real_coefficient_partial_sum(
+      coefficients: real_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      real_coefficient_partial_sum(coefficients, count - 1)
+        + coefficients(count - 1)
+    ENDIF
+  MEASURE count
+
+  real_power_series_partial_sum(
+      coefficients: real_sequence,
+      x: real,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        real_power_series_partial_sum(
+          coefficients, x, count - 1)
+          + coefficients(index) * x ^ index
+    ENDIF
+  MEASURE count
+
+  converges_to_real(
+      sequence: real_sequence,
+      value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  real_series_sum(sequence: real_sequence): real =
+    IF EXISTS (value: real):
+         converges_to_real(sequence, value)
+    THEN
+      epsilon(
+        LAMBDA (value: real):
+          converges_to_real(sequence, value))
+    ELSE
+      0
+    ENDIF
+
+  real_power_series_value(
+      coefficients: real_sequence,
+      x: real): real =
+    real_series_sum(
+      LAMBDA (count: nat):
+        real_power_series_partial_sum(coefficients, x, count))
+
+  tends_to_from_left(
+      function_value: [real -> real],
+      limit_value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (delta: posreal):
+        FORALL (x: real):
+          (x < 1 AND abs(x - 1) < delta)
+          IMPLIES
+            abs(function_value(x) - limit_value)
+              < epsilon_value
+
+  real_abel_from_left: bool =
+    FORALL
+        (coefficients: real_sequence),
+        (limit_value: real):
+      converges_to_real(
+        (LAMBDA (count: nat):
+          real_coefficient_partial_sum(
+            coefficients, count)),
+        limit_value)
+      IMPLIES
+        tends_to_from_left(
+          (LAMBDA (x: real):
+            real_power_series_value(coefficients, x)),
+          limit_value)
+END Q318767_abel_s_theorem

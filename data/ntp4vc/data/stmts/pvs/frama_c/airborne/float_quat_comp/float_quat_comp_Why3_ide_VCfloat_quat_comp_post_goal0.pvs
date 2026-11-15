@@ -1,0 +1,278 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% frama_c/airborne/float_quat_comp/float_quat_comp_Why3_ide_VCfloat_quat_comp_post_goal0:
+% the memory-level postcondition for in-place real quaternion composition. This file contains
+% no proof.
+
+float_quat_comp_Why3_ide_VCfloat_quat_comp_post_goal0[
+  region: [int -> int],
+  linked: [[int -> int] -> bool]
+]: THEORY
+BEGIN
+  addr: TYPE = [# base: int, offset: int #]
+  realvect3: TYPE = [# x: real, y: real, z: real #]
+  realquatvect: TYPE = [# scalar: real, vect: realvect3 #]
+  real_memory: TYPE = [addr -> real]
+  allocation_table: TYPE = [int -> int]
+
+  shift(p: addr, k: int): addr =
+    (# base := base(p), offset := offset(p) + k #)
+
+  store(memory: real_memory, p: addr, value: real): real_memory =
+    memory WITH [(p) := value]
+
+  valid_rw(malloc: allocation_table, p: addr, n: int): bool =
+    0 < n IMPLIES
+      0 < base(p)
+        AND 0 <= offset(p)
+        AND offset(p) + n <= malloc(base(p))
+
+  valid_rd(malloc: allocation_table, p: addr, n: int): bool =
+    0 < n IMPLIES
+      base(p) /= 0
+        AND 0 <= offset(p)
+        AND offset(p) + n <= malloc(base(p))
+
+  % The official Why3 libraries make these predicates universally true for real values.
+  is_float32(value: real): bool = TRUE
+  is_finite32(value: real): bool = TRUE
+
+  p_finite_floatquat(memory: real_memory, q: addr): bool =
+    is_finite32(memory(shift(q, 0)))
+      AND is_finite32(memory(shift(q, 1)))
+      AND is_finite32(memory(shift(q, 2)))
+      AND is_finite32(memory(shift(q, 3)))
+
+  p_rvalid_floatquat(
+      malloc: allocation_table,
+      memory: real_memory,
+      q: addr): bool =
+    p_finite_floatquat(memory, q) AND valid_rd(malloc, q, 4)
+
+  eq_realvect3(left, right: realvect3): bool =
+    x(right) = x(left)
+      AND y(right) = y(left)
+      AND z(right) = z(left)
+
+  eq_realquatvect(left, right: realquatvect): bool =
+    scalar(right) = scalar(left)
+      AND eq_realvect3(vect(left), vect(right))
+
+  scalar_product(left, right: realvect3): real =
+    x(left) * x(right)
+      + y(left) * y(right)
+      + z(left) * z(right)
+
+  scalar_multiply(value: real, vector: realvect3): realvect3 =
+    (# x := value * x(vector),
+       y := value * y(vector),
+       z := value * z(vector) #)
+
+  add_realvect3(left, right: realvect3): realvect3 =
+    (# x := x(left) + x(right),
+       y := y(left) + y(right),
+       z := z(left) + z(right) #)
+
+  cross_product(left, right: realvect3): realvect3 =
+    (# x := -(z(left) * y(right)) + y(left) * z(right),
+       y := -(x(left) * z(right)) + z(left) * x(right),
+       z := -(y(left) * x(right)) + x(left) * y(right) #)
+
+  quatvect_of_floatquat(memory: real_memory, q: addr): realquatvect =
+    (# scalar := memory(shift(q, 0)),
+       vect :=
+         (# x := memory(shift(q, 1)),
+            y := memory(shift(q, 2)),
+            z := memory(shift(q, 3)) #) #)
+
+  multiply_realquatvect(
+      left, right: realquatvect): realquatvect =
+    LET left_vector: realvect3 = vect(left),
+        right_vector: realvect3 = vect(right),
+        left_scalar: real = scalar(left),
+        right_scalar: real = scalar(right)
+    IN
+      (# scalar :=
+           -scalar_product(left_vector, right_vector)
+             + left_scalar * right_scalar,
+         vect :=
+           add_realvect3(
+             add_realvect3(
+               scalar_multiply(left_scalar, right_vector),
+               scalar_multiply(right_scalar, left_vector)),
+             cross_product(left_vector, right_vector)) #)
+
+  goal0: bool =
+    FORALL (a_1, a, a_2: addr),
+           (t_1: real_memory),
+           (t: allocation_table):
+      LET a_3: addr = shift(a_1, 0),
+          a_4: addr = shift(a, 0),
+          a_5: addr = shift(a_2, 0),
+          a_6: addr = shift(a, 1),
+          a_7: addr = shift(a_1, 1),
+          a_8: addr = shift(a_2, 1),
+          a_9: addr = shift(a, 2),
+          a_10: addr = shift(a_1, 2),
+          a_11: addr = shift(a_2, 2),
+          a_12: addr = shift(a, 3),
+          a_13: addr = shift(a_1, 3),
+          a_14: addr = shift(a_2, 3),
+          r: real = t_1(a_4),
+          r_1: real = t_1(a_5),
+          r_2: real = t_1(a_6),
+          r_3: real = t_1(a_8),
+          r_4: real = t_1(a_9),
+          r_5: real = t_1(a_11),
+          r_6: real = t_1(a_12),
+          r_7: real = t_1(a_14),
+          m: real_memory =
+            store(
+              t_1,
+              a_3,
+              r_1 * r
+                + -(r_3 * r_2)
+                + -(r_5 * r_4)
+                + -(r_7 * r_6)),
+          r_8: real = m(a_4),
+          r_9: real = m(a_5),
+          r_10: real = m(a_6),
+          r_11: real = m(a_8),
+          r_12: real = m(a_9),
+          r_13: real = m(a_11),
+          r_14: real = m(a_12),
+          r_15: real = m(a_14),
+          m_1: real_memory =
+            store(
+              m,
+              a_7,
+              r_9 * r_10
+                + r_11 * r_8
+                + r_13 * r_14
+                + -(r_15 * r_12)),
+          r_16: real = m_1(a_4),
+          r_17: real = m_1(a_5),
+          r_18: real = m_1(a_6),
+          r_19: real = m_1(a_8),
+          r_20: real = m_1(a_9),
+          r_21: real = m_1(a_11),
+          r_22: real = m_1(a_12),
+          r_23: real = m_1(a_14),
+          m_2: real_memory =
+            store(
+              m_1,
+              a_10,
+              r_17 * r_20
+                + -(r_19 * r_22)
+                + r_21 * r_16
+                + r_23 * r_18),
+          r_24: real = m_2(a_4),
+          r_25: real = m_2(a_5),
+          r_26: real = m_2(a_6),
+          r_27: real = m_2(a_8),
+          r_28: real = m_2(a_9),
+          r_29: real = m_2(a_11),
+          r_30: real = m_2(a_12),
+          r_31: real = m_2(a_14),
+          m_3: real_memory =
+            store(
+              m_2,
+              a_13,
+              r_25 * r_30
+                + r_27 * r_28
+                + -(r_29 * r_26)
+                + r_31 * r_24)
+      IN
+        (a_3 /= a_4
+          AND a_5 /= a_4
+          AND a_5 /= a_3
+          AND a_6 /= a_3
+          AND a_6 /= a_5
+          AND a_7 /= a_4
+          AND a_7 /= a_5
+          AND a_7 /= a_6
+          AND a_8 /= a_4
+          AND a_8 /= a_3
+          AND a_8 /= a_6
+          AND a_8 /= a_7
+          AND a_9 /= a_3
+          AND a_9 /= a_5
+          AND a_9 /= a_7
+          AND a_9 /= a_8
+          AND a_10 /= a_4
+          AND a_10 /= a_5
+          AND a_10 /= a_6
+          AND a_10 /= a_8
+          AND a_10 /= a_9
+          AND a_11 /= a_4
+          AND a_11 /= a_3
+          AND a_11 /= a_6
+          AND a_11 /= a_7
+          AND a_11 /= a_9
+          AND a_11 /= a_10
+          AND a_12 /= a_3
+          AND a_12 /= a_5
+          AND a_12 /= a_7
+          AND a_12 /= a_8
+          AND a_12 /= a_10
+          AND a_12 /= a_11
+          AND a_13 /= a_4
+          AND a_13 /= a_5
+          AND a_13 /= a_6
+          AND a_13 /= a_8
+          AND a_13 /= a_9
+          AND a_13 /= a_11
+          AND a_13 /= a_12
+          AND a_14 /= a_4
+          AND a_14 /= a_3
+          AND a_14 /= a_6
+          AND a_14 /= a_7
+          AND a_14 /= a_9
+          AND a_14 /= a_10
+          AND a_14 /= a_12
+          AND a_14 /= a_13
+          AND region(base(a)) <= 0
+          AND region(base(a_1)) <= 0
+          AND region(base(a_2)) <= 0
+          AND linked(t)
+          AND valid_rw(t, a_1, 4)
+          AND p_rvalid_floatquat(t, t_1, a)
+          AND p_rvalid_floatquat(t, t_1, a_2)
+          AND is_float32(r)
+          AND is_float32(r_1)
+          AND is_float32(r_2)
+          AND is_float32(r_3)
+          AND is_float32(r_4)
+          AND is_float32(r_5)
+          AND is_float32(r_6)
+          AND is_float32(r_7)
+          AND is_float32(r_8)
+          AND is_float32(r_9)
+          AND is_float32(r_10)
+          AND is_float32(r_11)
+          AND is_float32(r_12)
+          AND is_float32(r_13)
+          AND is_float32(r_14)
+          AND is_float32(r_15)
+          AND is_float32(r_16)
+          AND is_float32(r_17)
+          AND is_float32(r_18)
+          AND is_float32(r_19)
+          AND is_float32(r_20)
+          AND is_float32(r_21)
+          AND is_float32(r_22)
+          AND is_float32(r_23)
+          AND is_float32(r_24)
+          AND is_float32(r_25)
+          AND is_float32(r_26)
+          AND is_float32(r_27)
+          AND is_float32(r_28)
+          AND is_float32(r_29)
+          AND is_float32(r_30)
+          AND is_float32(r_31))
+        IMPLIES
+          eq_realquatvect(
+            quatvect_of_floatquat(m_3, a_1),
+            multiply_realquatvect(
+              quatvect_of_floatquat(m_3, a_2),
+              quatvect_of_floatquat(m_3, a)))
+END float_quat_comp_Why3_ide_VCfloat_quat_comp_post_goal0

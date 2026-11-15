@@ -1,0 +1,166 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2007_a2:
+% the least area of a convex plane set meeting both branches of each of the
+% hyperbolas x*y = 1 and x*y = -1 is 4. This file contains no proof.
+
+putnam_2007_a2: THEORY
+BEGIN
+  point: TYPE = [# x_coord: real, y_coord: real #]
+  region: TYPE = [point -> bool]
+
+  box: TYPE =
+    [# left: real, right: real, bottom: real, top: real #]
+  box_sequence: TYPE = [nat -> box]
+
+  measure_value: TYPE =
+    [# infinite_flag: bool, finite_part: real #]
+
+  canonical_measure_value(value: measure_value): bool =
+    IF infinite_flag(value) THEN
+      finite_part(value) = 0
+    ELSE
+      0 <= finite_part(value)
+    ENDIF
+
+  finite_measure_value(value: nonneg_real): measure_value =
+    (# infinite_flag := FALSE, finite_part := value #)
+
+  infinite_measure_value: measure_value =
+    (# infinite_flag := TRUE, finite_part := 0 #)
+
+  measure_value_le(left_value, right_value: measure_value): bool =
+    canonical_measure_value(left_value)
+      AND canonical_measure_value(right_value)
+      AND IF infinite_flag(right_value) THEN
+        TRUE
+      ELSIF infinite_flag(left_value) THEN
+        FALSE
+      ELSE
+        finite_part(left_value) <= finite_part(right_value)
+      ENDIF
+
+  affine_combination(t: real, p, q: point): point =
+    (# x_coord :=
+         t * x_coord(p) + (1 - t) * x_coord(q),
+       y_coord :=
+         t * y_coord(p) + (1 - t) * y_coord(q) #)
+
+  convex(S: region): bool =
+    FORALL (p, q: point), (t: real):
+      (S(p) AND S(q) AND 0 <= t AND t <= 1)
+        IMPLIES S(affine_combination(t, p, q))
+
+  meets_positive_hyperbola_branches(S: region): bool =
+    (EXISTS (p: point):
+      S(p)
+        AND 0 < x_coord(p)
+        AND 0 < y_coord(p)
+        AND x_coord(p) * y_coord(p) = 1)
+      AND
+    (EXISTS (p: point):
+      S(p)
+        AND x_coord(p) < 0
+        AND y_coord(p) < 0
+        AND x_coord(p) * y_coord(p) = 1)
+
+  meets_negative_hyperbola_branches(S: region): bool =
+    (EXISTS (p: point):
+      S(p)
+        AND x_coord(p) < 0
+        AND 0 < y_coord(p)
+        AND x_coord(p) * y_coord(p) = -1)
+      AND
+    (EXISTS (p: point):
+      S(p)
+        AND 0 < x_coord(p)
+        AND y_coord(p) < 0
+        AND x_coord(p) * y_coord(p) = -1)
+
+  admissible(S: region): bool =
+    convex(S)
+      AND meets_positive_hyperbola_branches(S)
+      AND meets_negative_hyperbola_branches(S)
+
+  in_open_box(p: point, rectangle: box): bool =
+    left(rectangle) < x_coord(p)
+      AND x_coord(p) < right(rectangle)
+      AND bottom(rectangle) < y_coord(p)
+      AND y_coord(p) < top(rectangle)
+
+  box_area(rectangle: box): real =
+    IF left(rectangle) < right(rectangle)
+        AND bottom(rectangle) < top(rectangle) THEN
+      (right(rectangle) - left(rectangle))
+        * (top(rectangle) - bottom(rectangle))
+    ELSE
+      0
+    ENDIF
+
+  partial_box_area(
+      boxes: box_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      partial_box_area(boxes, count - 1)
+        + box_area(boxes(count - 1))
+    ENDIF
+  MEASURE count
+
+  covers(S: region, boxes: box_sequence): bool =
+    FORALL (p: point):
+      S(p) IMPLIES
+        EXISTS (index: nat):
+          in_open_box(p, boxes(index))
+
+  has_finite_lebesgue_outer_area(
+      S: region,
+      area: nonneg_real): bool =
+    (FORALL (boxes: box_sequence):
+      covers(S, boxes) IMPLIES
+        FORALL (lower_bound: real):
+          lower_bound < area IMPLIES
+            EXISTS (count: nat):
+              lower_bound < partial_box_area(boxes, count))
+      AND
+    (FORALL (epsilon_value: posreal):
+      EXISTS (boxes: box_sequence):
+        covers(S, boxes)
+          AND FORALL (count: nat):
+            partial_box_area(boxes, count)
+              <= area + epsilon_value)
+
+  has_infinite_lebesgue_outer_area(S: region): bool =
+    FORALL (boxes: box_sequence):
+      covers(S, boxes) IMPLIES
+        FORALL (bound: real):
+          EXISTS (count: nat):
+            bound < partial_box_area(boxes, count)
+
+  has_lebesgue_outer_area(
+      S: region,
+      area: measure_value): bool =
+    canonical_measure_value(area)
+      AND IF infinite_flag(area) THEN
+        has_infinite_lebesgue_outer_area(S)
+      ELSE
+        has_finite_lebesgue_outer_area(S, finite_part(area))
+      ENDIF
+
+  attainable_area(area: measure_value): bool =
+    EXISTS (S: region):
+      admissible(S)
+        AND has_lebesgue_outer_area(S, area)
+
+  is_least(
+      values: [measure_value -> bool],
+      candidate: measure_value): bool =
+    values(candidate)
+      AND FORALL (value: measure_value):
+        values(value) IMPLIES
+          measure_value_le(candidate, value)
+
+  putnam_2007_a2_statement: bool =
+    is_least(
+      attainable_area,
+      finite_measure_value(4))
+END putnam_2007_a2

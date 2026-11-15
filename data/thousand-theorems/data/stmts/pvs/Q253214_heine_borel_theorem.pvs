@@ -1,0 +1,120 @@
+% Statement-only formalization of the Thousand Theorems artifact Q253214,
+% "Heine–Borel theorem": in a proper Hausdorff pseudometric space, an arbitrary
+% set is compact exactly when it is closed and bounded. This file contains no proof.
+
+heine_borel_theorem_Q253214[
+  X: TYPE,
+  carrier: [X -> bool],
+  distance: [X, X -> real]
+]: THEORY
+BEGIN
+  point_set: TYPE = [X -> bool]
+  set_family: TYPE = [point_set -> bool]
+  set_sequence: TYPE = [nat -> point_set]
+
+  carrier_set(S: point_set): bool =
+    FORALL (x: X):
+      S(x) IMPLIES carrier(x)
+
+  subset_of(S, T: point_set): bool =
+    FORALL (x: X):
+      carrier(x) AND S(x) IMPLIES T(x)
+
+  disjoint_sets(S, T: point_set): bool =
+    FORALL (x: X):
+      carrier(x) IMPLIES NOT (S(x) AND T(x))
+
+  pseudometric_space: bool =
+    (FORALL (x, y: X):
+      carrier(x) AND carrier(y) IMPLIES
+        distance(x, y) >= 0)
+      AND (FORALL (x: X):
+        carrier(x) IMPLIES distance(x, x) = 0)
+      AND (FORALL (x, y: X):
+        carrier(x) AND carrier(y) IMPLIES
+          distance(x, y) = distance(y, x))
+      AND (FORALL (x, y, z: X):
+        carrier(x) AND carrier(y) AND carrier(z) IMPLIES
+          distance(x, z)
+            <= distance(x, y) + distance(y, z))
+
+  metric_open(U: point_set): bool =
+    carrier_set(U)
+      AND FORALL (x: X):
+        carrier(x) AND U(x) IMPLIES
+          EXISTS (radius: real):
+            radius > 0
+              AND FORALL (y: X):
+                carrier(y)
+                  AND distance(x, y) < radius
+                IMPLIES U(y)
+
+  hausdorff_space: bool =
+    FORALL (x, y: X):
+      carrier(x) AND carrier(y) AND x /= y IMPLIES
+        EXISTS (U, V: point_set):
+          metric_open(U)
+            AND metric_open(V)
+            AND U(x)
+            AND V(y)
+            AND disjoint_sets(U, V)
+
+  metric_closed(S: point_set): bool =
+    carrier_set(S)
+      AND metric_open(
+        LAMBDA (x: X):
+          carrier(x) AND NOT S(x))
+
+  open_cover(cover: set_family, S: point_set): bool =
+    (FORALL (U: point_set):
+      cover(U) IMPLIES metric_open(U))
+      AND (FORALL (x: X):
+        carrier(x) AND S(x) IMPLIES
+          EXISTS (U: point_set):
+            cover(U) AND U(x))
+
+  finite_subcover(
+      cover: set_family,
+      S: point_set): bool =
+    EXISTS
+        (count: nat),
+        (chosen: set_sequence):
+      (FORALL (index: nat):
+        index < count IMPLIES cover(chosen(index)))
+        AND (FORALL (x: X):
+          carrier(x) AND S(x) IMPLIES
+            EXISTS (index: nat):
+              index < count AND chosen(index)(x))
+
+  compact_set(S: point_set): bool =
+    carrier_set(S)
+      AND FORALL (cover: set_family):
+        open_cover(cover, S) IMPLIES
+          finite_subcover(cover, S)
+
+  bounded_set(S: point_set): bool =
+    carrier_set(S)
+      AND EXISTS (bound: real):
+        FORALL (x, y: X):
+          carrier(x) AND carrier(y) AND S(x) AND S(y)
+            IMPLIES distance(x, y) <= bound
+
+  closed_ball(center: X, radius: real): point_set =
+    LAMBDA (x: X):
+      carrier(x) AND distance(x, center) <= radius
+
+  proper_space: bool =
+    FORALL (center: X), (radius: real):
+      carrier(center) IMPLIES
+        compact_set(closed_ball(center, radius))
+
+  heine_borel_theorem: bool =
+    (pseudometric_space
+      AND hausdorff_space
+      AND proper_space)
+    IMPLIES
+      FORALL (S: point_set):
+        carrier_set(S) IMPLIES
+          (compact_set(S)
+            IFF (metric_closed(S) AND bounded_set(S)))
+END heine_borel_theorem_Q253214

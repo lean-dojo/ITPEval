@@ -1,0 +1,442 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/bitwalker_Bitwalker_pokeqtvc: the bit-stream poke verification
+% condition for writing up to 63 bits of a 64-bit value into a byte-addressed
+% stream at a 32-bit position. This file contains no proof.
+
+bitwalker_Bitwalker_pokeqtvc: THEORY
+BEGIN
+
+  IMPORTING
+    bv[8], bv[32], bv[64], bv[128],
+    bv_nat[8], bv_nat[32], bv_nat[64], bv_nat[128],
+    bv_arith_nat_defs[32], bv_arith_nat_defs[128],
+    bv_arithmetic_defs[32],
+    bv_extend_defs[32]
+
+  word8: TYPE = bvec[8]
+  word32: TYPE = bvec[32]
+  word64: TYPE = bvec[64]
+  word128: TYPE = bvec[128]
+
+  unsigned32(value: word32): int = bv2nat[32](value)
+  unsigned64(value: word64): int = bv2nat[64](value)
+  unsigned128(value: word128): int = bv2nat[128](value)
+
+  word32_of(value: below(exp2(32))): word32 =
+    nat2bv[32](value)
+
+  zero8: word8 = fill[8](FALSE)
+  zero64: word64 = fill[64](FALSE)
+  one32: word32 = word32_of(1)
+  sixty_four32: word32 = word32_of(64)
+  max32: word32 = word32_of(4294967295)
+
+  add32(left, right: word32): word32 = left + right
+  sub32(left, right: word32): word32 = left - right
+
+  extend32_to128(value: word32): word128 =
+    zero_extend[32](128)(value)
+
+  bit8(value: word8, index: int): bool =
+    IF 0 <= index AND index < 8 THEN
+      value(index)
+    ELSE
+      FALSE
+    ENDIF
+
+  bit64(value: word64, index: int): bool =
+    IF 0 <= index AND index < 64 THEN
+      value(index)
+    ELSE
+      FALSE
+    ENDIF
+
+  natural_index(index: int): nat =
+    IF index < 0 THEN 0 ELSE index ENDIF
+
+  nth_byte_default(stream: list[word8], index: int): word8 =
+    IF 0 <= index AND index < length(stream) THEN
+      nth(stream, index)
+    ELSE
+      zero8
+    ENDIF
+
+  nth8_stream(stream: list[word8], position: int): bool =
+    bit8(
+      nth_byte_default(
+        stream,
+        natural_index(ndiv(position, 8))),
+      natural_index(7 - mod(position, 8)))
+
+  maxvalue(len: word32): word64 =
+    IF unsigned32(len) < 64 THEN
+      LAMBDA (index: below(64)):
+        index = unsigned32(len)
+    ELSE
+      zero64
+    ENDIF
+
+  stream_bit_length(stream: list[word8]): int =
+    8 * (length(stream) :: int)
+
+  end_position(start, len: word32): int =
+    unsigned32(start) + unsigned32(len)
+
+  wide_no_overflow(left, right: word32): bool =
+    unsigned32(left) + unsigned32(right) < 4294967296
+      OR
+    unsigned128(
+      extend32_to128(left) + extend32_to128(right))
+      <=
+    unsigned128(extend32_to128(max32))
+
+  written_segment(
+      stream: list[word8],
+      start, len: word32,
+      value: word64): bool =
+    FORALL (index: int):
+      unsigned32(start) <= index
+        AND index < end_position(start, len)
+      IMPLIES
+        nth8_stream(stream, index)
+          =
+        bit64(
+          value,
+          unsigned32(len) - index - 1 + unsigned32(start))
+
+  unchanged_before(
+      old_stream, new_stream: list[word8],
+      start: word32): bool =
+    FORALL (index: int):
+      0 <= index AND index < unsigned32(start)
+        IMPLIES
+          nth8_stream(old_stream, index)
+            = nth8_stream(new_stream, index)
+
+  unchanged_after(
+      old_stream, new_stream: list[word8],
+      start, len: word32): bool =
+    FORALL (index: int):
+      end_position(start, len) <= index
+        AND index < stream_bit_length(new_stream)
+      IMPLIES
+        nth8_stream(new_stream, index)
+          = nth8_stream(old_stream, index)
+
+  loop_invariant(
+      old_stream, current_stream: list[word8],
+      start, len, index: word32,
+      value: word64): bool =
+    (0 <= unsigned32(index)
+      AND unsigned32(index) <= unsigned32(len))
+      AND
+    unchanged_before(old_stream, current_stream, start)
+      AND
+    (FORALL (bit_index: int):
+      unsigned32(start) <= bit_index
+        AND
+      bit_index < unsigned32(start) + unsigned32(index)
+      IMPLIES
+        nth8_stream(current_stream, bit_index)
+          =
+        bit64(
+          value,
+          unsigned32(len)
+            - bit_index
+            - 1
+            + unsigned32(start)))
+      AND
+    (FORALL (bit_index: int):
+      unsigned32(start) + unsigned32(index) <= bit_index
+        AND bit_index < stream_bit_length(current_stream)
+      IMPLIES
+        nth8_stream(current_stream, bit_index)
+          = nth8_stream(old_stream, bit_index))
+
+  initial_loop_state(
+      stream: list[word8],
+      start, len: word32,
+      value: word64): bool =
+    (0 <= 0 AND 0 <= unsigned32(len))
+      AND
+    (FORALL (index: int):
+      unsigned32(start) <= index
+        AND index < unsigned32(start) + 0
+      IMPLIES
+        nth8_stream(stream, index)
+          =
+        bit64(
+          value,
+          unsigned32(len) - index - 1 + unsigned32(start)))
+
+  updated_one_bit(
+      old_stream, new_stream: list[word8],
+      start, lstart, index: word32,
+      value: word64): bool =
+    (FORALL (bit_index: int):
+      0 <= bit_index
+        AND bit_index < stream_bit_length(new_stream)
+      IMPLIES
+        NOT bit_index = unsigned32(add32(start, index))
+          IMPLIES
+            nth8_stream(new_stream, bit_index)
+              = nth8_stream(old_stream, bit_index))
+      AND
+    nth8_stream(
+      new_stream,
+      unsigned32(add32(start, index)))
+      =
+    bit64(
+      value,
+      63 - unsigned32(add32(lstart, index)))
+
+  next_loop_state(
+      original_stream, new_stream: list[word8],
+      start, len, index: word32,
+      value: word64): bool =
+    (0 <= unsigned32(len) - unsigned32(index)
+      AND
+     unsigned32(len) - unsigned32(add32(index, one32))
+       < unsigned32(len) - unsigned32(index))
+      AND
+    (0 <= unsigned32(add32(index, one32))
+      AND
+     unsigned32(add32(index, one32)) <= unsigned32(len))
+      AND
+    unchanged_before(original_stream, new_stream, start)
+      AND
+    (FORALL (bit_index: int):
+      unsigned32(start) <= bit_index
+        AND
+      bit_index
+        < unsigned32(start) + unsigned32(add32(index, one32))
+      IMPLIES
+        nth8_stream(new_stream, bit_index)
+          =
+        bit64(
+          value,
+          unsigned32(len)
+            - bit_index
+            - 1
+            + unsigned32(start)))
+      AND
+    (FORALL (bit_index: int):
+      unsigned32(start) + unsigned32(add32(index, one32))
+        <= bit_index
+        AND bit_index < stream_bit_length(new_stream)
+      IMPLIES
+        nth8_stream(new_stream, bit_index)
+          = nth8_stream(original_stream, bit_index))
+
+  loop_step(
+      original_stream, current_stream: list[word8],
+      start, len, lstart, index: word32,
+      value: word64): bool =
+    wide_no_overflow(lstart, index)
+      AND
+    (unsigned32(add32(lstart, index))
+        = unsigned32(lstart) + unsigned32(index)
+     IMPLIES
+       unsigned32(add32(lstart, index)) < 64
+         AND
+       wide_no_overflow(start, index)
+         AND
+       (unsigned32(add32(start, index))
+           = unsigned32(start) + unsigned32(index)
+        IMPLIES
+          (stream_bit_length(current_stream) < 4294967296
+            AND
+           unsigned32(add32(start, index))
+             < stream_bit_length(current_stream))
+            AND
+          (FORALL (new_stream: list[word8]):
+            length(new_stream) = length(current_stream)
+              IMPLIES
+                updated_one_bit(
+                  current_stream,
+                  new_stream,
+                  start,
+                  lstart,
+                  index,
+                  value)
+                  IMPLIES
+                    wide_no_overflow(index, one32)
+                      AND
+                    (unsigned32(add32(index, one32))
+                        = unsigned32(index) + 1
+                     IMPLIES
+                       next_loop_state(
+                         original_stream,
+                         new_stream,
+                         start,
+                         len,
+                         index,
+                         value)))))
+
+  final_loop_state(
+      original_stream, current_stream: list[word8],
+      start, len: word32,
+      value: word64): bool =
+    (-2 <= 0 AND 0 <= 0)
+      AND
+    ((0 = -1)
+      IFF
+        stream_bit_length(current_stream)
+          < end_position(start, len))
+      AND
+    ((0 = -2)
+      IFF
+        (unsigned64(maxvalue(len)) <= unsigned64(value)
+          AND
+         end_position(start, len)
+           <= stream_bit_length(current_stream)))
+      AND
+    (unsigned64(value) < unsigned64(maxvalue(len))
+      AND
+     end_position(start, len)
+       <= stream_bit_length(current_stream))
+      AND
+    unchanged_before(original_stream, current_stream, start)
+      AND
+    written_segment(current_stream, start, len, value)
+      AND
+    unchanged_after(
+      original_stream, current_stream, start, len)
+
+  loop_obligation(
+      original_stream, current_stream: list[word8],
+      start, len, lstart, index: word32,
+      value: word64): bool =
+    IF unsigned32(index) < unsigned32(len) THEN
+      loop_step(
+        original_stream,
+        current_stream,
+        start,
+        len,
+        lstart,
+        index,
+        value)
+    ELSE
+      final_loop_state(
+        original_stream,
+        current_stream,
+        start,
+        len,
+        value)
+    ENDIF
+
+  minus_one_branch(
+      stream: list[word8],
+      start, len: word32,
+      value: word64): bool =
+    (-2 <= -1 AND -1 <= 0)
+      AND
+    stream_bit_length(stream) < end_position(start, len)
+      AND
+    ((-1 = -2)
+      IFF
+        (unsigned64(maxvalue(len)) <= unsigned64(value)
+          AND
+         end_position(start, len) <= stream_bit_length(stream)))
+      AND
+    ((-1 = 0)
+      IFF
+        (unsigned64(value) < unsigned64(maxvalue(len))
+          AND
+         end_position(start, len) <= stream_bit_length(stream)))
+      AND
+    (-1 = 0
+      IMPLIES written_segment(stream, start, len, value))
+
+  minus_two_branch(
+      stream: list[word8],
+      start, len: word32,
+      value: word64): bool =
+    (-2 <= -2 AND -2 <= 0)
+      AND
+    ((-2 = -1)
+      IFF
+        stream_bit_length(stream) < end_position(start, len))
+      AND
+    (unsigned64(maxvalue(len)) <= unsigned64(value)
+      AND
+     end_position(start, len) <= stream_bit_length(stream))
+      AND
+    ((-2 = 0)
+      IFF
+        (unsigned64(value) < unsigned64(maxvalue(len))
+          AND
+         end_position(start, len) <= stream_bit_length(stream)))
+      AND
+    (-2 = 0
+      IMPLIES written_segment(stream, start, len, value))
+
+  successful_write_branch(
+      stream: list[word8],
+      start, len: word32,
+      value: word64): bool =
+    (unsigned32(len) <= 64
+      OR unsigned32(len) <= unsigned32(sixty_four32))
+      AND
+    (LET lstart: word32 = sub32(sixty_four32, len)
+     IN
+       unsigned32(lstart) = 64 - unsigned32(len)
+       IMPLIES
+         initial_loop_state(stream, start, len, value)
+           AND
+         (FORALL
+             (index: word32),
+             (current_stream: list[word8]):
+           length(current_stream) = length(stream)
+             IMPLIES
+               loop_invariant(
+                 stream,
+                 current_stream,
+                 start,
+                 len,
+                 index,
+                 value)
+                 IMPLIES
+                   loop_obligation(
+                     stream,
+                     current_stream,
+                     start,
+                     len,
+                     lstart,
+                     index,
+                     value)))
+
+  main_body(
+      stream: list[word8],
+      start, len: word32,
+      value: word64): bool =
+    IF stream_bit_length(stream)
+         < unsigned32(add32(start, len))
+    THEN
+      minus_one_branch(stream, start, len, value)
+    ELSIF unsigned64(maxvalue(len)) <= unsigned64(value)
+    THEN
+      minus_two_branch(stream, start, len, value)
+    ELSE
+      successful_write_branch(stream, start, len, value)
+    ENDIF
+
+  poke_vc: bool =
+    FORALL
+        (len: word32),
+        (start: word32),
+        (addr: list[word8]),
+        (value: word64):
+      (unsigned32(len) < 64
+        AND
+       unsigned32(start) + unsigned32(len) < 4294967296
+        AND
+       stream_bit_length(addr) < 4294967296)
+      IMPLIES
+        wide_no_overflow(start, len)
+          AND
+        (unsigned32(add32(start, len))
+            = unsigned32(start) + unsigned32(len)
+         IMPLIES main_body(addr, start, len, value))
+
+END bitwalker_Bitwalker_pokeqtvc

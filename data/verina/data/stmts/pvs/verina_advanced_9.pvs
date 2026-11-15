@@ -1,0 +1,129 @@
+% Statement-only formalization of the VERINA corpus artifact
+% verina_advanced_9, catalog title "countSumDivisibleBy": counting the natural
+% numbers below n whose decimal digit sum is divisible by positive d, with the
+% exact recursive program and its correctness contract. This file contains no proof.
+
+verina_advanced_9: THEORY
+BEGIN
+
+  % The fuel is only a structural termination index. Starting with n supplies
+  % enough recursive calls because every nonzero division by ten decreases n.
+  sumOfDigits_go(
+      n, accumulator, fuel: nat): RECURSIVE nat =
+    IF n = 0 THEN
+      accumulator
+    ELSIF fuel = 0 THEN
+      accumulator
+    ELSE
+      sumOfDigits_go(
+        ndiv(n, 10),
+        accumulator + mod(n, 10),
+        fuel - 1)
+    ENDIF
+  MEASURE fuel
+
+  sumOfDigits(n: nat): nat =
+    sumOfDigits_go(n, 0, n)
+
+  countSumDivisibleBy_precond(
+      n, d: nat): bool =
+    d > 0
+
+  nat_mod_fuel(
+      value, divisor, fuel: nat): RECURSIVE nat =
+    IF divisor = 0 THEN
+      value
+    ELSIF value < divisor THEN
+      value
+    ELSIF fuel = 0 THEN
+      value
+    ELSE
+      nat_mod_fuel(
+        value - divisor,
+        divisor,
+        fuel - 1)
+    ENDIF
+  MEASURE fuel
+
+  % With value + 1 fuel, repeated subtraction computes natural remainder
+  % exactly; the zero-divisor branch preserves Lean's value % 0 = value.
+  nat_mod(value, divisor: nat): nat =
+    nat_mod_fuel(value, divisor, value + 1)
+
+  isSumDivisibleBy(
+      x, d: nat): bool =
+    nat_mod(sumOfDigits(x), d) = 0
+
+  countSumDivisibleBy_go(
+      i, accumulator, d: nat): RECURSIVE nat =
+    IF i = 0 THEN
+      accumulator
+    ELSE
+      LET previous: nat = i - 1,
+          next_accumulator: nat =
+            IF isSumDivisibleBy(previous, d) THEN
+              accumulator + 1
+            ELSE
+              accumulator
+            ENDIF
+      IN
+        countSumDivisibleBy_go(
+          previous,
+          next_accumulator,
+          d)
+    ENDIF
+  MEASURE i
+
+  % The Lean precondition proof argument is computationally irrelevant.
+  countSumDivisibleBy(
+      n, d: nat): nat =
+    countSumDivisibleBy_go(n, 0, d)
+
+  nat_range_from(
+      start, count: nat): RECURSIVE list[nat] =
+    IF count = 0 THEN
+      null[nat]
+    ELSE
+      cons(
+        start,
+        nat_range_from(start + 1, count - 1))
+    ENDIF
+  MEASURE count
+
+  nat_range(n: nat): list[nat] =
+    nat_range_from(0, n)
+
+  filtered_range_length(
+      values: list[nat],
+      n, d: nat): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(x, rest):
+        (IF x < n AND isSumDivisibleBy(x, d) THEN 1 ELSE 0 ENDIF)
+          + filtered_range_length(rest, n, d)
+    ENDCASES
+  MEASURE values BY <<
+
+  % Lean natural-number subtraction is truncated at zero.
+  nat_subtract(first, second: nat): nat =
+    IF first >= second THEN first - second ELSE 0 ENDIF
+
+  countSumDivisibleBy_postcond(
+      n, d, result: nat): bool =
+    LET expected: nat =
+          filtered_range_length(nat_range(n), n, d)
+    IN
+      nat_subtract(expected, result) = 0
+        AND result <= expected
+
+  countSumDivisibleBy_spec_satisfied: bool =
+    FORALL (n, d: nat):
+      countSumDivisibleBy_precond(n, d)
+        IMPLIES
+          countSumDivisibleBy_postcond(
+            n,
+            d,
+            countSumDivisibleBy(n, d))
+
+END verina_advanced_9

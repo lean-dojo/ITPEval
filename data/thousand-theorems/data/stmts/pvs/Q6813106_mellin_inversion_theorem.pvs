@@ -1,0 +1,909 @@
+% Statement-only formalization of the Thousand Theorems corpus artifact Q6813106,
+% "Mellin inversion theorem": the inverse Mellin transform of the Mellin transform
+% recovers a complex Banach-space-valued function at a positive point under the
+% source convergence, vertical integrability, and continuity hypotheses.
+% This file contains no proof.
+
+Q6813106_mellin_inversion_theorem[
+  E: TYPE+,
+  zeroE: E,
+  addE: [E, E -> E],
+  negE: [E -> E],
+  csmulE: [real, real, E -> E],
+  normE: [E -> real]
+]: THEORY
+BEGIN
+  complex: TYPE = [# real_part: real, imag_part: real #]
+  complex_function: TYPE = [complex -> E]
+
+  event: TYPE = [real -> bool]
+  event_sequence: TYPE = [nat -> event]
+  sigma_algebra: TYPE = [event -> bool]
+
+  measure_value: TYPE =
+    [# infinite_flag: bool, finite_part: real #]
+  measure_value_sequence: TYPE = [nat -> measure_value]
+  measure_map: TYPE = [event -> measure_value]
+
+  real_sequence: TYPE = [nat -> real]
+  e_function: TYPE = [real -> E]
+  e_function_sequence: TYPE = [nat -> e_function]
+  e_sequence: TYPE = [nat -> E]
+  nonnegative_function: TYPE = [real -> measure_value]
+
+  subE(x, y: E): E = addE(x, negE(y))
+
+  complex_zero: complex =
+    (# real_part := 0, imag_part := 0 #)
+
+  complex_one: complex =
+    (# real_part := 1, imag_part := 0 #)
+
+  complex_of_real(x: real): complex =
+    (# real_part := x, imag_part := 0 #)
+
+  complex_add(x, y: complex): complex =
+    (# real_part := real_part(x) + real_part(y),
+       imag_part := imag_part(x) + imag_part(y) #)
+
+  complex_neg(x: complex): complex =
+    (# real_part := -real_part(x),
+       imag_part := -imag_part(x) #)
+
+  complex_sub(x, y: complex): complex =
+    complex_add(x, complex_neg(y))
+
+  complex_mul(x, y: complex): complex =
+    (# real_part :=
+         real_part(x) * real_part(y)
+           - imag_part(x) * imag_part(y),
+       imag_part :=
+         real_part(x) * imag_part(y)
+           + imag_part(x) * real_part(y) #)
+
+  complex_norm_squared(x: complex): real =
+    real_part(x) ^ 2 + imag_part(x) ^ 2
+
+  complex_smul(a: complex, x: E): E =
+    csmulE(real_part(a), imag_part(a), x)
+
+  real_smulE(a: real, x: E): E =
+    csmulE(a, 0, x)
+
+  normed_complex_vector_space: bool =
+    (FORALL (x, y: E): addE(x, y) = addE(y, x))
+      AND (FORALL (x, y, z: E):
+        addE(addE(x, y), z) = addE(x, addE(y, z)))
+      AND (FORALL (x: E): addE(x, zeroE) = x)
+      AND (FORALL (x: E): addE(x, negE(x)) = zeroE)
+      AND (FORALL (a: complex), (x, y: E):
+        complex_smul(a, addE(x, y)) =
+          addE(complex_smul(a, x), complex_smul(a, y)))
+      AND (FORALL (a, b: complex), (x: E):
+        complex_smul(complex_add(a, b), x) =
+          addE(complex_smul(a, x), complex_smul(b, x)))
+      AND (FORALL (a, b: complex), (x: E):
+        complex_smul(complex_mul(a, b), x) =
+          complex_smul(a, complex_smul(b, x)))
+      AND (FORALL (x: E):
+        complex_smul(complex_one, x) = x)
+      AND (FORALL (x: E):
+        complex_smul(complex_zero, x) = zeroE)
+      AND (FORALL (x: E): normE(x) >= 0)
+      AND (FORALL (x: E): normE(x) = 0 IFF x = zeroE)
+      AND (FORALL (a: complex), (x: E):
+        normE(complex_smul(a, x)) ^ 2 =
+          complex_norm_squared(a) * normE(x) ^ 2)
+      AND (FORALL (x, y: E):
+        normE(addE(x, y)) <= normE(x) + normE(y))
+
+  converges_to_e(values: e_sequence, limit: E): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            normE(subE(values(index), limit)) < epsilon_value
+
+  cauchy_e(values: e_sequence): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (left_index, right_index: nat):
+          cutoff <= left_index AND cutoff <= right_index IMPLIES
+            normE(
+              subE(values(left_index), values(right_index)))
+              < epsilon_value
+
+  complete_space_e: bool =
+    FORALL (values: e_sequence):
+      cauchy_e(values) IMPLIES
+        EXISTS (limit: E): converges_to_e(values, limit)
+
+  converges_to_real(values: real_sequence, limit: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(values(index) - limit) < epsilon_value
+
+  zero_measure_value: measure_value =
+    (# infinite_flag := FALSE, finite_part := 0 #)
+
+  infinite_measure_value: measure_value =
+    (# infinite_flag := TRUE, finite_part := 0 #)
+
+  finite_measure_value(value: real): measure_value =
+    (# infinite_flag := FALSE, finite_part := value #)
+
+  canonical_measure_value(value: measure_value): bool =
+    IF infinite_flag(value) THEN
+      finite_part(value) = 0
+    ELSE
+      finite_part(value) >= 0
+    ENDIF
+
+  measure_value_is_zero(value: measure_value): bool =
+    NOT infinite_flag(value)
+      AND finite_part(value) = 0
+
+  measure_value_le(left, right: measure_value): bool =
+    canonical_measure_value(left)
+      AND canonical_measure_value(right)
+      AND IF infinite_flag(right) THEN
+        TRUE
+      ELSIF infinite_flag(left) THEN
+        FALSE
+      ELSE
+        finite_part(left) <= finite_part(right)
+      ENDIF
+
+  measure_value_add(left, right: measure_value): measure_value =
+    IF infinite_flag(left) OR infinite_flag(right) THEN
+      infinite_measure_value
+    ELSE
+      finite_measure_value(
+        finite_part(left) + finite_part(right))
+    ENDIF
+
+  measure_value_product(left, right: measure_value): measure_value =
+    IF measure_value_is_zero(left)
+        OR measure_value_is_zero(right) THEN
+      zero_measure_value
+    ELSIF infinite_flag(left)
+        OR infinite_flag(right) THEN
+      infinite_measure_value
+    ELSE
+      finite_measure_value(
+        finite_part(left) * finite_part(right))
+    ENDIF
+
+  full_event: event =
+    LAMBDA (x: real): TRUE
+
+  empty_event: event =
+    LAMBDA (x: real): FALSE
+
+  event_complement(A: event): event =
+    LAMBDA (x: real): NOT A(x)
+
+  countable_union(sets: event_sequence): event =
+    LAMBDA (x: real):
+      EXISTS (index: nat): sets(index)(x)
+
+  pairwise_disjoint(sets: event_sequence): bool =
+    FORALL (left_index, right_index: nat):
+      left_index /= right_index IMPLIES
+        FORALL (x: real):
+          NOT (sets(left_index)(x)
+            AND sets(right_index)(x))
+
+  pairwise_disjoint_below(
+      sets: event_sequence,
+      count: nat): bool =
+    FORALL (left_index, right_index: nat):
+      left_index < count
+        AND right_index < count
+        AND left_index /= right_index
+      IMPLIES
+        FORALL (x: real):
+          NOT (sets(left_index)(x)
+            AND sets(right_index)(x))
+
+  finite_real_sum(values: real_sequence, count: nat):
+      RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      finite_real_sum(values, count - 1)
+        + values(count - 1)
+    ENDIF
+  MEASURE count
+
+  unbounded_above(values: real_sequence): bool =
+    FORALL (bound: real):
+      EXISTS (index: nat):
+        bound < values(index)
+
+  partial_measure_sum(
+      values: measure_value_sequence,
+      count: nat): real =
+    finite_real_sum(
+      LAMBDA (index: nat):
+        finite_part(values(index)),
+      count)
+
+  extended_nonnegative_sum(
+      values: measure_value_sequence,
+      total: measure_value): bool =
+    canonical_measure_value(total)
+      AND (FORALL (index: nat):
+        canonical_measure_value(values(index)))
+      AND IF infinite_flag(total) THEN
+        (EXISTS (index: nat):
+          infinite_flag(values(index)))
+          OR ((FORALL (index: nat):
+                NOT infinite_flag(values(index)))
+            AND unbounded_above(
+              LAMBDA (count: nat):
+                partial_measure_sum(values, count)))
+      ELSE
+        (FORALL (index: nat):
+          NOT infinite_flag(values(index)))
+          AND converges_to_real(
+            LAMBDA (count: nat):
+              partial_measure_sum(values, count),
+            finite_part(total))
+      ENDIF
+
+  is_sigma_algebra(Sigma: sigma_algebra): bool =
+    Sigma(full_event)
+      AND (FORALL (A: event):
+        Sigma(A) IMPLIES Sigma(event_complement(A)))
+      AND (FORALL (sets: event_sequence):
+        (FORALL (index: nat): Sigma(sets(index)))
+          IMPLIES Sigma(countable_union(sets)))
+
+  is_measure(
+      M: measure_map,
+      Sigma: sigma_algebra): bool =
+    is_sigma_algebra(Sigma)
+      AND measure_value_is_zero(M(empty_event))
+      AND (FORALL (A: event):
+        Sigma(A) IMPLIES canonical_measure_value(M(A)))
+      AND (FORALL (sets: event_sequence):
+        ((FORALL (index: nat): Sigma(sets(index)))
+          AND pairwise_disjoint(sets))
+        IMPLIES
+          extended_nonnegative_sum(
+            LAMBDA (index: nat): M(sets(index)),
+            M(countable_union(sets))))
+
+  open_real_set(A: event): bool =
+    FORALL (x: real):
+      A(x) IMPLIES
+        EXISTS (radius: posreal):
+          FORALL (y: real):
+            abs(y - x) < radius IMPLIES A(y)
+
+  generated_borel_sigma(Sigma: sigma_algebra): bool =
+    is_sigma_algebra(Sigma)
+      AND (FORALL (A: event):
+        open_real_set(A) IMPLIES Sigma(A))
+      AND (FORALL (Other: sigma_algebra):
+        (is_sigma_algebra(Other)
+          AND (FORALL (A: event):
+            open_real_set(A) IMPLIES Other(A)))
+        IMPLIES
+          FORALL (A: event):
+            Sigma(A) IMPLIES Other(A))
+
+  open_closed_interval(a, b: real): event =
+    LAMBDA (x: real): a < x AND x <= b
+
+  real_volume_space(
+      M: measure_map,
+      Sigma: sigma_algebra): bool =
+    generated_borel_sigma(Sigma)
+      AND is_measure(M, Sigma)
+      AND (FORALL (a, b: real):
+        a <= b IMPLIES
+          M(open_closed_interval(a, b)) =
+            finite_measure_value(b - a))
+
+  null_event(
+      M: measure_map,
+      Sigma: sigma_algebra,
+      A: event): bool =
+    EXISTS (measurable_cover: event):
+      Sigma(measurable_cover)
+        AND (FORALL (x: real):
+          A(x) IMPLIES measurable_cover(x))
+        AND measure_value_is_zero(M(measurable_cover))
+
+  almost_everywhere(
+      M: measure_map,
+      Sigma: sigma_algebra,
+      property: [real -> bool]): bool =
+    null_event(
+      M,
+      Sigma,
+      LAMBDA (x: real): NOT property(x))
+
+  finite_e_sum(values: e_sequence, count: nat):
+      RECURSIVE E =
+    IF count = 0 THEN
+      zeroE
+    ELSE
+      addE(
+        finite_e_sum(values, count - 1),
+        values(count - 1))
+    ENDIF
+  MEASURE count
+
+  finite_simple_e_value(
+      coefficients: e_sequence,
+      pieces: event_sequence,
+      count: nat,
+      x: real): E =
+    finite_e_sum(
+      LAMBDA (index: nat):
+        IF index < count AND pieces(index)(x) THEN
+          coefficients(index)
+        ELSE
+          zeroE
+        ENDIF,
+      count)
+
+  measurable_simple_e_data(
+      Sigma: sigma_algebra,
+      coefficients: e_sequence,
+      pieces: event_sequence,
+      count: nat): bool =
+    pairwise_disjoint_below(pieces, count)
+      AND (FORALL (index: nat):
+        index < count IMPLIES Sigma(pieces(index)))
+
+  measurable_simple_e(
+      Sigma: sigma_algebra,
+      function_value: e_function): bool =
+    EXISTS
+        (coefficients: e_sequence),
+        (pieces: event_sequence),
+        (count: nat):
+      measurable_simple_e_data(
+        Sigma, coefficients, pieces, count)
+        AND (FORALL (x: real):
+          function_value(x) =
+            finite_simple_e_value(
+              coefficients, pieces, count, x))
+
+  strongly_measurable_e(
+      Sigma: sigma_algebra,
+      function_value: e_function): bool =
+    EXISTS (approximants: e_function_sequence):
+      (FORALL (index: nat):
+        measurable_simple_e(
+          Sigma, approximants(index)))
+        AND (FORALL (x: real):
+          converges_to_e(
+            LAMBDA (index: nat):
+              approximants(index)(x),
+            function_value(x)))
+
+  ae_strongly_measurable_e(
+      M: measure_map,
+      Sigma: sigma_algebra,
+      function_value: e_function): bool =
+    EXISTS (measurable_version: e_function):
+      strongly_measurable_e(Sigma, measurable_version)
+        AND almost_everywhere(
+          M,
+          Sigma,
+          LAMBDA (x: real):
+            function_value(x) = measurable_version(x))
+
+  restrict_e_function(
+      function_value: e_function,
+      A: event): e_function =
+    LAMBDA (x: real):
+      IF A(x) THEN function_value(x) ELSE zeroE ENDIF
+
+  canonical_nonnegative_function(
+      function_value: nonnegative_function): bool =
+    FORALL (x: real):
+      canonical_measure_value(function_value(x))
+
+  finite_simple_nonnegative_value(
+      coefficients: measure_value_sequence,
+      pieces: event_sequence,
+      count: nat,
+      x: real): RECURSIVE measure_value =
+    IF count = 0 THEN
+      zero_measure_value
+    ELSE
+      measure_value_add(
+        finite_simple_nonnegative_value(
+          coefficients, pieces, count - 1, x),
+        IF pieces(count - 1)(x) THEN
+          coefficients(count - 1)
+        ELSE
+          zero_measure_value
+        ENDIF)
+    ENDIF
+  MEASURE count
+
+  measurable_simple_nonnegative(
+      Sigma: sigma_algebra,
+      coefficients: measure_value_sequence,
+      pieces: event_sequence,
+      count: nat): bool =
+    pairwise_disjoint_below(pieces, count)
+      AND (FORALL (index: nat):
+        index < count IMPLIES
+          canonical_measure_value(coefficients(index))
+            AND NOT infinite_flag(coefficients(index))
+            AND Sigma(pieces(index)))
+
+  measurable_simple_minorant(
+      Sigma: sigma_algebra,
+      function_value: nonnegative_function,
+      coefficients: measure_value_sequence,
+      pieces: event_sequence,
+      count: nat): bool =
+    canonical_nonnegative_function(function_value)
+      AND measurable_simple_nonnegative(
+        Sigma, coefficients, pieces, count)
+      AND (FORALL (x: real):
+        measure_value_le(
+          finite_simple_nonnegative_value(
+            coefficients, pieces, count, x),
+          function_value(x)))
+
+  finite_simple_nonnegative_integral(
+      M: measure_map,
+      coefficients: measure_value_sequence,
+      pieces: event_sequence,
+      count: nat): RECURSIVE measure_value =
+    IF count = 0 THEN
+      zero_measure_value
+    ELSE
+      measure_value_add(
+        finite_simple_nonnegative_integral(
+          M, coefficients, pieces, count - 1),
+        measure_value_product(
+          coefficients(count - 1),
+          M(pieces(count - 1))))
+    ENDIF
+  MEASURE count
+
+  lower_integral_upper_bound(
+      M: measure_map,
+      Sigma: sigma_algebra,
+      function_value: nonnegative_function,
+      upper: measure_value): bool =
+    canonical_measure_value(upper)
+      AND FORALL
+          (coefficients: measure_value_sequence),
+          (pieces: event_sequence),
+          (count: nat):
+        measurable_simple_minorant(
+          Sigma, function_value,
+          coefficients, pieces, count)
+        IMPLIES
+          measure_value_le(
+            finite_simple_nonnegative_integral(
+              M, coefficients, pieces, count),
+            upper)
+
+  has_lower_lebesgue_integral(
+      M: measure_map,
+      Sigma: sigma_algebra,
+      function_value: nonnegative_function,
+      integral_value: measure_value): bool =
+    canonical_nonnegative_function(function_value)
+      AND canonical_measure_value(integral_value)
+      AND lower_integral_upper_bound(
+        M, Sigma, function_value, integral_value)
+      AND (FORALL (upper: measure_value):
+        lower_integral_upper_bound(
+          M, Sigma, function_value, upper)
+        IMPLIES
+          measure_value_le(integral_value, upper))
+
+  enorm_e(function_value: e_function):
+      nonnegative_function =
+    LAMBDA (x: real):
+      finite_measure_value(normE(function_value(x)))
+
+  integrable_simple_e_data(
+      M: measure_map,
+      Sigma: sigma_algebra,
+      coefficients: e_sequence,
+      pieces: event_sequence,
+      count: nat): bool =
+    measurable_simple_e_data(
+      Sigma, coefficients, pieces, count)
+      AND (FORALL (index: nat):
+        index < count IMPLIES
+          coefficients(index) = zeroE
+            OR NOT infinite_flag(M(pieces(index))))
+
+  finite_simple_e_integral(
+      M: measure_map,
+      coefficients: e_sequence,
+      pieces: event_sequence,
+      count: nat): RECURSIVE E =
+    IF count = 0 THEN
+      zeroE
+    ELSE
+      addE(
+        finite_simple_e_integral(
+          M, coefficients, pieces, count - 1),
+        real_smulE(
+          finite_part(M(pieces(count - 1))),
+          coefficients(count - 1)))
+    ENDIF
+  MEASURE count
+
+  has_simple_e_integral(
+      M: measure_map,
+      Sigma: sigma_algebra,
+      function_value: e_function,
+      integral_value: E): bool =
+    EXISTS
+        (coefficients: e_sequence),
+        (pieces: event_sequence),
+        (count: nat):
+      integrable_simple_e_data(
+        M, Sigma, coefficients, pieces, count)
+        AND (FORALL (x: real):
+          function_value(x) =
+            finite_simple_e_value(
+              coefficients, pieces, count, x))
+        AND integral_value =
+          finite_simple_e_integral(
+            M, coefficients, pieces, count)
+
+  l1_error(
+      M: measure_map,
+      Sigma: sigma_algebra,
+      function_value,
+      approximant: e_function,
+      error_value: real): bool =
+    error_value >= 0
+      AND has_lower_lebesgue_integral(
+        M,
+        Sigma,
+        enorm_e(
+          LAMBDA (x: real):
+            subE(
+              function_value(x),
+              approximant(x))),
+        finite_measure_value(error_value))
+
+  approximates_in_l1(
+      M: measure_map,
+      Sigma: sigma_algebra,
+      function_value: e_function,
+      approximants: e_function_sequence): bool =
+    (FORALL (index: nat):
+      measurable_simple_e(Sigma, approximants(index)))
+      AND EXISTS (errors: real_sequence):
+        (FORALL (index: nat):
+          l1_error(
+            M,
+            Sigma,
+            function_value,
+            approximants(index),
+            errors(index)))
+          AND converges_to_real(errors, 0)
+
+  bochner_integral_witness(
+      M: measure_map,
+      Sigma: sigma_algebra,
+      function_value: e_function,
+      integral_value: E): bool =
+    EXISTS
+        (approximants: e_function_sequence),
+        (simple_integrals: e_sequence):
+      approximates_in_l1(
+        M, Sigma, function_value, approximants)
+        AND (FORALL (index: nat):
+          has_simple_e_integral(
+            M,
+            Sigma,
+            approximants(index),
+            simple_integrals(index)))
+        AND converges_to_e(
+          simple_integrals, integral_value)
+
+  has_bochner_integral(
+      M: measure_map,
+      Sigma: sigma_algebra,
+      function_value: e_function,
+      integral_value: E): bool =
+    ae_strongly_measurable_e(
+      M, Sigma, function_value)
+      AND bochner_integral_witness(
+        M, Sigma, function_value, integral_value)
+      AND (FORALL (other_integral: E):
+        bochner_integral_witness(
+          M, Sigma, function_value, other_integral)
+        IMPLIES
+          other_integral = integral_value)
+
+  bochner_integrable(
+      M: measure_map,
+      Sigma: sigma_algebra,
+      function_value: e_function): bool =
+    EXISTS (integral_value: E):
+      has_bochner_integral(
+        M, Sigma, function_value, integral_value)
+
+  bochner_integral(
+      M: measure_map,
+      Sigma: sigma_algebra,
+      function_value: e_function): E =
+    IF bochner_integrable(M, Sigma, function_value) THEN
+      epsilon(
+        LAMBDA (integral_value: E):
+          has_bochner_integral(
+            M, Sigma, function_value, integral_value))
+    ELSE
+      zeroE
+    ENDIF
+
+  integrable_on(
+      M: measure_map,
+      Sigma: sigma_algebra,
+      function_value: e_function,
+      A: event): bool =
+    bochner_integrable(
+      M, Sigma, restrict_e_function(function_value, A))
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  nat_factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * nat_factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  alternating_sign(index: nat): RECURSIVE real =
+    IF index = 0 THEN
+      1
+    ELSE
+      -alternating_sign(index - 1)
+    ENDIF
+  MEASURE index
+
+  exponential_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        exponential_partial(x, count - 1)
+          + safe_div(
+              x ^ index,
+              nat_factorial(index) :: real)
+    ENDIF
+  MEASURE count
+
+  sine_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        sine_partial(x, count - 1)
+          + safe_div(
+              alternating_sign(index)
+                * x ^ (2 * index + 1),
+              nat_factorial(2 * index + 1) :: real)
+    ENDIF
+  MEASURE count
+
+  cosine_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        cosine_partial(x, count - 1)
+          + safe_div(
+              alternating_sign(index)
+                * x ^ (2 * index),
+              nat_factorial(2 * index) :: real)
+    ENDIF
+  MEASURE count
+
+  leibniz_partial_sum(count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        leibniz_partial_sum(count - 1)
+          + safe_div(
+              alternating_sign(index),
+              (2 * index + 1) :: real)
+    ENDIF
+  MEASURE count
+
+  real_exponential(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to_real(
+          LAMBDA (count: nat):
+            exponential_partial(x, count),
+          value))
+
+  natural_log(x: real): real =
+    IF x > 0 THEN
+      epsilon(
+        LAMBDA (value: real):
+          real_exponential(value) = x)
+    ELSE
+      0
+    ENDIF
+
+  sine_of_real(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to_real(
+          LAMBDA (count: nat):
+            sine_partial(x, count),
+          value))
+
+  cosine_of_real(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to_real(
+          LAMBDA (count: nat):
+            cosine_partial(x, count),
+          value))
+
+  pi: real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to_real(
+          LAMBDA (count: nat):
+            4 * leibniz_partial_sum(count),
+          value))
+
+  positive_real_cpow(base: real, exponent: complex): complex =
+    IF base > 0 THEN
+      LET logarithm: real = natural_log(base),
+          magnitude: real =
+            real_exponential(real_part(exponent) * logarithm),
+          angle: real = imag_part(exponent) * logarithm
+      IN
+        (# real_part :=
+             magnitude * cosine_of_real(angle),
+           imag_part :=
+             magnitude * sine_of_real(angle) #)
+    ELSE
+      complex_zero
+    ENDIF
+
+  positive_event: event =
+    LAMBDA (t: real): 0 < t
+
+  vertical_line(sigma, y: real): complex =
+    (# real_part := sigma, imag_part := y #)
+
+  mellin_integrand(
+      f: e_function,
+      s: complex): e_function =
+    LAMBDA (t: real):
+      complex_smul(
+        positive_real_cpow(
+          t,
+          complex_sub(s, complex_one)),
+        f(t))
+
+  mellin_convergent(
+      M: measure_map,
+      Sigma: sigma_algebra,
+      f: e_function,
+      s: complex): bool =
+    integrable_on(
+      M,
+      Sigma,
+      mellin_integrand(f, s),
+      positive_event)
+
+  mellin(
+      M: measure_map,
+      Sigma: sigma_algebra,
+      f: e_function,
+      s: complex): E =
+    bochner_integral(
+      M,
+      Sigma,
+      restrict_e_function(
+        mellin_integrand(f, s),
+        positive_event))
+
+  mellin_transform(
+      M: measure_map,
+      Sigma: sigma_algebra,
+      f: e_function): complex_function =
+    LAMBDA (s: complex):
+      mellin(M, Sigma, f, s)
+
+  vertical_integrable(
+      M: measure_map,
+      Sigma: sigma_algebra,
+      F: complex_function,
+      sigma: real): bool =
+    bochner_integrable(
+      M,
+      Sigma,
+      LAMBDA (y: real):
+        F(vertical_line(sigma, y)))
+
+  mellin_inverse_integrand(
+      F: complex_function,
+      sigma, x: real): e_function =
+    LAMBDA (y: real):
+      complex_smul(
+        positive_real_cpow(
+          x,
+          complex_neg(vertical_line(sigma, y))),
+        F(vertical_line(sigma, y)))
+
+  mellin_inverse(
+      M: measure_map,
+      Sigma: sigma_algebra,
+      sigma: real,
+      F: complex_function,
+      x: real): E =
+    real_smulE(
+      safe_div(1, 2 * pi),
+      bochner_integral(
+        M,
+        Sigma,
+        mellin_inverse_integrand(F, sigma, x)))
+
+  continuous_at_e(
+      f: e_function,
+      x: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (radius: posreal):
+        FORALL (y: real):
+          abs(y - x) < radius
+            IMPLIES
+              normE(subE(f(y), f(x))) < epsilon_value
+
+  mellin_inversion: bool =
+    (normed_complex_vector_space AND complete_space_e)
+      IMPLIES
+        FORALL
+            (M: measure_map),
+            (Sigma: sigma_algebra),
+            (sigma: real),
+            (f: e_function),
+            (x: real):
+          (real_volume_space(M, Sigma)
+            AND 0 < x
+            AND mellin_convergent(
+              M, Sigma, f, complex_of_real(sigma))
+            AND vertical_integrable(
+              M,
+              Sigma,
+              mellin_transform(M, Sigma, f),
+              sigma)
+            AND continuous_at_e(f, x))
+          IMPLIES
+            mellin_inverse(
+              M,
+              Sigma,
+              sigma,
+              mellin_transform(M, Sigma, f),
+              x)
+              = f(x)
+END Q6813106_mellin_inversion_theorem

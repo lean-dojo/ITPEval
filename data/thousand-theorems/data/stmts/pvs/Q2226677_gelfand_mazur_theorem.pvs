@@ -1,0 +1,163 @@
+% Statement-only formalization of the Thousand Theorems artifact Q2226677
+% (thousand-theorems__pvs__Q2226677), "Gelfand-Mazur theorem": the canonical
+% complex scalar map into a complete complex normed ring whose nonzero
+% elements are exactly its units is an algebra equivalence. This file
+% contains no proof.
+
+Q2226677_gelfand_mazur_theorem[
+  A: TYPE+,
+  zero_A, one_A: A,
+  neg_A: [A -> A],
+  add_A, mul_A: [A, A -> A],
+  norm_A: [A -> real],
+  algebra_map: [[# real_part: real, imag_part: real #] -> A]
+]: THEORY
+BEGIN
+  complex: TYPE = [# real_part: real, imag_part: real #]
+  a_sequence: TYPE = [nat -> A]
+
+  complex_zero: complex =
+    (# real_part := 0, imag_part := 0 #)
+
+  complex_one: complex =
+    (# real_part := 1, imag_part := 0 #)
+
+  complex_neg(z: complex): complex =
+    (# real_part := -real_part(z),
+       imag_part := -imag_part(z) #)
+
+  complex_add(z, w: complex): complex =
+    (# real_part := real_part(z) + real_part(w),
+       imag_part := imag_part(z) + imag_part(w) #)
+
+  complex_mul(z, w: complex): complex =
+    (# real_part :=
+         real_part(z) * real_part(w)
+           - imag_part(z) * imag_part(w),
+       imag_part :=
+         real_part(z) * imag_part(w)
+           + imag_part(z) * real_part(w) #)
+
+  complex_norm_squared(z: complex): real =
+    real_part(z) ^ 2 + imag_part(z) ^ 2
+
+  sub_A(x, y: A): A =
+    add_A(x, neg_A(y))
+
+  ring_laws: bool =
+    (FORALL (x, y: A):
+      add_A(x, y) = add_A(y, x))
+      AND (FORALL (x, y, z: A):
+        add_A(add_A(x, y), z) =
+          add_A(x, add_A(y, z)))
+      AND (FORALL (x: A):
+        add_A(zero_A, x) = x
+          AND add_A(x, zero_A) = x)
+      AND (FORALL (x: A):
+        add_A(neg_A(x), x) = zero_A
+          AND add_A(x, neg_A(x)) = zero_A)
+      AND (FORALL (x, y, z: A):
+        mul_A(mul_A(x, y), z) =
+          mul_A(x, mul_A(y, z)))
+      AND (FORALL (x: A):
+        mul_A(one_A, x) = x
+          AND mul_A(x, one_A) = x)
+      AND (FORALL (x, y, z: A):
+        mul_A(x, add_A(y, z)) =
+          add_A(mul_A(x, y), mul_A(x, z)))
+      AND (FORALL (x, y, z: A):
+        mul_A(add_A(x, y), z) =
+          add_A(mul_A(x, z), mul_A(y, z)))
+
+  algebra_map_laws: bool =
+    algebra_map(complex_zero) = zero_A
+      AND algebra_map(complex_one) = one_A
+      AND (FORALL (z: complex):
+        algebra_map(complex_neg(z)) =
+          neg_A(algebra_map(z)))
+      AND (FORALL (z, w: complex):
+        algebra_map(complex_add(z, w)) =
+          add_A(algebra_map(z), algebra_map(w)))
+      AND (FORALL (z, w: complex):
+        algebra_map(complex_mul(z, w)) =
+          mul_A(algebra_map(z), algebra_map(w)))
+      AND (FORALL (z: complex), (x: A):
+        mul_A(algebra_map(z), x) =
+          mul_A(x, algebra_map(z)))
+
+  normed_ring_laws: bool =
+    (FORALL (x: A):
+      0 <= norm_A(x))
+      AND (FORALL (x: A):
+        norm_A(x) = 0 IFF x = zero_A)
+      AND (FORALL (x: A):
+        norm_A(neg_A(x)) = norm_A(x))
+      AND (FORALL (x, y: A):
+        norm_A(add_A(x, y)) <=
+          norm_A(x) + norm_A(y))
+      AND (FORALL (x, y: A):
+        norm_A(mul_A(x, y)) <=
+          norm_A(x) * norm_A(y))
+
+  normed_complex_algebra_laws: bool =
+    FORALL (z: complex), (x: A):
+      norm_A(mul_A(algebra_map(z), x)) ^ 2 <=
+        complex_norm_squared(z) * norm_A(x) ^ 2
+
+  converges(values: a_sequence, limit: A): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            norm_A(sub_A(values(index), limit)) <
+              epsilon_value
+
+  cauchy(values: a_sequence): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (left_index, right_index: nat):
+          cutoff <= left_index
+            AND cutoff <= right_index
+          IMPLIES
+            norm_A(
+              sub_A(
+                values(left_index),
+                values(right_index))) <
+              epsilon_value
+
+  complete_space: bool =
+    FORALL (values: a_sequence):
+      cauchy(values) IMPLIES
+        EXISTS (limit: A):
+          converges(values, limit)
+
+  is_unit(x: A): bool =
+    EXISTS (inverse: A):
+      mul_A(x, inverse) = one_A
+        AND mul_A(inverse, x) = one_A
+
+  division_algebra_condition: bool =
+    FORALL (x: A):
+      is_unit(x) IFF x /= zero_A
+
+  complex_banach_division_algebra: bool =
+    ring_laws
+      AND algebra_map_laws
+      AND normed_ring_laws
+      AND normed_complex_algebra_laws
+      AND complete_space
+      AND division_algebra_condition
+
+  canonical_map_is_algebra_equivalence(
+      inverse_map: [A -> complex]): bool =
+    (FORALL (z: complex):
+      inverse_map(algebra_map(z)) = z)
+      AND (FORALL (x: A):
+        algebra_map(inverse_map(x)) = x)
+      AND algebra_map_laws
+
+  gelfand_mazur_theorem: bool =
+    complex_banach_division_algebra IMPLIES
+      EXISTS (inverse_map: [A -> complex]):
+        canonical_map_is_algebra_equivalence(inverse_map)
+END Q2226677_gelfand_mazur_theorem

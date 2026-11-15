@@ -1,0 +1,97 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2002_a1:
+% the value at 1 of the polynomial numerator in each iterated derivative of
+% 1/(x^k - 1) is (-k)^n n! for every positive natural k. This file contains no proof.
+
+putnam_2002_a1: THEORY
+BEGIN
+  polynomial: TYPE = list[real]
+  polynomial_sequence: TYPE = [nat -> polynomial]
+  real_function: TYPE = [real -> real]
+
+  polynomial_value(p: polynomial, x: real): RECURSIVE real =
+    CASES p OF
+      null: 0,
+      cons(coefficient, tail):
+        coefficient + x * polynomial_value(tail, x)
+    ENDCASES
+  MEASURE p BY <<
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  has_derivative_at(
+      f: real_function,
+      derivative, x: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (delta: posreal):
+        FORALL (h: real):
+          (h /= 0 AND abs(h) < delta)
+            IMPLIES
+              abs(f(x + h) - f(x) - derivative * h)
+                < epsilon_value * abs(h)
+
+  differentiable_at(f: real_function, x: real): bool =
+    EXISTS (derivative: real):
+      has_derivative_at(f, derivative, x)
+
+  derivative_value(f: real_function, x: real): real =
+    IF differentiable_at(f, x) THEN
+      epsilon(
+        LAMBDA (derivative: real):
+          has_derivative_at(f, derivative, x))
+    ELSE
+      0
+    ENDIF
+
+  derivative_function(f: real_function): real_function =
+    LAMBDA (x: real):
+      derivative_value(f, x)
+
+  iterated_derivative(
+      f: real_function,
+      order: nat): RECURSIVE real_function =
+    IF order = 0 THEN
+      f
+    ELSE
+      derivative_function(
+        iterated_derivative(f, order - 1))
+    ENDIF
+  MEASURE order
+
+  rational_function(k: nat): real_function =
+    LAMBDA (x: real):
+      safe_div(1, x ^ k - 1)
+
+  nat_factorial(n: nat): RECURSIVE nat =
+    IF n = 0 THEN
+      1
+    ELSE
+      n * nat_factorial(n - 1)
+    ENDIF
+  MEASURE n
+
+  putnam_2002_a1_solution(k, n: nat): real =
+    (0 - (k :: real)) ^ n * (nat_factorial(n) :: real)
+
+  derivative_representation(
+      k: nat,
+      P: polynomial_sequence): bool =
+    FORALL (n: nat), (x: real):
+      iterated_derivative(rational_function(k), n)(x)
+        =
+      safe_div(
+        polynomial_value(P(n), x),
+        (x ^ k - 1) ^ (n + 1))
+
+  putnam_2002_a1: bool =
+    FORALL (k: nat), (P: polynomial_sequence):
+      (k > 0 AND derivative_representation(k, P))
+      IMPLIES
+        FORALL (n: nat):
+          polynomial_value(P(n), 1)
+            = putnam_2002_a1_solution(k, n)
+END putnam_2002_a1

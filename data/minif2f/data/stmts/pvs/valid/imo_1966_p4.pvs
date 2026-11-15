@@ -1,0 +1,97 @@
+% Statement-only formalization of miniF2F artifact imo_1966_p4: a finite
+% reciprocal-sine sum telescopes to a difference of reciprocal tangents under
+% the stated exclusions on the real argument. This file contains no proof.
+
+imo_1966_p4: THEORY
+BEGIN
+  safe_div(x, y: real): real =
+    IF y = 0 THEN 0 ELSE x / y ENDIF
+
+  nat_factorial(n: nat): RECURSIVE nat =
+    IF n = 0 THEN
+      1
+    ELSE
+      n * nat_factorial(n - 1)
+    ENDIF
+  MEASURE n
+
+  sine_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET j: nat = count - 1 IN
+        sine_partial(x, count - 1)
+          + safe_div(
+              ((-1 :: real) ^ j) * x ^ (2 * j + 1),
+              nat_factorial(2 * j + 1) :: real)
+    ENDIF
+  MEASURE count
+
+  cosine_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET j: nat = count - 1 IN
+        cosine_partial(x, count - 1)
+          + safe_div(
+              ((-1 :: real) ^ j) * x ^ (2 * j),
+              nat_factorial(2 * j) :: real)
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: [nat -> real], value: real): bool =
+    FORALL (eps: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < eps
+
+  sine_value(x, value: real): bool =
+    converges_to(
+      (LAMBDA (count: nat): sine_partial(x, count)),
+      value)
+
+  cosine_value(x, value: real): bool =
+    converges_to(
+      (LAMBDA (count: nat): cosine_partial(x, count)),
+      value)
+
+  pi_value(p: posreal): bool =
+    3 < p AND p < 4 AND cosine_value(p / 2, 0)
+
+  tangent_value(x, value: real): bool =
+    EXISTS (sine_x, cosine_x: real):
+      sine_value(x, sine_x)
+        AND cosine_value(x, cosine_x)
+        AND value = safe_div(sine_x, cosine_x)
+
+  prefix_sum(f: [nat -> real], count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      prefix_sum(f, count - 1) + f(count - 1)
+    ENDIF
+  MEASURE count
+
+  imo_1966_p4: bool =
+    FORALL (n: nat), (x: real), (p: posreal),
+        (sine_terms: [nat -> real]),
+        (tan_x, tan_power_x: real):
+      (0 < n
+        AND pi_value(p)
+        AND (FORALL (k: nat):
+          0 < k IMPLIES
+            FORALL (m: int):
+              x /= (m :: real) * p / ((2 :: real) ^ k))
+        AND (FORALL (k: nat):
+          (1 <= k AND k <= n) IMPLIES
+            sine_value(((2 :: real) ^ k) * x, sine_terms(k)))
+        AND tangent_value(x, tan_x)
+        AND tangent_value(((2 :: real) ^ n) * x, tan_power_x))
+      IMPLIES
+        prefix_sum(
+          (LAMBDA (offset: nat):
+            safe_div(1, sine_terms(offset + 1))),
+          n)
+        = safe_div(1, tan_x) - safe_div(1, tan_power_x)
+END imo_1966_p4

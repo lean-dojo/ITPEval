@@ -1,0 +1,245 @@
+% Statement-only formalization of the Thousand Theorems corpus artifact Q642620,
+% "Krein–Milman theorem": every compact convex subset of a real locally convex
+% Hausdorff topological vector space is the closure of the convex hull of its
+% extreme points. This file contains no proof.
+
+krein_milman_theorem_Q642620[
+  E: TYPE+,
+  zeroE: E,
+  addE: [E, E -> E],
+  negE: [E -> E],
+  smulE: [real, E -> E],
+  open_sets: [[E -> bool] -> bool]
+]: THEORY
+BEGIN
+  point_set: TYPE = [E -> bool]
+  point_set_family: TYPE = [point_set -> bool]
+  point_set_sequence: TYPE = [nat -> point_set]
+  real_set: TYPE = [real -> bool]
+
+  empty_set: point_set =
+    LAMBDA (x: E): FALSE
+
+  full_set: point_set =
+    LAMBDA (x: E): TRUE
+
+  point_subset(A, B: point_set): bool =
+    FORALL (x: E):
+      A(x) IMPLIES B(x)
+
+  point_intersection(A, B: point_set): point_set =
+    LAMBDA (x: E):
+      A(x) AND B(x)
+
+  point_union(F: point_set_family): point_set =
+    LAMBDA (x: E):
+      EXISTS (A: point_set):
+        F(A) AND A(x)
+
+  point_complement(A: point_set): point_set =
+    LAMBDA (x: E):
+      NOT A(x)
+
+  topology_laws: bool =
+    open_sets(empty_set)
+      AND open_sets(full_set)
+      AND
+    (FORALL (A, B: point_set):
+      open_sets(A) AND open_sets(B)
+        IMPLIES open_sets(point_intersection(A, B)))
+      AND
+    (FORALL (F: point_set_family):
+      (FORALL (A: point_set):
+        F(A) IMPLIES open_sets(A))
+      IMPLIES open_sets(point_union(F)))
+
+  neighborhood(x: E, A: point_set): bool =
+    EXISTS (U: point_set):
+      open_sets(U)
+        AND U(x)
+        AND point_subset(U, A)
+
+  closed_set(A: point_set): bool =
+    open_sets(point_complement(A))
+
+  closure_of(A: point_set): point_set =
+    LAMBDA (x: E):
+      FORALL (C: point_set):
+        (closed_set(C) AND point_subset(A, C))
+          IMPLIES C(x)
+
+  additive_commutative_group_laws: bool =
+    (FORALL (x, y: E):
+      addE(x, y) = addE(y, x))
+      AND
+    (FORALL (x, y, z: E):
+      addE(addE(x, y), z) = addE(x, addE(y, z)))
+      AND
+    (FORALL (x: E):
+      addE(x, zeroE) = x
+        AND addE(x, negE(x)) = zeroE)
+
+  real_module_laws: bool =
+    additive_commutative_group_laws
+      AND
+    (FORALL (a: real), (x, y: E):
+      smulE(a, addE(x, y)) =
+        addE(smulE(a, x), smulE(a, y)))
+      AND
+    (FORALL (a, b: real), (x: E):
+      smulE(a + b, x) =
+        addE(smulE(a, x), smulE(b, x)))
+      AND
+    (FORALL (a, b: real), (x: E):
+      smulE(a * b, x) =
+        smulE(a, smulE(b, x)))
+      AND
+    (FORALL (x: E):
+      smulE(1, x) = x)
+
+  real_open(A: real_set): bool =
+    FORALL (a: real):
+      A(a) IMPLIES
+        EXISTS (radius: real):
+          0 < radius
+            AND FORALL (b: real):
+              abs(b - a) < radius IMPLIES A(b)
+
+  continuous_addition: bool =
+    FORALL (x, y: E), (W: point_set):
+      open_sets(W) AND W(addE(x, y))
+        IMPLIES
+          EXISTS (U, V: point_set):
+            open_sets(U)
+              AND open_sets(V)
+              AND U(x)
+              AND V(y)
+              AND
+            (FORALL (u, v: E):
+              U(u) AND V(v) IMPLIES W(addE(u, v)))
+
+  continuous_negation: bool =
+    FORALL (x: E), (W: point_set):
+      open_sets(W) AND W(negE(x))
+        IMPLIES
+          EXISTS (U: point_set):
+            open_sets(U)
+              AND U(x)
+              AND
+            (FORALL (u: E):
+              U(u) IMPLIES W(negE(u)))
+
+  continuous_scalar_multiplication: bool =
+    FORALL (a: real), (x: E), (W: point_set):
+      open_sets(W) AND W(smulE(a, x))
+        IMPLIES
+          EXISTS (R: real_set), (U: point_set):
+            real_open(R)
+              AND open_sets(U)
+              AND R(a)
+              AND U(x)
+              AND
+            (FORALL (b: real), (u: E):
+              R(b) AND U(u) IMPLIES W(smulE(b, u)))
+
+  topological_vector_space_laws: bool =
+    topology_laws
+      AND real_module_laws
+      AND continuous_addition
+      AND continuous_negation
+      AND continuous_scalar_multiplication
+
+  disjoint_sets(A, B: point_set): bool =
+    FORALL (x: E):
+      NOT (A(x) AND B(x))
+
+  hausdorff_space: bool =
+    FORALL (x, y: E):
+      x /= y IMPLIES
+        EXISTS (U, V: point_set):
+          open_sets(U)
+            AND open_sets(V)
+            AND U(x)
+            AND V(y)
+            AND disjoint_sets(U, V)
+
+  convex_set(A: point_set): bool =
+    FORALL (x, y: E), (a, b: real):
+      A(x)
+        AND A(y)
+        AND 0 <= a
+        AND 0 <= b
+        AND a + b = 1
+      IMPLIES
+        A(addE(smulE(a, x), smulE(b, y)))
+
+  locally_convex_space: bool =
+    FORALL (x: E), (U: point_set):
+      neighborhood(x, U) IMPLIES
+        EXISTS (V: point_set):
+          neighborhood(x, V)
+            AND convex_set(V)
+            AND point_subset(V, U)
+
+  open_cover(F: point_set_family, A: point_set): bool =
+    (FORALL (U: point_set):
+      F(U) IMPLIES open_sets(U))
+      AND
+    (FORALL (x: E):
+      A(x) IMPLIES
+        EXISTS (U: point_set):
+          F(U) AND U(x))
+
+  finite_subcover(
+      F: point_set_family,
+      A: point_set): bool =
+    EXISTS
+        (count: nat),
+        (chosen: point_set_sequence):
+      (FORALL (index: nat):
+        index < count IMPLIES F(chosen(index)))
+        AND
+      (FORALL (x: E):
+        A(x) IMPLIES
+          EXISTS (index: nat):
+            index < count AND chosen(index)(x))
+
+  compact_set(A: point_set): bool =
+    FORALL (F: point_set_family):
+      open_cover(F, A) IMPLIES finite_subcover(F, A)
+
+  convex_hull(A: point_set): point_set =
+    LAMBDA (x: E):
+      FORALL (C: point_set):
+        (convex_set(C) AND point_subset(A, C))
+          IMPLIES C(x)
+
+  open_segment_contains(
+      left, right, point: E): bool =
+    EXISTS (a, b: real):
+      0 < a
+        AND 0 < b
+        AND a + b = 1
+        AND addE(smulE(a, left), smulE(b, right)) = point
+
+  extreme_points(A: point_set): point_set =
+    LAMBDA (x: E):
+      A(x)
+        AND FORALL (left, right: E):
+          (A(left)
+            AND A(right)
+            AND open_segment_contains(left, right, x))
+          IMPLIES left = x AND right = x
+
+  locally_convex_hausdorff_real_tvs: bool =
+    topological_vector_space_laws
+      AND hausdorff_space
+      AND locally_convex_space
+
+  closure_convexHull_extremePoints: bool =
+    locally_convex_hausdorff_real_tvs IMPLIES
+      FORALL (A: point_set):
+        (compact_set(A) AND convex_set(A))
+          IMPLIES
+            closure_of(convex_hull(extreme_points(A))) = A
+END krein_milman_theorem_Q642620

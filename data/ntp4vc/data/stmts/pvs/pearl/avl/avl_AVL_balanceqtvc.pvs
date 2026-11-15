@@ -1,0 +1,437 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/avl/avl_AVL_balanceqtvc: an AVL-tree balancing verification condition
+% for rotations, cached heights, and inorder sequences. This file contains no proof.
+
+avl_AVL_balanceqtvc[
+  node_value: TYPE,
+  tree_value: TYPE,
+  summary_value: TYPE
+]: THEORY
+BEGIN
+  model: TYPE = [# seq: list[node_value], hgt: int #]
+
+  view: DATATYPE
+  BEGIN
+    AEmpty: AEmpty?
+    ANode(
+      left: tree_value,
+      datum: node_value,
+      right: tree_value,
+      stored_height: nat,
+      summary: summary_value): ANode?
+  END view
+
+  node_model(
+      left_sequence: list[node_value],
+      node_datum: node_value,
+      right_sequence: list[node_value]): list[node_value] =
+    append(left_sequence, cons(node_datum, right_sequence))
+
+  height_balanced(
+      left_tree, right_tree: tree_value,
+      balancing: nat,
+      m1: [tree_value -> model]): bool =
+    LET difference: int =
+      hgt(m1(left_tree)) - hgt(m1(right_tree))
+    IN
+      -(balancing :: int) <= difference
+        AND difference <= (balancing :: int)
+
+  node_relation(
+      result, left_tree: tree_value,
+      node_datum: node_value,
+      right_tree: tree_value,
+      m1: [tree_value -> model]): bool =
+    seq(m1(result))
+        = node_model(
+            seq(m1(left_tree)),
+            node_datum,
+            seq(m1(right_tree)))
+      AND
+        hgt(m1(result))
+          = 1
+              + (IF hgt(m1(left_tree)) < hgt(m1(right_tree))
+                 THEN hgt(m1(right_tree))
+                 ELSE hgt(m1(left_tree))
+                 ENDIF)
+
+  view_matches(
+      tree_view: view,
+      represented_tree: tree_value,
+      balancing: nat,
+      agg: [[node_value -> summary_value],
+            list[node_value] -> summary_value],
+      measure_closure: [node_value -> summary_value],
+      m1: [tree_value -> model]): bool =
+    CASES tree_view OF
+      AEmpty:
+        hgt(m1(represented_tree)) = 0
+          AND seq(m1(represented_tree)) = null,
+      ANode(left_tree, node_datum, right_tree, height, node_summary):
+        seq(m1(represented_tree))
+            = node_model(
+                seq(m1(left_tree)),
+                node_datum,
+                seq(m1(right_tree)))
+          AND node_summary =
+                agg(measure_closure, seq(m1(represented_tree)))
+          AND height_balanced(left_tree, right_tree, balancing, m1)
+          AND hgt(m1(represented_tree)) = (height :: int)
+          AND
+            (height :: int)
+              = 1
+                  + (IF hgt(m1(left_tree)) < hgt(m1(right_tree))
+                     THEN hgt(m1(right_tree))
+                     ELSE hgt(m1(left_tree))
+                     ENDIF)
+    ENDCASES
+
+  left_balance_obligations(
+      l, r: tree_value,
+      d: node_value,
+      balancing: nat,
+      agg: [[node_value -> summary_value],
+            list[node_value] -> summary_value],
+      measure_closure: [node_value -> summary_value],
+      m1: [tree_value -> model]): bool =
+    FORALL (o2: view):
+      view_matches(
+        o2, l, balancing, agg, measure_closure, m1)
+      IMPLIES
+        CASES o2 OF
+          AEmpty:
+            FALSE,
+          ANode(ll, ld, lr, left_height, left_summary):
+            FORALL (o3: int):
+              o3 = hgt(m1(lr))
+              IMPLIES
+                FORALL (o4: int):
+                  o4 = hgt(m1(ll))
+                  IMPLIES
+                    IF o3 <= o4 THEN
+                      height_balanced(lr, r, balancing, m1)
+                        AND
+                          (FORALL (o5: tree_value):
+                            node_relation(o5, lr, d, r, m1)
+                            IMPLIES
+                              height_balanced(
+                                ll, o5, balancing, m1))
+                    ELSE
+                      FORALL (o5: view):
+                        view_matches(
+                          o5, lr, balancing,
+                          agg, measure_closure, m1)
+                        IMPLIES
+                          CASES o5 OF
+                            AEmpty:
+                              FALSE,
+                            ANode(
+                                lrl, lrd, lrr,
+                                inner_height, inner_summary):
+                              height_balanced(
+                                lrr, r, balancing, m1)
+                                AND
+                                  (FORALL (o6: tree_value):
+                                    node_relation(
+                                      o6, lrr, d, r, m1)
+                                    IMPLIES
+                                      (height_balanced(
+                                        ll, lrl, balancing, m1)
+                                        AND
+                                          (FORALL (o7: tree_value):
+                                            node_relation(
+                                              o7, ll, ld, lrl, m1)
+                                            IMPLIES
+                                              height_balanced(
+                                                o7, o6,
+                                                balancing, m1))))
+                          ENDCASES
+                    ENDIF
+        ENDCASES
+
+  right_balance_obligations(
+      l, r: tree_value,
+      d: node_value,
+      balancing: nat,
+      agg: [[node_value -> summary_value],
+            list[node_value] -> summary_value],
+      measure_closure: [node_value -> summary_value],
+      m1: [tree_value -> model]): bool =
+    FORALL (o3: view):
+      view_matches(
+        o3, r, balancing, agg, measure_closure, m1)
+      IMPLIES
+        CASES o3 OF
+          AEmpty:
+            FALSE,
+          ANode(rl, rd, rr, right_height, right_summary):
+            FORALL (o4: int):
+              o4 = hgt(m1(rl))
+              IMPLIES
+                FORALL (o5: int):
+                  o5 = hgt(m1(rr))
+                  IMPLIES
+                    IF o4 <= o5 THEN
+                      height_balanced(l, rl, balancing, m1)
+                        AND
+                          (FORALL (o6: tree_value):
+                            node_relation(o6, l, d, rl, m1)
+                            IMPLIES
+                              height_balanced(
+                                o6, rr, balancing, m1))
+                    ELSE
+                      FORALL (o6: view):
+                        view_matches(
+                          o6, rl, balancing,
+                          agg, measure_closure, m1)
+                        IMPLIES
+                          CASES o6 OF
+                            AEmpty:
+                              FALSE,
+                            ANode(
+                                rll, rld, rlr,
+                                inner_height, inner_summary):
+                              height_balanced(
+                                rlr, rr, balancing, m1)
+                                AND
+                                  (FORALL (o7: tree_value):
+                                    node_relation(
+                                      o7, rlr, rd, rr, m1)
+                                    IMPLIES
+                                      (height_balanced(
+                                        l, rll, balancing, m1)
+                                        AND
+                                          (FORALL (o8: tree_value):
+                                            node_relation(
+                                              o8, l, d, rll, m1)
+                                            IMPLIES
+                                              height_balanced(
+                                                o8, o7,
+                                                balancing, m1))))
+                          ENDCASES
+                    ENDIF
+        ENDCASES
+
+  balance_obligations(
+      df: int,
+      l, r: tree_value,
+      d: node_value,
+      balancing: nat,
+      agg: [[node_value -> summary_value],
+            list[node_value] -> summary_value],
+      measure_closure: [node_value -> summary_value],
+      m1: [tree_value -> model]): bool =
+    IF (balancing :: int) < df THEN
+      left_balance_obligations(
+        l, r, d, balancing, agg, measure_closure, m1)
+    ELSE
+      FORALL (o2: int):
+        o2 = -(balancing :: int)
+        IMPLIES
+          (IF df < o2 THEN
+             right_balance_obligations(
+               l, r, d, balancing,
+               agg, measure_closure, m1)
+           ELSE
+             height_balanced(l, r, balancing, m1)
+           ENDIF)
+    ENDIF
+
+  left_construction(
+      result, l, r: tree_value,
+      d: node_value,
+      balancing: nat,
+      agg: [[node_value -> summary_value],
+            list[node_value] -> summary_value],
+      measure_closure: [node_value -> summary_value],
+      m1: [tree_value -> model]): bool =
+    EXISTS (o2: view):
+      view_matches(
+        o2, l, balancing, agg, measure_closure, m1)
+        AND
+          CASES o2 OF
+            AEmpty:
+              FALSE,
+            ANode(ll, ld, lr, left_height, left_summary):
+              EXISTS (o3: int):
+                o3 = hgt(m1(lr))
+                  AND
+                    (EXISTS (o4: int):
+                      o4 = hgt(m1(ll))
+                        AND
+                          (IF o3 <= o4 THEN
+                             EXISTS (o5: tree_value):
+                               node_relation(o5, lr, d, r, m1)
+                                 AND
+                                   node_relation(
+                                     result, ll, ld, o5, m1)
+                           ELSE
+                             EXISTS (o5: view):
+                               view_matches(
+                                 o5, lr, balancing,
+                                 agg, measure_closure, m1)
+                                 AND
+                                   CASES o5 OF
+                                     AEmpty:
+                                       FALSE,
+                                     ANode(
+                                         lrl, lrd, lrr,
+                                         inner_height, inner_summary):
+                                       EXISTS (o6: tree_value):
+                                         node_relation(
+                                           o6, lrr, d, r, m1)
+                                           AND
+                                             (EXISTS (o7: tree_value):
+                                               node_relation(
+                                                 o7, ll, ld, lrl, m1)
+                                                 AND
+                                                   node_relation(
+                                                     result, o7, lrd,
+                                                     o6, m1))
+                                   ENDCASES
+                           ENDIF))
+          ENDCASES
+
+  right_construction(
+      result, l, r: tree_value,
+      d: node_value,
+      balancing: nat,
+      agg: [[node_value -> summary_value],
+            list[node_value] -> summary_value],
+      measure_closure: [node_value -> summary_value],
+      m1: [tree_value -> model]): bool =
+    EXISTS (o3: view):
+      view_matches(
+        o3, r, balancing, agg, measure_closure, m1)
+        AND
+          CASES o3 OF
+            AEmpty:
+              FALSE,
+            ANode(rl, rd, rr, right_height, right_summary):
+              EXISTS (o4: int):
+                o4 = hgt(m1(rl))
+                  AND
+                    (EXISTS (o5: int):
+                      o5 = hgt(m1(rr))
+                        AND
+                          (IF o4 <= o5 THEN
+                             EXISTS (o6: tree_value):
+                               node_relation(o6, l, d, rl, m1)
+                                 AND
+                                   node_relation(
+                                     result, o6, rd, rr, m1)
+                           ELSE
+                             EXISTS (o6: view):
+                               view_matches(
+                                 o6, rl, balancing,
+                                 agg, measure_closure, m1)
+                                 AND
+                                   CASES o6 OF
+                                     AEmpty:
+                                       FALSE,
+                                     ANode(
+                                         rll, rld, rlr,
+                                         inner_height, inner_summary):
+                                       EXISTS (o7: tree_value):
+                                         node_relation(
+                                           o7, rlr, rd, rr, m1)
+                                           AND
+                                             (EXISTS (o8: tree_value):
+                                               node_relation(
+                                                 o8, l, d, rll, m1)
+                                                 AND
+                                                   node_relation(
+                                                     result, o8, rld,
+                                                     o7, m1))
+                                   ENDCASES
+                           ENDIF))
+          ENDCASES
+
+  construction(
+      df: int,
+      result, l, r: tree_value,
+      d: node_value,
+      balancing: nat,
+      agg: [[node_value -> summary_value],
+            list[node_value] -> summary_value],
+      measure_closure: [node_value -> summary_value],
+      m1: [tree_value -> model]): bool =
+    IF (balancing :: int) < df THEN
+      left_construction(
+        result, l, r, d, balancing,
+        agg, measure_closure, m1)
+    ELSE
+      EXISTS (o2: int):
+        o2 = -(balancing :: int)
+          AND
+            (IF df < o2 THEN
+               right_construction(
+                 result, l, r, d, balancing,
+                 agg, measure_closure, m1)
+             ELSE
+               node_relation(result, l, d, r, m1)
+             ENDIF)
+    ENDIF
+
+  final_condition(
+      result, l, r: tree_value,
+      d: node_value,
+      balancing: nat,
+      m1: [tree_value -> model]): bool =
+    node_relation(result, l, d, r, m1)
+      AND
+        LET left_height: int = hgt(m1(l)),
+            right_height: int = hgt(m1(r)),
+            expected_height: int =
+              1
+                + (IF left_height < right_height
+                   THEN right_height
+                   ELSE left_height
+                   ENDIF),
+            result_height: int = hgt(m1(result))
+        IN
+          (0 <= expected_height - result_height
+            AND expected_height - result_height <= 1)
+            AND
+              (height_balanced(l, r, balancing, m1)
+                IMPLIES expected_height = result_height)
+
+  balance_vc: bool =
+    FORALL
+      (balancing: nat),
+      (agg: [[node_value -> summary_value],
+             list[node_value] -> summary_value]),
+      (measure_closure: [node_value -> summary_value]),
+      (m1: [tree_value -> model]),
+      (l, r: tree_value),
+      (hl, hr, o1: int),
+      (d: node_value):
+        (0 < balancing
+          AND
+            -(balancing :: int) - 1
+              <= hgt(m1(l)) - hgt(m1(r))
+          AND
+            hgt(m1(l)) - hgt(m1(r))
+              <= (balancing :: int) + 1
+          AND hl = hgt(m1(l))
+          AND hr = hgt(m1(r))
+          AND o1 = -hr)
+        IMPLIES
+          (o1 <= hl - hr
+            AND hl - hr <= hl
+            AND
+              (FORALL (df: int):
+                df = hl - hr
+                IMPLIES
+                  (balance_obligations(
+                    df, l, r, d, balancing,
+                    agg, measure_closure, m1)
+                    AND
+                      (FORALL (result: tree_value):
+                        construction(
+                          df, result, l, r, d, balancing,
+                          agg, measure_closure, m1)
+                        IMPLIES
+                          final_condition(
+                            result, l, r, d, balancing, m1)))))
+END avl_AVL_balanceqtvc

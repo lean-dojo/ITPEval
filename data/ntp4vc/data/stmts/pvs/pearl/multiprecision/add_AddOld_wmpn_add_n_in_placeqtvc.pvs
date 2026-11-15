@@ -1,0 +1,320 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/multiprecision/add_AddOld_wmpn_add_n_in_placeqtvc: the loop
+% verification condition for equal-length in-place multiprecision addition,
+% including carry arithmetic, pointer-state updates, and memory framing.
+% This file contains no proof.
+
+add_AddOld_wmpn_add_n_in_placeqtvc[zone: TYPE+]: THEORY
+BEGIN
+
+  IMPORTING
+    bv[32], bv[64],
+    bv_nat[32], bv_nat[64]
+
+  word32: TYPE = bvec[32]
+  word64: TYPE = bvec[64]
+
+  ptr: TYPE =
+    [# data_length: nat,
+       cells: [int -> word64],
+       pointer_offset: int,
+       pointer_min: int,
+       pointer_max: int,
+       is_writable: bool,
+       pointer_zone: zone #]
+
+  radix: int = 18446744073709551616
+
+  unsigned64(value1: word64): int =
+    bv2nat[64](value1)
+
+  signed32(value1: word32): int =
+    IF value1(31) THEN
+      bv2nat[32](value1) - 4294967296
+    ELSE
+      bv2nat[32](value1)
+    ENDIF
+
+  int_to_nat(value1: int): nat =
+    IF value1 < 0 THEN 0 ELSE value1 ENDIF
+
+  pelts(p: ptr, index: int): word64 =
+    cells(p)(index)
+
+  nat_power(base: int, exponent: nat): RECURSIVE int =
+    IF exponent = 0 THEN
+      1
+    ELSE
+      base * nat_power(base, exponent - 1)
+    ENDIF
+  MEASURE exponent
+
+  int_power(base, exponent: int): int =
+    nat_power(base, int_to_nat(exponent))
+
+  value_from(
+      values: [int -> word64],
+      start: int,
+      count: nat): RECURSIVE int =
+    IF count = 0 THEN
+      0
+    ELSE
+      unsigned64(values(start))
+        + radix * value_from(values, start + 1, count - 1)
+    ENDIF
+  MEASURE count
+
+  value(p: ptr, count: int): int =
+    value_from(
+      cells(p),
+      pointer_offset(p),
+      int_to_nat(count))
+
+  int32_in_bounds(value1: int): bool =
+    -2147483648 <= value1 AND value1 <= 2147483647
+
+  valid(p: ptr, count: int): bool =
+    int32_in_bounds(count)
+      AND 0 <= count
+      AND 0 <= pointer_min(p)
+      AND pointer_min(p) <= pointer_offset(p)
+      AND pointer_offset(p) + count <= pointer_max(p)
+      AND pointer_max(p) <= (data_length(p) :: int)
+
+  same_snapshot(new, old: ptr): bool =
+    data_length(new) = data_length(old)
+      AND pointer_offset(new) = pointer_offset(old)
+      AND pointer_min(new) = pointer_min(old)
+      AND pointer_max(new) = pointer_max(old)
+      AND is_writable(new) = is_writable(old)
+      AND pointer_zone(new) = pointer_zone(old)
+
+  valid_index(p: ptr, index: int): bool =
+    pointer_min(p) <= pointer_offset(p) + index
+      AND pointer_offset(p) + index < pointer_max(p)
+
+  carry_in_bounds(carry: word64): bool =
+    0 <= unsigned64(carry)
+      AND unsigned64(carry) <= 1
+
+  single_update(
+      new, old: ptr,
+      index: int,
+      replacement: word64): bool =
+    cells(new) = cells(old) WITH [(index) := replacement]
+
+  frame(
+      new, old: ptr,
+      count: int): bool =
+    FORALL (j: int):
+      j < pointer_offset(new)
+        OR pointer_offset(new) + count <= j
+      IMPLIES pelts(new, j) = pelts(old, j)
+
+  tail_unchanged(
+      new, old: ptr,
+      start, finish: int): bool =
+    FORALL (j: int):
+      start <= j AND j < finish
+        IMPLIES
+          pelts(new, pointer_offset(new) + j)
+            = pelts(old, pointer_offset(new) + j)
+
+  value_equation(
+      current, original, addend: ptr,
+      count: int,
+      carry: word64): bool =
+    value(current, count)
+        + int_power(radix, count) * unsigned64(carry)
+      =
+    value(original, count) + value(addend, count)
+
+  loop_invariant(
+      current, original, addend: ptr,
+      size, index: word32,
+      carry: word64): bool =
+    0 <= signed32(index)
+      AND signed32(index) <= signed32(size)
+      AND
+        value_equation(
+          current,
+          original,
+          addend,
+          signed32(index),
+          carry)
+      AND carry_in_bounds(carry)
+      AND
+        tail_unchanged(
+          current,
+          original,
+          signed32(index),
+          signed32(size))
+      AND frame(current, original, signed32(size))
+
+  add_with_carry(
+      current, addend: ptr,
+      index: word32,
+      incoming, result, carry: word64): bool =
+    unsigned64(result) + radix * unsigned64(carry)
+      =
+    unsigned64(
+      pelts(
+        current,
+        pointer_offset(current) + signed32(index)))
+      +
+    unsigned64(
+      pelts(
+        addend,
+        pointer_offset(addend) + signed32(index)))
+      + unsigned64(incoming)
+      AND carry_in_bounds(carry)
+
+  next_invariant(
+      current, original, addend: ptr,
+      size, index, next_index: word32,
+      carry: word64): bool =
+    0 <= signed32(size) - signed32(index)
+      AND
+        signed32(size) - signed32(next_index)
+          < signed32(size) - signed32(index)
+      AND
+        loop_invariant(
+          current,
+          original,
+          addend,
+          size,
+          next_index,
+          carry)
+
+  after_write(
+      current, original, addend: ptr,
+      size, index: word32,
+      carry: word64): bool =
+    int32_in_bounds(signed32(index) + 1)
+      AND
+        (FORALL (next_index: word32):
+          signed32(next_index) = signed32(index) + 1
+            IMPLIES
+              next_invariant(
+                current,
+                original,
+                addend,
+                size,
+                index,
+                next_index,
+                carry))
+
+  write_result(
+      current, original, addend: ptr,
+      size, index: word32,
+      incoming, result, carry: word64): bool =
+    add_with_carry(
+      current,
+      addend,
+      index,
+      incoming,
+      result,
+      carry)
+      IMPLIES
+        (valid_index(current, signed32(index))
+          AND is_writable(current) = TRUE)
+        AND
+          (FORALL (updated: ptr):
+            same_snapshot(updated, current)
+              IMPLIES
+                (single_update(
+                    updated,
+                    current,
+                    pointer_offset(updated) + signed32(index),
+                    result)
+                  AND
+                    pelts(
+                      updated,
+                      pointer_offset(updated) + signed32(index))
+                      = result)
+              IMPLIES
+                after_write(
+                  updated,
+                  original,
+                  addend,
+                  size,
+                  index,
+                  carry))
+
+  loop_step(
+      current, original, addend: ptr,
+      size, index: word32,
+      incoming: word64): bool =
+    IF signed32(index) < signed32(size) THEN
+      valid_index(current, signed32(index))
+        AND valid_index(addend, signed32(index))
+        AND carry_in_bounds(incoming)
+        AND
+          (FORALL (result, carry: word64):
+            write_result(
+              current,
+              original,
+              addend,
+              size,
+              index,
+              incoming,
+              result,
+              carry))
+    ELSE
+      carry_in_bounds(incoming)
+        AND
+          value_equation(
+            current,
+            original,
+            addend,
+            signed32(size),
+            incoming)
+        AND frame(current, original, signed32(size))
+    ENDIF
+
+  all_loop_states(
+      original, addend: ptr,
+      size: word32): bool =
+    FORALL
+        (index: word32),
+        (carry: word64),
+        (current: ptr):
+      same_snapshot(current, original)
+        IMPLIES
+          loop_invariant(
+            current,
+            original,
+            addend,
+            size,
+            index,
+            carry)
+        IMPLIES
+          loop_step(
+            current,
+            original,
+            addend,
+            size,
+            index,
+            carry)
+
+  wmpn_add_n_in_place_vc: bool =
+    FORALL
+        (x: ptr),
+        (size: word32),
+        (y: ptr):
+      valid(x, signed32(size))
+        IMPLIES
+          valid(y, signed32(size))
+        IMPLIES
+          is_writable(x) = TRUE
+        IMPLIES
+          0 <= 0
+            AND 0 <= signed32(size)
+            AND
+              value(x, 0) + int_power(radix, 0) * 0
+                = value(x, 0) + value(y, 0)
+            AND 0 <= 0
+            AND 0 <= 1
+            AND all_loop_states(x, y, size)
+
+END add_AddOld_wmpn_add_n_in_placeqtvc

@@ -1,0 +1,299 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2022_a4:
+% the expected dyadically weighted sum of independent uniform [0,1] random
+% variables, stopped at the first increase, is 2*exp(1/2)-3.
+% This file contains no proof.
+
+putnam_2022_a4: THEORY
+BEGIN
+  sample_space: TYPE+
+
+  event: TYPE = [sample_space -> bool]
+  event_sequence: TYPE = [nat -> event]
+  sigma_algebra: TYPE = [event -> bool]
+  probability_map: TYPE = [event -> real]
+  real_sequence: TYPE = [nat -> real]
+  natural_sequence: TYPE = [nat -> nat]
+  random_variable: TYPE = [sample_space -> real]
+  random_sequence: TYPE = [nat -> random_variable]
+  stopping_set: TYPE = [sample_space -> [nat -> bool]]
+
+  full_event: event =
+    LAMBDA (omega: sample_space): TRUE
+
+  empty_event: event =
+    LAMBDA (omega: sample_space): FALSE
+
+  event_complement(A: event): event =
+    LAMBDA (omega: sample_space): NOT A(omega)
+
+  countable_union(events: event_sequence): event =
+    LAMBDA (omega: sample_space):
+      EXISTS (index: nat): events(index)(omega)
+
+  pairwise_disjoint(events: event_sequence): bool =
+    FORALL (left_index, right_index: nat):
+      left_index /= right_index IMPLIES
+        FORALL (omega: sample_space):
+          NOT (events(left_index)(omega)
+            AND events(right_index)(omega))
+
+  partial_real_sum(
+      values: real_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      partial_real_sum(values, count - 1)
+        + values(count - 1)
+    ENDIF
+  MEASURE count
+
+  converges_to(values: real_sequence, limit_value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(values(index) - limit_value) < epsilon_value
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  is_sigma_algebra(Sigma: sigma_algebra): bool =
+    Sigma(full_event)
+      AND (FORALL (A: event):
+        Sigma(A) IMPLIES Sigma(event_complement(A)))
+      AND (FORALL (events: event_sequence):
+        (FORALL (index: nat): Sigma(events(index)))
+          IMPLIES Sigma(countable_union(events)))
+
+  partial_probability_sum(
+      probability: probability_map,
+      events: event_sequence,
+      count: nat): real =
+    partial_real_sum(
+      LAMBDA (index: nat): probability(events(index)),
+      count)
+
+  is_probability_space(
+      probability: probability_map,
+      Sigma: sigma_algebra): bool =
+    is_sigma_algebra(Sigma)
+      AND probability(empty_event) = 0
+      AND probability(full_event) = 1
+      AND (FORALL (A: event):
+        Sigma(A) IMPLIES probability(A) >= 0)
+      AND (FORALL (events: event_sequence):
+        ((FORALL (index: nat): Sigma(events(index)))
+          AND pairwise_disjoint(events))
+        IMPLIES
+          converges_to(
+            LAMBDA (count: nat):
+              partial_probability_sum(
+                probability, events, count),
+            probability(countable_union(events))))
+
+  measurable_real(
+      Sigma: sigma_algebra,
+      value: random_variable): bool =
+    FORALL (threshold: real):
+      Sigma(
+        LAMBDA (omega: sample_space):
+          value(omega) <= threshold)
+
+  uniform_unit_cdf(threshold: real): real =
+    IF threshold < 0 THEN
+      0
+    ELSIF threshold <= 1 THEN
+      threshold
+    ELSE
+      1
+    ENDIF
+
+  distinct_below(
+      indices: natural_sequence,
+      count: nat): bool =
+    FORALL (left_position, right_position: nat):
+      (left_position < count
+        AND right_position < count
+        AND indices(left_position) = indices(right_position))
+      IMPLIES left_position = right_position
+
+  rectangle_event(
+      X: random_sequence,
+      indices: natural_sequence,
+      thresholds: real_sequence,
+      count: nat): event =
+    LAMBDA (omega: sample_space):
+      FORALL (position: nat):
+        position < count IMPLIES
+          X(indices(position))(omega) <= thresholds(position)
+
+  finite_product(
+      values: real_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      1
+    ELSE
+      finite_product(values, count - 1)
+        * values(count - 1)
+    ENDIF
+  MEASURE count
+
+  independent_uniform_sequence(
+      probability: probability_map,
+      Sigma: sigma_algebra,
+      X: random_sequence): bool =
+    (FORALL (index: nat):
+      measurable_real(Sigma, X(index)))
+      AND
+    (FORALL
+        (indices: natural_sequence),
+        (thresholds: real_sequence),
+        (count: nat):
+      distinct_below(indices, count)
+        IMPLIES
+          probability(
+            rectangle_event(
+              X, indices, thresholds, count))
+            =
+          finite_product(
+            LAMBDA (position: nat):
+              uniform_unit_cdf(thresholds(position)),
+            count))
+
+  valid_stopping_set(
+      X: random_sequence,
+      stopped_indices: stopping_set): bool =
+    FORALL (omega: sample_space), (index: nat):
+      stopped_indices(omega)(index)
+        IFF
+          FORALL (earlier: nat):
+            earlier < index IMPLIES
+              X(earlier)(omega) > X(earlier + 1)(omega)
+
+  infinite_sum(values: real_sequence): real =
+    IF EXISTS (limit_value: real):
+        converges_to(
+          LAMBDA (count: nat):
+            partial_real_sum(values, count),
+          limit_value)
+    THEN
+      epsilon(
+        LAMBDA (limit_value: real):
+          converges_to(
+            LAMBDA (count: nat):
+              partial_real_sum(values, count),
+            limit_value))
+    ELSE
+      0
+    ENDIF
+
+  stopped_sum_definition(
+      X: random_sequence,
+      stopped_indices: stopping_set,
+      S: random_variable): bool =
+    FORALL (omega: sample_space):
+      S(omega)
+        =
+      infinite_sum(
+        LAMBDA (index: nat):
+          IF stopped_indices(omega)(index) THEN
+            X(index)(omega) / ((2 :: real) ^ (index + 1))
+          ELSE
+            0
+          ENDIF)
+
+  tail_probability_sum(
+      probability: probability_map,
+      value: random_variable,
+      subdivisions, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      tail_probability_sum(
+        probability, value, subdivisions, count - 1)
+        + probability(
+            LAMBDA (omega: sample_space):
+              value(omega)
+                > safe_div(
+                    (count - 1) :: real,
+                    subdivisions :: real))
+    ENDIF
+  MEASURE count
+
+  expectation_approximation(
+      probability: probability_map,
+      value: random_variable,
+      subdivisions: nat): real =
+    IF subdivisions = 0 THEN
+      0
+    ELSE
+      tail_probability_sum(
+        probability, value, subdivisions, subdivisions)
+        / (subdivisions :: real)
+    ENDIF
+
+  has_expected_value(
+      probability: probability_map,
+      value: random_variable,
+      expected_value: real): bool =
+    converges_to(
+      LAMBDA (subdivisions: nat):
+        expectation_approximation(
+          probability, value, subdivisions),
+      expected_value)
+
+  nat_factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * nat_factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  exponential_partial(
+      x: real,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        exponential_partial(x, count - 1)
+          + safe_div(
+              x ^ index,
+              nat_factorial(index) :: real)
+    ENDIF
+  MEASURE count
+
+  real_exponential(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat):
+            exponential_partial(x, count),
+          value))
+
+  putnam_2022_a4_solution: real =
+    2 * real_exponential((1 :: real) / 2) - 3
+
+  putnam_2022_a4: bool =
+    FORALL
+        (Sigma: sigma_algebra),
+        (probability: probability_map),
+        (X: random_sequence),
+        (stopped_indices: stopping_set),
+        (S: random_variable):
+      (is_probability_space(probability, Sigma)
+        AND independent_uniform_sequence(
+          probability, Sigma, X)
+        AND valid_stopping_set(X, stopped_indices)
+        AND stopped_sum_definition(
+          X, stopped_indices, S))
+      IMPLIES
+        has_expected_value(
+          probability, S, putnam_2022_a4_solution)
+END putnam_2022_a4

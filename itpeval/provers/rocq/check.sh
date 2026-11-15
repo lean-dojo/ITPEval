@@ -33,6 +33,8 @@ if [[ ! -f "${TASK_DIR}/hello.v" ]]; then
   fail "Missing hello file at ${TASK_DIR}/hello.v"
 fi
 
+itpeval_validate_statement_file "rocq" "${TASK_DIR}/hello.v"
+
 ROCQ_PATH="$("${opam_cmd}" exec --root "${OPAMROOT}" --switch "${SWITCH_NAME}" -- sh -c 'command -v rocq' || true)"
 COQC_PATH="$("${opam_cmd}" exec --root "${OPAMROOT}" --switch "${SWITCH_NAME}" -- sh -c 'command -v coqc' || true)"
 

@@ -1,0 +1,67 @@
+% Statement-only formalization of Thousand Theorems artifact Q2253746,
+% "Bertrand's ballot theorem": when p > q, exactly the fraction (p - q) / (p + q)
+% of vote sequences keep candidate A strictly ahead throughout. This file contains no proof.
+
+bertrands_ballot_theorem_Q2253746: THEORY
+BEGIN
+  % A bounded binary natural encodes a vote sequence, with its
+  % least-significant bit representing the first vote counted.
+  a_votes(code, prefix_length: nat): RECURSIVE nat =
+    IF prefix_length = 0 THEN
+      0
+    ELSE
+      (IF mod(code, 2) = 1 THEN 1 ELSE 0 ENDIF)
+        + a_votes(ndiv(code, 2), prefix_length - 1)
+    ENDIF
+  MEASURE prefix_length
+
+  b_votes(code, prefix_length: nat): RECURSIVE nat =
+    IF prefix_length = 0 THEN
+      0
+    ELSE
+      (IF mod(code, 2) = 0 THEN 1 ELSE 0 ENDIF)
+        + b_votes(ndiv(code, 2), prefix_length - 1)
+    ENDIF
+  MEASURE prefix_length
+
+  all_sequence(code, p, q: nat): bool =
+    code < 2 ^ (p + q)
+      AND a_votes(code, p + q) = p
+      AND b_votes(code, p + q) = q
+
+  strictly_ahead(code, length: nat): bool =
+    FORALL (prefix_length: nat):
+      (0 < prefix_length AND prefix_length <= length)
+        IMPLIES
+          a_votes(code, prefix_length)
+            > b_votes(code, prefix_length)
+
+  valid_sequence(code, p, q: nat): bool =
+    all_sequence(code, p, q)
+      AND strictly_ahead(code, p + q)
+
+  count_below(limit: nat, property: [nat -> bool]): RECURSIVE nat =
+    IF limit = 0 THEN
+      0
+    ELSE
+      count_below(limit - 1, property)
+        + IF property(limit - 1) THEN 1 ELSE 0 ENDIF
+    ENDIF
+  MEASURE limit
+
+  all_countings(p, q: nat): nat =
+    count_below(
+      2 ^ (p + q),
+      (LAMBDA (code: nat): all_sequence(code, p, q)))
+
+  valid_countings(p, q: nat): nat =
+    count_below(
+      2 ^ (p + q),
+      (LAMBDA (code: nat): valid_sequence(code, p, q)))
+
+  bertrands_ballot_theorem: bool =
+    FORALL (p, q: nat):
+      q < p IMPLIES
+        (p + q) * valid_countings(p, q)
+          = (p - q) * all_countings(p, q)
+END bertrands_ballot_theorem_Q2253746

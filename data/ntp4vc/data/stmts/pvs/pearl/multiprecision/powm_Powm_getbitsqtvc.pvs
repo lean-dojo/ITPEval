@@ -1,0 +1,429 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/multiprecision/powm_Powm_getbitsqtvc: the verification condition for
+% extracting a nonempty bit window from a multiprecision integer, including
+% the one-limb and two-limb cases and the resulting prefix-value equations.
+% This file contains no proof.
+
+powm_Powm_getbitsqtvc[zone: TYPE+]: THEORY
+BEGIN
+
+  IMPORTING
+    bv[32], bv[64],
+    bv_nat[32], bv_nat[64]
+
+  word32: TYPE = bvec[32]
+  word64: TYPE = bvec[64]
+
+  ptr64: TYPE =
+    [# contents64: list[word64],
+       offset64: int,
+       minimum64: int,
+       maximum64: int,
+       writable64: bool,
+       zone64: zone #]
+
+  radix: int = 18446744073709551616
+  max_uint64: int = 18446744073709551615
+
+  unsigned64(value1: word64): int =
+    bv2nat[64](value1)
+
+  signed32(value1: word32): int =
+    IF value1(31) THEN
+      bv2nat[32](value1) - 4294967296
+    ELSE
+      bv2nat[32](value1)
+    ENDIF
+
+  word64_of(value1: below(exp2(64))): word64 =
+    nat2bv[64](value1)
+
+  zero64: word64 = fill[64](FALSE)
+  one64: word64 = word64_of(1)
+
+  int_to_nat(value1: int): nat =
+    IF value1 < 0 THEN 0 ELSE value1 ENDIF
+
+  integer_abs(value1: int): int =
+    IF value1 < 0 THEN -value1 ELSE value1 ENDIF
+
+  nat_power(base: int, exponent: nat): RECURSIVE int =
+    IF exponent = 0 THEN
+      1
+    ELSE
+      base * nat_power(base, exponent - 1)
+    ENDIF
+  MEASURE exponent
+
+  int_power(base, exponent: int): int =
+    nat_power(base, int_to_nat(exponent))
+
+  positive_div(numerator, denominator: int): int =
+    IF denominator <= 0 THEN
+      0
+    ELSE
+      floor((numerator :: real) / (denominator :: real))
+    ENDIF
+
+  positive_mod(numerator, denominator: int): int =
+    numerator - denominator * positive_div(numerator, denominator)
+
+  trunc_div(numerator, denominator: int): int =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      LET magnitude: int =
+        positive_div(integer_abs(numerator), integer_abs(denominator))
+      IN
+        IF numerator * denominator < 0 THEN
+          -magnitude
+        ELSE
+          magnitude
+        ENDIF
+    ENDIF
+
+  trunc_mod(numerator, denominator: int): int =
+    numerator - denominator * trunc_div(numerator, denominator)
+
+  int32_in_bounds(value1: int): bool =
+    -2147483648 <= value1 AND value1 <= 2147483647
+
+  uint64_in_bounds(value1: int): bool =
+    0 <= value1 AND value1 <= max_uint64
+
+  plength64(p: ptr64): int =
+    length(contents64(p))
+
+  pelt64(p: ptr64, index: int): word64 =
+    LET natural_index: nat = int_to_nat(index)
+    IN
+      IF natural_index < length(contents64(p)) THEN
+        nth(contents64(p), natural_index)
+      ELSE
+        zero64
+      ENDIF
+
+  valid64(p: ptr64, size: int): bool =
+    int32_in_bounds(size)
+      AND 0 <= size
+      AND 0 <= minimum64(p)
+      AND minimum64(p) <= offset64(p)
+      AND offset64(p) + size <= maximum64(p)
+      AND maximum64(p) <= plength64(p)
+
+  value_from64(
+      p: ptr64,
+      index: int,
+      count: nat): RECURSIVE int =
+    IF count = 0 THEN
+      0
+    ELSE
+      unsigned64(pelt64(p, index))
+        + radix * value_from64(p, index + 1, count - 1)
+    ENDIF
+  MEASURE count
+
+  value64(p: ptr64, size: int): int =
+    value_from64(p, offset64(p), int_to_nat(size))
+
+  valueb(p: ptr64, nbits: int): int =
+    IF nbits < 0 THEN
+      0
+    ELSE
+      LET limb_index: int = positive_div(nbits, 64)
+      IN
+        value64(p, limb_index)
+          + int_power(radix, limb_index)
+              * positive_mod(
+                  unsigned64(
+                    pelt64(p, offset64(p) + limb_index)),
+                  int_power(2, nbits - 64 * limb_index))
+    ENDIF
+
+  same_pelts(left, right: ptr64): bool =
+    FORALL (index: int):
+      pelt64(left, index) = pelt64(right, index)
+
+  shifted_pointer(
+      shifted, original: ptr64,
+      displacement: int): bool =
+    offset64(shifted) = offset64(original) + displacement
+      AND plength64(shifted) = plength64(original)
+      AND same_pelts(shifted, original)
+      AND contents64(shifted) = contents64(original)
+      AND minimum64(shifted) = minimum64(original)
+      AND maximum64(shifted) = maximum64(original)
+      AND zone64(shifted) = zone64(original)
+      AND writable64(shifted) = writable64(original)
+
+  result_postcondition(
+      p: ptr64,
+      pn, bi, nbits: word32,
+      result: word64): bool =
+    (signed32(nbits) <= signed32(bi)
+      IMPLIES
+        valueb(p, signed32(bi))
+          = valueb(p, signed32(bi) - signed32(nbits))
+              + int_power(2, signed32(bi) - signed32(nbits))
+                  * unsigned64(result))
+      AND
+    (signed32(bi) < signed32(nbits)
+      IMPLIES
+        valueb(p, signed32(bi)) = unsigned64(result))
+      AND
+    0 <= unsigned64(result)
+      AND unsigned64(result) < int_power(2, signed32(nbits))
+      AND
+    (signed32(nbits) <= signed32(bi)
+      IMPLIES
+        unsigned64(result)
+          = positive_mod(
+              positive_div(
+                value64(p, signed32(pn)),
+                int_power(2, signed32(bi) - signed32(nbits))),
+              int_power(2, signed32(nbits))))
+
+  reduced_result(
+      p: ptr64,
+      pn, bi, nbits: word32,
+      numerator, divisor: int): bool =
+    NOT divisor = 0
+      AND uint64_in_bounds(positive_mod(numerator, divisor))
+      AND
+    (FORALL (result: word64):
+      unsigned64(result) = positive_mod(numerator, divisor)
+        IMPLIES result_postcondition(p, pn, bi, nbits, result))
+
+  masked_result(
+      p: ptr64,
+      pn, bi, nbits: word32,
+      numerator: int): bool =
+    0 <= signed32(nbits)
+      AND
+    (FORALL (exponent: word64):
+      unsigned64(exponent) = signed32(nbits)
+        IMPLIES
+          ((0 <= unsigned64(exponent)
+              AND unsigned64(exponent) < 64)
+            AND
+           int_power(2, unsigned64(exponent)) * unsigned64(one64)
+             <= max_uint64)
+          AND
+          (FORALL (mask: word64):
+            unsigned64(mask)
+                = int_power(2, unsigned64(exponent))
+                    * unsigned64(one64)
+              IMPLIES
+                reduced_result(
+                  p, pn, bi, nbits, numerator, unsigned64(mask))))
+
+  small_branch(
+      p: ptr64,
+      pn, bi, nbits: word32): bool =
+    0 <= signed32(bi)
+      AND
+    (FORALL (exponent: word64):
+      unsigned64(exponent) = signed32(bi)
+        IMPLIES
+          ((0 <= unsigned64(exponent)
+              AND unsigned64(exponent) < 64)
+            AND
+           int_power(2, unsigned64(exponent)) * unsigned64(one64)
+             <= max_uint64)
+          AND
+          (FORALL (mask: word64):
+            unsigned64(mask)
+                = int_power(2, unsigned64(exponent))
+                    * unsigned64(one64)
+              IMPLIES
+                (minimum64(p) <= offset64(p)
+                  AND offset64(p) < maximum64(p))
+                  AND
+                reduced_result(
+                  p, pn, bi, nbits,
+                  unsigned64(pelt64(p, offset64(p))),
+                  unsigned64(mask))))
+
+  two_limb_branch(
+      p: ptr64,
+      pn, bi, nbits, quotient: word32,
+      shifted: word64,
+      remaining: word32): bool =
+    int32_in_bounds(signed32(quotient) + 1)
+      AND
+    (FORALL (next_index: word32):
+      signed32(next_index) = signed32(quotient) + 1
+        IMPLIES
+          (minimum64(p)
+              <= offset64(p) + signed32(next_index)
+            AND
+           offset64(p) + signed32(next_index) < maximum64(p))
+          AND 0 <= signed32(remaining)
+          AND
+          (FORALL (shift_count: word64):
+            unsigned64(shift_count) = signed32(remaining)
+              IMPLIES
+                (0 <= unsigned64(shift_count)
+                  AND unsigned64(shift_count) < 64)
+                AND
+                (FORALL (partial: word64):
+                  (unsigned64(partial)
+                      = positive_mod(
+                          unsigned64(
+                            pelt64(
+                              p,
+                              offset64(p) + signed32(next_index)))
+                            * int_power(2, unsigned64(shift_count)),
+                          radix)
+                    AND
+                   unsigned64(partial)
+                     <= radix - int_power(2, unsigned64(shift_count)))
+                    IMPLIES
+                      int32_in_bounds(signed32(quotient) + 2)
+                        AND
+                      (FORALL (after_index: word32):
+                        signed32(after_index) = signed32(quotient) + 2
+                          IMPLIES
+                            (minimum64(p)
+                                <= offset64(p) + signed32(after_index)
+                              AND
+                             offset64(p) + signed32(after_index)
+                               <= maximum64(p))
+                            AND
+                            (FORALL (after_pointer: ptr64):
+                              shifted_pointer(
+                                after_pointer,
+                                p,
+                                signed32(after_index))
+                                IMPLIES
+                                  NOT radix = 0
+                                    AND
+                                  uint64_in_bounds(
+                                    unsigned64(shifted)
+                                      + unsigned64(partial))
+                                    AND
+                                  (FORALL (combined: word64):
+                                    unsigned64(combined)
+                                        = unsigned64(shifted)
+                                            + unsigned64(partial)
+                                      IMPLIES
+                                        masked_result(
+                                          p, pn, bi, nbits,
+                                          unsigned64(combined))))))))
+
+  one_limb_branch(
+      p: ptr64,
+      pn, bi, nbits: word32,
+      shifted: word64): bool =
+    masked_result(p, pn, bi, nbits, unsigned64(shifted))
+
+  large_branch(
+      p: ptr64,
+      pn, bi, nbits: word32): bool =
+    int32_in_bounds(signed32(bi) - signed32(nbits))
+      AND
+    (FORALL (difference: word32):
+      signed32(difference) = signed32(bi) - signed32(nbits)
+        IMPLIES
+          (NOT 64 = 0
+            AND
+           int32_in_bounds(trunc_div(signed32(difference), 64)))
+          AND
+          (FORALL (quotient: word32):
+            signed32(quotient) = trunc_div(signed32(difference), 64)
+              IMPLIES
+                (NOT 64 = 0
+                  AND
+                 int32_in_bounds(trunc_mod(signed32(difference), 64)))
+                AND
+                (FORALL (remainder: word32):
+                  signed32(remainder)
+                      = trunc_mod(signed32(difference), 64)
+                    IMPLIES
+                      (minimum64(p)
+                          <= offset64(p) + signed32(quotient)
+                        AND
+                       offset64(p) + signed32(quotient) < maximum64(p))
+                      AND int32_in_bounds(signed32(quotient) + 1)
+                      AND
+                      (FORALL (next_index: word32):
+                        signed32(next_index) = signed32(quotient) + 1
+                          IMPLIES
+                            (minimum64(p)
+                                <= offset64(p) + signed32(next_index)
+                              AND
+                             offset64(p) + signed32(next_index)
+                               <= maximum64(p))
+                            AND
+                            (FORALL (next_pointer: ptr64):
+                              shifted_pointer(
+                                next_pointer,
+                                p,
+                                signed32(next_index))
+                                IMPLIES
+                                  0 <= signed32(remainder)
+                                    AND
+                                  (FORALL (shift_count: word64):
+                                    unsigned64(shift_count)
+                                        = signed32(remainder)
+                                      IMPLIES
+                                        (0 <= unsigned64(shift_count)
+                                          AND unsigned64(shift_count) < 64)
+                                        AND
+                                        (FORALL (shifted: word64):
+                                          unsigned64(shifted)
+                                              = positive_div(
+                                                  unsigned64(
+                                                    pelt64(
+                                                      p,
+                                                      offset64(p)
+                                                        + signed32(quotient))),
+                                                  int_power(
+                                                    2,
+                                                    unsigned64(shift_count)))
+                                            IMPLIES
+                                              NOT int_power(
+                                                    2,
+                                                    signed32(remainder))
+                                                  = 0
+                                                AND
+                                              int32_in_bounds(
+                                                64 - signed32(remainder))
+                                                AND
+                                              (FORALL (remaining: word32):
+                                                signed32(remaining)
+                                                    = 64
+                                                        - signed32(remainder)
+                                                  IMPLIES
+                                                    IF signed32(remaining)
+                                                        < signed32(nbits)
+                                                    THEN
+                                                      two_limb_branch(
+                                                        p, pn, bi, nbits,
+                                                        quotient,
+                                                        shifted,
+                                                        remaining)
+                                                    ELSE
+                                                      one_limb_branch(
+                                                        p, pn, bi, nbits,
+                                                        shifted)
+                                                    ENDIF))))))))
+
+  getbits_vc: bool =
+    FORALL
+        (nbits, bi, pn: word32),
+        (p: ptr64):
+      (1 <= signed32(nbits)
+        AND signed32(nbits) < 64
+        AND 0 <= signed32(bi)
+        AND 1 <= signed32(pn)
+        AND valid64(p, signed32(pn))
+        AND positive_div(signed32(bi) + 63, 64) <= signed32(pn))
+      IMPLIES
+        IF signed32(bi) < signed32(nbits) THEN
+          small_branch(p, pn, bi, nbits)
+        ELSE
+          large_branch(p, pn, bi, nbits)
+        ENDIF
+
+END powm_Powm_getbitsqtvc

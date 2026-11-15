@@ -1,0 +1,206 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% frama_c/airborne/float_rmat_of_eulers_321/float_rmat_of_eulers_321_Why3_ide_VCfloat_rmat_of_eulers_321_post_2_goal1:
+% the memory-level determinant-one postcondition for the real three-by-three
+% matrix computed from three Euler angles. This file contains no proof.
+
+float_rmat_of_eulers_321_Why3_ide_VCfloat_rmat_of_eulers_321_post_2_goal1[
+  region: [int -> int],
+  linked: [[int -> int] -> bool]
+]: THEORY
+BEGIN
+  addr: TYPE = [# base: int, offset: int #]
+  real_memory: TYPE = [addr -> real]
+  allocation_table: TYPE = [int -> int]
+
+  real_rmat: TYPE =
+    [# a00: real, a01: real, a02: real,
+       a10: real, a11: real, a12: real,
+       a20: real, a21: real, a22: real #]
+
+  shift(p: addr, k: int): addr =
+    (# base := base(p), offset := offset(p) + k #)
+
+  store(memory: real_memory, p: addr, value: real): real_memory =
+    memory WITH [(p) := value]
+
+  valid_rw(malloc: allocation_table, p: addr, n: int): bool =
+    0 < n IMPLIES
+      0 < base(p)
+        AND 0 <= offset(p)
+        AND offset(p) + n <= malloc(base(p))
+
+  valid_rd(malloc: allocation_table, p: addr, n: int): bool =
+    0 < n IMPLIES
+      base(p) /= 0
+        AND 0 <= offset(p)
+        AND offset(p) + n <= malloc(base(p))
+
+  % These predicates are universally true in the official Why3 real model.
+  is_float32(value: real): bool = TRUE
+  is_finite32(value: real): bool = TRUE
+
+  p_finite_floateulers(memory: real_memory, e: addr): bool =
+    is_finite32(memory(shift(e, 0)))
+      AND is_finite32(memory(shift(e, 2)))
+      AND is_finite32(memory(shift(e, 1)))
+
+  p_rvalid_floateulers(
+      malloc: allocation_table,
+      memory: real_memory,
+      e: addr): bool =
+    p_finite_floateulers(memory, e)
+      AND valid_rd(malloc, e, 3)
+
+  factorial_sequence(factorial: [nat -> posnat]): bool =
+    factorial(0) = 1
+      AND
+        (FORALL (n: nat):
+          factorial(n + 1) = (n + 1) * factorial(n))
+
+  series_converges(partial: [nat -> real], value: real): bool =
+    FORALL (eps: posreal):
+      EXISTS (threshold: nat):
+        FORALL (n: nat):
+          n >= threshold IMPLIES abs(partial(n) - value) < eps
+
+  sine_series_value(x, value: real): bool =
+    EXISTS (factorial: [nat -> posnat]),
+           (partial: [nat -> real]):
+      factorial_sequence(factorial)
+        AND partial(0) = 0
+        AND
+          (FORALL (n: nat):
+            partial(n + 1) =
+              partial(n)
+                + ((-1) ^ n * x ^ (2 * n + 1))
+                    / factorial(2 * n + 1))
+        AND series_converges(partial, value)
+
+  cosine_series_value(x, value: real): bool =
+    EXISTS (factorial: [nat -> posnat]),
+           (partial: [nat -> real]):
+      factorial_sequence(factorial)
+        AND partial(0) = 0
+        AND
+          (FORALL (n: nat):
+            partial(n + 1) =
+              partial(n)
+                + ((-1) ^ n * x ^ (2 * n))
+                    / factorial(2 * n))
+        AND series_converges(partial, value)
+
+  sine(x: real): real =
+    epsilon(LAMBDA (value: real): sine_series_value(x, value))
+
+  cosine(x: real): real =
+    epsilon(LAMBDA (value: real): cosine_series_value(x, value))
+
+  rmat_of_floatrmat(memory: real_memory, rm: addr): real_rmat =
+    LET start: addr = shift(rm, 0)
+    IN
+      (# a00 := memory(shift(start, 0)),
+         a01 := memory(shift(start, 1)),
+         a02 := memory(shift(start, 2)),
+         a10 := memory(shift(start, 3)),
+         a11 := memory(shift(start, 4)),
+         a12 := memory(shift(start, 5)),
+         a20 := memory(shift(start, 6)),
+         a21 := memory(shift(start, 7)),
+         a22 := memory(shift(start, 8)) #)
+
+  determinant(matrix: real_rmat): real =
+    a00(matrix) * a11(matrix) * a22(matrix)
+      + a01(matrix) * a12(matrix) * a20(matrix)
+      + a02(matrix) * a10(matrix) * a21(matrix)
+      - a00(matrix) * a12(matrix) * a21(matrix)
+      - a01(matrix) * a10(matrix) * a22(matrix)
+      - a02(matrix) * a11(matrix) * a20(matrix)
+
+  special_orthogonal(matrix: real_rmat): bool =
+    determinant(matrix) = 1
+
+  goal1: bool =
+    FORALL (t_1: real_memory),
+           (a_1, a: addr),
+           (t: allocation_table):
+      LET r: real = t_1(shift(a_1, 0)),
+          r_1: real = sine(r),
+          r_2: real = t_1(shift(a_1, 2)),
+          r_3: real = sine(r_2),
+          r_4: real = t_1(shift(a_1, 1)),
+          r_5: real = sine(r_4),
+          r_6: real = cosine(r),
+          r_7: real = cosine(r_2),
+          r_8: real = cosine(r_4),
+          a_2: addr = shift(a, 0),
+          r_9: real = r_1 * r_5,
+          r_10: real = r_6 * r_5,
+          m: real_memory =
+            store(t_1, shift(a_2, 0), r_8 * r_7),
+          m_1: real_memory =
+            store(m, shift(a_2, 1), r_8 * r_3),
+          m_2: real_memory =
+            store(m_1, shift(a_2, 2), -r_5),
+          m_3: real_memory =
+            store(
+              m_2,
+              shift(a_2, 3),
+              r_9 * r_7 - r_6 * r_3),
+          m_4: real_memory =
+            store(
+              m_3,
+              shift(a_2, 4),
+              r_9 * r_3 + r_6 * r_7),
+          m_5: real_memory =
+            store(m_4, shift(a_2, 5), r_1 * r_8),
+          m_6: real_memory =
+            store(
+              m_5,
+              shift(a_2, 6),
+              r_10 * r_7 + r_1 * r_3),
+          m_7: real_memory =
+            store(
+              m_6,
+              shift(a_2, 7),
+              r_10 * r_3 - r_1 * r_7),
+          m_8: real_memory =
+            store(m_7, shift(a_2, 8), r_6 * r_8)
+      IN
+        (region(base(a)) <= 0
+          AND region(base(a_1)) <= 0
+          AND r_1 <= 1
+          AND r_3 <= 1
+          AND r_5 <= 1
+          AND r_6 <= 1
+          AND r_7 <= 1
+          AND r_8 <= 1
+          AND -1 <= r_1
+          AND -1 <= r_3
+          AND -1 <= r_5
+          AND -1 <= r_6
+          AND -1 <= r_7
+          AND -1 <= r_8
+          AND linked(t)
+          AND valid_rw(t, a, 9)
+          AND p_rvalid_floateulers(t, t_1, a_1)
+          AND is_finite32(r)
+          AND is_finite32(r_2)
+          AND is_finite32(r_4)
+          AND is_float32(r)
+          AND is_float32(r_2)
+          AND is_float32(r_4)
+          AND is_finite32(r_1)
+          AND is_finite32(r_3)
+          AND is_finite32(r_5)
+          AND is_finite32(r_6)
+          AND is_finite32(r_7)
+          AND is_finite32(r_8)
+          AND is_float32(r_1)
+          AND is_float32(r_3)
+          AND is_float32(r_5)
+          AND is_float32(r_6)
+          AND is_float32(r_7)
+          AND is_float32(r_8))
+        IMPLIES
+          special_orthogonal(rmat_of_floatrmat(m_8, a))
+END float_rmat_of_eulers_321_Why3_ide_VCfloat_rmat_of_eulers_321_post_2_goal1

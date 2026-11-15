@@ -1,0 +1,90 @@
+% Statement-only formalization of the VERINA corpus artifact verina_basic_9
+% (verina__pvs__verina_basic_9), catalog title "hasCommonElement": nested
+% Boolean scans decide whether two nonempty finite integer arrays share an
+% element and satisfy the exact existential-index contract. This file contains no proof.
+
+verina_basic_9: THEORY
+BEGIN
+
+  % Finite PVS lists preserve exactly the contents and order of Lean arrays.
+  int_list_length(
+      values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        int_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  % Lean Array.get! on integer arrays returns zero outside the array. Every
+  % postcondition access here is guarded by the corresponding array length.
+  int_list_get_bang(
+      index: nat,
+      values: list[int]): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          int_list_get_bang(index - 1, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  hasCommonElement_precond(
+      a, b: list[int]): bool =
+    int_list_length(a) > 0
+      AND int_list_length(b) > 0
+
+  int_list_any_equal_to(
+      value: int,
+      values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        FALSE,
+      cons(head, tail):
+        value = head
+          OR int_list_any_equal_to(value, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  int_lists_have_common_element(
+      a, b: list[int]): RECURSIVE bool =
+    CASES a OF
+      null:
+        FALSE,
+      cons(head, tail):
+        int_list_any_equal_to(head, b)
+          OR int_lists_have_common_element(tail, b)
+    ENDCASES
+  MEASURE a BY <<
+
+  % The source precondition proof argument is computationally irrelevant.
+  % These two recursions are exactly the nested Array.any computations.
+  hasCommonElement(
+      a, b: list[int]): bool =
+    int_lists_have_common_element(a, b)
+
+  % The source proof argument to the postcondition is logically irrelevant.
+  hasCommonElement_postcond(
+      a, b: list[int],
+      result: bool): bool =
+    (EXISTS (i, j: nat):
+      i < int_list_length(a)
+        AND j < int_list_length(b)
+        AND int_list_get_bang(i, a) = int_list_get_bang(j, b))
+      IFF result
+
+  hasCommonElement_spec_satisfied: bool =
+    FORALL (a, b: list[int]):
+      hasCommonElement_precond(a, b)
+        IMPLIES
+          hasCommonElement_postcond(
+            a,
+            b,
+            hasCommonElement(a, b))
+
+END verina_basic_9

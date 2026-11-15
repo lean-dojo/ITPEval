@@ -1,0 +1,227 @@
+% Statement-only formalization of the VERINA corpus artifact
+% verina_advanced_62, catalog title "rain": computing trapped rainwater over
+% a nonnegative integer terrain with the exact two-pointer program and its
+% summation correctness contract. This file contains no proof.
+
+verina_advanced_62: THEORY
+BEGIN
+
+  int_max(first, second: int): int =
+    IF first >= second THEN first ELSE second ENDIF
+
+  int_min(first, second: int): int =
+    IF first <= second THEN first ELSE second ENDIF
+
+  % Lean natural-number subtraction is truncated at zero.
+  nat_subtract(first, second: nat): nat =
+    IF first >= second THEN first - second ELSE 0 ENDIF
+
+  int_list_length(values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        int_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  % Lean's getElem! on an integer list returns zero outside the list. Every
+  % executable access below is in range, but the total behavior is retained.
+  int_list_get_bang(
+      index: nat,
+      values: list[int]): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          int_list_get_bang(index - 1, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  rain_all_nonnegative(values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        head >= 0
+          AND rain_all_nonnegative(tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  rain_precond(heights: list[int]): bool =
+    rain_all_nonnegative(heights)
+
+  % On calls reachable from rain, remaining equals right - left. It decreases
+  % with exactly the same pointer update as the source termination measure.
+  rain_aux(
+      heights: list[int],
+      left, right: nat,
+      leftMax, rightMax, water: int,
+      remaining: nat): RECURSIVE int =
+    IF remaining = 0 OR left >= right THEN
+      water
+    ELSIF int_list_get_bang(left, heights)
+            <= int_list_get_bang(right, heights) THEN
+      LET left_height: int =
+            int_list_get_bang(left, heights),
+          newLeftMax: int =
+            int_max(leftMax, left_height),
+          newWater: int =
+            water + int_max(0, leftMax - left_height)
+      IN
+        rain_aux(
+          heights,
+          left + 1,
+          right,
+          newLeftMax,
+          rightMax,
+          newWater,
+          remaining - 1)
+    ELSE
+      LET right_height: int =
+            int_list_get_bang(right, heights),
+          newRightMax: int =
+            int_max(rightMax, right_height),
+          newWater: int =
+            water + int_max(0, rightMax - right_height)
+      IN
+        rain_aux(
+          heights,
+          left,
+          right - 1,
+          leftMax,
+          newRightMax,
+          newWater,
+          remaining - 1)
+    ENDIF
+  MEASURE remaining
+
+  % The source precondition proof is computationally irrelevant. This is the
+  % exact proof-erased two-pointer computation.
+  rain(heights: list[int]): int =
+    LET n: nat = int_list_length(heights)
+    IN
+      IF n < 3 THEN
+        0
+      ELSE
+        rain_aux(
+          heights,
+          0,
+          n - 1,
+          int_list_get_bang(0, heights),
+          int_list_get_bang(n - 1, heights),
+          0,
+          n - 1)
+      ENDIF
+
+  % This scans source indices j = 0 through i, matching max_left_at's local
+  % recursive function initialized with maximum zero.
+  rain_max_left_scan(
+      heights: list[int],
+      index, remaining: nat,
+      max_so_far: int): RECURSIVE int =
+    IF remaining = 0 THEN
+      max_so_far
+    ELSE
+      rain_max_left_scan(
+        heights,
+        index + 1,
+        remaining - 1,
+        int_max(
+          max_so_far,
+          int_list_get_bang(index, heights)))
+    ENDIF
+  MEASURE remaining
+
+  rain_max_left_at(
+      heights: list[int],
+      index: nat): int =
+    rain_max_left_scan(
+      heights,
+      0,
+      index + 1,
+      0)
+
+  % This scans source indices j = i through length - 1, matching max_right_at.
+  rain_max_right_scan(
+      heights: list[int],
+      index, remaining: nat,
+      max_so_far: int): RECURSIVE int =
+    IF remaining = 0 THEN
+      max_so_far
+    ELSE
+      rain_max_right_scan(
+        heights,
+        index + 1,
+        remaining - 1,
+        int_max(
+          max_so_far,
+          int_list_get_bang(index, heights)))
+    ENDIF
+  MEASURE remaining
+
+  rain_max_right_at(
+      heights: list[int],
+      index: nat): int =
+    rain_max_right_scan(
+      heights,
+      index,
+      nat_subtract(int_list_length(heights), index),
+      0)
+
+  rain_water_at(
+      heights: list[int],
+      index: nat): int =
+    int_max(
+      0,
+      int_min(
+        rain_max_left_at(heights, index),
+        rain_max_right_at(heights, index))
+        - int_list_get_bang(index, heights))
+
+  rain_sum_water_scan(
+      heights: list[int],
+      index, remaining: nat,
+      accumulator: int): RECURSIVE int =
+    IF remaining = 0 THEN
+      accumulator
+    ELSE
+      rain_sum_water_scan(
+        heights,
+        index + 1,
+        remaining - 1,
+        accumulator + rain_water_at(heights, index))
+    ENDIF
+  MEASURE remaining
+
+  rain_sum_water(heights: list[int]): int =
+    rain_sum_water_scan(
+      heights,
+      0,
+      int_list_length(heights),
+      0)
+
+  rain_postcond(
+      heights: list[int],
+      result: int): bool =
+    result >= 0
+      AND
+      (IF int_list_length(heights) < 3 THEN
+         result = 0
+       ELSE
+         result = rain_sum_water(heights)
+       ENDIF)
+
+  rain_spec_satisfied: bool =
+    FORALL (heights: list[int]):
+      rain_precond(heights)
+        IMPLIES
+          rain_postcond(
+            heights,
+            rain(heights))
+
+END verina_advanced_62

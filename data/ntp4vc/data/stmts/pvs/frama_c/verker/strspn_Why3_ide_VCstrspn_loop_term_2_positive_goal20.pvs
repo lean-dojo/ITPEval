@@ -1,0 +1,185 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% frama_c/verker/strspn_Why3_ide_VCstrspn_loop_term_2_positive_goal20:
+% a strspn loop-termination verification condition concluding that the current
+% accept-string address offset is bounded by its start offset plus its length.
+% This file contains no proof.
+
+strspn_Why3_ide_VCstrspn_loop_term_2_positive_goal20: THEORY
+BEGIN
+  addr: TYPE = [# base: int, offset: int #]
+  allocation_table: TYPE = [int -> int]
+  integer_memory: TYPE = [addr -> int]
+  integer_conversion: TYPE = [int -> int]
+  address_relation: TYPE = [addr, addr -> bool]
+  string_length_function: TYPE = [integer_memory, addr -> int]
+  string_span_function: TYPE = [addr, addr -> int]
+
+  shift(p: addr, k: int): addr =
+    (# base := base(p), offset := offset(p) + k #)
+
+  is_sint8(value: int): bool =
+    -128 <= value AND value < 128
+
+  is_uint64(value: int): bool =
+    0 <= value AND value < 18446744073709551616
+
+  valid_rw(
+      malloc_0: allocation_table,
+      p: addr,
+      size: int): bool =
+    0 < size IMPLIES
+      0 < base(p)
+        AND 0 <= offset(p)
+        AND offset(p) + size <= malloc_0(base(p))
+
+  p_valid_str(
+      malloc_0: allocation_table,
+      mchar_0: integer_memory,
+      s: addr): bool =
+    EXISTS (terminator: int):
+      mchar_0(shift(s, terminator)) = 0
+        AND is_uint64(terminator)
+        AND valid_rw(malloc_0, shift(s, 0), 1 + terminator)
+        AND (FORALL (j: int):
+          j <= terminator IMPLIES
+            is_sint8(mchar_0(shift(s, j))))
+
+  address_order_laws(
+      addr_le, addr_lt: address_relation): bool =
+    (FORALL (p, q: addr):
+      base(p) = base(q) IMPLIES
+        (addr_le(p, q) IFF offset(p) <= offset(q)))
+      AND
+    (FORALL (p, q: addr):
+      base(p) = base(q) IMPLIES
+        (addr_lt(p, q) IFF offset(p) < offset(q)))
+
+  uint64_conversion_laws(to_uint64: integer_conversion): bool =
+    (FORALL (value: int):
+      is_uint64(to_uint64(value)))
+      AND
+    (FORALL (value: int):
+      is_uint64(value) IMPLIES to_uint64(value) = value)
+      AND
+    (FORALL (value: int):
+      to_uint64(to_uint64(value)) = to_uint64(value))
+
+  strlen_laws(
+      to_uint64: integer_conversion,
+      l_strlen: string_length_function): bool =
+    (FORALL (mchar_0: integer_memory), (s: addr):
+      IF mchar_0(shift(s, 0)) = 0
+      THEN l_strlen(mchar_0, s) = 0
+      ELSE
+        to_uint64(1 + l_strlen(mchar_0, shift(s, 1))) =
+          l_strlen(mchar_0, s)
+      ENDIF)
+      AND
+    (FORALL (mchar_0: integer_memory), (s: addr):
+      is_uint64(l_strlen(mchar_0, s)))
+
+  p_in_array(
+      mchar_0: integer_memory,
+      s: addr,
+      c: int,
+      addr_le, addr_lt: address_relation,
+      l_strlen: string_length_function): bool =
+    EXISTS (candidate: addr):
+      mchar_0(candidate) = c
+        AND addr_le(s, candidate)
+        AND addr_lt(
+          candidate, shift(s, l_strlen(mchar_0, s)))
+
+  strspn_laws(
+      l_strspn: string_span_function,
+      l_strlen: string_length_function,
+      addr_le, addr_lt: address_relation): bool =
+    (FORALL
+      (mchar_0: integer_memory),
+      (s, accept_0: addr):
+      mchar_0(s) = 0 IMPLIES
+        l_strspn(s, accept_0) = 0)
+      AND
+    (FORALL
+      (mchar_0: integer_memory),
+      (s, accept_0: addr):
+      NOT (mchar_0(s) = 0) IMPLIES
+      NOT p_in_array(
+        mchar_0, accept_0, mchar_0(s),
+        addr_le, addr_lt, l_strlen) IMPLIES
+        l_strspn(s, accept_0) = 0)
+      AND
+    (FORALL
+      (mchar_0: integer_memory),
+      (s, accept_0: addr):
+      NOT (mchar_0(s) = 0) IMPLIES
+      p_in_array(
+        mchar_0, accept_0, mchar_0(s),
+        addr_le, addr_lt, l_strlen) IMPLIES
+        1 + l_strspn(shift(s, 1), accept_0) =
+          l_strspn(s, accept_0))
+
+  goal20: bool =
+    FORALL
+      (region: [int -> int]),
+      (linked: [allocation_table -> bool]),
+      (sconst: [integer_memory -> bool]),
+      (addr_le, addr_lt: address_relation),
+      (to_uint64: integer_conversion),
+      (l_strlen: string_length_function),
+      (l_strspn: string_span_function),
+      (t_1: integer_memory),
+      (a_1, a_3, a, a_2: addr),
+      (t: allocation_table):
+      address_order_laws(addr_le, addr_lt) IMPLIES
+      uint64_conversion_laws(to_uint64) IMPLIES
+      strlen_laws(to_uint64, l_strlen) IMPLIES
+      strspn_laws(
+        l_strspn, l_strlen, addr_le, addr_lt) IMPLIES
+      LET x: int = t_1(a_1),
+          x_1: int = t_1(a_3),
+          x_2: int = offset(a_1),
+          x_3: int = offset(a),
+          x_4: int = l_strlen(t_1, a),
+          x_5: int = l_strlen(t_1, a_2),
+          a_4: addr = shift(a_2, x_5)
+      IN
+        NOT (x = 0) IMPLIES
+        NOT (x_1 = 0) IMPLIES
+        NOT (x_1 = x) IMPLIES
+        x_2 + l_strspn(a_1, a_2) =
+          x_3 + l_strspn(a, a_2) IMPLIES
+        x_3 <= x_2 IMPLIES
+        region(base(a)) <= 0 IMPLIES
+        region(base(a_2)) <= 0 IMPLIES
+        x_2 <= x_3 + x_4 IMPLIES
+        linked(t) IMPLIES
+        sconst(t_1) IMPLIES
+        addr_le(a, a_1) IMPLIES
+        addr_le(a_2, a_3) IMPLIES
+        is_sint8(x) IMPLIES
+        is_sint8(x_1) IMPLIES
+        p_valid_str(t, t_1, a) IMPLIES
+        p_valid_str(t, t_1, a_1) IMPLIES
+        p_valid_str(t, t_1, a_2) IMPLIES
+        p_valid_str(t, t_1, a_3) IMPLIES
+        is_uint64(x_2 - x_3) IMPLIES
+        addr_le(a_1, shift(a, x_4)) IMPLIES
+        addr_le(a_3, a_4) IMPLIES
+        (p_in_array(
+          t_1, a_2, x, addr_le, addr_lt, l_strlen) IMPLIES
+         p_in_array(
+          t_1, a_3, x, addr_le, addr_lt, l_strlen)) IMPLIES
+        (FORALL (a_5: addr):
+          addr_lt(a_5, a_3) IMPLIES
+          addr_le(a_2, a_5) IMPLIES
+          NOT (x = t_1(a_5))) IMPLIES
+        (FORALL (a_5: addr):
+          addr_lt(a_5, a_1) IMPLIES
+          addr_le(a, a_5) IMPLIES
+          (EXISTS (a_6: addr):
+            t_1(a_5) = t_1(a_6)
+              AND addr_le(a_2, a_6)
+              AND addr_lt(a_6, a_4))) IMPLIES
+        offset(a_3) <= offset(a_2) + x_5
+END strspn_Why3_ide_VCstrspn_loop_term_2_positive_goal20

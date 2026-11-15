@@ -1,0 +1,214 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/sieve_Sieve_sieveqtvc: the Sieve of Eratosthenes verification
+% condition over total integer-indexed arrays, including initialization,
+% loop invariants, exact-key updates, termination decreases, and primality.
+% This file contains no proof.
+
+sieve_Sieve_sieveqtvc: THEORY
+BEGIN
+
+  bool_array: TYPE =
+    [# array_length: int,
+       array_values: [int -> bool] #]
+
+  array_update(
+      values: bool_array,
+      index: int,
+      value: bool): bool_array =
+    (# array_length := array_length(values),
+       array_values :=
+         array_values(values) WITH [(index) := value] #)
+
+  update_function_equation(
+      before, after: bool_array,
+      index: int,
+      value: bool): bool =
+    array_values(after)
+      = array_values(before) WITH [(index) := value]
+
+  no_factor_lt(bound, number: int): bool =
+    1 < number
+      AND
+    (FORALL (factor, divisor: int):
+      ((1 < divisor AND divisor < bound) AND 1 < factor)
+        IMPLIES number /= factor * divisor)
+
+  prime_int(number: int): bool =
+    1 < number
+      AND
+    (FORALL (factor, divisor: int):
+      ((1 < divisor AND divisor < number) AND 1 < factor)
+        IMPLIES number /= factor * divisor)
+
+  sieve_state(
+      values: bool_array,
+      n, bound: int): bool =
+    (1 < bound AND bound <= n)
+      AND
+    (FORALL (j: int):
+      (0 <= j AND j < n)
+        IMPLIES
+          (array_values(values)(j) = TRUE
+            IFF no_factor_lt(bound, j)))
+
+  multiple_state(
+      values: bool_array,
+      n, factor, multiple_bound: int): bool =
+    (1 < multiple_bound AND multiple_bound <= n)
+      AND
+    (FORALL (j: int):
+      (0 <= j AND j < n)
+        IMPLIES
+          (array_values(values)(j) = TRUE
+            IFF
+              (no_factor_lt(factor, j)
+                AND
+              (FORALL (k: int):
+                (1 < k AND k < multiple_bound)
+                  IMPLIES j /= k * factor))))
+
+  inner_iteration_obligations(
+      values: bool_array,
+      n, factor, multiple_bound: int): bool =
+    IF multiple_bound * factor < n THEN
+      LET updated: bool_array =
+        array_update(
+          values,
+          multiple_bound * factor,
+          FALSE)
+      IN
+        (0 <= multiple_bound * factor
+          AND multiple_bound * factor < array_length(values))
+          AND
+        (array_length(updated) = array_length(values)
+          IMPLIES
+        update_function_equation(
+          values,
+          updated,
+          multiple_bound * factor,
+          FALSE)
+          IMPLIES
+            (0 <= n - multiple_bound
+              AND n - (multiple_bound + 1) < n - multiple_bound)
+              AND
+            multiple_bound * factor + factor
+              = (multiple_bound + 1) * factor
+              AND
+            multiple_state(
+              updated,
+              n,
+              factor,
+              multiple_bound + 1))
+    ELSE
+      (0 <= n - factor
+        AND n - (factor + 1) < n - factor)
+        AND sieve_state(values, n, factor + 1)
+    ENDIF
+
+  inner_loop_obligations(
+      values: bool_array,
+      n, factor: int): bool =
+    multiple_state(values, n, factor, factor)
+      AND
+    (FORALL
+        (multiple_bound: int),
+        (next_values: bool_array):
+      array_length(next_values) = array_length(values)
+        IMPLIES
+      multiple_state(
+        next_values,
+        n,
+        factor,
+        multiple_bound)
+        IMPLIES
+      inner_iteration_obligations(
+        next_values,
+        n,
+        factor,
+        multiple_bound))
+
+  outer_iteration_obligations(
+      values: bool_array,
+      n, bound: int): bool =
+    IF bound < n THEN
+      (0 <= bound AND bound < array_length(values))
+        AND
+      IF array_values(values)(bound) = TRUE THEN
+        inner_loop_obligations(values, n, bound)
+      ELSE
+        (0 <= n - bound
+          AND n - (bound + 1) < n - bound)
+          AND sieve_state(values, n, bound + 1)
+      ENDIF
+    ELSE
+      array_length(values) = n
+        AND
+      (FORALL (index: int):
+        (0 <= index AND index < n)
+          IMPLIES
+            (array_values(values)(index) = TRUE
+              IFF prime_int(index)))
+    ENDIF
+
+  outer_loop_obligations(
+      initial_values: bool_array,
+      n: int): bool =
+    FORALL (bound: int), (values: bool_array):
+      array_length(values) = array_length(initial_values)
+        IMPLIES
+      sieve_state(values, n, bound)
+        IMPLIES
+      outer_iteration_obligations(values, n, bound)
+
+  initialized_loop_obligations(
+      values: bool_array,
+      n: int): bool =
+    sieve_state(values, n, 2)
+      AND outer_loop_obligations(values, n)
+
+  initialization_obligations(
+      initial_values: bool_array,
+      n: int): bool =
+    LET after_zero: bool_array =
+      array_update(initial_values, 0, FALSE)
+    IN
+      (0 <= 0 AND 0 < array_length(initial_values))
+        AND
+      (array_length(after_zero) = array_length(initial_values)
+        IMPLIES
+      update_function_equation(
+        initial_values,
+        after_zero,
+        0,
+        FALSE)
+        IMPLIES
+          LET after_one: bool_array =
+            array_update(after_zero, 1, FALSE)
+          IN
+            (0 <= 1 AND 1 < array_length(after_zero))
+              AND
+            (array_length(after_one) = array_length(after_zero)
+              IMPLIES
+            update_function_equation(
+              after_zero,
+              after_one,
+              1,
+              FALSE)
+              IMPLIES
+            initialized_loop_obligations(after_one, n)))
+
+  sieve_vc: bool =
+    FORALL (n: int):
+      1 < n
+        IMPLIES
+          0 <= n
+            AND
+          (FORALL (values: bool_array):
+            ((FORALL (index: int):
+              (0 <= index AND index < n)
+                IMPLIES
+                  array_values(values)(index) = TRUE)
+              AND array_length(values) = n)
+              IMPLIES initialization_obligations(values, n))
+
+END sieve_Sieve_sieveqtvc

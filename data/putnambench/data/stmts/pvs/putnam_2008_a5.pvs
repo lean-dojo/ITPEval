@@ -1,0 +1,186 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2008_a5:
+% real polynomial values at 1 through n forming a counterclockwise regular
+% n-gon force at least one polynomial to have degree at least n - 1. This file
+% contains no proof.
+
+putnam_2008_a5: THEORY
+BEGIN
+  polynomial: TYPE = list[real]
+  complex: TYPE = [# real_part: real, imag_part: real #]
+  complex_sequence: TYPE = [nat -> complex]
+  real_sequence: TYPE = [nat -> real]
+
+  complex_zero: complex =
+    (# real_part := 0, imag_part := 0 #)
+
+  complex_one: complex =
+    (# real_part := 1, imag_part := 0 #)
+
+  complex_i: complex =
+    (# real_part := 0, imag_part := 1 #)
+
+  complex_add(left, right: complex): complex =
+    (# real_part := real_part(left) + real_part(right),
+       imag_part := imag_part(left) + imag_part(right) #)
+
+  complex_mul(left, right: complex): complex =
+    (# real_part :=
+         real_part(left) * real_part(right)
+           - imag_part(left) * imag_part(right),
+       imag_part :=
+         real_part(left) * imag_part(right)
+           + imag_part(left) * real_part(right) #)
+
+  complex_scale(scalar: real, value: complex): complex =
+    (# real_part := scalar * real_part(value),
+       imag_part := scalar * imag_part(value) #)
+
+  complex_power(value: complex, exponent: nat): RECURSIVE complex =
+    IF exponent = 0 THEN
+      complex_one
+    ELSE
+      complex_mul(complex_power(value, exponent - 1), value)
+    ENDIF
+  MEASURE exponent
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  nat_factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * nat_factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  complex_exponential_partial(
+      value: complex,
+      count: nat): RECURSIVE complex =
+    IF count = 0 THEN
+      complex_zero
+    ELSE
+      LET index: nat = count - 1 IN
+        complex_add(
+          complex_exponential_partial(value, count - 1),
+          complex_scale(
+            safe_div(1, nat_factorial(index) :: real),
+            complex_power(value, index)))
+    ENDIF
+  MEASURE count
+
+  complex_converges_to(
+      sequence: complex_sequence,
+      value: complex): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(real_part(sequence(index)) - real_part(value))
+              < epsilon_value
+              AND abs(imag_part(sequence(index)) - imag_part(value))
+                < epsilon_value
+
+  complex_exponential(value: complex): complex =
+    epsilon(
+      LAMBDA (limit: complex):
+        complex_converges_to(
+          LAMBDA (count: nat):
+            complex_exponential_partial(value, count),
+          limit))
+
+  cosine_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        cosine_partial(x, count - 1)
+          + safe_div(
+              ((-1 :: real) ^ index) * x ^ (2 * index),
+              nat_factorial(2 * index) :: real)
+    ENDIF
+  MEASURE count
+
+  real_converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  cosine(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        real_converges_to(
+          LAMBDA (count: nat): cosine_partial(x, count),
+          value))
+
+  pi: real =
+    epsilon(
+      LAMBDA (value: real):
+        3 < value
+          AND value < 4
+          AND cosine(value / 2) = 0)
+
+  polynomial_coefficient(
+      p: polynomial,
+      degree: nat): RECURSIVE real =
+    CASES p OF
+      null: 0,
+      cons(coefficient, tail):
+        IF degree = 0 THEN
+          coefficient
+        ELSE
+          polynomial_coefficient(tail, degree - 1)
+        ENDIF
+    ENDCASES
+  MEASURE p BY <<
+
+  polynomial_value(p: polynomial, x: real): RECURSIVE real =
+    CASES p OF
+      null: 0,
+      cons(coefficient, tail):
+        coefficient + x * polynomial_value(tail, x)
+    ENDCASES
+  MEASURE p BY <<
+
+  polynomial_degree_at_least(
+      p: polynomial,
+      lower_bound: nat): bool =
+    EXISTS (degree: nat):
+      lower_bound <= degree
+        AND polynomial_coefficient(p, degree) /= 0
+
+  polynomial_point(
+      f, g: polynomial,
+      k: nat): complex =
+    (# real_part := polynomial_value(f, k :: real),
+       imag_part := polynomial_value(g, k :: real) #)
+
+  regular_vertex(n, k: nat): complex =
+    complex_exponential(
+      complex_scale(
+        safe_div(
+          2 * pi * (k :: real),
+          n :: real),
+        complex_i))
+
+  putnam_2008_a5: bool =
+    FORALL (n: nat), (f, g: polynomial):
+      (n >= 3
+        AND (EXISTS (center, z: complex):
+          z /= complex_zero
+            AND (FORALL (k: nat):
+              1 <= k AND k <= n IMPLIES
+                polynomial_point(f, g, k)
+                  = complex_add(
+                      center,
+                      complex_mul(z, regular_vertex(n, k))))))
+      IMPLIES
+        (polynomial_degree_at_least(f, n - 1)
+          OR polynomial_degree_at_least(g, n - 1))
+END putnam_2008_a5

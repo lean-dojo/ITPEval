@@ -1,0 +1,551 @@
+% Statement-only formalization of "Green's Theorem" from Hundred Theorems item 021:
+% an absolutely continuous positively oriented closed plane curve has boundary
+% integral equal to the area integral of the planar curl. This file contains no proof.
+
+green_s_theorem_021: THEORY
+BEGIN
+  point: TYPE = [# x_coord: real, y_coord: real #]
+  planar_region: TYPE = [point -> bool]
+  vector_field: TYPE = [point -> point]
+  scalar_field: TYPE = [point -> real]
+  parametrized_curve: TYPE = [real -> point]
+  real_function: TYPE = [real -> real]
+  real_sequence: TYPE = [nat -> real]
+  point_sequence: TYPE = [nat -> point]
+
+  jacobian: TYPE =
+    [# j11: real, j12: real, j21: real, j22: real #]
+
+  box: TYPE =
+    [# left: real, right: real, bottom: real, top: real #]
+  box_sequence: TYPE = [nat -> box]
+
+  squared_distance(p, q: point): real =
+    (x_coord(p) - x_coord(q)) ^ 2
+      + (y_coord(p) - y_coord(q)) ^ 2
+
+  squared_norm(p: point): real =
+    x_coord(p) ^ 2 + y_coord(p) ^ 2
+
+  euclidean_distance(p, q: point): real =
+    epsilon(
+      LAMBDA (distance: real):
+        0 <= distance
+          AND distance ^ 2 = squared_distance(p, q))
+
+  in_unit_interval(t: real): bool =
+    0 <= t AND t <= 1
+
+  point_close(p, q: point, radius: real): bool =
+    squared_distance(p, q) < radius ^ 2
+
+  continuous_on_unit_interval(g: parametrized_curve): bool =
+    FORALL (t: real):
+      in_unit_interval(t) IMPLIES
+        FORALL (eps: posreal):
+          EXISTS (delta: posreal):
+            FORALL (s: real):
+              (in_unit_interval(s)
+                AND abs(s - t) < delta)
+              IMPLIES point_close(g(s), g(t), eps)
+
+  ordered_interval_family(
+      starts, finishes: real_sequence,
+      count: nat): bool =
+    (FORALL (index: nat):
+      index < count IMPLIES
+        (0 <= starts(index)
+          AND starts(index) <= finishes(index)
+          AND finishes(index) <= 1))
+      AND (FORALL (index: nat):
+        index + 1 < count IMPLIES
+          finishes(index) <= starts(index + 1))
+
+  interval_length_sum(
+      starts, finishes: real_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      interval_length_sum(starts, finishes, count - 1)
+        + finishes(count - 1) - starts(count - 1)
+    ENDIF
+  MEASURE count
+
+  curve_increment_sum(
+      g: parametrized_curve,
+      starts, finishes: real_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      curve_increment_sum(g, starts, finishes, count - 1)
+        + euclidean_distance(
+            g(finishes(count - 1)),
+            g(starts(count - 1)))
+    ENDIF
+  MEASURE count
+
+  absolutely_continuous_on_unit_interval(
+      g: parametrized_curve): bool =
+    FORALL (eps: posreal):
+      EXISTS (delta: posreal):
+        FORALL
+            (starts, finishes: real_sequence),
+            (count: nat):
+          (ordered_interval_family(starts, finishes, count)
+            AND interval_length_sum(starts, finishes, count)
+              < delta)
+          IMPLIES
+            curve_increment_sum(g, starts, finishes, count)
+              < eps
+
+  path_start(g: parametrized_curve): point =
+    g(0)
+
+  path_finish(g: parametrized_curve): point =
+    g(1)
+
+  closed_path(g: parametrized_curve): bool =
+    path_finish(g) = path_start(g)
+
+  path_image(g: parametrized_curve): planar_region =
+    LAMBDA (p: point):
+      EXISTS (t: real):
+        in_unit_interval(t) AND p = g(t)
+
+  complement_path(
+      h: parametrized_curve,
+      region: planar_region,
+      start, finish: point): bool =
+    continuous_on_unit_interval(h)
+      AND path_start(h) = start
+      AND path_finish(h) = finish
+      AND FORALL (t: real):
+        in_unit_interval(t) IMPLIES NOT region(h(t))
+
+  same_complement_component(
+      region: planar_region,
+      p, q: point): bool =
+    EXISTS (h: parametrized_curve):
+      complement_path(h, region, p, q)
+
+  bounded_complement_component(
+      region: planar_region,
+      p: point): bool =
+    EXISTS (bound: nonneg_real):
+      FORALL (q: point):
+        same_complement_component(region, p, q)
+          IMPLIES squared_norm(q) <= bound ^ 2
+
+  inside_region(region: planar_region): planar_region =
+    LAMBDA (p: point):
+      NOT region(p)
+        AND bounded_complement_component(region, p)
+
+  open_region(region: planar_region): bool =
+    FORALL (p: point):
+      region(p) IMPLIES
+        EXISTS (radius: posreal):
+          FORALL (q: point):
+            point_close(q, p, radius) IMPLIES region(q)
+
+  inside_and_path_subset(
+      g: parametrized_curve,
+      region: planar_region): bool =
+    FORALL (p: point):
+      (inside_region(path_image(g))(p)
+        OR path_image(g)(p))
+      IMPLIES region(p)
+
+  derivative_error_squared(
+      f: vector_field,
+      derivative: jacobian,
+      p, q: point): real =
+    (x_coord(f(q)) - x_coord(f(p))
+      - j11(derivative) * (x_coord(q) - x_coord(p))
+      - j12(derivative) * (y_coord(q) - y_coord(p))) ^ 2
+      + (y_coord(f(q)) - y_coord(f(p))
+        - j21(derivative) * (x_coord(q) - x_coord(p))
+        - j22(derivative) * (y_coord(q) - y_coord(p))) ^ 2
+
+  has_frechet_derivative_at(
+      f: vector_field,
+      derivative: jacobian,
+      p: point): bool =
+    FORALL (eps: posreal):
+      EXISTS (delta: posreal):
+        FORALL (q: point):
+          (NOT (q = p)
+            AND squared_distance(q, p) < delta ^ 2)
+          IMPLIES
+            derivative_error_squared(f, derivative, p, q)
+              < eps ^ 2 * squared_distance(q, p)
+
+  jacobian_at(f: vector_field, p: point): jacobian =
+    epsilon(
+      LAMBDA (derivative: jacobian):
+        has_frechet_derivative_at(f, derivative, p))
+
+  differentiable_on(
+      f: vector_field,
+      region: planar_region): bool =
+    FORALL (p: point):
+      region(p) IMPLIES
+        EXISTS (derivative: jacobian):
+          has_frechet_derivative_at(f, derivative, p)
+
+  jacobian_distance_squared(
+      first, second: jacobian): real =
+    (j11(first) - j11(second)) ^ 2
+      + (j12(first) - j12(second)) ^ 2
+      + (j21(first) - j21(second)) ^ 2
+      + (j22(first) - j22(second)) ^ 2
+
+  continuous_jacobian_on(
+      f: vector_field,
+      region: planar_region): bool =
+    FORALL (p: point):
+      region(p) IMPLIES
+        FORALL (eps: posreal):
+          EXISTS (delta: posreal):
+            FORALL (q: point):
+              (region(q)
+                AND squared_distance(q, p) < delta ^ 2)
+              IMPLIES
+                jacobian_distance_squared(
+                  jacobian_at(f, q),
+                  jacobian_at(f, p))
+                  < eps ^ 2
+
+  curve_derivative_error_squared(
+      g: parametrized_curve,
+      velocity: point,
+      t, s: real): real =
+    (x_coord(g(s)) - x_coord(g(t))
+      - x_coord(velocity) * (s - t)) ^ 2
+      + (y_coord(g(s)) - y_coord(g(t))
+        - y_coord(velocity) * (s - t)) ^ 2
+
+  has_curve_derivative_at(
+      g: parametrized_curve,
+      velocity: point,
+      t: real): bool =
+    FORALL (eps: posreal):
+      EXISTS (delta: posreal):
+        FORALL (s: real):
+          (NOT (s = t) AND abs(s - t) < delta)
+          IMPLIES
+            curve_derivative_error_squared(g, velocity, t, s)
+              < eps ^ 2 * (s - t) ^ 2
+
+  curve_velocity(
+      g: parametrized_curve,
+      t: real): point =
+    epsilon(
+      LAMBDA (velocity: point):
+        has_curve_derivative_at(g, velocity, t))
+
+  positive_gauge(gauge: real_function): bool =
+    FORALL (x: real): 0 < gauge(x)
+
+  tagged_partition(
+      a, b: real,
+      count: nat,
+      points, tags: real_sequence): bool =
+    points(0) = a
+      AND points(count) = b
+      AND (FORALL (index: nat):
+        index < count IMPLIES
+          (points(index) < points(index + 1)
+            AND points(index) <= tags(index)
+            AND tags(index) <= points(index + 1)))
+
+  gauge_fine(
+      gauge: real_function,
+      count: nat,
+      points, tags: real_sequence): bool =
+    FORALL (index: nat):
+      index < count IMPLIES
+        (tags(index) - gauge(tags(index)) < points(index)
+          AND points(index + 1)
+            < tags(index) + gauge(tags(index)))
+
+  tagged_sum(
+      f: real_function,
+      count: nat,
+      points, tags: real_sequence): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      tagged_sum(f, count - 1, points, tags)
+        + f(tags(count - 1))
+            * (points(count) - points(count - 1))
+    ENDIF
+  MEASURE count
+
+  has_unit_interval_integral(
+      f: real_function,
+      integral_value: real): bool =
+    FORALL (eps: posreal):
+      EXISTS (gauge: real_function):
+        positive_gauge(gauge)
+          AND (FORALL
+              (count: nat),
+              (points, tags: real_sequence):
+            (tagged_partition(0, 1, count, points, tags)
+              AND gauge_fine(gauge, count, points, tags))
+            IMPLIES
+              abs(tagged_sum(f, count, points, tags)
+                - integral_value) < eps)
+
+  unit_interval_integrable(f: real_function): bool =
+    EXISTS (integral_value: real):
+      has_unit_interval_integral(f, integral_value)
+
+  unit_interval_integral(f: real_function): real =
+    epsilon(
+      LAMBDA (integral_value: real):
+        has_unit_interval_integral(f, integral_value))
+
+  valid_box(rectangle: box): bool =
+    left(rectangle) < right(rectangle)
+      AND bottom(rectangle) < top(rectangle)
+
+  in_closed_box(p: point, rectangle: box): bool =
+    left(rectangle) <= x_coord(p)
+      AND x_coord(p) <= right(rectangle)
+      AND bottom(rectangle) <= y_coord(p)
+      AND y_coord(p) <= top(rectangle)
+
+  box_contained_in(
+      inner, outer: box): bool =
+    left(outer) <= left(inner)
+      AND right(inner) <= right(outer)
+      AND bottom(outer) <= bottom(inner)
+      AND top(inner) <= top(outer)
+
+  box_content(rectangle: box): real =
+    (right(rectangle) - left(rectangle))
+      * (top(rectangle) - bottom(rectangle))
+
+  box_interiors_overlap(
+      first, second: box): bool =
+    left(first) < right(second)
+      AND left(second) < right(first)
+      AND bottom(first) < top(second)
+      AND bottom(second) < top(first)
+
+  tagged_box_division(
+      parent: box,
+      count: nat,
+      rectangles: box_sequence,
+      tags: point_sequence): bool =
+    valid_box(parent)
+      AND (FORALL (index: nat):
+        index < count IMPLIES
+          (valid_box(rectangles(index))
+            AND box_contained_in(rectangles(index), parent)
+            AND in_closed_box(tags(index), rectangles(index))))
+      AND (FORALL (first, second: nat):
+        first < second AND second < count IMPLIES
+          NOT box_interiors_overlap(
+            rectangles(first), rectangles(second)))
+      AND (FORALL (p: point):
+        in_closed_box(p, parent) IMPLIES
+          EXISTS (index: nat):
+            index < count
+              AND in_closed_box(p, rectangles(index)))
+
+  positive_planar_gauge(gauge: scalar_field): bool =
+    FORALL (p: point): 0 < gauge(p)
+
+  box_gauge_fine(
+      gauge: scalar_field,
+      count: nat,
+      rectangles: box_sequence,
+      tags: point_sequence): bool =
+    FORALL (index: nat):
+      index < count IMPLIES
+        (x_coord(tags(index)) - gauge(tags(index))
+            < left(rectangles(index))
+          AND right(rectangles(index))
+            < x_coord(tags(index)) + gauge(tags(index))
+          AND y_coord(tags(index)) - gauge(tags(index))
+            < bottom(rectangles(index))
+          AND top(rectangles(index))
+            < y_coord(tags(index)) + gauge(tags(index)))
+
+  tagged_box_sum(
+      f: scalar_field,
+      count: nat,
+      rectangles: box_sequence,
+      tags: point_sequence): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      tagged_box_sum(f, count - 1, rectangles, tags)
+        + f(tags(count - 1))
+            * box_content(rectangles(count - 1))
+    ENDIF
+  MEASURE count
+
+  has_box_integral(
+      f: scalar_field,
+      parent: box,
+      integral_value: real): bool =
+    valid_box(parent)
+      AND FORALL (eps: posreal):
+        EXISTS (gauge: scalar_field):
+          positive_planar_gauge(gauge)
+            AND (FORALL
+                (count: nat),
+                (rectangles: box_sequence),
+                (tags: point_sequence):
+              (tagged_box_division(
+                  parent, count, rectangles, tags)
+                AND box_gauge_fine(
+                  gauge, count, rectangles, tags))
+              IMPLIES
+                abs(tagged_box_sum(
+                  f, count, rectangles, tags)
+                    - integral_value) < eps)
+
+  region_subset_of_box(
+      region: planar_region,
+      rectangle: box): bool =
+    FORALL (p: point):
+      region(p) IMPLIES in_closed_box(p, rectangle)
+
+  restrict_to_region(
+      f: scalar_field,
+      region: planar_region): scalar_field =
+    LAMBDA (p: point):
+      IF region(p) THEN f(p) ELSE 0 ENDIF
+
+  has_area_integral(
+      f: scalar_field,
+      region: planar_region,
+      integral_value: real): bool =
+    EXISTS (parent: box):
+      region_subset_of_box(region, parent)
+        AND has_box_integral(
+          restrict_to_region(f, region),
+          parent,
+          integral_value)
+
+  area_integrable_on(
+      f: scalar_field,
+      region: planar_region): bool =
+    EXISTS (integral_value: real):
+      has_area_integral(f, region, integral_value)
+
+  area_integral(
+      f: scalar_field,
+      region: planar_region): real =
+    epsilon(
+      LAMBDA (integral_value: real):
+        has_area_integral(f, region, integral_value))
+
+  alternating_sign(index: nat): RECURSIVE real =
+    IF index = 0 THEN
+      1
+    ELSE
+      -alternating_sign(index - 1)
+    ENDIF
+  MEASURE index
+
+  leibniz_partial_sum(count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        leibniz_partial_sum(count - 1)
+          + alternating_sign(index)
+              / ((2 * index + 1) :: real)
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (eps: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < eps
+
+  is_pi(value: real): bool =
+    converges_to(
+      LAMBDA (count: nat):
+        4 * leibniz_partial_sum(count),
+      value)
+
+  pi: real =
+    epsilon(
+      LAMBDA (value: real):
+        is_pi(value))
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  winding_integrand(
+      g: parametrized_curve,
+      p: point): real_function =
+    LAMBDA (t: real):
+      safe_div(
+        (x_coord(g(t)) - x_coord(p))
+            * y_coord(curve_velocity(g, t))
+          - (y_coord(g(t)) - y_coord(p))
+            * x_coord(curve_velocity(g, t)),
+        squared_distance(g(t), p))
+
+  has_winding_number_one(
+      g: parametrized_curve,
+      p: point): bool =
+    has_unit_interval_integral(
+      winding_integrand(g, p),
+      2 * pi)
+
+  positively_oriented_on_inside(
+      g: parametrized_curve): bool =
+    FORALL (p: point):
+      inside_region(path_image(g))(p) IMPLIES
+        has_winding_number_one(g, p)
+
+  line_integrand(
+      f: vector_field,
+      g: parametrized_curve): real_function =
+    LAMBDA (t: real):
+      y_coord(f(g(t))) * x_coord(curve_velocity(g, t))
+        + x_coord(f(g(t))) * y_coord(curve_velocity(g, t))
+
+  curl_integrand(f: vector_field): scalar_field =
+    LAMBDA (p: point):
+      j11(jacobian_at(f, p))
+        - j22(jacobian_at(f, p))
+
+  green_s_theorem: bool =
+    FORALL
+        (f: vector_field),
+        (g: parametrized_curve),
+        (u: planar_region):
+      (absolutely_continuous_on_unit_interval(g)
+        AND closed_path(g)
+        AND positively_oriented_on_inside(g)
+        AND open_region(u)
+        AND inside_and_path_subset(g, u)
+        AND differentiable_on(f, u)
+        AND continuous_jacobian_on(f, u))
+      IMPLIES
+        (area_integrable_on(
+            curl_integrand(f),
+            inside_region(path_image(g)))
+          AND unit_interval_integrable(line_integrand(f, g))
+          AND unit_interval_integral(line_integrand(f, g))
+            = area_integral(
+                curl_integrand(f),
+                inside_region(path_image(g))))
+END green_s_theorem_021

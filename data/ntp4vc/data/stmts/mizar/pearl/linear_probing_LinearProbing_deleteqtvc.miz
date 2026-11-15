@@ -1,0 +1,391 @@
+:: Statement-only formalization of the NTP4VC corpus artifact
+:: pearl/linear_probing_LinearProbing_deleteqtvc: the linear-probing deletion
+:: verification condition advances a circular scan, moves a displaced key,
+:: restores the empty bucket, and preserves the table view and location
+:: invariants. This file contains no proof.
+
+environ
+  vocabularies TARSKI, XBOOLE_0, SUBSET_1, RELAT_1, FUNCT_1,
+    FUNCT_2, FUNCT_4, FUNCT_7, FUNCOP_1, PARTFUN1, ZFMISC_1,
+    NUMBERS, XREAL_0, CARD_1, XXREAL_0, ARYTM_1, ARYTM_3,
+    REAL_1, INT_1, NAT_1, VALUED_0, VALUED_1, ORDINAL1,
+    ORDINAL4, FINSEQ_1, FINSEQ_2, FINSET_1, MARGREL1,
+    XBOOLEAN, MCART_1;
+  notations TARSKI, XBOOLE_0, SUBSET_1, ZFMISC_1, XTUPLE_0,
+    MCART_1, RELAT_1, FUNCT_1, RELSET_1, PARTFUN1, FUNCT_2,
+    FUNCT_4, FUNCOP_1, FUNCT_7, ORDINAL1, CARD_1, NUMBERS,
+    XCMPLX_0, XREAL_0, REAL_1, INT_1, NAT_1, XXREAL_0,
+    FINSEQ_1, FINSEQ_2, FINSET_1, MARGREL1, XBOOLEAN;
+  constructors FUNCT_1, RELSET_1, PARTFUN1, FUNCT_2, FUNCT_4,
+    FUNCT_7, FUNCOP_1, CARD_1, REAL_1, INT_1, XXREAL_0,
+    ZFMISC_1, MCART_1, NAT_1, FINSEQ_1, FINSEQ_2, FINSET_1,
+    MARGREL1;
+  registrations XBOOLE_0, SUBSET_1, RELAT_1, FUNCT_1, RELSET_1,
+    FUNCT_2, FUNCT_4, FUNCT_7, FUNCOP_1, NUMBERS, CARD_1,
+    XXREAL_0, MEMBERED, VALUED_0, VALUED_1, XCMPLX_0,
+    XREAL_0, ORDINAL1, INT_1, NAT_1, FINSEQ_1, FINSEQ_2,
+    FINSET_1, MARGREL1, XBOOLEAN;
+  requirements REAL, NUMERALS, SUBSET, BOOLE, ARITHM;
+
+begin
+
+::$P-
+theorem
+  for K,KM being non empty set,
+      keym1 being Function of K,KM,
+      Eq,Neq being Relation of K,K,
+      hash being Function of K,INT,
+      dummy,defaultKey being Element of K,
+      bucket being Function of [:K,INT:],INT,
+      Between being Subset of [:INT,[:INT,INT:]:],
+      nthElem being Function of [:K*,INT:],K,
+      Numof being Function of [:[:K*,INT:],INT:],INT,
+      Valid being Subset of
+        [:K*,[:Funcs(KM,BOOLEAN),Funcs(KM,INT):]:],
+      setList being Function of [:[:K*,INT:],K:],K*,
+      next being Function of [:INT,INT:],INT,
+      circDist being Function of [:[:INT,INT:],INT:],INT,
+      f0,j,i being Integer,
+      a being FinSequence of K,
+      view1 being Function of KM,BOOLEAN,
+      loc1 being Function of KM,INT
+  st
+    (for x,y being Element of K holds
+       ([x,y] in Eq iff keym1.x = keym1.y)) &
+    (for x,y being Element of K holds
+       ([x,y] in Neq iff not [x,y] in Eq)) &
+    (for k being Element of K holds 0 <= hash.k) &
+    (for x,y being Element of K st [x,y] in Eq
+       holds hash.x = hash.y) &
+    (for n being Integer, k being Element of K st 0 < n
+       holds
+         ex hk,b being Integer st
+           hk = hash.k & b = bucket.[k,n] &
+           b = hk mod n & 0 <= b & b < n) &
+    (for l,q,r being Integer holds
+       ([l,[q,r]] in Between iff
+         (l <= q & q < r) or
+         (r < l & l <= q) or
+         (q < r & r < l))) &
+    (for s being FinSequence of K, q being Integer holds
+       (len s = 0 implies nthElem.[s,q] = defaultKey) &
+       (len s > 0 & q < 0 implies nthElem.[s,q] = s.1) &
+       (0 <= q & q < len s implies nthElem.[s,q] = s.(q+1)) &
+       (len s <= q implies nthElem.[s,q] = defaultKey)) &
+    (for s being FinSequence of K, l,u being Integer holds
+       (u <= l implies Numof.[[s,l],u] = 0) &
+       (l < u & [nthElem.[s,u-1],dummy] in Eq implies
+          ex c,d being Integer st
+            c = Numof.[[s,l],u] &
+            d = Numof.[[s,l],u-1] & c = 1 + d) &
+       (l < u & not [nthElem.[s,u-1],dummy] in Eq implies
+          Numof.[[s,l],u] = Numof.[[s,l],u-1])) &
+    (for s being FinSequence of K,
+         v being Function of KM,BOOLEAN,
+         p being Function of KM,INT
+     holds
+       ([s,[v,p]] in Valid iff
+         not v.(keym1.dummy) = TRUE &
+         (for q being Integer st 0 <= q & q < len s
+          holds
+            [nthElem.[s,q],dummy] in Neq implies
+              v.(keym1.(nthElem.[s,q])) = TRUE &
+              p.(keym1.(nthElem.[s,q])) = q) &
+         (for x being Element of K st v.(keym1.x) = TRUE
+          holds
+            0 <= p.(keym1.x) & p.(keym1.x) < len s &
+            [nthElem.[s,p.(keym1.x)],x] in Eq &
+            (for q being Integer st
+               0 <= q & q < len s &
+               [bucket.[x,len s],[q,p.(keym1.x)]] in Between
+             holds
+               [nthElem.[s,q],x] in Neq &
+               [nthElem.[s,q],dummy] in Neq)))) &
+    (for s being FinSequence of K, q being Integer,
+         x being Element of K st 0 <= q & q < len s
+     holds
+       len (setList.[[s,q],x]) = len s &
+       (for z being Integer st 0 <= z & z < len s
+        holds
+          (z = q implies nthElem.[setList.[[s,q],x],z] = x) &
+          (z <> q implies nthElem.[setList.[[s,q],x],z] =
+            nthElem.[s,z]))) &
+    (for n,q being Integer holds
+       (q + 1 = n implies next.[n,q] = 0) &
+       (q + 1 <> n implies next.[n,q] = q + 1)) &
+    (for n,p,q being Integer holds
+       (p <= q implies circDist.[[n,p],q] = n - q + p) &
+       (not p <= q implies circDist.[[n,p],q] = p - q)) &
+    0 <= f0 & f0 < len a &
+    0 <= j & j < len a &
+    0 <= i & i < len a &
+    j <> f0 &
+    [nthElem.[a,j],dummy] in Eq &
+    [nthElem.[a,f0],dummy] in Eq &
+    [j,[i,f0]] in Between &
+    (for k being Integer st
+       0 <= k & k < len a &
+       [i,[k,f0]] in Between & k <> i
+     holds [nthElem.[a,k],dummy] in Neq) &
+    not view1.(keym1.dummy) = TRUE &
+    (for k being Integer st 0 <= k & k < len a
+     holds
+       [nthElem.[a,k],dummy] in Neq implies
+         view1.(keym1.(nthElem.[a,k])) = TRUE &
+         loc1.(keym1.(nthElem.[a,k])) = k) &
+    (for x being Element of K st view1.(keym1.x) = TRUE
+     holds
+       0 <= loc1.(keym1.x) & loc1.(keym1.x) < len a &
+       [nthElem.[a,loc1.(keym1.x)],x] in Eq &
+       (for l being Integer st
+          0 <= l & l < len a &
+          [bucket.[x,len a],[l,loc1.(keym1.x)]] in Between
+        holds
+          [nthElem.[a,l],x] in Neq &
+          ([nthElem.[a,l],dummy] in Neq or
+           l = j & [j,[i,loc1.(keym1.x)]] in Between)))
+  holds
+    ex n,i1 being Integer st
+      n = len a & i1 = next.[n,i] &
+      0 <= i1 & i1 < len a &
+      (for xi being Element of K st xi = nthElem.[a,i1]
+       holds
+         (([xi,dummy] in Neq iff keym1.xi <> keym1.dummy)
+          implies
+            (([xi,dummy] in Neq implies
+               0 < n &
+               (for r being Integer st r = bucket.[xi,n]
+                holds
+                  0 <= r & r < n implies
+                    for o2 being Element of BOOLEAN st
+                      ((j < r implies
+                         (o2 = TRUE iff r <= i1)) &
+                       (not j < r implies o2 = FALSE))
+                    holds
+                      for o3 being Element of BOOLEAN st
+                        ((o2 = TRUE & o3 = TRUE) or
+                         (o2 <> TRUE &
+                          ex o4 being Element of BOOLEAN st
+                            (i1 < j implies
+                               (o4 = TRUE iff j < r)) &
+                            (not i1 < j implies o4 = FALSE) &
+                            (o4 = TRUE implies o3 = TRUE) &
+                            (o4 <> TRUE implies
+                              ((r <= i1 implies
+                                  (o3 = TRUE iff i1 < j)) &
+                               (not r <= i1 implies
+                                  o3 = FALSE)))))
+                      holds
+                        (o3 = TRUE implies
+                          for d0,d1 being Integer st
+                            d0 = circDist.[[n,f0],i] &
+                            d1 = circDist.[[n,f0],i1]
+                          holds
+                          ((0 <= d0 & d1 < d0) &
+                           0 <= f0 & f0 < len a &
+                           0 <= j & j < len a &
+                           0 <= i1 & i1 < len a &
+                           j <> f0 &
+                           [nthElem.[a,j],dummy] in Eq &
+                           [nthElem.[a,f0],dummy] in Eq &
+                           [j,[i1,f0]] in Between &
+                           (for k being Integer st
+                              0 <= k & k < len a &
+                              [i1,[k,f0]] in Between & k <> i1
+                            holds
+                              [nthElem.[a,k],dummy] in Neq) &
+                           not view1.(keym1.dummy) = TRUE &
+                           (for k being Integer st
+                              0 <= k & k < len a
+                            holds
+                              [nthElem.[a,k],dummy] in Neq
+                              implies
+                                view1.(keym1.(nthElem.[a,k])) =
+                                  TRUE &
+                                loc1.(keym1.(nthElem.[a,k])) =
+                                  k) &
+                           (for x being Element of K st
+                              view1.(keym1.x) = TRUE
+                            holds
+                              0 <= loc1.(keym1.x) &
+                              loc1.(keym1.x) < len a &
+                              [nthElem.[a,loc1.(keym1.x)],x]
+                                in Eq &
+                              (for l being Integer st
+                                 0 <= l & l < len a &
+                                 [bucket.[x,len a],
+                                   [l,loc1.(keym1.x)]]
+                                   in Between
+                               holds
+                                 [nthElem.[a,l],x] in Neq &
+                                 ([nthElem.[a,l],dummy] in Neq
+                                  or
+                                  l = j &
+                                  [j,[i1,loc1.(keym1.x)]]
+                                    in Between)))) &
+                         (o3 <> TRUE implies
+                           for a1 being FinSequence of K st
+                             len a1 = len a &
+                             (for i2 being Integer st
+                                0 <= i2 & i2 < len a1
+                              holds
+                                nthElem.[a1,i2] =
+                                  nthElem.[a,i2])
+                           holds
+                             0 <= j & j < len a &
+                             (len (setList.[[a,j],xi]) = len a
+                              implies
+                               ((for q being Integer st
+                                   0 <= q &
+                                   q < len (setList.[[a,j],xi])
+                                 holds
+                                   (q = j implies
+                                     nthElem.[setList.[[a,j],xi],q]
+                                       = xi) &
+                                   (q <> j implies
+                                     nthElem.[setList.[[a,j],xi],q]
+                                       = nthElem.[a,q]))
+                                implies
+                                  for a2 being FinSequence of K st
+                                    len a2 =
+                                      len (setList.[[a,j],xi]) &
+                                    (for i2 being Integer st
+                                       0 <= i2 & i2 < len a2
+                                     holds
+                                       nthElem.[a2,i2] =
+                                         nthElem.[
+                                           setList.[[a,j],xi],i2])
+                                  holds
+                                    0 <= i1 &
+                                    i1 <
+                                      len (setList.[[a,j],xi]) &
+                                    (len
+                                       (setList.[[
+                                         setList.[[a,j],xi],i1],
+                                         dummy])
+                                     =
+                                       len (setList.[[a,j],xi])
+                                     implies
+                                      ((for q being Integer st
+                                          0 <= q &
+                                          q < len (setList.[[
+                                            setList.[[a,j],xi],i1],
+                                            dummy])
+                                        holds
+                                          (q = i1 implies
+                                            nthElem.[
+                                              setList.[[
+                                                setList.[[a,j],xi],
+                                                i1],dummy],q]
+                                              = dummy) &
+                                          (q <> i1 implies
+                                            nthElem.[
+                                              setList.[[
+                                                setList.[[a,j],xi],
+                                                i1],dummy],q]
+                                              =
+                                            nthElem.[
+                                              setList.[[a,j],xi],q]))
+                                       implies
+                                         for a12 being
+                                           FinSequence of K st
+                                         a12 =
+                                             setList.[[
+                                               setList.[[a,j],xi],
+                                               i1],dummy]
+                                         holds
+                                           for n12,d0,d1 being Integer st
+                                             n12 = len a12 &
+                                             d0 = circDist.[[n,f0],i] &
+                                             d1 =
+                                               circDist.[[n12,f0],i1]
+                                           holds
+                                           for locU being
+                                             Function of KM,INT st
+                                             locU =
+                                               (loc1)+*(keym1.xi,j)
+                                           holds
+                                           ((0 <= d0 & d1 < d0) &
+                                            0 <= f0 &
+                                            f0 < len a12 &
+                                            0 <= i1 &
+                                            i1 < len a12 &
+                                            0 <= i1 &
+                                            i1 < len a12 &
+                                            i1 <> f0 &
+                                            [nthElem.[a12,i1],dummy]
+                                              in Eq &
+                                            [nthElem.[a12,f0],dummy]
+                                              in Eq &
+                                            [i1,[i1,f0]] in Between &
+                                            (for k being Integer st
+                                               0 <= k & k < len a12 &
+                                               [i1,[k,f0]]
+                                                 in Between &
+                                               k <> i1
+                                             holds
+                                               [nthElem.[a12,k],dummy]
+                                                 in Neq) &
+                                            not
+                                              view1.(keym1.dummy)
+                                                = TRUE &
+                                            (for k being Integer st
+                                               0 <= k & k < len a12
+                                             holds
+                                               [nthElem.[a12,k],dummy]
+                                                 in Neq
+                                               implies
+                                                 view1.(keym1.(
+                                                   nthElem.[a12,k]))
+                                                   = TRUE &
+                                                 locU.(
+                                                     keym1.(
+                                                       nthElem.[a12,k]))
+                                                   = k) &
+                                            (for x being Element of K st
+                                               view1.(keym1.x) = TRUE
+                                             holds
+                                               0 <=
+                                                 locU.(keym1.x) &
+                                               locU.(keym1.x) < len a12 &
+                                               [nthElem.[a12,
+                                                  locU.(keym1.x)],x]
+                                                 in Eq &
+                                               (for l being Integer st
+                                                  0 <= l & l < len a12 &
+                                                  [bucket.[x,len a12],
+                                                    [l,
+                                                     locU.(keym1.x)]]
+                                                    in Between
+                                                holds
+                                                  [nthElem.[a12,l],x]
+                                                    in Neq &
+                                                  ([nthElem.[a12,l],
+                                                     dummy] in Neq
+                                                   or
+                                                   l = i1 &
+                                                   [i1,[i1,
+                                                     locU.(keym1.x)]]
+                                                     in Between))) &
+                                            (for loc2 being
+                                                   Function of KM,INT,
+                                                 a3 being
+                                                   FinSequence of K st
+                                               len a3 = len a12
+                                             holds
+                                               (Numof.[[a3,0],len a3]
+                                                  =
+                                                Numof.[[a12,0],len a3] &
+                                                [a3,[view1,loc2]]
+                                                  in Valid)
+                                               implies
+                                                 Numof.[[a3,0],len a3]
+                                                   =
+                                                 Numof.[[a,0],len a3] &
+                                                 [a3,[view1,loc2]]
+                                                   in Valid))))))))) &
+             (not [xi,dummy] in Neq implies
+               [a,[view1,loc1]] in Valid)))))
+proof
+end;
+::$P+

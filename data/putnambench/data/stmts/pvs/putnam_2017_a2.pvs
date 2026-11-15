@@ -1,0 +1,227 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2017_a2:
+% a rational-function sequence with Q_0(x) = 1, Q_1(x) = x, and the stated
+% recurrence has an integer-coefficient polynomial at every positive index.
+% This file contains no proof.
+
+putnam_2017_a2: THEORY
+BEGIN
+  rational_polynomial: TYPE = list[rat]
+  integer_polynomial: TYPE = list[int]
+
+  polynomial_coefficient(
+      polynomial: rational_polynomial,
+      degree: nat): RECURSIVE rat =
+    CASES polynomial OF
+      null: 0,
+      cons(coefficient, tail):
+        IF degree = 0 THEN
+          coefficient
+        ELSE
+          polynomial_coefficient(tail, degree - 1)
+        ENDIF
+    ENDCASES
+  MEASURE polynomial BY <<
+
+  polynomial_equal(
+      left, right: rational_polynomial): bool =
+    FORALL (degree: nat):
+      polynomial_coefficient(left, degree)
+        = polynomial_coefficient(right, degree)
+
+  polynomial_add(
+      left, right: rational_polynomial):
+      RECURSIVE rational_polynomial =
+    CASES left OF
+      null: right,
+      cons(left_coefficient, left_tail):
+        CASES right OF
+          null: left,
+          cons(right_coefficient, right_tail):
+            cons(
+              left_coefficient + right_coefficient,
+              polynomial_add(left_tail, right_tail))
+        ENDCASES
+    ENDCASES
+  MEASURE left BY <<
+
+  polynomial_negate(
+      polynomial: rational_polynomial):
+      RECURSIVE rational_polynomial =
+    CASES polynomial OF
+      null: null,
+      cons(coefficient, tail):
+        cons(-coefficient, polynomial_negate(tail))
+    ENDCASES
+  MEASURE polynomial BY <<
+
+  polynomial_subtract(
+      left, right: rational_polynomial):
+      rational_polynomial =
+    polynomial_add(left, polynomial_negate(right))
+
+  polynomial_scale(
+      scalar: rat,
+      polynomial: rational_polynomial):
+      RECURSIVE rational_polynomial =
+    CASES polynomial OF
+      null: null,
+      cons(coefficient, tail):
+        cons(
+          scalar * coefficient,
+          polynomial_scale(scalar, tail))
+    ENDCASES
+  MEASURE polynomial BY <<
+
+  polynomial_multiply(
+      left, right: rational_polynomial):
+      RECURSIVE rational_polynomial =
+    CASES left OF
+      null: null,
+      cons(coefficient, tail):
+        polynomial_add(
+          polynomial_scale(coefficient, right),
+          cons(0, polynomial_multiply(tail, right)))
+    ENDCASES
+  MEASURE left BY <<
+
+  polynomial_zero: rational_polynomial = null
+
+  polynomial_one: rational_polynomial =
+    cons((1 :: rat), null)
+
+  polynomial_X: rational_polynomial =
+    cons((0 :: rat), cons((1 :: rat), null))
+
+  rational_function_representation: TYPE =
+    [# numerator: rational_polynomial,
+       denominator: rational_polynomial #]
+
+  valid_rational_function(
+      value: rational_function_representation): bool =
+    NOT polynomial_equal(denominator(value), polynomial_zero)
+
+  rational_function_equal(
+      left, right: rational_function_representation): bool =
+    polynomial_equal(
+      polynomial_multiply(
+        numerator(left), denominator(right)),
+      polynomial_multiply(
+        numerator(right), denominator(left)))
+
+  rational_zero: rational_function_representation =
+    (# numerator := polynomial_zero,
+       denominator := polynomial_one #)
+
+  rational_one: rational_function_representation =
+    (# numerator := polynomial_one,
+       denominator := polynomial_one #)
+
+  rational_X: rational_function_representation =
+    (# numerator := polynomial_X,
+       denominator := polynomial_one #)
+
+  rational_add(
+      left, right: rational_function_representation):
+      rational_function_representation =
+    (# numerator :=
+         polynomial_add(
+           polynomial_multiply(
+             numerator(left), denominator(right)),
+           polynomial_multiply(
+             numerator(right), denominator(left))),
+       denominator :=
+         polynomial_multiply(
+           denominator(left), denominator(right)) #)
+
+  rational_negate(
+      value: rational_function_representation):
+      rational_function_representation =
+    (# numerator := polynomial_negate(numerator(value)),
+       denominator := denominator(value) #)
+
+  rational_subtract(
+      left, right: rational_function_representation):
+      rational_function_representation =
+    rational_add(left, rational_negate(right))
+
+  rational_multiply(
+      left, right: rational_function_representation):
+      rational_function_representation =
+    (# numerator :=
+         polynomial_multiply(
+           numerator(left), numerator(right)),
+       denominator :=
+         polynomial_multiply(
+           denominator(left), denominator(right)) #)
+
+  rational_inverse(
+      value: rational_function_representation):
+      rational_function_representation =
+    IF polynomial_equal(numerator(value), polynomial_zero) THEN
+      rational_zero
+    ELSE
+      (# numerator := denominator(value),
+         denominator := numerator(value) #)
+    ENDIF
+
+  rational_divide(
+      left, right: rational_function_representation):
+      rational_function_representation =
+    rational_multiply(left, rational_inverse(right))
+
+  rational_square(
+      value: rational_function_representation):
+      rational_function_representation =
+    rational_multiply(value, value)
+
+  map_integer_polynomial(
+      polynomial: integer_polynomial):
+      RECURSIVE rational_polynomial =
+    CASES polynomial OF
+      null: null,
+      cons(coefficient, tail):
+        cons(
+          (coefficient :: rat),
+          map_integer_polynomial(tail))
+    ENDCASES
+  MEASURE polynomial BY <<
+
+  rational_of_integer_polynomial(
+      polynomial: integer_polynomial):
+      rational_function_representation =
+    (# numerator := map_integer_polynomial(polynomial),
+       denominator := polynomial_one #)
+
+  rational_function_sequence: TYPE =
+    [nat -> rational_function_representation]
+
+  valid_sequence(Q: rational_function_sequence): bool =
+    FORALL (index: nat):
+      valid_rational_function(Q(index))
+
+  has_base_values(Q: rational_function_sequence): bool =
+    rational_function_equal(Q(0), rational_one)
+      AND rational_function_equal(Q(1), rational_X)
+
+  has_recurrence(Q: rational_function_sequence): bool =
+    FORALL (index: nat):
+      rational_function_equal(
+        Q(index + 2),
+        rational_divide(
+          rational_subtract(
+            rational_square(Q(index + 1)),
+            rational_one),
+          Q(index)))
+
+  putnam_2017_a2: bool =
+    FORALL (Q: rational_function_sequence), (n: nat):
+      (valid_sequence(Q)
+        AND has_base_values(Q)
+        AND has_recurrence(Q)
+        AND n > 0)
+      IMPLIES
+        EXISTS (P: integer_polynomial):
+          rational_function_equal(
+            Q(n),
+            rational_of_integer_polynomial(P))
+END putnam_2017_a2

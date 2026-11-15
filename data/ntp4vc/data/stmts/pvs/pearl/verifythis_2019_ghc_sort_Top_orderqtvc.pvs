@@ -1,0 +1,117 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/verifythis_2019_ghc_sort_Top_orderqtvc: ordering a strictly increasing
+% or nonincreasing integer list by retaining it or reversing it, yielding a
+% nondecreasing permutation. This file contains no proof.
+
+verifythis_2019_ghc_sort_Top_orderqtvc: THEORY
+BEGIN
+
+  strictly_increasing(values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        CASES tail OF
+          null:
+            TRUE,
+          cons(next, rest):
+            head < next AND strictly_increasing(tail)
+        ENDCASES
+    ENDCASES
+  MEASURE values BY <<
+
+  nondecreasing(values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        CASES tail OF
+          null:
+            TRUE,
+          cons(next, rest):
+            head <= next AND nondecreasing(tail)
+        ENDCASES
+    ENDCASES
+  MEASURE values BY <<
+
+  nonincreasing(values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        CASES tail OF
+          null:
+            TRUE,
+          cons(next, rest):
+            next <= head AND nonincreasing(tail)
+        ENDCASES
+    ENDCASES
+  MEASURE values BY <<
+
+  list_reverse(values: list[int]): RECURSIVE list[int] =
+    CASES values OF
+      null:
+        null,
+      cons(head, tail):
+        append(list_reverse(tail), cons(head, null))
+    ENDCASES
+  MEASURE values BY <<
+
+  occurrence_count(value: int, values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        (IF head = value THEN 1 ELSE 0 ENDIF)
+          + occurrence_count(value, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  list_permutation(left, right: list[int]): bool =
+    FORALL (value: int):
+      occurrence_count(value, left) = occurrence_count(value, right)
+
+  match_shape_obligation(values: list[int]): bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        CASES tail OF
+          null:
+            TRUE,
+          cons(next, rest):
+            TRUE
+        ENDCASES
+    ENDCASES
+
+  order_result(
+      values, result: list[int]): bool =
+    CASES values OF
+      null:
+        result = values,
+      cons(first, tail):
+        CASES tail OF
+          null:
+            result = values,
+          cons(second, rest):
+            IF first < second THEN
+              result = values
+            ELSE
+              result = list_reverse(values)
+            ENDIF
+        ENDCASES
+    ENDCASES
+
+  order_vc: bool =
+    FORALL (values: list[int]):
+      (strictly_increasing(values) OR nonincreasing(values))
+        IMPLIES
+          match_shape_obligation(values)
+            AND
+          (FORALL (result: list[int]):
+            order_result(values, result)
+              IMPLIES
+                nondecreasing(result)
+                  AND list_permutation(values, result))
+
+END verifythis_2019_ghc_sort_Top_orderqtvc

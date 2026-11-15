@@ -1,0 +1,435 @@
+:: Statement-only formalization of the NTP4VC corpus artifact
+:: pearl/register_allocation_FiniteNumberOfRegisters_compileqtvc: the
+:: finite-register expression compiler verification condition, including
+:: recursive weakest-precondition obligations and spill-stack code assembly.
+:: This file contains no proof.
+
+environ
+  vocabularies TARSKI, XBOOLE_0, SUBSET_1, RELAT_1, FUNCT_1, FUNCT_2,
+    FUNCT_4, FUNCT_7, FUNCOP_1, PARTFUN1, FINSEQ_1, FINSEQ_2, NUMBERS,
+    INT_1, CARD_1, VALUED_0, VALUED_1, ORDINAL1, ORDINAL4,
+    ARYTM_0, ARYTM_1, ARYTM_2, ARYTM_3, REAL_1, NAT_1, ZFMISC_1,
+    MCART_1, MARGREL1, XBOOLEAN, XCMPLX_0, XREAL_0, XXREAL_0;
+  notations TARSKI, XBOOLE_0, ZFMISC_1, XTUPLE_0, MCART_1, SUBSET_1,
+    RELAT_1, RELSET_1, PARTFUN1, FUNCT_1, FUNCT_2, FUNCT_4, FUNCOP_1,
+    FUNCT_7, FINSEQ_1, FINSEQ_2, ORDINAL1, CARD_1, ARYTM_2, ARYTM_1,
+    NUMBERS, ARYTM_0, XCMPLX_0, XREAL_0, REAL_1, NAT_1, XXREAL_0,
+    INT_1, MARGREL1;
+  constructors RELAT_1, RELSET_1, PARTFUN1, FUNCT_1, FUNCT_2, FUNCT_4,
+    FUNCT_7, FUNCOP_1, FINSEQ_1, FINSEQ_2, ZFMISC_1, XTUPLE_0,
+    MCART_1, ARYTM_1, ARYTM_0, CARD_1, XCMPLX_0, XXREAL_0, REAL_1,
+    NAT_1, XREAL_0, NUMBERS, INT_1, MARGREL1;
+  registrations XBOOLE_0, SUBSET_1, RELAT_1, RELSET_1, PARTFUN1,
+    FUNCT_1, FUNCT_2, FUNCT_4, FUNCT_7, FUNCOP_1, FINSEQ_1, FINSEQ_2,
+    ORDINAL1, NUMBERS, CARD_1, XTUPLE_0, VALUED_0, VALUED_1, XCMPLX_0,
+    XXREAL_0, XREAL_0, NAT_1, MEMBERED, INT_1, MARGREL1;
+  requirements BOOLE, SUBSET, NUMERALS, REAL, ARITHM;
+  equalities XBOOLEAN;
+
+begin
+
+::$P-
+theorem
+  for A,E,I,S,H,W being non empty set,
+      evar being Function of A,E,
+      eneg being Function of E,E,
+      eadd being Function of [:E,E:],E,
+      Child being Relation of E,E,
+      eval being Function of [:Funcs(A,INT),E:],INT,
+      exec being Function of [:I,S:],S,
+      execList being Function of [:I*,S:],S,
+      exprPost being
+        Function of [:E,INT:],Funcs(S,Funcs(S,BOOLEAN)),
+      hCode being Function of H,I*,
+      hPost being Function of H,Funcs(S,Funcs(S,BOOLEAN)),
+      wTrans being
+        Function of W,Funcs(Funcs(S,BOOLEAN),Funcs(S,BOOLEAN)),
+      wCode being Function of W,I*,
+      HOk being Subset of H,
+      WOk being Subset of W,
+      wpTrans being
+        Function of
+          Funcs(S,Funcs(S,BOOLEAN)),
+          Funcs(Funcs(S,BOOLEAN),Funcs(S,BOOLEAN)),
+      rcomp being
+        Function of
+          Funcs(Funcs(S,BOOLEAN),Funcs(S,BOOLEAN)),
+          Funcs(
+            Funcs(Funcs(S,BOOLEAN),Funcs(S,BOOLEAN)),
+            Funcs(Funcs(S,BOOLEAN),Funcs(S,BOOLEAN))),
+      liftExec being
+        Function of I,Funcs(Funcs(S,BOOLEAN),Funcs(S,BOOLEAN)),
+      ident being
+        Function of Funcs(S,BOOLEAN),Funcs(S,BOOLEAN),
+      k,r being Integer,
+      e being Element of E
+  st
+    2 <= k &
+    0 <= r & r < k &
+    (for x,y being Element of A st evar.x = evar.y holds x = y) &
+    (for e1,e2 being Element of E st eneg.e1 = eneg.e2 holds e1 = e2) &
+    (for e1,e2,f1,f2 being Element of E st
+       eadd.[e1,e2] = eadd.[f1,f2]
+     holds e1 = f1 & e2 = f2) &
+    (for x being Element of A, e1 being Element of E
+     holds evar.x <> eneg.e1) &
+    (for x being Element of A, e1,e2 being Element of E
+     holds evar.x <> eadd.[e1,e2]) &
+    (for e0,e1,e2 being Element of E
+     holds eneg.e0 <> eadd.[e1,e2]) &
+    (for e0 being Element of E holds
+       (ex x being Element of A st e0 = evar.x) or
+       (ex e1 being Element of E st e0 = eneg.e1) or
+       ex e1,e2 being Element of E st e0 = eadd.[e1,e2]) &
+    (for X being Subset of E st
+       (for x being Element of A holds evar.x in X) &
+       (for e1 being Element of E st e1 in X holds eneg.e1 in X) &
+       (for e1,e2 being Element of E st e1 in X & e2 in X
+        holds eadd.[e1,e2] in X)
+     holds X = E) &
+    (for u,v being Element of E holds
+       ([u,v] in Child iff
+         (ex e1 being Element of E st v = eneg.e1 & u = e1) or
+         ex e1,e2 being Element of E st
+           v = eadd.[e1,e2] & (u = e1 or u = e2))) &
+    (for mem being Function of A,INT,
+         x being Element of A
+     holds eval.[mem,evar.x] = mem.x) &
+    (for mem being Function of A,INT,
+         e1 being Element of E,
+         v being Integer st v = eval.[mem,e1]
+     holds eval.[mem,eneg.e1] = -v) &
+    (for mem being Function of A,INT,
+         e1,e2 being Element of E,
+         v1,v2 being Integer st
+       v1 = eval.[mem,e1] & v2 = eval.[mem,e2]
+     holds
+       eval.[mem,eadd.[e1,e2]] = v1 + v2) &
+    I =
+      [:{0},A,INT:] \/
+      [:{1},INT:] \/
+      [:{2},INT,INT:] \/
+      [:{3},INT:] \/
+      [:{4},INT:] &
+    S = [:Funcs(A,INT),Funcs(INT,INT),INT*:] &
+    (for x being Element of A,
+         i being Integer,
+         mem being Function of A,INT,
+         reg being Function of INT,INT,
+         stack being FinSequence of INT
+     holds
+       exec.[[0,x,i],[mem,reg,stack]] =
+         [mem,reg+*(i,mem.x),stack]) &
+    (for i,v being Integer,
+         mem being Function of A,INT,
+         reg being Function of INT,INT,
+         stack being FinSequence of INT
+     st v = reg.i
+     holds
+       exec.[[1,i],[mem,reg,stack]] =
+         [mem,reg+*(i,-v),stack]) &
+    (for i1,i2,v1,v2 being Integer,
+         mem being Function of A,INT,
+         reg being Function of INT,INT,
+         stack being FinSequence of INT
+     st v1 = reg.i1 & v2 = reg.i2
+     holds
+       exec.[[2,i1,i2],[mem,reg,stack]] =
+         [mem,reg+*(i2,v1 + v2),stack]) &
+    (for i being Integer,
+         mem being Function of A,INT,
+         reg being Function of INT,INT,
+         stack being FinSequence of INT
+     holds
+       exec.[[3,i],[mem,reg,stack]] =
+         [mem,reg,<*(reg.i)*> ^ stack]) &
+    (for i being Integer,
+         mem being Function of A,INT,
+         reg being Function of INT,INT
+     holds exec.[[4,i],[mem,reg,{}]] = [mem,reg,{}]) &
+    (for i,v being Integer,
+         mem being Function of A,INT,
+         reg being Function of INT,INT,
+         stack being FinSequence of INT
+     holds
+       exec.[[4,i],[mem,reg,<*v*> ^ stack]] =
+         [mem,reg+*(i,v),stack]) &
+    (for s being Element of S
+     holds execList.[{},s] = s) &
+    (for i being Element of I,
+         c being FinSequence of I,
+         s being Element of S
+     holds
+       execList.[<*i*> ^ c,s] = execList.[c,exec.[i,s]]) &
+    (for e0 being Element of E,
+         i being Integer,
+         s1,s2 being Element of S,
+         p being Function of S,Funcs(S,BOOLEAN),
+         mem1,mem2 being Function of A,INT,
+         reg1,reg2 being Function of INT,INT,
+         stack1,stack2 being FinSequence of INT st
+       s1 = [mem1,reg1,stack1] &
+       s2 = [mem2,reg2,stack2] &
+       p = exprPost.[e0,i]
+     holds
+       ((p.s1).s2 = TRUE iff
+         mem2 = mem1 &
+         reg2.i = eval.[mem1,e0] &
+         stack2 = stack1 &
+         (for i1 being Integer st i1 < i
+          holds reg2.i1 = reg1.i1))) &
+    H = [:I*,Funcs(S,Funcs(S,BOOLEAN)):] &
+    (for c being FinSequence of I,
+         p being Function of S,Funcs(S,BOOLEAN)
+     holds hCode.[c,p] = c & hPost.[c,p] = p) &
+    W =
+      [:Funcs(Funcs(S,BOOLEAN),Funcs(S,BOOLEAN)),I*:] &
+    (for t being
+           Function of Funcs(S,BOOLEAN),Funcs(S,BOOLEAN),
+         c being FinSequence of I
+     holds wTrans.[t,c] = t & wCode.[t,c] = c) &
+    (for h being Element of H,
+         p being Function of S,Funcs(S,BOOLEAN) st p = hPost.h
+     holds
+       (h in HOk iff
+         for s being Element of S
+         holds
+           (p.s).(execList.[hCode.h,s]) = TRUE)) &
+    (for w being Element of W,
+         t being Function of Funcs(S,BOOLEAN),Funcs(S,BOOLEAN) st
+       t = wTrans.w
+     holds
+       (w in WOk iff
+         for q being Function of S,BOOLEAN,
+             s being Element of S st
+           (t.q).s = TRUE
+         holds q.(execList.[wCode.w,s]) = TRUE)) &
+    (for p being Function of S,Funcs(S,BOOLEAN),
+         t being Function of Funcs(S,BOOLEAN),Funcs(S,BOOLEAN),
+         q being Function of S,BOOLEAN,
+         s1 being Element of S st t = wpTrans.p
+     holds
+       ((t.q).s1 = TRUE iff
+         for s2 being Element of S st (p.s1).s2 = TRUE
+         holds q.s2 = TRUE)) &
+    (for t1,t2 being
+           Function of Funcs(S,BOOLEAN),Funcs(S,BOOLEAN),
+         tc being Function of
+           Funcs(Funcs(S,BOOLEAN),Funcs(S,BOOLEAN)),
+           Funcs(Funcs(S,BOOLEAN),Funcs(S,BOOLEAN)),
+         q being Function of S,BOOLEAN
+     st tc = rcomp.t1
+     holds (tc.t2).q = t2.(t1.q)) &
+    (for i being Element of I,
+         t being Function of Funcs(S,BOOLEAN),Funcs(S,BOOLEAN),
+         q being Function of S,BOOLEAN,
+         s being Element of S st t = liftExec.i
+     holds (t.q).s = q.(exec.[i,s])) &
+    (for q being Function of S,BOOLEAN holds ident.q = q)
+  holds
+    ((for x being Element of A st e = evar.x
+      holds
+        for o2 being Element of W st
+          o2 in WOk & wTrans.o2 = ident
+        holds o2 in WOk) &
+     (for e1 being Element of E st e = eneg.e1
+      holds
+        for o2 being Element of W st
+          o2 in WOk & wTrans.o2 = ident
+        holds
+          o2 in WOk &
+          (for o3 being Element of W st
+             o3 in WOk &
+             wTrans.o3 =
+               (rcomp.(wTrans.o2)).(liftExec.[1,r])
+           holds
+             [e1,e] in Child & 0 <= r & r < k &
+             (for o4 being Element of H st
+                o4 in HOk &
+                hPost.o4 = exprPost.[e1,r]
+              holds
+                o4 in HOk &
+                (for o5 being Element of W st
+                   o5 in WOk &
+                   wTrans.o5 = wpTrans.(hPost.o4)
+                 holds o5 in WOk & o3 in WOk)))) &
+     (for e1,e2 being Element of E st e = eadd.[e1,e2]
+      holds
+        (r < k - 1 implies
+          for o2 being Element of W st
+            o2 in WOk & wTrans.o2 = ident
+          holds
+            o2 in WOk &
+            (for o3 being Element of W st
+               o3 in WOk &
+               wTrans.o3 =
+                 (rcomp.(wTrans.o2)).(liftExec.[2,r + 1,r])
+             holds
+               [e2,e] in Child & 0 <= r + 1 & r + 1 < k &
+               (for o5 being Element of H st
+                  o5 in HOk &
+                  hPost.o5 = exprPost.[e2,r + 1]
+                holds
+                  o5 in HOk &
+                  (for o6 being Element of W st
+                     o6 in WOk &
+                     wTrans.o6 = wpTrans.(hPost.o5)
+                   holds
+                     [e1,e] in Child & 0 <= r & r < k &
+                     (for o7 being Element of H st
+                        o7 in HOk &
+                        hPost.o7 = exprPost.[e1,r]
+                      holds
+                        o7 in HOk &
+                        (for o8 being Element of W st
+                           o8 in WOk &
+                           wTrans.o8 = wpTrans.(hPost.o7)
+                         holds
+                           (o8 in WOk & o6 in WOk) &
+                           (for o9 being Element of W st
+                              o9 in WOk &
+                              wTrans.o9 =
+                                (rcomp.(wTrans.o6)).(wTrans.o8)
+                            holds o9 in WOk & o3 in WOk)))))) &
+        (not r < k - 1 implies
+          for o2 being Element of W st
+            o2 in WOk & wTrans.o2 = ident
+          holds
+            o2 in WOk &
+            (for o3 being Element of W st
+               o3 in WOk &
+               wTrans.o3 =
+                 (rcomp.(wTrans.o2)).(liftExec.[4,k - 2])
+             holds
+               o3 in WOk &
+               (for o4 being Element of W st
+                  o4 in WOk &
+                  wTrans.o4 =
+                    (rcomp.(wTrans.o3)).
+                      (liftExec.[2,k - 2,k - 1])
+                holds
+                  [e2,e] in Child &
+                  0 <= k - 1 & k - 1 < k &
+                  (for o6 being Element of H st
+                     o6 in HOk &
+                     hPost.o6 = exprPost.[e2,k - 1]
+                   holds
+                     o6 in HOk &
+                     (for o7 being Element of W st
+                        o7 in WOk &
+                        wTrans.o7 = wpTrans.(hPost.o6)
+                      holds
+                        [e1,e] in Child &
+                        0 <= k - 2 & k - 2 < k &
+                        (for o9 being Element of H st
+                           o9 in HOk &
+                           hPost.o9 = exprPost.[e1,k - 2]
+                         holds
+                           o9 in HOk &
+                           (for o10 being Element of W st
+                              o10 in WOk &
+                              wTrans.o10 = wpTrans.(hPost.o9)
+                            holds
+                              (o10 in WOk & o7 in WOk) &
+                              (for o11 being Element of W st
+                                 o11 in WOk &
+                                 wTrans.o11 =
+                                   (rcomp.(wTrans.o7)).(wTrans.o10)
+                               holds
+                                 (o11 in WOk & o4 in WOk) &
+                                 (for o12 being Element of W st
+                                    o12 in WOk &
+                                    wTrans.o12 =
+                                      (rcomp.(wTrans.o4)).(wTrans.o11)
+                                  holds o12 in WOk))))))))))) &
+    (for o2 being Element of W st
+      ((ex x being Element of A,
+           o3 being Element of W st
+          e = evar.x &
+          o3 in WOk & wTrans.o3 = ident &
+          o2 in WOk &
+          wTrans.o2 =
+            (rcomp.(wTrans.o3)).(liftExec.[0,x,r])) or
+       (ex e1 being Element of E,
+           o3,o4,o6 being Element of W,
+           o5 being Element of H st
+          e = eneg.e1 &
+          o3 in WOk & wTrans.o3 = ident &
+          o4 in WOk &
+          wTrans.o4 =
+            (rcomp.(wTrans.o3)).(liftExec.[1,r]) &
+          o5 in HOk &
+          hPost.o5 = exprPost.[e1,r] &
+          o6 in WOk &
+          wTrans.o6 = wpTrans.(hPost.o5) &
+          o2 in WOk &
+          wTrans.o2 =
+            (rcomp.(wTrans.o4)).(wTrans.o6)) or
+       (ex e1,e2 being Element of E st
+          e = eadd.[e1,e2] &
+          ((r < k - 1 &
+            ex o3,o4,o6,o8,o9 being Element of W,
+               o5,o7 being Element of H st
+              o3 in WOk & wTrans.o3 = ident &
+              o4 in WOk &
+              wTrans.o4 =
+                (rcomp.(wTrans.o3)).(liftExec.[2,r + 1,r]) &
+              o5 in HOk &
+              hPost.o5 = exprPost.[e2,r + 1] &
+              o6 in WOk &
+              wTrans.o6 = wpTrans.(hPost.o5) &
+              o7 in HOk &
+              hPost.o7 = exprPost.[e1,r] &
+              o8 in WOk &
+              wTrans.o8 = wpTrans.(hPost.o7) &
+              o9 in WOk &
+              wTrans.o9 =
+                (rcomp.(wTrans.o6)).(wTrans.o8) &
+              o2 in WOk &
+              wTrans.o2 =
+                (rcomp.(wTrans.o4)).(wTrans.o9)) or
+           (not r < k - 1 &
+            ex o3,o4,o5,o7,o9,o10,o11 being Element of W,
+               o6,o8 being Element of H st
+              o3 in WOk & wTrans.o3 = ident &
+              o4 in WOk &
+              wTrans.o4 =
+                (rcomp.(wTrans.o3)).(liftExec.[4,k - 2]) &
+              o5 in WOk &
+              wTrans.o5 =
+                (rcomp.(wTrans.o4)).
+                  (liftExec.[2,k - 2,k - 1]) &
+              o6 in HOk &
+              hPost.o6 = exprPost.[e2,k - 1] &
+              o7 in WOk &
+              wTrans.o7 = wpTrans.(hPost.o6) &
+              o8 in HOk &
+              hPost.o8 = exprPost.[e1,k - 2] &
+              o9 in WOk &
+              wTrans.o9 = wpTrans.(hPost.o8) &
+              o10 in WOk &
+              wTrans.o10 =
+                (rcomp.(wTrans.o7)).(wTrans.o9) &
+              o11 in WOk &
+              wTrans.o11 =
+                (rcomp.(wTrans.o5)).(wTrans.o10) &
+              o2 in WOk &
+              wTrans.o2 =
+                (rcomp.(wTrans.o11)).(liftExec.[3,k - 2])))))
+     holds
+       o2 in WOk &
+       (for x being Element of S,
+            t being Function of Funcs(S,BOOLEAN),Funcs(S,BOOLEAN),
+            p being Function of S,Funcs(S,BOOLEAN) st
+          t = wTrans.o2 & p = exprPost.[e,r]
+        holds
+          (t.(p.x)).x = TRUE) &
+       (for result being Element of H st
+          result in HOk &
+          hPost.result = exprPost.[e,r]
+        holds
+          result in HOk &
+          hPost.result = exprPost.[e,r])))
+proof
+end;
+::$P+

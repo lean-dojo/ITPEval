@@ -1,0 +1,375 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/verifythis_2021_shearsort_ShearSort_sort_all_columnsqtvc: the
+% verification condition for sorting every matrix column, either directly or
+% by transposing, sorting rows, and transposing back. This file contains no
+% proof.
+
+verifythis_2021_shearsort_ShearSort_sort_all_columnsqtvc: THEORY
+BEGIN
+
+  matrix_int: TYPE =
+    [# rows: nat, columns: nat, elts: [int, int -> int] #]
+
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  matrix_rows(m: matrix_int): int =
+    rows(m)
+
+  matrix_columns(m: matrix_int): int =
+    columns(m)
+
+  interval_count_from(
+      predicate: [int -> bool],
+      current: int,
+      remaining: nat): RECURSIVE nat =
+    IF remaining = 0 THEN
+      0
+    ELSE
+      (IF predicate(current) THEN 1 ELSE 0 ENDIF)
+        + interval_count_from(predicate, current + 1, remaining - 1)
+    ENDIF
+  MEASURE remaining
+
+  numof(
+      predicate: [int -> bool],
+      lower_bound, upper_bound: int): int =
+    interval_count_from(
+      predicate,
+      lower_bound,
+      int_to_nat(upper_bound - lower_bound))
+
+  interval_permutation(
+      first, second: [int -> int],
+      lower_bound, upper_bound: int): bool =
+    FORALL (value: int):
+      numof(
+        LAMBDA (index: int): first(index) = value,
+        lower_bound,
+        upper_bound)
+      =
+      numof(
+        LAMBDA (index: int): second(index) = value,
+        lower_bound,
+        upper_bound)
+
+  same_shape(first, second: matrix_int): bool =
+    matrix_rows(first) = matrix_rows(second)
+      AND matrix_columns(first) = matrix_columns(second)
+
+  square(m: matrix_int): bool =
+    matrix_rows(m) = matrix_columns(m)
+
+  column_permutation(
+      after, before: matrix_int,
+      column_index, upper_bound: int): bool =
+    interval_permutation(
+      LAMBDA (row_index: int):
+        elts(after)(row_index, column_index),
+      LAMBDA (row_index: int):
+        elts(before)(row_index, column_index),
+      0,
+      upper_bound)
+
+  all_column_permutations(
+      current, original: matrix_int): bool =
+    FORALL (column_index: int):
+      (0 <= column_index
+        AND column_index < matrix_columns(current))
+      IMPLIES
+        column_permutation(
+          current,
+          original,
+          column_index,
+          matrix_rows(current))
+
+  columns_sorted_prefix(
+      current: matrix_int,
+      prefix_end: int): bool =
+    FORALL (lower_row, column_index, upper_row: int):
+      ((0 <= lower_row
+        AND lower_row <= upper_row
+        AND upper_row < matrix_rows(current))
+       AND 0 <= column_index
+       AND column_index < prefix_end)
+      IMPLIES
+        elts(current)(lower_row, column_index)
+          <= elts(current)(upper_row, column_index)
+
+  column_invariant(
+      current, original: matrix_int,
+      prefix_end: int): bool =
+    all_column_permutations(current, original)
+      AND columns_sorted_prefix(current, prefix_end)
+
+  columns_postcondition(
+      current, original: matrix_int): bool =
+    all_column_permutations(current, original)
+      AND columns_sorted_prefix(current, matrix_columns(current))
+
+  column_step_relation(
+      before, after: matrix_int,
+      selected_column: int): bool =
+    (FORALL (row_index, column_index: int):
+      (0 <= row_index
+        AND row_index < matrix_rows(after)
+        AND 0 <= column_index
+        AND column_index < matrix_columns(after)
+        AND NOT (column_index = selected_column))
+      IMPLIES
+        elts(after)(row_index, column_index)
+          = elts(before)(row_index, column_index))
+    AND
+    (FORALL (lower_row, upper_row: int):
+      (0 <= lower_row
+        AND lower_row <= upper_row
+        AND upper_row < matrix_rows(after))
+      IMPLIES
+        elts(after)(lower_row, selected_column)
+          <= elts(after)(upper_row, selected_column))
+    AND
+    column_permutation(
+      after,
+      before,
+      selected_column,
+      matrix_rows(after))
+
+  direct_column_step(
+      original, current: matrix_int,
+      last_column, selected_column: int): bool =
+    ((0 <= selected_column AND selected_column <= last_column)
+      AND column_invariant(current, original, selected_column))
+    IMPLIES
+      (0 <= selected_column
+        AND selected_column < matrix_columns(current))
+      AND
+      (FORALL (next: matrix_int):
+        same_shape(next, current)
+        IMPLIES
+          column_step_relation(current, next, selected_column)
+        IMPLIES
+          column_invariant(next, original, selected_column + 1))
+
+  direct_column_loop(
+      original: matrix_int,
+      last_column: int): bool =
+    column_invariant(original, original, 0)
+    AND
+    (FORALL (current: matrix_int):
+      same_shape(current, original)
+      IMPLIES
+        (FORALL (selected_column: int):
+          direct_column_step(
+            original,
+            current,
+            last_column,
+            selected_column))
+        AND
+        (column_invariant(current, original, last_column + 1)
+          IMPLIES columns_postcondition(current, original)))
+
+  direct_branch(original: matrix_int): bool =
+    LET last_column: int = matrix_columns(original) - 1 IN
+      (0 <= last_column + 1
+        IMPLIES direct_column_loop(original, last_column))
+      AND
+      (last_column + 1 < 0
+        IMPLIES columns_postcondition(original, original))
+
+  transpose_relation(
+      before, after: matrix_int): bool =
+    FORALL (row_index, column_index: int):
+      (0 <= row_index
+        AND row_index < matrix_rows(after)
+        AND 0 <= column_index
+        AND column_index < matrix_columns(after))
+      IMPLIES
+        elts(before)(row_index, column_index)
+          = elts(after)(column_index, row_index)
+
+  row_permutation_against_original_column(
+      current, original: matrix_int,
+      row_index, dimension: int): bool =
+    interval_permutation(
+      LAMBDA (column_index: int):
+        elts(current)(row_index, column_index),
+      LAMBDA (source_row: int):
+        elts(original)(source_row, row_index),
+      0,
+      dimension)
+
+  all_row_permutations_against_original_columns(
+      current, original: matrix_int,
+      dimension: int): bool =
+    FORALL (row_index: int):
+      (0 <= row_index AND row_index < dimension)
+      IMPLIES
+        row_permutation_against_original_column(
+          current,
+          original,
+          row_index,
+          dimension)
+
+  rows_sorted_prefix(
+      current: matrix_int,
+      dimension, prefix_end: int): bool =
+    FORALL (lower_column, row_index, upper_column: int):
+      ((0 <= lower_column
+        AND lower_column <= upper_column
+        AND upper_column < dimension)
+       AND 0 <= row_index
+       AND row_index < prefix_end)
+      IMPLIES
+        elts(current)(row_index, lower_column)
+          <= elts(current)(row_index, upper_column)
+
+  row_invariant(
+      current, original: matrix_int,
+      dimension, prefix_end: int): bool =
+    all_row_permutations_against_original_columns(
+      current, original, dimension)
+      AND rows_sorted_prefix(current, dimension, prefix_end)
+
+  row_permutation(
+      after, before: matrix_int,
+      row_index, upper_bound: int): bool =
+    interval_permutation(
+      LAMBDA (column_index: int):
+        elts(after)(row_index, column_index),
+      LAMBDA (column_index: int):
+        elts(before)(row_index, column_index),
+      0,
+      upper_bound)
+
+  row_step_relation(
+      before, after: matrix_int,
+      selected_row: int): bool =
+    (FORALL (row_index, column_index: int):
+      (0 <= row_index
+        AND row_index < matrix_rows(after)
+        AND 0 <= column_index
+        AND column_index < matrix_columns(after)
+        AND NOT (row_index = selected_row))
+      IMPLIES
+        elts(after)(row_index, column_index)
+          = elts(before)(row_index, column_index))
+    AND
+    (FORALL (lower_column, upper_column: int):
+      (0 <= lower_column
+        AND lower_column <= upper_column
+        AND upper_column < matrix_columns(after))
+      IMPLIES
+        elts(after)(selected_row, lower_column)
+          <= elts(after)(selected_row, upper_column))
+    AND
+    row_permutation(
+      after,
+      before,
+      selected_row,
+      matrix_columns(after))
+
+  row_loop_exit(
+      original, current: matrix_int,
+      dimension, exit_index: int): bool =
+    row_invariant(current, original, dimension, exit_index)
+    IMPLIES
+      square(current)
+      AND
+      (FORALL (transposed: matrix_int):
+        same_shape(transposed, current)
+        IMPLIES
+          transpose_relation(current, transposed)
+        IMPLIES
+          columns_postcondition(transposed, original))
+
+  transpose_row_step(
+      original, current: matrix_int,
+      dimension, last_row, selected_row: int): bool =
+    ((0 <= selected_row AND selected_row <= last_row)
+      AND row_invariant(
+        current, original, dimension, selected_row))
+    IMPLIES
+      (0 <= selected_row AND selected_row < matrix_rows(current))
+      AND
+      (FORALL (next: matrix_int):
+        same_shape(next, current)
+        IMPLIES
+          row_step_relation(current, next, selected_row)
+        IMPLIES
+          row_invariant(
+            next, original, dimension, selected_row + 1))
+
+  transpose_row_loop(
+      original, first_transpose: matrix_int,
+      dimension, last_row: int): bool =
+    row_invariant(first_transpose, original, dimension, 0)
+    AND
+    (FORALL (current: matrix_int):
+      same_shape(current, first_transpose)
+      IMPLIES
+        (FORALL (selected_row: int):
+          transpose_row_step(
+            original,
+            current,
+            dimension,
+            last_row,
+            selected_row))
+        AND
+        row_loop_exit(
+          original,
+          current,
+          dimension,
+          last_row + 1))
+
+  empty_transpose_loop_exit(
+      original, first_transpose: matrix_int): bool =
+    square(first_transpose)
+    AND
+    (FORALL (second_transpose: matrix_int):
+      same_shape(second_transpose, first_transpose)
+      IMPLIES
+        transpose_relation(first_transpose, second_transpose)
+      IMPLIES
+        columns_postcondition(second_transpose, original))
+
+  transpose_branch(original: matrix_int): bool =
+    LET dimension: int = matrix_rows(original) IN
+      square(original)
+      AND
+      (FORALL (first_transpose: matrix_int):
+        same_shape(first_transpose, original)
+        IMPLIES
+          transpose_relation(original, first_transpose)
+        IMPLIES
+          (LET last_row: int =
+             matrix_columns(first_transpose) - 1
+           IN
+             (0 <= last_row + 1
+               IMPLIES
+                 transpose_row_loop(
+                   original,
+                   first_transpose,
+                   dimension,
+                   last_row))
+             AND
+             (last_row + 1 < 0
+               IMPLIES
+                 empty_transpose_loop_exit(
+                   original,
+                   first_transpose))))
+
+  sort_all_columns_vc: bool =
+    FORALL (m: matrix_int):
+      (EXISTS (result: bool):
+        result = TRUE OR square(m))
+      AND
+      (FORALL (choice: bool):
+        (choice = TRUE OR square(m))
+        IMPLIES
+          IF choice = TRUE THEN
+            direct_branch(m)
+          ELSE
+            transpose_branch(m)
+          ENDIF)
+
+END verifythis_2021_shearsort_ShearSort_sort_all_columnsqtvc

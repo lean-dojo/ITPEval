@@ -1,0 +1,87 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1982_b3:
+% the probability that two independent uniform choices from 1 through n have
+% perfect-square sum, multiplied by sqrt(n), converges to
+% (4/3)*(sqrt(2) - 1). This file contains no proof.
+
+putnam_1982_b3: THEORY
+BEGIN
+  real_sequence: TYPE = [nat -> real]
+
+  is_perfect_square(value: nat): bool =
+    EXISTS (root: nat):
+      root ^ 2 = value
+
+  qualifying_seconds(
+      first, bound, count: nat): RECURSIVE nat =
+    IF count = 0 THEN
+      0
+    ELSE
+      qualifying_seconds(first, bound, count - 1)
+        + IF count <= bound
+              AND is_perfect_square(first + count)
+          THEN
+            1
+          ELSE
+            0
+          ENDIF
+    ENDIF
+  MEASURE count
+
+  qualifying_pairs(
+      bound, count: nat): RECURSIVE nat =
+    IF count = 0 THEN
+      0
+    ELSE
+      qualifying_pairs(bound, count - 1)
+        + IF count <= bound THEN
+            qualifying_seconds(count, bound, bound)
+          ELSE
+            0
+          ENDIF
+    ENDIF
+  MEASURE count
+
+  pair_count(bound: nat): nat =
+    qualifying_pairs(bound, bound)
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  pair_probability(bound: nat): real =
+    safe_div(
+      pair_count(bound) :: real,
+      (bound :: real) ^ 2)
+
+  nonnegative_square_root(value: real): real =
+    IF 0 <= value THEN
+      epsilon(
+        LAMBDA (root: real):
+          0 <= root AND root * root = value)
+    ELSE
+      0
+    ENDIF
+
+  scaled_probability: real_sequence =
+    LAMBDA (bound: nat):
+      pair_probability(bound)
+        * nonnegative_square_root(bound :: real)
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  putnam_1982_b3_solution: real =
+    (4 / 3) * (nonnegative_square_root(2) - 1)
+
+  putnam_1982_b3: bool =
+    converges_to(
+      scaled_probability,
+      putnam_1982_b3_solution)
+END putnam_1982_b3

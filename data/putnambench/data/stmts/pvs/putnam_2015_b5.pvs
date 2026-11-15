@@ -1,0 +1,118 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2015_b5:
+% permutations of {1,...,n} whose adjacent positions have images at distance
+% at most two yield the constant integer difference 4. This file contains no proof.
+
+putnam_2015_b5: THEORY
+BEGIN
+  quotient_aux(
+      numerator, denominator, fuel: nat): RECURSIVE nat =
+    IF fuel = 0
+        OR denominator = 0
+        OR numerator < denominator THEN
+      0
+    ELSE
+      1
+        + quotient_aux(
+            numerator - denominator,
+            denominator,
+            fuel - 1)
+    ENDIF
+  MEASURE fuel
+
+  remainder_aux(
+      numerator, denominator, fuel: nat): RECURSIVE nat =
+    IF fuel = 0
+        OR denominator = 0
+        OR numerator < denominator THEN
+      numerator
+    ELSE
+      remainder_aux(
+        numerator - denominator,
+        denominator,
+        fuel - 1)
+    ENDIF
+  MEASURE fuel
+
+  safe_ndiv(numerator, denominator: nat): nat =
+    quotient_aux(
+      numerator,
+      denominator,
+      numerator + 1)
+
+  safe_mod(numerator, denominator: nat): nat =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      remainder_aux(
+        numerator,
+        denominator,
+        numerator + 1)
+    ENDIF
+
+  function_code_count(n: nat): nat =
+    IF n = 0 THEN 1 ELSE n ^ n ENDIF
+
+  permutation_entry(code, index, n: nat): nat =
+    IF n = 0 THEN
+      0
+    ELSE
+      safe_mod(safe_ndiv(code, n ^ index), n)
+    ENDIF
+
+  permutation_code(code, n: nat): bool =
+    code < function_code_count(n)
+      AND (FORALL (i, j: nat):
+        (i < n
+          AND j < n
+          AND permutation_entry(code, i, n)
+            = permutation_entry(code, j, n))
+        IMPLIES i = j)
+      AND (FORALL (value: nat):
+        value < n IMPLIES
+          EXISTS (i: nat):
+            i < n
+              AND permutation_entry(code, i, n) = value)
+
+  nat_distance(left, right: nat): nat =
+    IF left <= right THEN right - left ELSE left - right ENDIF
+
+  admissible_permutation(code, n: nat): bool =
+    permutation_code(code, n)
+      AND (FORALL (i, j: nat):
+        (i < n
+          AND j < n
+          AND nat_distance(i, j) = 1)
+        IMPLIES
+          nat_distance(
+            permutation_entry(code, i, n),
+            permutation_entry(code, j, n))
+            <= 2)
+
+  count_admissible(
+      n, limit: nat): RECURSIVE nat =
+    IF limit = 0 THEN
+      0
+    ELSE
+      count_admissible(n, limit - 1)
+        + IF admissible_permutation(limit - 1, n) THEN
+            1
+          ELSE
+            0
+          ENDIF
+    ENDIF
+  MEASURE limit
+
+  permutation_count(n: nat): nat =
+    count_admissible(n, function_code_count(n))
+
+  putnam_2015_b5_solution: nat = 4
+
+  putnam_2015_b5: bool =
+    FORALL (n: nat):
+      n >= 2 IMPLIES
+        (permutation_count(n + 5) :: int)
+          - (permutation_count(n + 4) :: int)
+          - (permutation_count(n + 3) :: int)
+          + (permutation_count(n) :: int)
+          = (putnam_2015_b5_solution :: int)
+END putnam_2015_b5

@@ -1,0 +1,249 @@
+% Statement-only formalization of the VERINA corpus artifact
+% verina_advanced_27, catalog title "longestCommonSubsequence": recursively
+% computing a longest common subsequence of two Unicode-scalar strings, with
+% exhaustive-subsequence maximality as its contract. This file contains no proof.
+
+verina_advanced_27: THEORY
+BEGIN
+
+  % The Lean program observes and constructs String values through their
+  % character lists. Finite lists of Unicode scalar values therefore give the
+  % exact extensional representation used here.
+  lean_char: TYPE =
+    {codepoint: nat |
+      codepoint < 1114112
+        AND (codepoint < 55296 OR codepoint >= 57344)}
+
+  lean_string: TYPE = list[lean_char]
+  lean_string_list: TYPE = list[lean_string]
+
+  longestCommonSubsequence_precond(
+      s1, s2: lean_string): bool =
+    TRUE
+
+  lean_string_length(
+      values: lean_string): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        lean_string_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  lean_string_push(
+      values: lean_string,
+      value: lean_char): RECURSIVE lean_string =
+    CASES values OF
+      null:
+        cons(value, null[lean_char]),
+      cons(head, tail):
+        cons(
+          head,
+          lean_string_push(tail, value))
+    ENDCASES
+  MEASURE values BY <<
+
+  toCharList(s: lean_string): list[lean_char] =
+    s
+
+  fromCharList_fold(
+      remaining: list[lean_char],
+      accumulator: lean_string): RECURSIVE lean_string =
+    CASES remaining OF
+      null:
+        accumulator,
+      cons(c, rest):
+        fromCharList_fold(
+          rest,
+          lean_string_push(accumulator, c))
+    ENDCASES
+  MEASURE remaining BY <<
+
+  fromCharList(cs: list[lean_char]): lean_string =
+    fromCharList_fold(cs, null[lean_char])
+
+  lcsAux(
+      xs, ys: list[lean_char]): RECURSIVE list[lean_char] =
+    CASES xs OF
+      null:
+        null,
+      cons(x, xs_tail):
+        CASES ys OF
+          null:
+            null,
+          cons(y, ys_tail):
+            IF x = y THEN
+              cons(x, lcsAux(xs_tail, ys_tail))
+            ELSE
+              LET left: list[lean_char] =
+                    lcsAux(
+                      xs_tail,
+                      cons(y, ys_tail)),
+                  right: list[lean_char] =
+                    lcsAux(
+                      cons(x, xs_tail),
+                      ys_tail)
+              IN
+                IF lean_string_length(left)
+                     >= lean_string_length(right)
+                THEN
+                  left
+                ELSE
+                  right
+                ENDIF
+            ENDIF
+        ENDCASES
+    ENDCASES
+  MEASURE lean_string_length(xs) + lean_string_length(ys)
+
+  longestCommonSubsequence(
+      s1, s2: lean_string): lean_string =
+    LET xs: list[lean_char] = toCharList(s1),
+        ys: list[lean_char] = toCharList(s2),
+        resultList: list[lean_char] = lcsAux(xs, ys)
+    IN
+      fromCharList(resultList)
+
+  append_lean_string_lists(
+      first, second: lean_string_list):
+        RECURSIVE lean_string_list =
+    CASES first OF
+      null:
+        second,
+      cons(head, tail):
+        cons(
+          head,
+          append_lean_string_lists(tail, second))
+    ENDCASES
+  MEASURE first BY <<
+
+  prepend_to_each(
+      value: lean_char,
+      subsequences: lean_string_list):
+        RECURSIVE lean_string_list =
+    CASES subsequences OF
+      null:
+        null,
+      cons(head, tail):
+        cons(
+          cons(value, head),
+          prepend_to_each(value, tail))
+    ENDCASES
+  MEASURE subsequences BY <<
+
+  all_subsequences_fold(
+      remaining: list[lean_char],
+      accumulator: lean_string_list):
+        RECURSIVE lean_string_list =
+    CASES remaining OF
+      null:
+        accumulator,
+      cons(value, rest):
+        all_subsequences_fold(
+          rest,
+          append_lean_string_lists(
+            accumulator,
+            prepend_to_each(value, accumulator)))
+    ENDCASES
+  MEASURE remaining BY <<
+
+  reverse_lean_string_acc(
+      values, accumulator: lean_string):
+        RECURSIVE lean_string =
+    CASES values OF
+      null:
+        accumulator,
+      cons(head, tail):
+        reverse_lean_string_acc(
+          tail,
+          cons(head, accumulator))
+    ENDCASES
+  MEASURE values BY <<
+
+  reverse_lean_string(values: lean_string): lean_string =
+    reverse_lean_string_acc(values, null[lean_char])
+
+  reverse_each(
+      subsequences: lean_string_list):
+        RECURSIVE lean_string_list =
+    CASES subsequences OF
+      null:
+        null,
+      cons(head, tail):
+        cons(
+          reverse_lean_string(head),
+          reverse_each(tail))
+    ENDCASES
+  MEASURE subsequences BY <<
+
+  allSubseq(values: lean_string): lean_string_list =
+    reverse_each(
+      all_subsequences_fold(
+        values,
+        cons(
+          null[lean_char],
+          null[lean_string])))
+
+  lean_string_list_contains(
+      requested: lean_string,
+      values: lean_string_list): RECURSIVE bool =
+    CASES values OF
+      null:
+        FALSE,
+      cons(head, tail):
+        requested = head
+          OR lean_string_list_contains(requested, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  common_subsequences(
+      first, second: lean_string_list):
+        RECURSIVE lean_string_list =
+    CASES first OF
+      null:
+        null,
+      cons(head, tail):
+        IF lean_string_list_contains(head, second) THEN
+          cons(
+            head,
+            common_subsequences(tail, second))
+        ELSE
+          common_subsequences(tail, second)
+        ENDIF
+    ENDCASES
+  MEASURE first BY <<
+
+  every_length_at_most(
+      values: lean_string_list,
+      upper_bound: nat): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        lean_string_length(head) <= upper_bound
+          AND every_length_at_most(tail, upper_bound)
+    ENDCASES
+  MEASURE values BY <<
+
+  longestCommonSubsequence_postcond(
+      s1, s2, result: lean_string): bool =
+    LET subseqA: lean_string_list = allSubseq(s1),
+        subseqB: lean_string_list = allSubseq(s2),
+        commonSubseq: lean_string_list =
+          common_subsequences(subseqA, subseqB)
+    IN
+      lean_string_list_contains(result, commonSubseq)
+        AND every_length_at_most(
+          commonSubseq,
+          lean_string_length(result))
+
+  longestCommonSubsequence_spec_satisfied: bool =
+    FORALL (s1, s2: lean_string):
+      longestCommonSubsequence_precond(s1, s2) IMPLIES
+        longestCommonSubsequence_postcond(
+          s1,
+          s2,
+          longestCommonSubsequence(s1, s2))
+
+END verina_advanced_27

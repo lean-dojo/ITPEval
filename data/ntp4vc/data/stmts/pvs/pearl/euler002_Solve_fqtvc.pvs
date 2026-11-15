@@ -1,0 +1,119 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/euler002_Solve_fqtvc: the Euler 002 verification condition for
+% initializing and advancing a loop that sums even Fibonacci values under
+% the Fibonacci and accumulator recurrence laws. This file contains no proof.
+
+euler002_Solve_fqtvc: THEORY
+BEGIN
+
+  trunc_div(numerator, denominator: int): int =
+    IF denominator = 0 THEN
+      0
+    ELSIF numerator * denominator >= 0 THEN
+      floor((numerator :: real) / (denominator :: real))
+    ELSE
+      -floor(-((numerator :: real) / (denominator :: real)))
+    ENDIF
+
+  trunc_mod(numerator, denominator: int): int =
+    numerator - denominator * trunc_div(numerator, denominator)
+
+  fib_even(fib: [int -> int], n: int): int =
+    fib(3 * n)
+
+  fibonacci_specification(fib: [int -> int]): bool =
+    FORALL (n: int):
+      0 <= n IMPLIES
+        IF n = 0 THEN
+          fib(n) = 0
+        ELSIF n = 1 THEN
+          fib(n) = 1
+        ELSE
+          fib(n) = fib(n - 1) + fib(n - 2)
+        ENDIF
+
+  fib_sum_even_specification(
+      fib: [int -> int],
+      fib_sum_even: [int, int -> int]): bool =
+    (FORALL (m: int):
+      fib_sum_even(m, 0) = 0)
+      AND
+        (FORALL (n, m: int):
+          (0 <= n
+            AND fib(n) <= m
+            AND trunc_mod(fib(n), 2) = 0)
+          IMPLIES
+            fib_sum_even(m, n + 1)
+              = fib_sum_even(m, n) + fib(n))
+      AND
+        (FORALL (n, m: int):
+          (0 <= n
+            AND m < fib(n)
+            AND trunc_mod(fib(n), 2) = 0)
+          IMPLIES
+            fib_sum_even(m, n + 1)
+              = fib_sum_even(m, n))
+      AND
+        (FORALL (n, m: int):
+          (0 <= n
+            AND trunc_mod(fib(n), 2) /= 0)
+          IMPLIES
+            fib_sum_even(m, n + 1)
+              = fib_sum_even(m, n))
+
+  f_vc: bool =
+    FORALL
+        (fib: [int -> int]),
+        (fib_sum_even: [int, int -> int]),
+        (m: int):
+      fibonacci_specification(fib)
+        IMPLIES fib_sum_even_specification(fib, fib_sum_even)
+        IMPLIES 0 <= m
+        IMPLIES
+          0 <= 0
+            AND 0 <= 0
+            AND 0 = fib_even(fib, 0)
+            AND 0 = fib(0)
+            AND 2 = fib_even(fib, 0 + 1)
+            AND 2 = fib(0 + 3)
+            AND 0 = fib_sum_even(m, 0)
+            AND 0 <= 0
+            AND 0 < 2
+            AND
+              (FORALL (k, n: int):
+                (0 <= n
+                  AND 0 <= k
+                  AND fib_even(fib, n) = fib(k)
+                  AND fib_even(fib, n + 1) = fib(k + 3)
+                  AND 0 <= fib_even(fib, n)
+                  AND fib_even(fib, n) < fib_even(fib, n + 1))
+                IMPLIES
+                  IF fib_even(fib, n) <= m THEN
+                    ((0 <= m - fib_even(fib, n)
+                        AND
+                          m - fib_even(fib, n + 1)
+                            < m - fib_even(fib, n))
+                      AND 0 <= n + 1
+                      AND 0 <= k + 3
+                      AND fib_even(fib, n + 1) = fib(k + 3)
+                      AND
+                        4 * fib_even(fib, n + 1) + fib_even(fib, n)
+                          = fib_even(fib, n + 1 + 1)
+                      AND
+                        4 * fib_even(fib, n + 1) + fib_even(fib, n)
+                          = fib(k + 3 + 3)
+                      AND
+                        fib_sum_even(m, k) + fib_even(fib, n)
+                          = fib_sum_even(m, k + 3)
+                      AND 0 <= fib_even(fib, n + 1)
+                      AND
+                        fib_even(fib, n + 1)
+                          < 4 * fib_even(fib, n + 1)
+                              + fib_even(fib, n))
+                  ELSE
+                    EXISTS (n1: int):
+                      fib_sum_even(m, k) = fib_sum_even(m, n1)
+                        AND m < fib(n1)
+                  ENDIF)
+
+END euler002_Solve_fqtvc

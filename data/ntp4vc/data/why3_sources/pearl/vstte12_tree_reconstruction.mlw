@@ -1,0 +1,312 @@
+(* The 2nd Verified Software Competition (VSTTE 2012)
+   https://sites.google.com/site/vstte2012/compet
+
+   Problem 4: Tree Reconstruction
+   Build a binary tree from a list of leaf depths, if any
+
+   This is a purely applicative implementation, using immutable
+   lists from Why3's standard library.
+*)
+
+module Tree
+
+  use export int.Int
+  use export list.List
+  use export list.Append
+
+  type tree = Leaf | Node tree tree
+
+  (* the list of leaf depths for tree t, if root is at depth d *)
+  let rec function depths (d: int) (t: tree) : list int =
+    match t with
+    | Leaf -> Cons d Nil
+    | Node l r -> depths (d+1) l ++ depths (d+1) r
+    end
+
+  (* lemmas on depths *)
+
+  let ghost depths_head (t: tree) (d: int) : unit
+    ensures { match depths d t with Cons x _ -> x >= d | Nil -> false end }
+  = ()
+
+  let ghost depths_unique (t1 t2: tree) (d: int) (s1 s2: list int) : unit
+    requires { depths d t1 ++ s1 = depths d t2 ++ s2 }
+    ensures { t1 = t2 && s1 = s2 }
+  = ()
+
+  let ghost depths_prefix (t: tree) (d1 d2: int) (s1 s2: list int) : unit
+    requires { depths d1 t ++ s1 = depths d2 t ++ s2 }
+    ensures { d1 = d2 }
+  = ()
+
+  let ghost depths_prefix_simple (t: tree) (d1 d2: int) : unit
+    requires { depths d1 t = depths d2 t }
+    ensures { d1 = d2 }
+  = ()
+
+  let ghost depths_subtree (t1 t2: tree) (d1 d2:int) (s1:list int) : unit
+    requires { depths d1 t1 ++ s1 = depths d2 t2 }
+    ensures { d1 >= d2 }
+  = ()
+
+  let ghost depths_unique2 (t1 t2: tree) (d1 d2: int) : unit
+    requires { depths d1 t1 = depths d2 t2 }
+    ensures { d1 = d2 && t1 = t2 }
+  = ()
+
+end
+
+module TreeReconstruction
+
+  use export Tree
+  use list.Length
+  use list.HdTlNoOpt
+
+  exception Failure
+    (* used to signal the algorithm's failure i.e. there is no tree *)
+
+  let rec build_rec (d: int) (s: list int) : (t: tree, s': list int)
+    variant { length s, hd s - d }
+    ensures { s = depths d t ++ s' }
+    raises  { Failure -> forall t: tree, s' : list int. depths d t ++ s' <> s }
+  = match s with
+    | Nil ->
+        raise Failure
+    | Cons h t ->
+        if h < d then raise Failure;
+        if h = d then
+          Leaf, t
+        else
+          let l, s = build_rec (d+1) s in
+          let r, s = build_rec (d+1) s in
+          Node l r, s
+    end
+
+  let build (s: list int) : tree
+    ensures { depths 0 result = s }
+    raises  { Failure -> forall t: tree. depths 0 t <> s }
+  = let t, s = build_rec 0 s in
+    match s with
+    | Nil -> t
+    | _ -> raise Failure
+    end
+
+end
+
+module Harness
+
+  use TreeReconstruction
+
+  let harness ()
+    ensures { result = Node Leaf (Node (Node Leaf Leaf) Leaf) }
+    raises  { Failure -> false }
+  = build (Cons 1 (Cons 3 (Cons 3 (Cons 2 Nil))))
+
+  let harness2 () : (_:tree)
+    ensures { false } raises { Failure -> true }
+  = build (Cons 1 (Cons 3 (Cons 2 (Cons 2 Nil))))
+
+end
+
+(*
+  A variant implementation proposed by Jayadev Misra
+
+  Given the input list [x1; x2; ...; xn], we first turn it into the
+  list of pairs [(x1, Leaf); (x2, Leaf); ...; (xn, Leaf)].  Then,
+  repeatedly, we scan this list from left to right, looking for two
+  consecutive pairs (v1, t1) and (v2, t2) with v1 = v2.  Then we
+  replace them with the pair (v1-1, Node t1 t2) and we start again.
+  We stop when there is only one pair left (v,t). Then we must have v=0.
+
+  The implementation below achieves linear complexity using a zipper
+  data structure to traverse the list of pairs. The left list contains
+  the elements already traversed (thus on the left), in reverse order,
+  and the right list contains the elements yet to be traversed.
+
+*)
+
+(* Proving termination is quite easy and we do it first (though we could,
+   obviously, do it together with proving correctness) *)
+
+module ZipperBasedTermination
+
+  use Tree
+  use list.Length
+  use list.Reverse
+
+  exception Failure
+
+  let rec tc (left: list (int, tree)) (right: list (int, tree)) : tree
+    variant { length left + length right, length right }
+    raises  { Failure }
+  = match left, right with
+    | _, Nil ->
+        raise Failure
+    | Nil, Cons (v, t) Nil ->
+        if v = 0 then t else raise Failure
+    | Nil, Cons (v, t) right' ->
+        tc (Cons (v, t) Nil) right'
+    | Cons (v1, t1) left', Cons (v2, t2) right' ->
+        if v1 = v2 then tc left' (Cons (v1 - 1, Node t1 t2) right')
+        else tc (Cons (v2, t2) left) right'
+    end
+
+end
+
+(* Now soundness and completeness *)
+
+module ZipperBased
+
+  use Tree
+  use list.Length
+  use list.Reverse
+
+  (* the following function generalizes function [depths] to a forest, that
+     is a list of pairs (depth, tree) *)
+
+  function forest_depths (f: list (int, tree)) : list int = match f with
+  | Nil -> Nil
+  | Cons (d, t) r -> depths d t ++ forest_depths r
+  end
+
+  (* an obvious lemma on [forest_depths] *)
+
+  let ghost forest_depths_append (f1 f2: list (int, tree)) : unit
+    ensures { forest_depths (f1 ++ f2) = forest_depths f1 ++ forest_depths f2 }
+  = ()
+
+  (* to prove completeness, one needs an invariant over the list [left].
+     The main ingredient is predicate [greedy] below, which states that
+     [d] is distinct from all depths along the left branch of [d1, t1]. *)
+
+  predicate greedy (d: int) (d1: int) (t1: tree) =
+    d <> d1 /\ match t1 with Leaf -> true | Node l1 _ -> greedy d (d1+1) l1 end
+
+  (* then we extend it to a list of pairs [(dn,tn); ...; (d2,t2); (d1,t1)]
+     as follows: [greedy d2 d1 t1], [greedy d3 d2 t2], etc.
+     this is inductive predicate [g] *)
+
+  inductive g (l: list (int, tree)) =
+    | Gnil: g Nil
+    | Gone: forall d: int, t: tree. g (Cons (d, t) Nil)
+    | Gtwo: forall d1 d2: int, t1 t2: tree, l: list (int, tree).
+        greedy d1 d2 t2 -> g (Cons (d1, t1) l) ->
+        g (Cons (d2, t2) (Cons (d1, t1) l))
+
+  (* an easy lemma on [g] *)
+
+  let ghost g_append (l1 l2: list (int, tree)) : unit
+    requires { g (l1 ++ l2) }
+    ensures { g l1 }
+  = ()
+
+  (* key lemma for completeness: whenever we fail because [right] is empty,
+     we have to prove that there is no solution
+
+     Note: the proof first generalizes the statement as follows:
+       forest_depths ((d1,t1) :: l) <> depths d t + s
+     whenever d < d1 (see the corresponding Coq file) *)
+
+  let ghost depths_length (t: tree) (d: int) : unit
+    ensures { length (depths d t) >= 1 }
+  = ()
+
+  let ghost forest_depths_length (l: list (int, tree)) : unit
+    ensures { length (forest_depths l) >= 0 }
+  = ()
+
+  let ghost g_tail (l1 l2: list (int, tree)) : unit
+    requires { g (l1 ++ l2) }
+    ensures { g l2 }
+  = ()
+
+  let ghost key_lemma (t: tree) (l: list (int, tree)) (d d1: int) (t1: tree) (s: list int) : unit
+    requires { d < d1 }
+    requires { 1 <= length l }
+    requires { g (reverse (Cons (d1, t1) l)) }
+    ensures { not (forest_depths (Cons (d1, t1) l) = (depths d t) ++ s) }
+  = ()
+
+  let ghost right_nil (l: list (int, tree)) : unit
+    requires { length l >= 2 }
+    requires { g l }
+    ensures { forall t: tree, d: int. forest_depths (reverse l) <> depths d t }
+  = ()
+
+  (* key lemma for soundness: preservation of the invariant when we move
+     a tree from [right] to [left] *)
+
+  let ghost main_lemma (l: list (int, tree)) (d1 d2: int) (t1 t2: tree) : unit
+    requires { d1 <> d2 }
+    requires { g (Cons (d1, t1) l) }
+    requires { match t2 with Node l2 _ -> greedy d1 (d2+1) l2 | Leaf -> true end }
+    ensures { g (Cons (d2, t2) (Cons (d1, t1) l)) }
+  = ()
+
+  (* finally, we need a predicate to state that a forest [l] contains only
+     leaves *)
+
+  predicate only_leaf (l: list (int, tree)) = match l with
+    | Nil -> true
+    | Cons (_, t) r -> t = Leaf /\ only_leaf r
+  end
+
+  exception Failure
+
+  let rec tc (left: list (int, tree)) (right: list (int, tree)) : tree
+    requires { (* list [left] satisfies the invariant *)
+      g left /\
+      (* when [left] has one element, it can't be a solution *)
+      match left with Cons (d1, _) Nil -> d1 <> 0 \/ right <> Nil
+                    | _                -> true                    end /\
+      (* apart (possibly) from its head, all elements in [right] are leaves;
+         moreover the left branch of [right]'s head already satisfies
+         invariant [g] when consed to [left] *)
+      match right with
+        | Cons (d2, t2) right' -> only_leaf right' /\
+            match t2 with Node l2 _ -> g (Cons (d2+1, l2) left)
+                        | Leaf      -> true end
+        | Nil -> true end }
+    variant { length left + 2 * length right }
+    ensures { depths 0 result = forest_depths (reverse left ++ right) }
+    raises { Failure ->
+      forall t: tree. depths 0 t <> forest_depths (reverse left ++ right) }
+  = match left, right with
+    | _, Nil ->
+        raise Failure
+    | Nil, Cons (v, t) Nil ->
+        if v = 0 then t else raise Failure
+    | Nil, Cons (v, t) right' ->
+        tc (Cons (v, t) Nil) right'
+    | Cons (v1, t1) left', Cons (v2, t2) right' ->
+        if v1 = v2 then tc left' (Cons (v1 - 1, Node t1 t2) right')
+        else tc (Cons (v2, t2) left) right'
+    end
+
+  (* Getting function [build] from [tc] is easy: from the list
+     [x1; x2; ...; xn] we simply build the list of pairs
+     [(x1, Leaf); (x2, Leaf); ...; (xn, Leaf)].
+     Function [map_leaf] below does this. *)
+
+  let rec function map_leaf (l: list int) : list (int, tree) =
+    match l with
+    | Nil -> Nil
+    | Cons d r -> Cons (d, Leaf) (map_leaf r)
+    end
+
+  (* two lemmas on [map_leaf] *)
+
+  let ghost map_leaf_depths (l: list int) : unit
+    ensures { forest_depths (map_leaf l) = l }
+  = ()
+
+  let ghost map_leaf_only_leaf (l: list int) : unit
+    ensures { only_leaf (map_leaf l) }
+  = ()
+
+  let build (s: list int)
+    ensures { depths 0 result = s }
+    raises  { Failure -> forall t: tree. depths 0 t <> s }
+  = tc Nil (map_leaf s)
+
+end

@@ -1,0 +1,126 @@
+% Statement-only formalization of the VERINA corpus artifact verina_basic_57
+% (verina__pvs__verina_basic_57), catalog title "CountLessThan": deterministically
+% counting the entries of a finite integer array that are strictly below an
+% integer threshold. This file contains no proof.
+
+verina_basic_57: THEORY
+BEGIN
+
+  % Finite PVS lists preserve exactly the contents and order of Lean arrays.
+  int_list_length(
+      values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        int_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  % Lean Array.get! on integer arrays returns zero outside the array.
+  int_list_get_bang(
+      index: nat,
+      values: list[int]): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          int_list_get_bang(index - 1, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  CountLessThan_precond(
+      numbers: list[int],
+      threshold: int): bool =
+    TRUE
+
+  % Starting with index zero and the array length as remaining fuel is exactly
+  % the source local count loop: each step reads numbers[index], conditionally
+  % increments the accumulator, and advances to the next array index.
+  countLessThan_count(
+      numbers: list[int],
+      threshold: int,
+      index, remaining, accumulator: nat): RECURSIVE nat =
+    IF remaining = 0 THEN
+      accumulator
+    ELSE
+      countLessThan_count(
+        numbers,
+        threshold,
+        index + 1,
+        remaining - 1,
+        IF int_list_get_bang(index, numbers) < threshold THEN
+          accumulator + 1
+        ELSE
+          accumulator
+        ENDIF)
+    ENDIF
+  MEASURE remaining
+
+  countLessThan(
+      numbers: list[int],
+      threshold: int): nat =
+    countLessThan_count(
+      numbers,
+      threshold,
+      0,
+      int_list_length(numbers),
+      0)
+
+  % The source precondition proof argument is computationally irrelevant.
+  CountLessThan(
+      numbers: list[int],
+      threshold: int): nat =
+    countLessThan(numbers, threshold)
+
+  % This is the source Array.foldl postcondition expression with its
+  % accumulator made explicit.
+  countLessThan_fold(
+      remaining: list[int],
+      threshold: int,
+      accumulator: nat): RECURSIVE nat =
+    CASES remaining OF
+      null:
+        accumulator,
+      cons(head, tail):
+        countLessThan_fold(
+          tail,
+          threshold,
+          IF head < threshold THEN
+            accumulator + 1
+          ELSE
+            accumulator
+          ENDIF)
+    ENDCASES
+  MEASURE remaining BY <<
+
+  % Lean natural-number subtraction is truncated at zero.
+  nat_subtract(first, second: nat): nat =
+    IF first >= second THEN first - second ELSE 0 ENDIF
+
+  CountLessThan_postcond(
+      numbers: list[int],
+      threshold: int,
+      result: nat): bool =
+    LET expected: nat =
+      countLessThan_fold(numbers, threshold, 0)
+    IN
+      nat_subtract(result, expected) = 0
+        AND nat_subtract(expected, result) = 0
+
+  CountLessThan_spec_satisfied: bool =
+    FORALL (
+        numbers: list[int],
+        threshold: int):
+      CountLessThan_precond(numbers, threshold)
+        IMPLIES
+          CountLessThan_postcond(
+            numbers,
+            threshold,
+            CountLessThan(numbers, threshold))
+
+END verina_basic_57

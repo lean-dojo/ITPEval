@@ -1,0 +1,166 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/bitwalker_Bitwalker_poke_8bitqtvc: the verification condition for
+% setting or clearing one selected bit of an 8-bit byte while preserving every
+% other bit and relating bitvector indices to integer indices. This file
+% contains no proof.
+
+bitwalker_Bitwalker_poke_8bitqtvc: THEORY
+BEGIN
+
+  IMPORTING
+    bv[8], bv[32], bv[64],
+    bv_nat[8], bv_nat[32], bv_nat[64],
+    bv_arithmetic_defs[8], bv_arithmetic_defs[32]
+
+  word8: TYPE = bvec[8]
+  word32: TYPE = bvec[32]
+  word64: TYPE = bvec[64]
+
+  unsigned8(value: word8): int = bv2nat[8](value)
+  unsigned32(value: word32): int = bv2nat[32](value)
+
+  word8_of(value: below(exp2(8))): word8 =
+    nat2bv[8](value)
+
+  word32_of(value: below(exp2(32))): word32 =
+    nat2bv[32](value)
+
+  zero8: word8 = fill[8](FALSE)
+  zero64: word64 = fill[64](FALSE)
+  one8: word8 = word8_of(1)
+  seven8: word8 = word8_of(7)
+  seven32: word32 = word32_of(7)
+  eight32: word32 = word32_of(8)
+
+  low8(value: word32): word8 =
+    LAMBDA (index: below(8)): value(index)
+
+  sub8(left, right: word8): word8 = left - right
+  sub32(left, right: word32): word32 = left - right
+
+  bit8(value: word8, index: int): bool =
+    IF 0 <= index AND index < 8 THEN
+      value(index)
+    ELSE
+      FALSE
+    ENDIF
+
+  nth_byte_default(stream: list[word8], index: int): word8 =
+    IF 0 <= index AND index < length(stream) THEN
+      nth(stream, index)
+    ELSE
+      zero8
+    ENDIF
+
+  nth8_stream(stream: list[word8], position: int): bool =
+    bit8(
+      nth_byte_default(stream, ndiv(position, 8)),
+      7 - mod(position, 8))
+
+  maxvalue(len: word32): word64 =
+    IF unsigned32(len) < 64 THEN
+      LAMBDA (index: below(64)):
+        index = unsigned32(len)
+    ELSE
+      zero64
+    ENDIF
+
+  bitwise_or(left, right: word8): word8 =
+    LAMBDA (index: below(8)):
+      left(index) OR right(index)
+
+  bitwise_and(left, right: word8): word8 =
+    LAMBDA (index: below(8)):
+      left(index) AND right(index)
+
+  bitwise_not(value: word8): word8 =
+    LAMBDA (index: below(8)):
+      NOT value(index)
+
+  shift_one_left(offset: word8): word8 =
+    IF unsigned8(offset) < 8 THEN
+      LAMBDA (index: below(8)):
+        index = unsigned8(offset)
+    ELSE
+      zero8
+    ENDIF
+
+  ule8(left, right: word8): bool =
+    unsigned8(left) <= unsigned8(right)
+
+  ult32(left, right: word32): bool =
+    unsigned32(left) < unsigned32(right)
+
+  selected_offset8(left1: word32): word8 =
+    sub8(seven8, low8(left1))
+
+  selected_offset32(left1: word32): word32 =
+    sub32(seven32, left1)
+
+  selected_update(
+      flag: bool,
+      byte, mask, result: word8): bool =
+    IF flag THEN
+      result = bitwise_or(byte, mask)
+    ELSE
+      result = bitwise_and(byte, bitwise_not(mask))
+    ENDIF
+
+  bitvector_postcondition(
+      left1: word32,
+      flag: bool,
+      byte, result: word8): bool =
+    (FORALL (index: word32):
+      ult32(index, eight32)
+        IMPLIES
+          NOT index = selected_offset32(left1)
+            IMPLIES
+              bit8(result, unsigned8(low8(index)))
+                = bit8(byte, unsigned8(low8(index))))
+      AND
+    bit8(result, unsigned8(selected_offset8(left1))) = flag
+
+  integer_postcondition(
+      left1: word32,
+      flag: bool,
+      byte, result: word8): bool =
+    (FORALL (index: int):
+      (0 <= index AND index < 8)
+        IMPLIES
+          NOT index = 7 - unsigned32(left1)
+            IMPLIES bit8(result, index) = bit8(byte, index))
+      AND
+    bit8(result, 7 - unsigned32(left1)) = flag
+
+  poke_8bit_vc: bool =
+    FORALL
+        (left1: word32),
+        (flag: bool),
+        (byte: word8):
+      unsigned32(left1) < 8
+        IMPLIES
+          (LET o1: word8 = low8(left1)
+           IN
+             (unsigned8(o1) <= 7
+               OR ule8(o1, seven8))
+               AND
+             (LET o2: word8 = sub8(seven8, o1)
+              IN
+                unsigned8(o2) = 7 - unsigned8(o1)
+                  IMPLIES
+                    (LET mask: word8 = shift_one_left(o2)
+                     IN
+                       (IF flag THEN TRUE ELSE TRUE ENDIF)
+                         AND
+                       (FORALL (result: word8):
+                         selected_update(flag, byte, mask, result)
+                           IMPLIES
+                             bitvector_postcondition(
+                               left1, flag, byte, result)))))
+          AND
+          (FORALL (result: word8):
+            bitvector_postcondition(left1, flag, byte, result)
+              IMPLIES
+                integer_postcondition(left1, flag, byte, result))
+
+END bitwalker_Bitwalker_poke_8bitqtvc

@@ -1,0 +1,155 @@
+% Statement-only formalization of the Thousand Theorems corpus artifact Q5421989
+% (thousand-theorems__pvs__Q5421989), "Exterior angle theorem": in a real
+% inner-product affine space, an exterior angle of a triangle equals the sum
+% of the two remote interior angles. This file contains no proof.
+
+Q5421989_exterior_angle_theorem[
+  V: TYPE+,
+  P: TYPE+,
+  zero: V,
+  vadd: [V, V -> V],
+  vneg: [V -> V],
+  scale: [real, V -> V],
+  inner: [V, V -> real],
+  point_vadd: [V, P -> P],
+  vsub: [P, P -> V]
+]: THEORY
+BEGIN
+  vector_space_laws: bool =
+    (FORALL (u, v: V): vadd(u, v) = vadd(v, u))
+      AND (FORALL (u, v, w: V):
+        vadd(vadd(u, v), w) = vadd(u, vadd(v, w)))
+      AND (FORALL (u: V): vadd(u, zero) = u)
+      AND (FORALL (u: V): vadd(u, vneg(u)) = zero)
+      AND (FORALL (a: real), (u, v: V):
+        scale(a, vadd(u, v)) = vadd(scale(a, u), scale(a, v)))
+      AND (FORALL (a, b: real), (u: V):
+        scale(a + b, u) = vadd(scale(a, u), scale(b, u)))
+      AND (FORALL (a, b: real), (u: V):
+        scale(a * b, u) = scale(a, scale(b, u)))
+      AND (FORALL (u: V): scale(1, u) = u)
+      AND (FORALL (u: V): scale(0, u) = zero)
+      AND (FORALL (u: V): vneg(u) = scale(-1, u))
+
+  inner_product_laws: bool =
+    (FORALL (u, v, w: V):
+      inner(vadd(u, v), w) = inner(u, w) + inner(v, w))
+      AND (FORALL (a: real), (u, v: V):
+        inner(scale(a, u), v) = a * inner(u, v))
+      AND (FORALL (u, v: V): inner(u, v) = inner(v, u))
+      AND (FORALL (u: V): 0 <= inner(u, u))
+      AND (FORALL (u: V): inner(u, u) = 0 IFF u = zero)
+
+  affine_torsor_laws: bool =
+    (FORALL (p: P): point_vadd(zero, p) = p)
+      AND (FORALL (u, v: V), (p: P):
+        point_vadd(vadd(u, v), p) =
+          point_vadd(u, point_vadd(v, p)))
+      AND (FORALL (p, q: P):
+        point_vadd(vsub(p, q), q) = p)
+      AND (FORALL (u: V), (p: P):
+        vsub(point_vadd(u, p), p) = u)
+
+  euclidean_affine_space: bool =
+    vector_space_laws AND inner_product_laws AND affine_torsor_laws
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  alternating_sign(index: nat): RECURSIVE real =
+    IF index = 0 THEN
+      1
+    ELSE
+      -alternating_sign(index - 1)
+    ENDIF
+  MEASURE index
+
+  cosine_partial_sum(count: nat, x: real): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        cosine_partial_sum(count - 1, x)
+          + safe_div(
+              alternating_sign(index) * x ^ (2 * index),
+              factorial(2 * index) :: real)
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: [nat -> real], value: real): bool =
+    FORALL (eps: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (count: nat):
+          cutoff <= count IMPLIES
+            abs(sequence(count) - value) < eps
+
+  power_series_cosine(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          (LAMBDA (count: nat): cosine_partial_sum(count, x)),
+          value))
+
+  pi: real =
+    epsilon(
+      LAMBDA (value: real):
+        2 < value AND value < 4
+          AND power_series_cosine(value / 2) = 0)
+
+  squared_distance(p, q: P): real =
+    inner(vsub(p, q), vsub(p, q))
+
+  positive_distance(length: real, p, q: P): bool =
+    0 < length
+      AND length * length = squared_distance(p, q)
+
+  angle_value(a, vertex, b: P, theta: real): bool =
+    0 <= theta
+      AND theta <= pi
+      AND
+      IF a = vertex OR b = vertex THEN
+        theta = pi / 2
+      ELSE
+        EXISTS (va_length, vb_length: real):
+          positive_distance(va_length, vertex, a)
+            AND positive_distance(vb_length, vertex, b)
+            AND power_series_cosine(theta)
+                  * va_length * vb_length =
+                inner(vsub(a, vertex), vsub(b, vertex))
+      ENDIF
+
+  unoriented_angle(a, vertex, b: P): real =
+    epsilon(
+      LAMBDA (theta: real):
+        angle_value(a, vertex, b, theta))
+
+  strictly_between(left, middle, right: P): bool =
+    middle /= left
+      AND middle /= right
+      AND EXISTS (t: real):
+        0 < t
+          AND t < 1
+          AND middle =
+            point_vadd(scale(t, vsub(right, left)), left)
+
+  exterior_angle_theorem: bool =
+    euclidean_affine_space IMPLIES
+      (FORALL (p1, p2, p3, p: P):
+        strictly_between(p, p1, p2)
+          IMPLIES
+            unoriented_angle(p3, p1, p) =
+              unoriented_angle(p1, p3, p2)
+                + unoriented_angle(p3, p2, p1))
+END Q5421989_exterior_angle_theorem

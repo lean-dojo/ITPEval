@@ -1,0 +1,216 @@
+:: Statement-only formalization of the NTP4VC corpus artifact
+:: pearl/verifythis_2021_dll_to_bst_Top_dll_to_bstqtvc: converting a
+:: well-formed doubly linked list to a balanced binary search tree preserves
+:: its locations as the inorder traversal and gives the required size and
+:: height bounds. This file contains no proof.
+
+environ
+  vocabularies TARSKI, XBOOLE_0, SUBSET_1, RELAT_1, FUNCT_1,
+    FUNCT_2, PARTFUN1, ZFMISC_1, NUMBERS, XREAL_0, CARD_1,
+    XXREAL_0, ARYTM_1, ARYTM_3, REAL_1, INT_1, NAT_1,
+    VALUED_0, VALUED_1, ORDINAL1, ORDINAL4, FINSEQ_1,
+    FINSEQ_2, MCART_1, NEWTON, FINSET_1;
+  notations TARSKI, XBOOLE_0, SUBSET_1, ZFMISC_1, XTUPLE_0,
+    MCART_1, RELAT_1, FUNCT_1, RELSET_1, PARTFUN1, FUNCT_2,
+    ORDINAL1, CARD_1, NUMBERS, XCMPLX_0, XREAL_0, REAL_1,
+    INT_1, NAT_1, XXREAL_0, FINSEQ_1, FINSEQ_2, NEWTON,
+    FINSET_1;
+  constructors FUNCT_1, RELSET_1, PARTFUN1, FUNCT_2, CARD_1,
+    REAL_1, INT_1, XXREAL_0, ZFMISC_1, MCART_1, NAT_1,
+    FINSEQ_1, FINSEQ_2, NEWTON, FINSET_1;
+  registrations XBOOLE_0, SUBSET_1, RELAT_1, FUNCT_1, RELSET_1,
+    PARTFUN1, FUNCT_2, NUMBERS, CARD_1, XXREAL_0, MEMBERED,
+    VALUED_0, VALUED_1, XCMPLX_0, XREAL_0, ORDINAL1, INT_1,
+    NAT_1, FINSEQ_1, FINSEQ_2, NEWTON, FINSET_1;
+  requirements REAL, NUMERALS, SUBSET, BOOLE, ARITHM;
+
+begin
+
+::$P-
+theorem
+  for L,State,Map,Tree being non empty set,
+      null being Element of L,
+      ToMap being Function of State,Map,
+      Dom being Function of Map,bool L,
+      Lookup being Function of [:Map,L:],L,
+      emptyT being Element of Tree,
+      node being Function of [:Tree,[:INT,Tree:]:],Tree,
+      Size,Height being Function of Tree,INT,
+      Inorder being Function of [:L*,Tree:],L*,
+      SeqAt being Function of [:L*,INT:],L,
+      Pow2 being Function of INT,INT,
+      Valid,Dll,IsTree being set,
+      prev,next being Element of State,
+      s being FinSequence of L,
+      head being Element of L,
+      z,n being Integer
+  st
+    (for m being Element of Map holds Dom.m is finite) &
+    (for m1,m2 being Element of Map st
+       Dom.m1 = Dom.m2 &
+       (for x being Element of L st x in Dom.m1 holds
+          Lookup.[m1,x] = Lookup.[m2,x])
+     holds m1 = m2) &
+    (for D being finite Subset of L,
+         f being Function of D,L
+     holds
+       ex m being Element of Map st
+         Dom.m = D &
+         for x being Element of L st x in D holds
+           Lookup.[m,x] = f.x) &
+
+    (for lt,rt being Element of Tree,
+         p being Integer
+     holds node.[lt,[p,rt]] <> emptyT) &
+    (for lt,lt2,rt,rt2 being Element of Tree,
+         p,p2 being Integer st
+       node.[lt,[p,rt]] = node.[lt2,[p2,rt2]]
+     holds lt = lt2 & p = p2 & rt = rt2) &
+    (for tr being Element of Tree holds
+       tr = emptyT or
+       ex lt,rt being Element of Tree,
+          p being Integer st
+         tr = node.[lt,[p,rt]]) &
+    (for X being Subset of Tree st
+       emptyT in X &
+       (for lt,rt being Element of Tree,
+            p being Integer st lt in X & rt in X
+        holds node.[lt,[p,rt]] in X)
+     holds X = Tree) &
+
+    Size.emptyT = 0 &
+    (for lt,rt being Element of Tree,
+         p being Integer
+     holds
+       Size.(node.[lt,[p,rt]]) = 1 + Size.lt + Size.rt) &
+    Height.emptyT = 0 &
+    (for lt,rt being Element of Tree,
+         p being Integer
+     holds
+       Height.(node.[lt,[p,rt]]) =
+         1 + max(Height.lt,Height.rt)) &
+    (for xs being FinSequence of L holds
+       Inorder.[xs,emptyT] = <*>(L)) &
+    (for xs being FinSequence of L,
+         lt,rt being Element of Tree,
+         p being Integer
+     holds
+       Inorder.[xs,node.[lt,[p,rt]]] =
+         Inorder.[xs,lt] ^ <*SeqAt.[xs,p]*> ^ Inorder.[xs,rt]) &
+
+    (for xs being FinSequence of L,
+         i being Integer st 0 <= i & i < len xs
+     holds SeqAt.[xs,i] = xs.(i+1)) &
+    (for e being Integer st 0 <= e holds
+       ex k being Nat st k = e & Pow2.e = 2 |^ k) &
+
+    (for p,q being Element of Map,
+         xs being FinSequence of L
+     holds
+       ([p,[q,xs]] in Valid iff
+         for i being Integer st 0 <= i & i < len xs
+         holds
+           SeqAt.[xs,i] <> null &
+           SeqAt.[xs,i] in Dom.p &
+           SeqAt.[xs,i] in Dom.q &
+           (for j being Integer st i < j & j < len xs
+            holds SeqAt.[xs,i] <> SeqAt.[xs,j]))) &
+
+    (for p,q being Element of Map,
+         xs being FinSequence of L,
+         hd being Element of L,
+         lo,hi being Integer
+     holds
+       ([p,[q,[xs,[hd,[lo,hi]]]]] in Dll iff
+         [p,[q,xs]] in Valid &
+         0 <= lo & lo <= hi & hi <= len xs &
+         (lo = len xs implies hd = null) &
+         (lo <> len xs implies hd = SeqAt.[xs,lo]) &
+         (for i being Integer st lo <= i & i < hi-1
+          holds
+            Lookup.[q,SeqAt.[xs,i]] = SeqAt.[xs,i+1]) &
+         (for i being Integer st lo < i & i < hi
+          holds
+            Lookup.[p,SeqAt.[xs,i]] = SeqAt.[xs,i-1]) &
+         (lo < hi implies
+            ((hi = len xs implies
+                Lookup.[q,SeqAt.[xs,hi-1]] = null) &
+             (hi <> len xs implies
+                Lookup.[q,SeqAt.[xs,hi-1]] =
+                  SeqAt.[xs,hi]))) &
+         (lo < hi implies
+            ((lo = 0 implies
+                Lookup.[p,SeqAt.[xs,lo]] = null) &
+             (lo <> 0 implies
+                Lookup.[p,SeqAt.[xs,lo]] =
+                  SeqAt.[xs,lo-1]))))) &
+
+    (for p,q being Element of Map,
+         xs being FinSequence of L,
+         root being Element of L,
+         tr being Element of Tree,
+         lo,hi being Integer
+     holds
+       ([p,[q,[xs,[root,[tr,[lo,hi]]]]]] in IsTree iff
+         [p,[q,xs]] in Valid &
+         0 <= lo & lo <= hi & hi <= len xs &
+         ((tr = emptyT & root = null & lo = hi) or
+          ex lt,rt being Element of Tree,
+             pivot being Integer st
+            tr = node.[lt,[pivot,rt]] &
+            lo <= pivot & pivot < hi &
+            root = SeqAt.[xs,pivot] &
+            [p,[q,[xs,
+              [Lookup.[p,root],[lt,[lo,pivot]]]]]]
+                in IsTree &
+            [p,[q,[xs,
+              [Lookup.[q,root],[rt,[pivot+1,hi]]]]]]
+                in IsTree))) &
+
+    z = 0 &
+    n = len s - 0 &
+    [ToMap.prev,[ToMap.next,[s,[head,[z,len s]]]]] in Dll
+  holds
+    [ToMap.prev,[ToMap.next,[s,[head,[z,len s]]]]] in Dll &
+    [ToMap.prev,[ToMap.next,[s,[head,[z,z+n]]]]] in Dll &
+    (for next1,prev1 being Element of State,
+         o1 being Element of L,
+         o2 being Element of Tree st
+       [ToMap.prev1,[ToMap.next1,
+         [s,[o1,[o2,[z,z+n]]]]]]
+           in IsTree &
+       Dom.(ToMap.prev1) = Dom.(ToMap.prev) &
+       Dom.(ToMap.next1) = Dom.(ToMap.next) &
+       (for i being Integer st 0 <= i & i < 0
+        holds
+          Lookup.[ToMap.prev1,SeqAt.[s,i]] =
+            Lookup.[ToMap.prev,SeqAt.[s,i]]) &
+       (for i being Integer st 0+n <= i & i < len s
+        holds
+          Lookup.[ToMap.prev1,SeqAt.[s,i]] =
+            Lookup.[ToMap.prev,SeqAt.[s,i]]) &
+       (for i being Integer st 0 <= i & i < 0
+        holds
+          Lookup.[ToMap.next1,SeqAt.[s,i]] =
+            Lookup.[ToMap.next,SeqAt.[s,i]]) &
+       (for i being Integer st 0+n <= i & i < len s
+        holds
+          Lookup.[ToMap.next1,SeqAt.[s,i]] =
+            Lookup.[ToMap.next,SeqAt.[s,i]]) &
+       (0 < n implies
+          for h being Element of INT st h = Height.o2 holds
+            for hm1 being Element of INT st hm1 = h-1 holds
+              Pow2.hm1 <= n & n < Pow2.h)
+     holds
+       [ToMap.prev1,[ToMap.next1,
+         [s,[o1,[o2,[z,len s]]]]]]
+           in IsTree &
+       Size.o2 = len s &
+       Inorder.[s,o2] = s &
+       (0 < len s implies
+          for h being Element of INT st h = Height.o2 holds
+            for hm1 being Element of INT st hm1 = h-1 holds
+              Pow2.hm1 <= len s & len s < Pow2.h))
+proof
+end;
+::$P+

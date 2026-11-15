@@ -1,0 +1,81 @@
+% Statement-only formalization of the VERINA corpus artifact verina_basic_47
+% (verina__pvs__verina_basic_47), catalog title "arraySum": the exact sum of
+% every entry of a nonempty finite integer array satisfies its recursive
+% sum-to-length correctness contract. This file contains no proof.
+
+verina_basic_47: THEORY
+BEGIN
+
+  % Finite PVS lists preserve exactly the contents and order of Lean arrays.
+  int_list_length(
+      values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        int_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  % This is exactly the source computation a.toList.sum.
+  int_list_sum(
+      values: list[int]): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        head + int_list_sum(tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  % Lean Array.get! on integer arrays returns zero outside the array.
+  int_list_get_bang(
+      index: nat,
+      values: list[int]): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          int_list_get_bang(index - 1, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  arraySum_precond(
+      a: list[int]): bool =
+    int_list_length(a) > 0
+
+  % The source precondition proof argument is computationally irrelevant.
+  arraySum(
+      a: list[int]): int =
+    int_list_sum(a)
+
+  sumTo(
+      a: list[int],
+      n: nat): RECURSIVE int =
+    IF n = 0 THEN
+      0
+    ELSE
+      sumTo(a, n - 1)
+        + int_list_get_bang(n - 1, a)
+    ENDIF
+  MEASURE n
+
+  arraySum_postcond(
+      a: list[int],
+      result: int): bool =
+    result - sumTo(a, int_list_length(a)) = 0
+      AND result >= sumTo(a, int_list_length(a))
+
+  arraySum_spec_satisfied: bool =
+    FORALL (a: list[int]):
+      arraySum_precond(a)
+        IMPLIES
+          arraySum_postcond(
+            a,
+            arraySum(a))
+
+END verina_basic_47

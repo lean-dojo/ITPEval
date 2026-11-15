@@ -1,0 +1,820 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/multiprecision/div_Div_div_qr_in_placeqtvc: the verification
+% condition for in-place multiprecision quotient-and-remainder division,
+% including the one-limb, two-limb, normalization, shifting, and
+% quotient-padding branches. This file contains no proof.
+
+div_Div_div_qr_in_placeqtvc[zone: TYPE+]: THEORY
+BEGIN
+
+  IMPORTING
+    bv[32], bv[64],
+    bv_nat[32], bv_nat[64]
+
+  word32: TYPE = bvec[32]
+  word64: TYPE = bvec[64]
+
+  ptr: TYPE =
+    [# data_length: nat,
+       cells: [int -> word64],
+       pointer_offset: int,
+       pointer_min: int,
+       pointer_max: int,
+       is_writable: bool,
+       pointer_zone: zone #]
+
+  radix: int = 18446744073709551616
+  half_radix: int = 9223372036854775808
+
+  zero32: word32 = fill[32](FALSE)
+  one32: word32 = nat2bv[32](1)
+  two32: word32 = nat2bv[32](2)
+  zero64: word64 = fill[64](FALSE)
+
+  unsigned64(value1: word64): int =
+    bv2nat[64](value1)
+
+  signed32(value1: word32): int =
+    IF value1(31) THEN
+      bv2nat[32](value1) - 4294967296
+    ELSE
+      bv2nat[32](value1)
+    ENDIF
+
+  int_to_nat(value1: int): nat =
+    IF value1 < 0 THEN 0 ELSE value1 ENDIF
+
+  int32_in_bounds(value1: int): bool =
+    -2147483648 <= value1 AND value1 <= 2147483647
+
+  nat_power(base: int, exponent: nat): RECURSIVE int =
+    IF exponent = 0 THEN
+      1
+    ELSE
+      base * nat_power(base, exponent - 1)
+    ENDIF
+  MEASURE exponent
+
+  int_power(base, exponent: int): int =
+    nat_power(base, int_to_nat(exponent))
+
+  pelts(p: ptr, index: int): word64 =
+    cells(p)(index)
+
+  valid(p: ptr, size: int): bool =
+    int32_in_bounds(size)
+      AND 0 <= size
+      AND 0 <= pointer_min(p)
+      AND pointer_min(p) <= pointer_offset(p)
+      AND pointer_offset(p) + size <= pointer_max(p)
+      AND pointer_max(p) <= data_length(p)
+
+  same_shape(newer, older: ptr): bool =
+    data_length(newer) = data_length(older)
+      AND pointer_offset(newer) = pointer_offset(older)
+      AND pointer_min(newer) = pointer_min(older)
+      AND pointer_max(newer) = pointer_max(older)
+      AND is_writable(newer) = is_writable(older)
+      AND pointer_zone(newer) = pointer_zone(older)
+
+  access_at(p: ptr, index: int): bool =
+    pointer_min(p) <= index AND index < pointer_max(p)
+
+  map_updated_at(
+      newer, older: ptr,
+      index: int,
+      limb: word64): bool =
+    FORALL (query: int):
+      pelts(newer, query)
+        =
+      IF query = index THEN limb ELSE pelts(older, query) ENDIF
+
+  updated_at_and_stored(
+      newer, older: ptr,
+      index: int,
+      limb: word64): bool =
+    map_updated_at(newer, older, index, limb)
+      AND pelts(newer, index) = limb
+
+  map_eq_sub_shift(
+      first, second: ptr,
+      first_offset, second_offset, size: int): bool =
+    FORALL (i: int):
+      0 <= i AND i < size
+        IMPLIES
+      pelts(first, first_offset + i)
+        = pelts(second, second_offset + i)
+
+  outside_unchanged(
+      current, original: ptr,
+      size: int): bool =
+    FORALL (j: int):
+      j < pointer_offset(current)
+        OR pointer_offset(current) + size <= j
+        IMPLIES
+      pelts(current, j) = pelts(original, j)
+
+  copied_range(
+      current, source, original: ptr,
+      size: int): bool =
+    map_eq_sub_shift(
+      current, source,
+      pointer_offset(current), pointer_offset(source), size)
+      AND outside_unchanged(current, original, size)
+
+  value_from(
+      p: ptr,
+      index: int,
+      count: nat): RECURSIVE int =
+    IF count = 0 THEN
+      0
+    ELSE
+      unsigned64(pelts(p, index))
+        + radix * value_from(p, index + 1, count - 1)
+    ENDIF
+  MEASURE count
+
+  value(p: ptr, size: int): int =
+    value_from(p, pointer_offset(p), int_to_nat(size))
+
+  normalized(p: ptr, size: word32): bool =
+    valid(p, signed32(size))
+      AND half_radix
+        <= unsigned64(
+             pelts(
+               p,
+               pointer_offset(p) + signed32(size) - 1))
+
+  word_flag(
+      word, constant: word32,
+      flag: bool): bool =
+    (signed32(word) = signed32(constant) IMPLIES flag = TRUE)
+      AND (flag = TRUE IMPLIES word = constant)
+
+  shift_count_bounds(count: word64): bool =
+    0 < unsigned64(count) AND unsigned64(count) < 64
+
+  clz_conditions(
+      most_significant: word64,
+      clz: word32): bool =
+    int_power(2, signed32(clz)) * unsigned64(most_significant) < radix
+      AND radix
+        <= 2 * int_power(2, signed32(clz))
+             * unsigned64(most_significant)
+      AND 0 <= signed32(clz)
+      AND signed32(clz) < 64
+      AND int_power(2, signed32(clz)) * unsigned64(most_significant)
+        <= radix - int_power(2, signed32(clz))
+
+  qr_post(
+      original_x, quotient, divisor, remainder: ptr,
+      sx, sy: word32): bool =
+    value(original_x, signed32(sx))
+      =
+    value(quotient, signed32(sx) - signed32(sy) + 1)
+        * value(divisor, signed32(sy))
+      + value(remainder, signed32(sy))
+      AND value(remainder, signed32(sy))
+        < value(divisor, signed32(sy))
+
+  division_premise(
+      dividend, quotient, divisor, remainder: ptr,
+      total_size, divisor_size: int,
+      qh: word64): bool =
+    value(dividend, total_size)
+      =
+    (value(quotient, total_size - divisor_size)
+       + int_power(radix, total_size - divisor_size)
+           * unsigned64(qh))
+      * value(divisor, divisor_size)
+      + value(remainder, divisor_size)
+      AND value(remainder, divisor_size)
+        < value(divisor, divisor_size)
+      AND 0 <= unsigned64(qh)
+      AND unsigned64(qh) <= 1
+
+  quotient_padding(
+      quotient: ptr,
+      sx, sy, adjust: word32): bool =
+    FORALL (flag: bool):
+      word_flag(adjust, zero32, flag)
+        IMPLIES
+      IF flag = TRUE THEN
+        int32_in_bounds(signed32(sx) - signed32(sy))
+          AND
+        (FORALL (index: word32):
+          signed32(index) = signed32(sx) - signed32(sy)
+            IMPLIES
+          (access_at(
+             quotient,
+             pointer_offset(quotient) + signed32(index))
+             AND is_writable(quotient) = TRUE)
+            AND
+          (FORALL (padded: ptr):
+            same_shape(padded, quotient)
+              IMPLIES
+            updated_at_and_stored(
+              padded, quotient,
+              pointer_offset(padded) + signed32(index), zero64)
+              IMPLIES
+            value(padded, signed32(sx) - signed32(sy) + 1)
+              =
+            value(
+              quotient,
+              signed32(sx) - signed32(sy) + signed32(adjust))))
+      ELSE
+        value(quotient, signed32(sx) - signed32(sy) + 1)
+          =
+        value(
+          quotient,
+          signed32(sx) - signed32(sy) + signed32(adjust))
+      ENDIF
+
+  finish_with_padding(
+      original_x, quotient, divisor, remainder: ptr,
+      sx, sy, adjust: word32): bool =
+    quotient_padding(quotient, sx, sy, adjust)
+      AND
+    (FORALL (padded: ptr):
+      same_shape(padded, quotient)
+        IMPLIES
+      value(padded, signed32(sx) - signed32(sy) + 1)
+        =
+      value(
+        quotient,
+        signed32(sx) - signed32(sy) + signed32(adjust))
+        IMPLIES
+      qr_post(original_x, padded, divisor, remainder, sx, sy))
+
+  one_limb_branch(
+      sy, sx: word32,
+      x, y, q: ptr): bool =
+    access_at(y, pointer_offset(y))
+      AND
+    LET divisor: word64 = pelts(y, pointer_offset(y)) IN
+      (valid(x, signed32(sx))
+         AND valid(q, signed32(sx))
+         AND is_writable(q) = TRUE
+         AND 0 < signed32(sx)
+         AND 0 < unsigned64(divisor))
+        AND
+      (FORALL (q1: ptr):
+        same_shape(q1, q)
+          IMPLIES
+        (FORALL (remainder_limb: word64):
+          value(x, signed32(sx))
+              =
+            value(q1, signed32(sx)) * unsigned64(divisor)
+              + unsigned64(remainder_limb)
+            AND unsigned64(remainder_limb) < unsigned64(divisor)
+              IMPLIES
+            (access_at(x, pointer_offset(x))
+               AND is_writable(x) = TRUE)
+              AND
+            (FORALL (x1: ptr):
+              same_shape(x1, x)
+                IMPLIES
+              map_updated_at(
+                x1, x, pointer_offset(x1), remainder_limb)
+                IMPLIES
+              qr_post(x, q1, y, x1, sx, sy))))
+
+  div2_preconditions(
+      dividend, divisor, quotient: ptr,
+      total: word32): bool =
+    2 <= signed32(total)
+      AND valid(dividend, signed32(total))
+      AND valid(divisor, 2)
+      AND valid(quotient, signed32(total) - 2)
+      AND half_radix
+        <= unsigned64(pelts(divisor, pointer_offset(divisor) + 1))
+      AND is_writable(quotient) = TRUE
+      AND is_writable(dividend) = TRUE
+
+  div2_direct_continuation(
+      sx, sy, total: word32,
+      original_x, divisor, quotient, dividend: ptr): bool =
+    FORALL (remainder, q1: ptr):
+      same_shape(remainder, dividend)
+        IMPLIES
+      same_shape(q1, quotient)
+        IMPLIES
+      (FORALL (qh: word64):
+        division_premise(
+          dividend, q1, divisor, remainder,
+          signed32(total), 2, qh)
+          IMPLIES
+        (valid(remainder, signed32(sy))
+           AND valid(original_x, signed32(sy))
+           AND is_writable(original_x) = TRUE)
+          AND
+        (FORALL (x1: ptr):
+          same_shape(x1, original_x)
+            IMPLIES
+          copied_range(x1, remainder, original_x, signed32(sy))
+            IMPLIES
+          qr_post(original_x, q1, divisor, x1, sx, sy)))
+
+  copy_append_zero_div2(
+      sx, sy: word32,
+      original_x, divisor, quotient, scratch: ptr): bool =
+    FORALL (copied: ptr):
+      same_shape(copied, scratch)
+        IMPLIES
+      copied_range(copied, original_x, scratch, signed32(sx))
+        IMPLIES
+      (access_at(copied, pointer_offset(copied) + signed32(sx))
+         AND is_writable(copied) = TRUE)
+        AND
+      (FORALL (extended: ptr):
+        same_shape(extended, copied)
+          IMPLIES
+        updated_at_and_stored(
+          extended, copied,
+          pointer_offset(extended) + signed32(sx), zero64)
+          IMPLIES
+        int32_in_bounds(signed32(sx) + 1)
+          AND
+        (FORALL (total: word32):
+          signed32(total) = signed32(sx) + 1
+            IMPLIES
+          div2_preconditions(extended, divisor, quotient, total)
+            AND
+          div2_direct_continuation(
+            sx, sy, total,
+            original_x, divisor, quotient, extended)))
+
+  two_limb_unshifted(
+      sx, sy: word32,
+      x, y, q, nx: ptr): bool =
+    (valid(x, signed32(sx))
+       AND valid(nx, signed32(sx))
+       AND is_writable(nx) = TRUE)
+      AND copy_append_zero_div2(sx, sy, x, y, q, nx)
+
+  two_limb_shifted_div_continuation(
+      sx, sy, clz: word32,
+      scale: int,
+      original_x, original_y, q,
+      normalized_divisor, normalized_dividend: ptr,
+      total: word32): bool =
+    div2_preconditions(
+      normalized_dividend, normalized_divisor, q, total)
+      AND
+    (FORALL (remainder, q1: ptr):
+      same_shape(remainder, normalized_dividend)
+        IMPLIES
+      same_shape(q1, q)
+        IMPLIES
+      (FORALL (qh: word64):
+        division_premise(
+          normalized_dividend, q1, normalized_divisor, remainder,
+          signed32(total), 2, qh)
+          IMPLIES
+        0 <= signed32(clz)
+          AND
+        (FORALL (shift: word64):
+          unsigned64(shift) = signed32(clz)
+            IMPLIES
+          (valid(remainder, signed32(sy))
+             AND valid(original_x, signed32(sy))
+             AND shift_count_bounds(shift)
+             AND 0 < signed32(sy)
+             AND is_writable(original_x) = TRUE)
+            AND
+          (FORALL (restored: ptr):
+            same_shape(restored, original_x)
+              IMPLIES
+            (FORALL (discarded: word64):
+              unsigned64(discarded)
+                  + radix * value(restored, signed32(sy))
+                =
+              value(remainder, signed32(sy))
+                * int_power(2, 64 - unsigned64(shift))
+                IMPLIES
+              value(remainder, 2) = scale * value(restored, 2)
+                AND
+              (value(remainder, 2) = scale * value(restored, 2)
+                IMPLIES
+               qr_post(
+                 original_x, q1, original_y, restored, sx, sy)))))))
+
+  two_limb_shifted(
+      sx, sy, clz: word32,
+      scale: int,
+      x, y, q, nx, ny: ptr): bool =
+    0 <= signed32(clz)
+      AND
+    (FORALL (shift_y: word64):
+      unsigned64(shift_y) = signed32(clz)
+        IMPLIES
+      (shift_count_bounds(shift_y)
+         AND valid(ny, signed32(sy))
+         AND valid(y, signed32(sy))
+         AND is_writable(ny) = TRUE
+         AND 0 < signed32(sy))
+        AND
+      (FORALL (normalized_y: ptr):
+        same_shape(normalized_y, ny)
+          IMPLIES
+        (FORALL (carry_y: word64):
+          value(normalized_y, signed32(sy))
+              + int_power(radix, signed32(sy)) * unsigned64(carry_y)
+            =
+          value(y, signed32(sy))
+            * int_power(2, unsigned64(shift_y))
+            IMPLIES
+          (normalized(normalized_y, sy)
+             AND value(normalized_y, signed32(sy))
+               = scale * value(y, signed32(sy)))
+            AND
+          ((normalized(normalized_y, sy)
+              AND value(normalized_y, signed32(sy))
+                = scale * value(y, signed32(sy)))
+            IMPLIES
+           0 <= signed32(clz)
+             AND
+           (FORALL (shift_x: word64):
+             unsigned64(shift_x) = signed32(clz)
+               IMPLIES
+             (shift_count_bounds(shift_x)
+                AND valid(nx, signed32(sx))
+                AND valid(x, signed32(sx))
+                AND is_writable(nx) = TRUE
+                AND 0 < signed32(sx))
+               AND
+             (FORALL (shifted_x: ptr):
+               same_shape(shifted_x, nx)
+                 IMPLIES
+               (FORALL (high: word64):
+                 value(shifted_x, signed32(sx))
+                     + int_power(radix, signed32(sx))
+                         * unsigned64(high)
+                   =
+                 value(x, signed32(sx))
+                   * int_power(2, unsigned64(shift_x))
+                   IMPLIES
+                 (access_at(
+                    shifted_x,
+                    pointer_offset(shifted_x) + signed32(sx))
+                    AND is_writable(shifted_x) = TRUE)
+                   AND
+                 (FORALL (extended: ptr):
+                   same_shape(extended, shifted_x)
+                     IMPLIES
+                   updated_at_and_stored(
+                     extended, shifted_x,
+                     pointer_offset(extended) + signed32(sx), high)
+                     IMPLIES
+                   value(extended, signed32(sx) + 1)
+                       = scale * value(x, signed32(sx))
+                     AND
+                   (value(extended, signed32(sx) + 1)
+                       = scale * value(x, signed32(sx))
+                     IMPLIES
+                    int32_in_bounds(signed32(sx) + 1)
+                      AND
+                    (FORALL (total: word32):
+                      signed32(total) = signed32(sx) + 1
+                        IMPLIES
+                      two_limb_shifted_div_continuation(
+                        sx, sy, clz, scale,
+                        x, y, q, normalized_y, extended, total)))))))))))
+
+  two_limb_case(
+      sx, sy: word32,
+      x, y, q, nx, ny: ptr): bool =
+    int32_in_bounds(signed32(sy) - 1)
+      AND
+    (FORALL (top_index: word32):
+      signed32(top_index) = signed32(sy) - 1
+        IMPLIES
+      access_at(y, pointer_offset(y) + signed32(top_index))
+        AND
+      LET most_significant: word64 =
+        pelts(y, pointer_offset(y) + signed32(top_index))
+      IN
+        0 < unsigned64(most_significant)
+          AND
+        (FORALL (clz: word32):
+          clz_conditions(most_significant, clz)
+            IMPLIES
+          LET scale: int = int_power(2, signed32(clz)) IN
+            (FORALL (zero_flag: bool):
+              word_flag(clz, zero32, zero_flag)
+                IMPLIES
+              IF zero_flag = TRUE THEN
+                two_limb_unshifted(sx, sy, x, y, q, nx)
+              ELSE
+                two_limb_shifted(
+                  sx, sy, clz, scale, x, y, q, nx, ny)
+              ENDIF)))
+
+  general_div_preconditions(
+      sy, total: word32,
+      dividend, divisor, quotient: ptr): bool =
+    3 <= signed32(sy)
+      AND signed32(sy) <= signed32(total)
+      AND valid(dividend, signed32(total))
+      AND valid(divisor, signed32(sy))
+      AND valid(quotient, signed32(total) - signed32(sy))
+      AND is_writable(quotient) = TRUE
+      AND is_writable(dividend) = TRUE
+      AND normalized(divisor, sy)
+
+  general_direct_continuation(
+      sx, sy, adjust, total: word32,
+      x, divisor, q, dividend: ptr): bool =
+    FORALL (remainder, q1: ptr):
+      same_shape(remainder, dividend)
+        IMPLIES
+      same_shape(q1, q)
+        IMPLIES
+      (FORALL (qh: word64):
+        division_premise(
+          dividend, q1, divisor, remainder,
+          signed32(total), signed32(sy), qh)
+          IMPLIES
+        (valid(remainder, signed32(sy))
+           AND valid(x, signed32(sy))
+           AND is_writable(x) = TRUE)
+          AND
+        (FORALL (restored: ptr):
+          same_shape(restored, x)
+            IMPLIES
+          copied_range(restored, remainder, x, signed32(sy))
+            IMPLIES
+          finish_with_padding(
+            x, q1, divisor, restored, sx, sy, adjust)))
+
+  general_unshifted(
+      sx, sy, adjust: word32,
+      x, y, q, nx: ptr): bool =
+    (valid(x, signed32(sx))
+       AND valid(nx, signed32(sx))
+       AND is_writable(nx) = TRUE)
+      AND
+    (FORALL (copied: ptr):
+      same_shape(copied, nx)
+        IMPLIES
+      copied_range(copied, x, nx, signed32(sx))
+        IMPLIES
+      (access_at(copied, pointer_offset(copied) + signed32(sx))
+         AND is_writable(copied) = TRUE)
+        AND
+      (FORALL (extended: ptr):
+        same_shape(extended, copied)
+          IMPLIES
+        updated_at_and_stored(
+          extended, copied,
+          pointer_offset(extended) + signed32(sx), zero64)
+          IMPLIES
+        int32_in_bounds(signed32(sx) + signed32(adjust))
+          AND
+        (FORALL (total: word32):
+          signed32(total) = signed32(sx) + signed32(adjust)
+            IMPLIES
+          general_div_preconditions(sy, total, extended, y, q)
+            AND
+          general_direct_continuation(
+            sx, sy, adjust, total, x, y, q, extended))))
+
+  general_shifted_continuation(
+      sx, sy, adjust, clz, total: word32,
+      scale: int,
+      x, y, q, normalized_dividend, normalized_divisor: ptr): bool =
+    FORALL (remainder, q1: ptr):
+      same_shape(remainder, normalized_dividend)
+        IMPLIES
+      same_shape(q1, q)
+        IMPLIES
+      (FORALL (qh: word64):
+        division_premise(
+          normalized_dividend, q1, normalized_divisor, remainder,
+          signed32(total), signed32(sy), qh)
+          IMPLIES
+        0 <= signed32(clz)
+          AND
+        (FORALL (shift: word64):
+          unsigned64(shift) = signed32(clz)
+            IMPLIES
+          (valid(remainder, signed32(sy))
+             AND valid(x, signed32(sy))
+             AND shift_count_bounds(shift)
+             AND 0 < signed32(sy)
+             AND is_writable(x) = TRUE)
+            AND
+          (FORALL (restored: ptr):
+            same_shape(restored, x)
+              IMPLIES
+            (FORALL (discarded: word64):
+              unsigned64(discarded)
+                  + radix * value(restored, signed32(sy))
+                =
+              value(remainder, signed32(sy))
+                * int_power(2, 64 - unsigned64(shift))
+                IMPLIES
+              value(remainder, signed32(sy))
+                  = scale * value(restored, signed32(sy))
+                AND
+              (value(remainder, signed32(sy))
+                  = scale * value(restored, signed32(sy))
+               IMPLIES
+               finish_with_padding(
+                 x, q1, y, restored, sx, sy, adjust))))))
+
+  general_shifted(
+      sx, sy, adjust, clz: word32,
+      scale: int,
+      x, y, q, nx, ny: ptr): bool =
+    0 <= signed32(clz)
+      AND
+    (FORALL (shift_y: word64):
+      unsigned64(shift_y) = signed32(clz)
+        IMPLIES
+      (shift_count_bounds(shift_y)
+         AND valid(ny, signed32(sy))
+         AND valid(y, signed32(sy))
+         AND is_writable(ny) = TRUE
+         AND 0 < signed32(sy))
+        AND
+      (FORALL (normalized_y: ptr):
+        same_shape(normalized_y, ny)
+          IMPLIES
+        (FORALL (carry_y: word64):
+          value(normalized_y, signed32(sy))
+              + int_power(radix, signed32(sy)) * unsigned64(carry_y)
+            =
+          value(y, signed32(sy))
+            * int_power(2, unsigned64(shift_y))
+            IMPLIES
+          0 <= signed32(clz)
+            AND
+          (FORALL (shift_x: word64):
+            unsigned64(shift_x) = signed32(clz)
+              IMPLIES
+            (shift_count_bounds(shift_x)
+               AND valid(nx, signed32(sx))
+               AND valid(x, signed32(sx))
+               AND is_writable(nx) = TRUE
+               AND 0 < signed32(sx))
+              AND
+            (FORALL (shifted_x: ptr):
+              same_shape(shifted_x, nx)
+                IMPLIES
+              (FORALL (high: word64):
+                value(shifted_x, signed32(sx))
+                    + int_power(radix, signed32(sx))
+                        * unsigned64(high)
+                  =
+                value(x, signed32(sx))
+                  * int_power(2, unsigned64(shift_x))
+                  IMPLIES
+                (access_at(
+                   shifted_x,
+                   pointer_offset(shifted_x) + signed32(sx))
+                   AND is_writable(shifted_x) = TRUE)
+                  AND
+                (FORALL (extended: ptr):
+                  same_shape(extended, shifted_x)
+                    IMPLIES
+                  updated_at_and_stored(
+                    extended, shifted_x,
+                    pointer_offset(extended) + signed32(sx), high)
+                    IMPLIES
+                  (FORALL (adjust_one: bool):
+                    word_flag(adjust, one32, adjust_one)
+                      IMPLIES
+                    int32_in_bounds(
+                      signed32(sx) + signed32(adjust))
+                      AND
+                    (FORALL (total: word32):
+                      signed32(total)
+                          = signed32(sx) + signed32(adjust)
+                        IMPLIES
+                      general_div_preconditions(
+                        sy, total, extended, normalized_y, q)
+                        AND
+                      general_shifted_continuation(
+                        sx, sy, adjust, clz, total, scale,
+                        x, y, q, extended, normalized_y))))))))))
+
+  general_clz_case(
+      sx, sy, adjust: word32,
+      x, y, q, nx, ny: ptr,
+      most_significant: word64): bool =
+    FORALL (clz: word32):
+      clz_conditions(most_significant, clz)
+        IMPLIES
+      LET scale: int = int_power(2, signed32(clz)) IN
+        (FORALL (zero_flag: bool):
+          word_flag(clz, zero32, zero_flag)
+            IMPLIES
+          IF zero_flag = TRUE THEN
+            general_unshifted(sx, sy, adjust, x, y, q, nx)
+          ELSE
+            general_shifted(
+              sx, sy, adjust, clz, scale, x, y, q, nx, ny)
+          ENDIF)
+
+  general_case(
+      sx, sy: word32,
+      x, y, q, nx, ny: ptr): bool =
+    int32_in_bounds(signed32(sy) - 1)
+      AND
+    (FORALL (y_top: word32):
+      signed32(y_top) = signed32(sy) - 1
+        IMPLIES
+      access_at(y, pointer_offset(y) + signed32(y_top))
+        AND int32_in_bounds(signed32(sx) - 1)
+        AND
+      (FORALL (x_top: word32):
+        signed32(x_top) = signed32(sx) - 1
+          IMPLIES
+        access_at(x, pointer_offset(x) + signed32(x_top))
+          AND
+        (FORALL (adjust: word32):
+          (IF unsigned64(
+                pelts(y, pointer_offset(y) + signed32(y_top)))
+                <=
+              unsigned64(
+                pelts(x, pointer_offset(x) + signed32(x_top)))
+           THEN
+             adjust = one32
+           ELSE
+             adjust = zero32
+           ENDIF)
+            IMPLIES
+          int32_in_bounds(signed32(sy) - 1)
+            AND
+          (FORALL (y_top_again: word32):
+            signed32(y_top_again) = signed32(sy) - 1
+              IMPLIES
+            access_at(
+              y, pointer_offset(y) + signed32(y_top_again))
+              AND
+            LET most_significant: word64 =
+              pelts(
+                y, pointer_offset(y) + signed32(y_top_again))
+            IN
+              0 < unsigned64(most_significant)
+                AND
+              general_clz_case(
+                sx, sy, adjust, x, y, q, nx, ny,
+                most_significant)))))
+
+  non_one_limb_branch(
+      sy, sx: word32,
+      x, y, q, nx, ny: ptr): bool =
+    FORALL (two_flag: bool):
+      word_flag(sy, two32, two_flag)
+        IMPLIES
+      IF two_flag = TRUE THEN
+        two_limb_case(sx, sy, x, y, q, nx, ny)
+      ELSE
+        general_case(sx, sy, x, y, q, nx, ny)
+      ENDIF
+
+  div_Div_div_qr_in_placeqtvc_statement: bool =
+    FORALL
+        (sy, sx: word32),
+        (x, y, q, nx, ny: ptr),
+        (one_flag: bool):
+      1 <= signed32(sy)
+        IMPLIES
+      signed32(sy) <= signed32(sx)
+        IMPLIES
+      signed32(sx) <= 2147483647 - 1
+        IMPLIES
+      valid(x, signed32(sx))
+        IMPLIES
+      valid(y, signed32(sy))
+        IMPLIES
+      valid(q, signed32(sx) - signed32(sy) + 1)
+        IMPLIES
+      valid(nx, signed32(sx) + 1)
+        IMPLIES
+      valid(ny, signed32(sy))
+        IMPLIES
+      is_writable(q) = TRUE
+        IMPLIES
+      is_writable(x) = TRUE
+        IMPLIES
+      is_writable(nx) = TRUE
+        IMPLIES
+      is_writable(ny) = TRUE
+        IMPLIES
+      0 < unsigned64(
+            pelts(
+              y,
+              pointer_offset(y) + signed32(sy) - 1))
+        IMPLIES
+      word_flag(sy, one32, one_flag)
+        IMPLIES
+      IF one_flag = TRUE THEN
+        one_limb_branch(sy, sx, x, y, q)
+      ELSE
+        non_one_limb_branch(sy, sx, x, y, q, nx, ny)
+      ENDIF
+
+END div_Div_div_qr_in_placeqtvc

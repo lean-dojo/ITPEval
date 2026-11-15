@@ -1,72 +1,58 @@
-# ITPEval Benchmark Data
+# Evaluation inputs
 
-Two JSON files covering all benchmarks and ITPs evaluated in the paper:
+| Input | Items | Records | Provers | Directed pairs |
+|---|---:|---:|---:|---:|
+| `extended/manifest.json` and eight dataset shards | 2,634 | 26,340 | 10 | 237,060 |
+| `proofs.json` (available proof records) | 74 | 296 | 4 | 888 |
 
-```
-eval/data/
-├── stmts.json    # sorry-stripped theorem statements  (1,560 records)
-└── proofs.json   # full proofs                        (296 records)
-```
+Statement translation uses the same ten-prover input for every direction.
+Proof translation uses the available records in `proofs.json`; cycle utilities
+use `minif2f_nl4itp.jsonl`. The archived `stmts.json` is retained for the existing
+Lean-target BEq runner and is not a selectable statement-translation corpus.
 
-Only theorems formalized in **all four ITPs** (the 4-way intersection) are included.
+## Records and identities
 
-## Record schema
+The proof file and each statement shard are JSON arrays. Core fields:
 
-Every record is a flat dict:
+| Field | Meaning |
+|---|---|
+| `theorem_id` | Stable integer release identity; previously assigned IDs remain reserved |
+| `title` | Shared item title/file stem across its prover representations |
+| `source` | Dataset name; include it when joining records |
+| `tier` | `a` for Babel-formal; `b` for the other datasets |
+| `prover` | Native adapter ID |
+| `content` | Complete statement or proof source text |
+| `split` | miniF2F's `test` or `valid` membership |
 
-| Field | Type | Always present | Description |
-|-------|------|----------------|-------------|
-| `theorem_id` | int | ✓ | Globally unique theorem ID (1–390); groups all prover variants of the same theorem |
-| `title` | str | ✓ | Theorem name / file stem |
-| `source` | str | ✓ | Benchmark: `babel-formal` · `hundred-theorems` · `minif2f` |
-| `tier` | str | ✓ | `"a"` (controlled) or `"b"` (ecosystem) |
-| `prover` | str | ✓ | `hol-light` · `isabelle` · `lean4` · `rocq` |
-| `content` | str | ✓ | Full file text (sorry-stripped in stmts.json, full proof in proofs.json) |
-| `split` | str | minif2f only | `"test"` or `"valid"` |
+Statement records additionally contain `item_id` (canonical dataset identity),
+`artifact` (repository-relative source path), and `sha256` (source-file bytes).
+Ten-way membership is explicit in `../subsets/extended_stmts_2634.json`.
+Existing identities keep their integer IDs, excluded IDs remain reserved,
+and additional identities use IDs above 390. IDs therefore
+need not be contiguous. Catalogue numbers and dataset-specific IDs are `item_id`,
+not necessarily `theorem_id`.
 
-## Benchmark summary
+Join representations by `(source, theorem_id)` and records by
+`(source, theorem_id, prover)`. The corpus does not deduplicate mathematical
+content across datasets. Pin the data revision and source hashes when reproducing
+an experiment: matching IDs alone does not establish unchanged content.
 
-| Source | Tier | Theorems | `theorem_id` range | stmts | proofs |
-|--------|------|----------|-------------------|-------|--------|
-| `babel-formal` | A | 16 | 1–16 | ✓ | ✓ |
-| `hundred-theorems` | B | 58 | 17–74 | ✓ | ✓ |
-| `minif2f` | B | 316 | 75–390 | ✓ | — |
-| **Total** | | **390** | 1–390 | **1,560 records** | **296 records** |
-
-All four ITPs (HOL Light, Isabelle, Lean 4, Rocq) are represented for every theorem.
-
-## Usage
+## Access
 
 ```python
-import json
+from eval.pipeline.translation.data import load_statement_records, load_pairs
 
-stmts  = json.load(open("eval/data/stmts.json"))
-proofs = json.load(open("eval/data/proofs.json"))
-
-# All Lean 4 statements
-lean4_stmts = [r for r in stmts if r["prover"] == "lean4"]
-
-# All prover variants of a single theorem
-theorem_1 = [r for r in stmts if r["theorem_id"] == 1]
-
-# 4-way intersection is guaranteed: every theorem_id has exactly 4 records
-assert all(
-    sum(1 for r in stmts if r["theorem_id"] == tid) == 4
-    for tid in range(1, 391)
-)
-
-# Join stmts and proofs by (theorem_id, prover)
-proof_lookup = {(r["theorem_id"], r["prover"]): r for r in proofs}
-for s in stmts:
-    p = proof_lookup.get((s["theorem_id"], s["prover"]))
-    if p:
-        pass  # s["content"] is sorry-stripped; p["content"] is the full proof
+records = load_statement_records(sources=["putnambench"])
+assert len(records) == 6570
+pairs = load_pairs("stmts", sources=["babel-formal"])
+assert len(pairs) == 15 * 10 * 9
 ```
 
-## Regenerating
+Each dataset shard has a checksum in `extended/manifest.json`. The loader checks
+it before use and loads only requested datasets. Statement result IDs include a
+version prefix and source-content fingerprint so changed content cannot silently
+reuse a different input's checkpoint.
 
-From the repo root:
-
-```bash
-python data/build_eval_jsons.py
-```
+From the repository root, `python3 data/build_eval_jsons.py --check` verifies
+export bytes against the current selected sources without writing. See
+[data/README.md](../../data/README.md) for regeneration and provenance.

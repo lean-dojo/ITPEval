@@ -1,0 +1,551 @@
+% Statement-only formalization of the Thousand Theorems corpus artifact Q8066795
+% (thousand-theorems__pvs__Q8066795), "Zariski's main theorem": a proper
+% scheme morphism with finite fiber over a point is finite over an open
+% neighborhood of that point. This file contains no proof.
+
+Q8066795_zariski_s_main_theorem[PointAtom, SectionAtom: TYPE+]: THEORY
+BEGIN
+
+  IMPORTING finite_sets[PointAtom], finite_sets[SectionAtom]
+
+  scheme: TYPE = [#
+    sch_points: [PointAtom -> bool],
+    sch_sections: [SectionAtom -> bool],
+    sch_open: [[(sch_points) -> bool] -> bool],
+    sch_section: [[(sch_points) -> bool], (sch_sections) -> bool],
+    sch_zero: [[(sch_points) -> bool] -> (sch_sections)],
+    sch_one: [[(sch_points) -> bool] -> (sch_sections)],
+    sch_neg: [[(sch_points) -> bool], (sch_sections) -> (sch_sections)],
+    sch_add: [[(sch_points) -> bool], (sch_sections), (sch_sections)
+      -> (sch_sections)],
+    sch_mul: [[(sch_points) -> bool], (sch_sections), (sch_sections)
+      -> (sch_sections)],
+    sch_restrict: [[(sch_points) -> bool], [(sch_points) -> bool],
+      (sch_sections) -> (sch_sections)]
+  #]
+
+  point(S: scheme): TYPE = (sch_points(S))
+  section(S: scheme): TYPE = (sch_sections(S))
+  point_set(S: scheme): TYPE = [point(S) -> bool]
+  section_set(S: scheme): TYPE = [section(S) -> bool]
+  ideal(S: scheme): TYPE = section_set(S)
+
+  scheme_morphism(X, Y: scheme): TYPE = [#
+    mor_base: [point(X) -> point(Y)],
+    mor_map: [V: point_set(Y), section(Y) -> section(X)]
+  #]
+
+  subset(S: scheme, A, B: point_set(S)): bool =
+    FORALL (x: point(S)): A(x) IMPLIES B(x)
+
+  same_set(S: scheme, A, B: point_set(S)): bool =
+    subset(S, A, B) AND subset(S, B, A)
+
+  empty_set(S: scheme): point_set(S) =
+    LAMBDA (x: point(S)): FALSE
+
+  full_set(S: scheme): point_set(S) =
+    LAMBDA (x: point(S)): TRUE
+
+  intersection(S: scheme, A, B: point_set(S)): point_set(S) =
+    LAMBDA (x: point(S)): A(x) AND B(x)
+
+  complement(S: scheme, A: point_set(S)): point_set(S) =
+    LAMBDA (x: point(S)): NOT A(x)
+
+  family_union(S: scheme, C: [point_set(S) -> bool]): point_set(S) =
+    LAMBDA (x: point(S)):
+      EXISTS (U: point_set(S)): C(U) AND U(x)
+
+  preimage(X, Y: scheme, f: scheme_morphism(X, Y),
+      V: point_set(Y)): point_set(X) =
+    LAMBDA (x: point(X)): V(mor_base(f)(x))
+
+  image(X, Y: scheme, f: scheme_morphism(X, Y),
+      A: point_set(X)): point_set(Y) =
+    LAMBDA (y: point(Y)):
+      EXISTS (x: point(X)): A(x) AND mor_base(f)(x) = y
+
+  finite_point_set(S: scheme, A: point_set(S)): bool =
+    EXISTS (F: finite_set[point(S)]):
+      FORALL (x: point(S)): A(x) IFF member(x, F)
+
+  topology_laws(S: scheme): bool =
+    sch_open(S)(empty_set(S))
+      AND sch_open(S)(full_set(S))
+      AND (FORALL (U, V: point_set(S)):
+        sch_open(S)(U) AND sch_open(S)(V)
+          IMPLIES sch_open(S)(intersection(S, U, V)))
+      AND (FORALL (C: [point_set(S) -> bool]):
+        (FORALL (U: point_set(S)): C(U) IMPLIES sch_open(S)(U))
+          IMPLIES sch_open(S)(family_union(S, C)))
+
+  ring_on(S: scheme, U: point_set(S)): bool =
+    sch_section(S)(U, sch_zero(S)(U))
+      AND sch_section(S)(U, sch_one(S)(U))
+      AND (FORALL (a: section(S)):
+        sch_section(S)(U, a)
+          IMPLIES sch_section(S)(U, sch_neg(S)(U, a)))
+      AND (FORALL (a, b: section(S)):
+        sch_section(S)(U, a) AND sch_section(S)(U, b)
+          IMPLIES sch_section(S)(U, sch_add(S)(U, a, b))
+            AND sch_section(S)(U, sch_mul(S)(U, a, b)))
+      AND (FORALL (a, b, c: section(S)):
+        sch_section(S)(U, a) AND sch_section(S)(U, b)
+          AND sch_section(S)(U, c)
+        IMPLIES
+          sch_add(S)(U, sch_add(S)(U, a, b), c) =
+            sch_add(S)(U, a, sch_add(S)(U, b, c))
+          AND sch_mul(S)(U, sch_mul(S)(U, a, b), c) =
+            sch_mul(S)(U, a, sch_mul(S)(U, b, c))
+          AND sch_mul(S)(U, a, sch_add(S)(U, b, c)) =
+            sch_add(S)(U, sch_mul(S)(U, a, b),
+              sch_mul(S)(U, a, c)))
+      AND (FORALL (a, b: section(S)):
+        sch_section(S)(U, a) AND sch_section(S)(U, b)
+          IMPLIES sch_add(S)(U, a, b) = sch_add(S)(U, b, a)
+            AND sch_mul(S)(U, a, b) = sch_mul(S)(U, b, a))
+      AND (FORALL (a: section(S)):
+        sch_section(S)(U, a)
+          IMPLIES sch_add(S)(U, sch_zero(S)(U), a) = a
+            AND sch_add(S)(U, sch_neg(S)(U, a), a) = sch_zero(S)(U)
+            AND sch_mul(S)(U, sch_one(S)(U), a) = a)
+
+  ring_hom(A: scheme, U: point_set(A),
+      B: scheme, V: point_set(B),
+      phi: [section(A) -> section(B)]): bool =
+    (FORALL (a: section(A)):
+      sch_section(A)(U, a) IMPLIES sch_section(B)(V, phi(a)))
+      AND phi(sch_zero(A)(U)) = sch_zero(B)(V)
+      AND phi(sch_one(A)(U)) = sch_one(B)(V)
+      AND (FORALL (a: section(A)):
+        sch_section(A)(U, a)
+          IMPLIES phi(sch_neg(A)(U, a)) = sch_neg(B)(V, phi(a)))
+      AND (FORALL (a, b: section(A)):
+        sch_section(A)(U, a) AND sch_section(A)(U, b)
+          IMPLIES phi(sch_add(A)(U, a, b)) =
+              sch_add(B)(V, phi(a), phi(b))
+            AND phi(sch_mul(A)(U, a, b)) =
+              sch_mul(B)(V, phi(a), phi(b)))
+
+  restriction_laws(S: scheme): bool =
+    (FORALL (U, V: point_set(S)):
+      sch_open(S)(U) AND sch_open(S)(V) AND subset(S, V, U)
+        IMPLIES ring_hom(S, U, S, V,
+          LAMBDA (a: section(S)): sch_restrict(S)(U, V, a)))
+      AND (FORALL (U: point_set(S)), (a: section(S)):
+        sch_open(S)(U) AND sch_section(S)(U, a)
+          IMPLIES sch_restrict(S)(U, U, a) = a)
+      AND (FORALL (U, V, W: point_set(S)), (a: section(S)):
+        sch_open(S)(U) AND sch_open(S)(V) AND sch_open(S)(W)
+          AND subset(S, W, V) AND subset(S, V, U)
+          AND sch_section(S)(U, a)
+        IMPLIES sch_restrict(S)(V, W, sch_restrict(S)(U, V, a)) =
+          sch_restrict(S)(U, W, a))
+
+  covers(S: scheme, U: point_set(S),
+      C: [point_set(S) -> bool]): bool =
+    same_set(S, U, family_union(S, C))
+
+  compatible_family(S: scheme, U: point_set(S),
+      C: [point_set(S) -> bool],
+      a: [point_set(S) -> section(S)]): bool =
+    (FORALL (V: point_set(S)):
+      C(V) IMPLIES sch_open(S)(V) AND subset(S, V, U)
+        AND sch_section(S)(V, a(V)))
+      AND (FORALL (V, W: point_set(S)):
+        C(V) AND C(W) IMPLIES
+          sch_restrict(S)(V, intersection(S, V, W), a(V)) =
+            sch_restrict(S)(W, intersection(S, V, W), a(W)))
+
+  sheaf_laws(S: scheme): bool =
+    FORALL (U: point_set(S)), (C: [point_set(S) -> bool]),
+           (a: [point_set(S) -> section(S)]):
+      sch_open(S)(U) AND covers(S, U, C)
+        AND compatible_family(S, U, C, a)
+      IMPLIES EXISTS (s: section(S)):
+        sch_section(S)(U, s)
+          AND (FORALL (V: point_set(S)):
+            C(V) IMPLIES sch_restrict(S)(U, V, s) = a(V))
+          AND (FORALL (t: section(S)):
+            sch_section(S)(U, t)
+              AND (FORALL (V: point_set(S)):
+                C(V) IMPLIES sch_restrict(S)(U, V, t) = a(V))
+            IMPLIES t = s)
+
+  germ_equal(S: scheme, x: point(S),
+      U: point_set(S), a: section(S),
+      V: point_set(S), b: section(S)): bool =
+    EXISTS (W: point_set(S)):
+      sch_open(S)(W) AND W(x)
+        AND subset(S, W, intersection(S, U, V))
+        AND sch_restrict(S)(U, W, a) = sch_restrict(S)(V, W, b)
+
+  germ_unit(S: scheme, x: point(S),
+      U: point_set(S), a: section(S)): bool =
+    EXISTS (W: point_set(S)), (b: section(S)):
+      sch_open(S)(W) AND W(x) AND subset(S, W, U)
+        AND sch_section(S)(W, b)
+        AND sch_mul(S)(W, sch_restrict(S)(U, W, a), b) =
+          sch_one(S)(W)
+
+  local_ring_stalks(S: scheme): bool =
+    FORALL (x: point(S)), (U: point_set(S)), (a: section(S)):
+      sch_open(S)(U) AND U(x) AND sch_section(S)(U, a)
+      IMPLIES germ_unit(S, x, U, a)
+        OR germ_unit(S, x, U,
+          sch_add(S)(U, sch_one(S)(U), sch_neg(S)(U, a)))
+
+  is_ideal(S: scheme, U: point_set(S), I: ideal(S)): bool =
+    I(sch_zero(S)(U))
+      AND (FORALL (a: section(S)): I(a) IMPLIES sch_section(S)(U, a))
+      AND (FORALL (a, b: section(S)):
+        I(a) AND I(b) IMPLIES I(sch_add(S)(U, a, b)))
+      AND (FORALL (a: section(S)): I(a) IMPLIES I(sch_neg(S)(U, a)))
+      AND (FORALL (r, a: section(S)):
+        sch_section(S)(U, r) AND I(a)
+          IMPLIES I(sch_mul(S)(U, r, a)))
+
+  is_prime_ideal(S: scheme, U: point_set(S), P: ideal(S)): bool =
+    is_ideal(S, U, P) AND NOT P(sch_one(S)(U))
+      AND (FORALL (a, b: section(S)):
+        sch_section(S)(U, a) AND sch_section(S)(U, b)
+          AND P(sch_mul(S)(U, a, b))
+        IMPLIES P(a) OR P(b))
+
+  point_prime(S: scheme, U: point_set(S), x: point(S)): ideal(S) =
+    LAMBDA (a: section(S)):
+      sch_section(S)(U, a) AND NOT germ_unit(S, x, U, a)
+
+  principal_open(S: scheme, U: point_set(S),
+      a: section(S)): point_set(S) =
+    LAMBDA (x: point(S)): U(x) AND germ_unit(S, x, U, a)
+
+  affine_open(S: scheme, U: point_set(S)): bool =
+    sch_open(S)(U)
+      AND (FORALL (x: point(S)):
+        U(x) IMPLIES is_prime_ideal(S, U, point_prime(S, U, x)))
+      AND (FORALL (x, y: point(S)):
+        U(x) AND U(y) AND point_prime(S, U, x) = point_prime(S, U, y)
+          IMPLIES x = y)
+      AND (FORALL (P: ideal(S)):
+        is_prime_ideal(S, U, P)
+          IMPLIES EXISTS (x: point(S)):
+            U(x) AND P = point_prime(S, U, x))
+      AND (FORALL (a: section(S)):
+        sch_section(S)(U, a)
+          IMPLIES sch_open(S)(principal_open(S, U, a)))
+      AND (FORALL (W: point_set(S)), (x: point(S)):
+        sch_open(S)(W) AND subset(S, W, U) AND W(x)
+          IMPLIES EXISTS (a: section(S)):
+            sch_section(S)(U, a) AND principal_open(S, U, a)(x)
+              AND subset(S, principal_open(S, U, a), W))
+      AND (FORALL (x: point(S)), (V: point_set(S)), (b: section(S)):
+        U(x) AND sch_open(S)(V) AND V(x) AND subset(S, V, U)
+          AND sch_section(S)(V, b)
+        IMPLIES EXISTS (a, s: section(S)), (W: point_set(S)):
+          sch_section(S)(U, a) AND sch_section(S)(U, s)
+            AND germ_unit(S, x, U, s) AND sch_open(S)(W) AND W(x)
+            AND subset(S, W, V)
+            AND sch_mul(S)(W, b, sch_restrict(S)(U, W, s)) =
+              sch_restrict(S)(U, W, a))
+      AND (FORALL (x: point(S)), (a: section(S)):
+        U(x) AND sch_section(S)(U, a)
+          AND germ_equal(S, x, U, a, U, sch_zero(S)(U))
+        IMPLIES EXISTS (s: section(S)):
+          sch_section(S)(U, s) AND germ_unit(S, x, U, s)
+            AND sch_mul(S)(U, s, a) = sch_zero(S)(U))
+
+  is_scheme(S: scheme): bool =
+    topology_laws(S)
+      AND (FORALL (U: point_set(S)):
+        sch_open(S)(U) IMPLIES ring_on(S, U))
+      AND restriction_laws(S) AND sheaf_laws(S)
+      AND local_ring_stalks(S)
+      AND (FORALL (x: point(S)):
+        EXISTS (U: point_set(S)): U(x) AND affine_open(S, U))
+
+  is_scheme_morphism(X, Y: scheme,
+      f: scheme_morphism(X, Y)): bool =
+    is_scheme(X) AND is_scheme(Y)
+      AND (FORALL (V: point_set(Y)):
+        sch_open(Y)(V) IMPLIES sch_open(X)(preimage(X, Y, f, V)))
+      AND (FORALL (V: point_set(Y)):
+        sch_open(Y)(V) IMPLIES ring_hom(Y, V, X,
+          preimage(X, Y, f, V),
+          LAMBDA (a: section(Y)): mor_map(f)(V, a)))
+      AND (FORALL (V, W: point_set(Y)), (a: section(Y)):
+        sch_open(Y)(V) AND sch_open(Y)(W) AND subset(Y, W, V)
+          AND sch_section(Y)(V, a)
+        IMPLIES sch_restrict(X)(preimage(X, Y, f, V),
+          preimage(X, Y, f, W), mor_map(f)(V, a)) =
+            mor_map(f)(W, sch_restrict(Y)(V, W, a)))
+      AND (FORALL (x: point(X)), (V: point_set(Y)), (a: section(Y)):
+        sch_open(Y)(V) AND V(mor_base(f)(x)) AND sch_section(Y)(V, a)
+          AND germ_unit(X, x, preimage(X, Y, f, V), mor_map(f)(V, a))
+        IMPLIES germ_unit(Y, mor_base(f)(x), V, a))
+
+  identity_morphism(S: scheme): scheme_morphism(S, S) =
+    (# mor_base := LAMBDA (x: point(S)): x,
+       mor_map := LAMBDA (U: point_set(S)), (a: section(S)): a #)
+
+  compose(X, Y, Z: scheme, g: scheme_morphism(Y, Z),
+      f: scheme_morphism(X, Y)): scheme_morphism(X, Z) =
+    (# mor_base := LAMBDA (x: point(X)):
+         mor_base(g)(mor_base(f)(x)),
+       mor_map := LAMBDA (W: point_set(Z)), (a: section(Z)):
+         mor_map(f)(preimage(Y, Z, g, W), mor_map(g)(W, a)) #)
+
+  morphism_equal(X, Y: scheme,
+      f, g: scheme_morphism(X, Y)): bool =
+    (FORALL (x: point(X)): mor_base(f)(x) = mor_base(g)(x))
+      AND (FORALL (U: point_set(Y)), (a: section(Y)):
+        sch_open(Y)(U) AND sch_section(Y)(U, a)
+          IMPLIES mor_map(f)(U, a) = mor_map(g)(U, a))
+
+  is_scheme_isomorphism(X, Y: scheme, i: scheme_morphism(X, Y),
+      j: scheme_morphism(Y, X)): bool =
+    is_scheme_morphism(X, Y, i) AND is_scheme_morphism(Y, X, j)
+      AND morphism_equal(X, X, compose(X, Y, X, j, i),
+        identity_morphism(X))
+      AND morphism_equal(Y, Y, compose(Y, X, Y, i, j),
+        identity_morphism(Y))
+
+  is_pullback(P, X, Z, Y: scheme, p: scheme_morphism(P, X),
+      q: scheme_morphism(P, Z), f: scheme_morphism(X, Y),
+      g: scheme_morphism(Z, Y)): bool =
+    is_scheme_morphism(P, X, p) AND is_scheme_morphism(P, Z, q)
+      AND is_scheme_morphism(X, Y, f) AND is_scheme_morphism(Z, Y, g)
+      AND morphism_equal(P, Y, compose(P, X, Y, f, p),
+        compose(P, Z, Y, g, q))
+      AND (FORALL (T: scheme), (a: scheme_morphism(T, X)),
+                  (b: scheme_morphism(T, Z)):
+        is_scheme_morphism(T, X, a) AND is_scheme_morphism(T, Z, b)
+          AND morphism_equal(T, Y, compose(T, X, Y, f, a),
+            compose(T, Z, Y, g, b))
+        IMPLIES EXISTS (u: scheme_morphism(T, P)):
+          is_scheme_morphism(T, P, u)
+            AND morphism_equal(T, X, compose(T, P, X, p, u), a)
+            AND morphism_equal(T, Z, compose(T, P, Z, q, u), b)
+            AND (FORALL (v: scheme_morphism(T, P)):
+              is_scheme_morphism(T, P, v)
+                AND morphism_equal(T, X, compose(T, P, X, p, v), a)
+                AND morphism_equal(T, Z, compose(T, P, Z, q, v), b)
+              IMPLIES morphism_equal(T, P, v, u)))
+
+  pullback_presentations_equivalent(P, Pprime, X, Z: scheme,
+      p: scheme_morphism(P, X), q: scheme_morphism(P, Z),
+      pprime: scheme_morphism(Pprime, X),
+      qprime: scheme_morphism(Pprime, Z)): bool =
+    EXISTS (i: scheme_morphism(P, Pprime)),
+           (j: scheme_morphism(Pprime, P)):
+      is_scheme_isomorphism(P, Pprime, i, j)
+        AND morphism_equal(P, X, compose(P, Pprime, X, pprime, i), p)
+        AND morphism_equal(P, Z, compose(P, Pprime, Z, qprime, i), q)
+        AND morphism_equal(Pprime, X,
+          compose(Pprime, P, X, p, j), pprime)
+        AND morphism_equal(Pprime, Z,
+          compose(Pprime, P, Z, q, j), qprime)
+
+  is_closed(S: scheme, C: point_set(S)): bool =
+    sch_open(S)(complement(S, C))
+
+  is_closed_map(X, Y: scheme, f: scheme_morphism(X, Y)): bool =
+    is_scheme_morphism(X, Y, f)
+      AND (FORALL (C: point_set(X)):
+        is_closed(X, C) IMPLIES is_closed(Y, image(X, Y, f, C)))
+
+  is_closed_immersion(X, Y: scheme,
+      i: scheme_morphism(X, Y)): bool =
+    is_scheme_morphism(X, Y, i)
+      AND (FORALL (x, xprime: point(X)):
+        mor_base(i)(x) = mor_base(i)(xprime) IMPLIES x = xprime)
+      AND is_closed(Y, image(X, Y, i, full_set(X)))
+      AND (FORALL (U: point_set(X)):
+        sch_open(X)(U) IFF EXISTS (V: point_set(Y)):
+          sch_open(Y)(V) AND same_set(Y, image(X, Y, i, U),
+            intersection(Y, V, image(X, Y, i, full_set(X)))))
+      AND (FORALL (x: point(X)), (U: point_set(X)), (a: section(X)):
+        sch_open(X)(U) AND U(x) AND sch_section(X)(U, a)
+        IMPLIES EXISTS (V: point_set(Y)), (b: section(Y)),
+                       (W: point_set(X)):
+          sch_open(Y)(V) AND V(mor_base(i)(x))
+            AND sch_section(Y)(V, b) AND sch_open(X)(W) AND W(x)
+            AND subset(X, W, intersection(X, U, preimage(X, Y, i, V)))
+            AND sch_restrict(X)(U, W, a) =
+              sch_restrict(X)(preimage(X, Y, i, V), W,
+                mor_map(i)(V, b)))
+
+  is_separated(X, Y: scheme, f: scheme_morphism(X, Y)): bool =
+    is_scheme_morphism(X, Y, f)
+      AND (EXISTS (P: scheme), (p1, p2: scheme_morphism(P, X)):
+        is_pullback(P, X, X, Y, p1, p2, f, f))
+      AND (FORALL (P: scheme), (p1, p2: scheme_morphism(P, X)):
+        is_pullback(P, X, X, Y, p1, p2, f, f)
+        IMPLIES EXISTS (diagonal: scheme_morphism(X, P)):
+          is_scheme_morphism(X, P, diagonal)
+            AND morphism_equal(X, X,
+              compose(X, P, X, p1, diagonal), identity_morphism(X))
+            AND morphism_equal(X, X,
+              compose(X, P, X, p2, diagonal), identity_morphism(X))
+            AND is_closed_immersion(X, P, diagonal))
+
+  universally_closed(X, Y: scheme,
+      f: scheme_morphism(X, Y)): bool =
+    is_scheme_morphism(X, Y, f)
+      AND (FORALL (Z: scheme), (g: scheme_morphism(Z, Y)):
+        is_scheme_morphism(Z, Y, g)
+        IMPLIES EXISTS (P: scheme), (p: scheme_morphism(P, X)),
+                       (q: scheme_morphism(P, Z)):
+          is_pullback(P, X, Z, Y, p, q, f, g))
+      AND (FORALL (Z, P: scheme), (g: scheme_morphism(Z, Y)),
+                  (p: scheme_morphism(P, X)),
+                  (q: scheme_morphism(P, Z)):
+        is_pullback(P, X, Z, Y, p, q, f, g)
+          IMPLIES is_closed_map(P, Z, q))
+      AND (FORALL (Z, P, Pprime: scheme),
+                  (g: scheme_morphism(Z, Y)),
+                  (p: scheme_morphism(P, X)),
+                  (q: scheme_morphism(P, Z)),
+                  (pprime: scheme_morphism(Pprime, X)),
+                  (qprime: scheme_morphism(Pprime, Z)):
+        is_pullback(P, X, Z, Y, p, q, f, g)
+          AND is_pullback(Pprime, X, Z, Y, pprime, qprime, f, g)
+        IMPLIES pullback_presentations_equivalent(P, Pprime, X, Z,
+          p, q, pprime, qprime))
+
+  induced_map(X, Y: scheme, f: scheme_morphism(X, Y),
+      V: point_set(Y), U: point_set(X), a: section(Y)): section(X) =
+    sch_restrict(X)(preimage(X, Y, f, V), U, mor_map(f)(V, a))
+
+  is_subalgebra(A: scheme, U: point_set(A),
+      B: scheme, V: point_set(B), phi: [section(A) -> section(B)],
+      C: section_set(B)): bool =
+    C(sch_zero(B)(V)) AND C(sch_one(B)(V))
+      AND (FORALL (a: section(A)):
+        sch_section(A)(U, a) IMPLIES C(phi(a)))
+      AND (FORALL (b: section(B)):
+        C(b) IMPLIES sch_section(B)(V, b))
+      AND (FORALL (b: section(B)): C(b) IMPLIES C(sch_neg(B)(V, b)))
+      AND (FORALL (b, c: section(B)):
+        C(b) AND C(c) IMPLIES C(sch_add(B)(V, b, c))
+          AND C(sch_mul(B)(V, b, c)))
+
+  finite_type_ring_map(A: scheme, U: point_set(A),
+      B: scheme, V: point_set(B),
+      phi: [section(A) -> section(B)]): bool =
+    ring_hom(A, U, B, V, phi)
+      AND EXISTS (G: finite_set[section(B)]):
+        (FORALL (b: section(B)):
+          member(b, G) IMPLIES sch_section(B)(V, b))
+          AND (FORALL (C: section_set(B)):
+            is_subalgebra(A, U, B, V, phi, C)
+              AND (FORALL (b: section(B)): member(b, G) IMPLIES C(b))
+            IMPLIES FORALL (b: section(B)):
+              sch_section(B)(V, b) IMPLIES C(b))
+
+  locally_of_finite_type(X, Y: scheme,
+      f: scheme_morphism(X, Y)): bool =
+    is_scheme_morphism(X, Y, f)
+      AND (FORALL (V: point_set(Y)), (U: point_set(X)):
+        affine_open(Y, V) AND affine_open(X, U)
+          AND subset(X, U, preimage(X, Y, f, V))
+        IMPLIES finite_type_ring_map(Y, V, X, U,
+          LAMBDA (a: section(Y)): induced_map(X, Y, f, V, U, a)))
+
+  is_proper_morphism(X, Y: scheme,
+      f: scheme_morphism(X, Y)): bool =
+    is_separated(X, Y, f) AND universally_closed(X, Y, f)
+      AND locally_of_finite_type(X, Y, f)
+
+  is_affine_morphism(X, Y: scheme,
+      f: scheme_morphism(X, Y)): bool =
+    is_scheme_morphism(X, Y, f)
+      AND (FORALL (V: point_set(Y)):
+        affine_open(Y, V)
+          IMPLIES affine_open(X, preimage(X, Y, f, V)))
+
+  is_submodule(A: scheme, U: point_set(A),
+      B: scheme, V: point_set(B), phi: [section(A) -> section(B)],
+      M: section_set(B)): bool =
+    M(sch_zero(B)(V))
+      AND (FORALL (b: section(B)):
+        M(b) IMPLIES sch_section(B)(V, b))
+      AND (FORALL (b: section(B)): M(b) IMPLIES M(sch_neg(B)(V, b)))
+      AND (FORALL (b, c: section(B)):
+        M(b) AND M(c) IMPLIES M(sch_add(B)(V, b, c)))
+      AND (FORALL (a: section(A)), (b: section(B)):
+        sch_section(A)(U, a) AND M(b)
+          IMPLIES M(sch_mul(B)(V, phi(a), b)))
+
+  finite_module_ring_map(A: scheme, U: point_set(A),
+      B: scheme, V: point_set(B),
+      phi: [section(A) -> section(B)]): bool =
+    ring_hom(A, U, B, V, phi)
+      AND EXISTS (G: finite_set[section(B)]):
+        (FORALL (b: section(B)):
+          member(b, G) IMPLIES sch_section(B)(V, b))
+          AND (FORALL (M: section_set(B)):
+            is_submodule(A, U, B, V, phi, M)
+              AND (FORALL (b: section(B)): member(b, G) IMPLIES M(b))
+            IMPLIES FORALL (b: section(B)):
+              sch_section(B)(V, b) IMPLIES M(b))
+
+  is_finite_morphism(X, Y: scheme,
+      f: scheme_morphism(X, Y)): bool =
+    is_affine_morphism(X, Y, f)
+      AND (FORALL (V: point_set(Y)):
+        affine_open(Y, V) IMPLIES finite_module_ring_map(Y, V, X,
+          preimage(X, Y, f, V),
+          LAMBDA (a: section(Y)): mor_map(f)(V, a)))
+
+  is_open_subscheme(T, S: scheme, U: point_set(S),
+      j: scheme_morphism(T, S)): bool =
+    sch_open(S)(U) AND is_scheme_morphism(T, S, j)
+      AND same_set(S, image(T, S, j, full_set(T)), U)
+      AND (FORALL (x, xprime: point(T)):
+        mor_base(j)(x) = mor_base(j)(xprime) IMPLIES x = xprime)
+      AND (FORALL (V: point_set(T)):
+        sch_open(T)(V) IFF EXISTS (W: point_set(S)):
+          sch_open(S)(W) AND subset(S, W, U)
+            AND same_set(S, image(T, S, j, V), W))
+      AND (FORALL (W: point_set(S)):
+        sch_open(S)(W) AND subset(S, W, U)
+        IMPLIES
+          (FORALL (a: section(S)):
+            sch_section(S)(W, a) IMPLIES
+              sch_section(T)(preimage(T, S, j, W), mor_map(j)(W, a)))
+          AND (FORALL (b: section(T)):
+            sch_section(T)(preimage(T, S, j, W), b)
+              IMPLIES EXISTS (a: section(S)):
+                sch_section(S)(W, a) AND mor_map(j)(W, a) = b)
+          AND (FORALL (a, b: section(S)):
+            sch_section(S)(W, a) AND sch_section(S)(W, b)
+              AND mor_map(j)(W, a) = mor_map(j)(W, b)
+            IMPLIES a = b))
+
+  is_morphism_restriction(X, Y: scheme, f: scheme_morphism(X, Y),
+      V: point_set(Y), XV, YV: scheme,
+      iX: scheme_morphism(XV, X), iY: scheme_morphism(YV, Y),
+      r: scheme_morphism(XV, YV)): bool =
+    is_open_subscheme(YV, Y, V, iY)
+      AND is_open_subscheme(XV, X, preimage(X, Y, f, V), iX)
+      AND is_pullback(XV, X, YV, Y, iX, r, f, iY)
+
+  fiber(X, Y: scheme, f: scheme_morphism(X, Y),
+      y: point(Y)): point_set(X) =
+    LAMBDA (x: point(X)): mor_base(f)(x) = y
+
+  zariski_s_main_theorem: bool =
+    FORALL (X, Y: scheme), (f: scheme_morphism(X, Y)), (y: point(Y)):
+      is_proper_morphism(X, Y, f)
+        AND finite_point_set(X, fiber(X, Y, f, y))
+      IMPLIES EXISTS (V: point_set(Y)), (XV, YV: scheme),
+                     (iX: scheme_morphism(XV, X)),
+                     (iY: scheme_morphism(YV, Y)),
+                     (r: scheme_morphism(XV, YV)):
+        sch_open(Y)(V) AND V(y)
+          AND is_morphism_restriction(X, Y, f, V, XV, YV, iX, iY, r)
+          AND is_finite_morphism(XV, YV, r)
+
+END Q8066795_zariski_s_main_theorem

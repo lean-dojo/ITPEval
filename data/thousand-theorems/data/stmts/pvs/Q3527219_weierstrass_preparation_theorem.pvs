@@ -1,0 +1,253 @@
+% Statement-only formalization of the Thousand Theorems corpus artifact Q3527219,
+% "Weierstrass preparation theorem": over a complete local commutative ring,
+% a formal power series with nonzero residue image is a distinguished polynomial
+% times a unit formal power series. This file contains no proof.
+
+Q3527219_weierstrass_preparation_theorem[
+  A: TYPE+,
+  zero, one: A,
+  add, multiply: [A, A -> A],
+  negate: [A -> A],
+  maximal_ideal: [A -> bool]
+]: THEORY
+BEGIN
+  power_series: TYPE = [nat -> A]
+
+  polynomial: TYPE =
+    [# polynomial_coefficient: [nat -> A],
+       support_bound: nat #]
+
+  subtract(x, y: A): A =
+    add(x, negate(y))
+
+  commutative_ring_laws: bool =
+    (FORALL (x, y: A):
+      add(x, y) = add(y, x))
+      AND
+    (FORALL (x, y, z: A):
+      add(add(x, y), z) = add(x, add(y, z)))
+      AND
+    (FORALL (x: A):
+      add(x, zero) = x)
+      AND
+    (FORALL (x: A):
+      add(x, negate(x)) = zero)
+      AND
+    (FORALL (x, y: A):
+      multiply(x, y) = multiply(y, x))
+      AND
+    (FORALL (x, y, z: A):
+      multiply(multiply(x, y), z)
+        = multiply(x, multiply(y, z)))
+      AND
+    (FORALL (x: A):
+      multiply(x, one) = x)
+      AND
+    (FORALL (x, y, z: A):
+      multiply(x, add(y, z))
+        = add(multiply(x, y), multiply(x, z)))
+
+  ideal_laws(ideal: [A -> bool]): bool =
+    ideal(zero)
+      AND
+    (FORALL (x, y: A):
+      ideal(x) AND ideal(y) IMPLIES ideal(add(x, y)))
+      AND
+    (FORALL (x: A):
+      ideal(x) IMPLIES ideal(negate(x)))
+      AND
+    (FORALL (r, x: A):
+      ideal(x) IMPLIES ideal(multiply(r, x)))
+
+  ring_is_unit(x: A): bool =
+    EXISTS (inverse: A):
+      multiply(x, inverse) = one
+
+  local_ring_laws: bool =
+    ideal_laws(maximal_ideal)
+      AND NOT maximal_ideal(one)
+      AND
+    (FORALL (x: A):
+      (NOT maximal_ideal(x)) IFF ring_is_unit(x))
+
+  artifact_list_length(values: list[A]): RECURSIVE nat =
+    CASES values OF
+      null: 0,
+      cons(head, tail):
+        1 + artifact_list_length(tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  artifact_ring_product(values: list[A]): RECURSIVE A =
+    CASES values OF
+      null: one,
+      cons(head, tail):
+        multiply(head, artifact_ring_product(tail))
+    ENDCASES
+  MEASURE values BY <<
+
+  artifact_all_in_maximal_ideal(values: list[A]): RECURSIVE bool =
+    CASES values OF
+      null: TRUE,
+      cons(head, tail):
+        maximal_ideal(head)
+          AND artifact_all_in_maximal_ideal(tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  artifact_sum_of_monomials(
+      monomials: list[list[A]]): RECURSIVE A =
+    CASES monomials OF
+      null: zero,
+      cons(head, tail):
+        add(
+          artifact_ring_product(head),
+          artifact_sum_of_monomials(tail))
+    ENDCASES
+  MEASURE monomials BY <<
+
+  artifact_valid_monomials(
+      monomials: list[list[A]],
+      degree: nat): RECURSIVE bool =
+    CASES monomials OF
+      null: TRUE,
+      cons(head, tail):
+        artifact_list_length(head) = degree
+          AND artifact_all_in_maximal_ideal(head)
+          AND artifact_valid_monomials(tail, degree)
+    ENDCASES
+  MEASURE monomials BY <<
+
+  maximal_ideal_power_member(power: nat, x: A): bool =
+    IF power = 0 THEN
+      TRUE
+    ELSE
+      EXISTS (monomials: list[list[A]]):
+        artifact_valid_monomials(monomials, power)
+          AND artifact_sum_of_monomials(monomials) = x
+    ENDIF
+
+  adic_cauchy(sequence: [nat -> A]): bool =
+    FORALL (earlier_index, later_index: nat):
+      earlier_index <= later_index
+        IMPLIES
+          maximal_ideal_power_member(
+            earlier_index,
+            subtract(
+              sequence(earlier_index),
+              sequence(later_index)))
+
+  adic_converges_to(sequence: [nat -> A], limit_value: A): bool =
+    FORALL (index: nat):
+      maximal_ideal_power_member(
+        index,
+        subtract(sequence(index), limit_value))
+
+  adic_hausdorff: bool =
+    FORALL (x: A):
+      (FORALL (power: nat):
+        maximal_ideal_power_member(power, x))
+        IMPLIES x = zero
+
+  adic_precomplete: bool =
+    FORALL (sequence: [nat -> A]):
+      adic_cauchy(sequence)
+        IMPLIES
+          EXISTS (limit_value: A):
+            adic_converges_to(sequence, limit_value)
+
+  maximal_ideal_adic_complete: bool =
+    adic_hausdorff AND adic_precomplete
+
+  power_series_equal(left, right: power_series): bool =
+    FORALL (degree: nat):
+      left(degree) = right(degree)
+
+  power_series_product_coefficient(
+      left, right: power_series,
+      degree, term_count: nat): RECURSIVE A =
+    IF term_count = 0 THEN
+      zero
+    ELSE
+      LET index: nat = term_count - 1 IN
+        add(
+          power_series_product_coefficient(
+            left, right, degree, term_count - 1),
+          IF index <= degree THEN
+            multiply(
+              left(index),
+              right(degree - index))
+          ELSE
+            zero
+          ENDIF)
+    ENDIF
+  MEASURE term_count
+
+  power_series_multiply(
+      left, right: power_series): power_series =
+    LAMBDA (degree: nat):
+      power_series_product_coefficient(
+        left, right, degree, degree + 1)
+
+  power_series_one: power_series =
+    LAMBDA (degree: nat):
+      IF degree = 0 THEN one ELSE zero ENDIF
+
+  power_series_is_unit(value: power_series): bool =
+    EXISTS (inverse: power_series):
+      power_series_equal(
+        power_series_multiply(value, inverse),
+        power_series_one)
+
+  polynomial_is_distinguished(value: polynomial): bool =
+    EXISTS (degree: nat):
+      polynomial_coefficient(value)(degree) = one
+        AND
+      (FORALL (index: nat):
+        degree < index
+          IMPLIES
+            polynomial_coefficient(value)(index) = zero)
+        AND
+      (FORALL (index: nat):
+        index < degree
+          IMPLIES
+            maximal_ideal(
+              polynomial_coefficient(value)(index)))
+
+  polynomial_as_power_series(value: polynomial): power_series =
+    LAMBDA (degree: nat):
+      polynomial_coefficient(value)(degree)
+
+  residue_image_nonzero(value: power_series): bool =
+    EXISTS (degree: nat):
+      NOT maximal_ideal(value(degree))
+
+  is_weierstrass_factorization(
+      g: power_series,
+      distinguished_factor: polynomial,
+      unit_factor: power_series): bool =
+    polynomial_is_distinguished(distinguished_factor)
+      AND power_series_is_unit(unit_factor)
+      AND
+    power_series_equal(
+      g,
+      power_series_multiply(
+        polynomial_as_power_series(distinguished_factor),
+        unit_factor))
+
+  weierstrass_preparation_theorem: bool =
+    (commutative_ring_laws
+      AND local_ring_laws
+      AND maximal_ideal_adic_complete)
+      IMPLIES
+        FORALL (g: power_series):
+          residue_image_nonzero(g)
+            IMPLIES
+              EXISTS
+                  (distinguished_factor: polynomial),
+                  (unit_factor: power_series):
+                is_weierstrass_factorization(
+                  g,
+                  distinguished_factor,
+                  unit_factor)
+END Q3527219_weierstrass_preparation_theorem

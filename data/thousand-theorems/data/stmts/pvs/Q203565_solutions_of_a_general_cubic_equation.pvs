@@ -1,0 +1,138 @@
+% Statement-only formalization of the Thousand Theorems corpus artifact Q203565,
+% "Solutions of a general cubic equation": over an arbitrary field of
+% characteristic neither 2 nor 3 with a primitive cube root of unity, Cardano
+% data characterize exactly the three roots of a cubic. This file contains no proof.
+
+Q203565_solutions_of_a_general_cubic_equation[
+  K: TYPE+,
+  zero, one: K,
+  add, mul: [K, K -> K],
+  neg, inv: [K -> K]
+]: THEORY
+BEGIN
+  sub(x, y: K): K = add(x, neg(y))
+
+  divide(x, y: K): K = mul(x, inv(y))
+
+  of_nat(value: nat): RECURSIVE K =
+    IF value = 0 THEN
+      zero
+    ELSE
+      add(of_nat(value - 1), one)
+    ENDIF
+  MEASURE value
+
+  power(x: K, exponent: nat): RECURSIVE K =
+    IF exponent = 0 THEN
+      one
+    ELSE
+      mul(power(x, exponent - 1), x)
+    ENDIF
+  MEASURE exponent
+
+  field_laws: bool =
+    zero /= one
+      AND
+    (FORALL (x, y: K):
+      add(x, y) = add(y, x))
+      AND
+    (FORALL (x, y, z: K):
+      add(add(x, y), z) = add(x, add(y, z)))
+      AND
+    (FORALL (x: K):
+      add(x, zero) = x)
+      AND
+    (FORALL (x: K):
+      add(x, neg(x)) = zero)
+      AND
+    (FORALL (x, y: K):
+      mul(x, y) = mul(y, x))
+      AND
+    (FORALL (x, y, z: K):
+      mul(mul(x, y), z) = mul(x, mul(y, z)))
+      AND
+    (FORALL (x: K):
+      mul(x, one) = x)
+      AND
+    (FORALL (x, y, z: K):
+      mul(x, add(y, z)) = add(mul(x, y), mul(x, z)))
+      AND inv(zero) = zero
+      AND
+    (FORALL (x: K):
+      x /= zero IMPLIES mul(x, inv(x)) = one)
+
+  is_primitive_cube_root(omega: K): bool =
+    power(omega, 3) = one
+      AND
+    (FORALL (exponent: nat):
+      power(omega, exponent) = one
+        IMPLIES
+      (EXISTS (multiple: nat):
+        exponent = 3 * multiple))
+
+  cubic_value(a, b, c, d, x: K): K =
+    add(
+      add(
+        add(
+          mul(a, power(x, 3)),
+          mul(b, power(x, 2))),
+        mul(c, x)),
+      d)
+
+  cardano_p(a, b, c: K): K =
+    divide(
+      sub(
+        mul(mul(of_nat(3), a), c),
+        power(b, 2)),
+      mul(of_nat(9), power(a, 2)))
+
+  cardano_q(a, b, c, d: K): K =
+    divide(
+      sub(
+        sub(
+          mul(mul(mul(of_nat(9), a), b), c),
+          mul(of_nat(2), power(b, 3))),
+        mul(mul(of_nat(27), power(a, 2)), d)),
+      mul(of_nat(54), power(a, 3)))
+
+  depression_shift(a, b: K): K =
+    divide(b, mul(of_nat(3), a))
+
+  first_root(a, b, s, t: K): K =
+    sub(sub(s, t), depression_shift(a, b))
+
+  second_root(a, b, omega, s, t: K): K =
+    sub(
+      sub(
+        mul(s, omega),
+        mul(t, power(omega, 2))),
+      depression_shift(a, b))
+
+  third_root(a, b, omega, s, t: K): K =
+    sub(
+      sub(
+        mul(s, power(omega, 2)),
+        mul(t, omega)),
+      depression_shift(a, b))
+
+  solutions_of_a_general_cubic_equation: bool =
+    (field_laws
+      AND of_nat(2) /= zero
+      AND of_nat(3) /= zero)
+    IMPLIES
+      (FORALL (a, b, c, d, omega, p, q, r, s, t, x: K):
+        (a /= zero
+          AND is_primitive_cube_root(omega)
+          AND p = cardano_p(a, b, c)
+          AND p /= zero
+          AND q = cardano_q(a, b, c, d)
+          AND power(r, 2) = add(power(q, 2), power(p, 3))
+          AND power(s, 3) = add(q, r)
+          AND mul(t, s) = p)
+        IMPLIES
+          ((cubic_value(a, b, c, d, x) = zero)
+            =
+          (x = first_root(a, b, s, t)
+            OR x = second_root(a, b, omega, s, t)
+            OR x = third_root(a, b, omega, s, t))))
+END Q203565_solutions_of_a_general_cubic_equation

@@ -1,0 +1,57 @@
+% Statement-only formalization of the VERINA corpus artifact verina_basic_28,
+% catalog title "isPrime": a fuel-bounded divisor scan decides primality for
+% natural numbers at least two and satisfies its Boolean correctness contract.
+% This file contains no proof.
+
+verina_basic_28: THEORY
+BEGIN
+
+  isPrime_precond(n: nat): bool =
+    n >= 2
+
+  % This recursion preserves the source branch order and fuel update exactly.
+  % The index is positive on every state reachable from the public call.
+  isPrime_check(
+      n: nat,
+      i: posnat,
+      fuel: nat): RECURSIVE bool =
+    IF fuel = 0 THEN
+      TRUE
+    ELSIF i * i > n THEN
+      TRUE
+    ELSIF mod(n, i) = 0 THEN
+      FALSE
+    ELSE
+      isPrime_check(
+        n,
+        i + 1,
+        fuel - 1)
+    ENDIF
+  MEASURE fuel
+
+  % The source precondition proof argument is computationally irrelevant.
+  isPrime(n: nat): bool =
+    isPrime_check(n, 2, n)
+
+  isPrime_postcond(
+      n: nat,
+      result: bool): bool =
+    (result IMPLIES
+      (FORALL (k: posnat):
+        (2 <= k AND k < n)
+          IMPLIES mod(n, k) /= 0))
+      AND
+    (NOT result IMPLIES
+      (EXISTS (k: posnat):
+        2 <= k AND k < n
+          AND mod(n, k) = 0))
+
+  isPrime_spec_satisfied: bool =
+    FORALL (n: nat):
+      isPrime_precond(n)
+        IMPLIES
+          isPrime_postcond(
+            n,
+            isPrime(n))
+
+END verina_basic_28

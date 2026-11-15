@@ -1,0 +1,98 @@
+% Statement-only formalization of the VERINA corpus artifact
+% verina_basic_103, catalog title "UpdateElements": updating integer-array
+% positions 4 and 7 while preserving its length and all other entries.
+% This file contains no proof.
+
+verina_basic_103: THEORY
+BEGIN
+
+  int_list_length(values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        int_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  % Lean's Array.get! on integers returns zero outside the array.
+  int_list_get_bang(
+      index: nat,
+      values: list[int]): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          int_list_get_bang(index - 1, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  % Positional replacement is exactly Array.set! for every in-bounds index.
+  int_list_set_bang(
+      index: nat,
+      new_value: int,
+      values: list[int]): RECURSIVE list[int] =
+    CASES values OF
+      null:
+        null,
+      cons(head, tail):
+        IF index = 0 THEN
+          cons(new_value, tail)
+        ELSE
+          cons(
+            head,
+            int_list_set_bang(
+              index - 1,
+              new_value,
+              tail))
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  UpdateElements_precond(a: list[int]): bool =
+    int_list_length(a) >= 8
+
+  % The source proof argument is computationally irrelevant. The precondition
+  % makes both source set! calls in bounds.
+  UpdateElements(a: list[int]): list[int] =
+    LET a1: list[int] =
+          int_list_set_bang(
+            4,
+            int_list_get_bang(4, a) + 3,
+            a),
+        a2: list[int] =
+          int_list_set_bang(
+            7,
+            516,
+            a1)
+    IN
+      a2
+
+  UpdateElements_postcond(
+      a, result: list[int]): bool =
+    int_list_length(result) = int_list_length(a)
+      AND int_list_get_bang(4, result)
+            = int_list_get_bang(4, a) + 3
+      AND int_list_get_bang(7, result) = 516
+      AND
+        (FORALL (i: nat):
+          (i < int_list_length(a)
+            AND i /= 4
+            AND i /= 7)
+          IMPLIES
+            int_list_get_bang(i, result)
+              = int_list_get_bang(i, a))
+
+  UpdateElements_spec_satisfied: bool =
+    FORALL (a: list[int]):
+      UpdateElements_precond(a)
+        IMPLIES
+          UpdateElements_postcond(
+            a,
+            UpdateElements(a))
+
+END verina_basic_103

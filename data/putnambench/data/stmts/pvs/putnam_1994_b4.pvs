@@ -1,0 +1,85 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1994_b4:
+% the greatest common divisor of the entries of A^n minus the identity, for
+% A = [[3, 2], [4, 3]], tends to infinity. This file contains no proof.
+
+putnam_1994_b4: THEORY
+BEGIN
+  index: TYPE = below(2)
+  integer_matrix: TYPE = [index, index -> int]
+  matrix_gcd_function: TYPE = [integer_matrix -> nat]
+  matrix_power_function: TYPE =
+    [integer_matrix, nat -> integer_matrix]
+  natural_sequence: TYPE = [nat -> nat]
+
+  nat_divides(divisor, value: nat): bool =
+    EXISTS (quotient: nat):
+      value = divisor * quotient
+
+  nat_divides_int(divisor: nat, value: int): bool =
+    EXISTS (quotient: int):
+      value = (divisor :: int) * quotient
+
+  is_entry_gcd(gcd_value: nat, M: integer_matrix): bool =
+    nat_divides_int(gcd_value, M(0, 0))
+      AND nat_divides_int(gcd_value, M(0, 1))
+      AND nat_divides_int(gcd_value, M(1, 0))
+      AND nat_divides_int(gcd_value, M(1, 1))
+      AND (FORALL (divisor: nat):
+        (nat_divides_int(divisor, M(0, 0))
+          AND nat_divides_int(divisor, M(0, 1))
+          AND nat_divides_int(divisor, M(1, 0))
+          AND nat_divides_int(divisor, M(1, 1)))
+        IMPLIES nat_divides(divisor, gcd_value))
+
+  identity_matrix: integer_matrix =
+    LAMBDA (row, column: index):
+      IF row = column THEN 1 ELSE 0 ENDIF
+
+  matrix_multiply(A, B: integer_matrix): integer_matrix =
+    LAMBDA (row, column: index):
+      A(row, 0) * B(0, column)
+        + A(row, 1) * B(1, column)
+
+  matrix_subtract(A, B: integer_matrix): integer_matrix =
+    LAMBDA (row, column: index):
+      A(row, column) - B(row, column)
+
+  is_specified_matrix(A: integer_matrix): bool =
+    A(0, 0) = 3
+      AND A(0, 1) = 2
+      AND A(1, 0) = 4
+      AND A(1, 1) = 3
+
+  is_matrix_power(
+      matpow: matrix_power_function): bool =
+    FORALL (M: integer_matrix):
+      matpow(M, 0) = identity_matrix
+        AND (FORALL (n: nat):
+          matpow(M, n + 1) =
+            matrix_multiply(matpow(M, n), M))
+
+  tends_to_infinity(d: natural_sequence): bool =
+    FORALL (bound: nat):
+      EXISTS (cutoff: nat):
+        FORALL (n: nat):
+          cutoff <= n IMPLIES bound <= d(n)
+
+  putnam_1994_b4: bool =
+    FORALL
+        (matgcd: matrix_gcd_function),
+        (A: integer_matrix),
+        (matpow: matrix_power_function),
+        (d: natural_sequence):
+      ((FORALL (M: integer_matrix):
+          is_entry_gcd(matgcd(M), M))
+        AND is_specified_matrix(A)
+        AND is_matrix_power(matpow)
+        AND (FORALL (n: nat):
+          n >= 1 IMPLIES
+            d(n) =
+              matgcd(
+                matrix_subtract(
+                  matpow(A, n),
+                  identity_matrix))))
+      IMPLIES tends_to_infinity(d)
+END putnam_1994_b4

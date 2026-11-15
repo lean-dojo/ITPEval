@@ -1,0 +1,61 @@
+% Statement-only formalization of PutnamBench artifact putnam_1964_b5:
+% the reciprocal series of the running least common multiples of a strictly
+% increasing positive natural-number sequence converges. This file contains no proof.
+
+putnam_1964_b5: THEORY
+BEGIN
+  natural_sequence: TYPE = [nat -> nat]
+
+  nat_divides(divisor, value: nat): bool =
+    EXISTS (quotient: nat): value = divisor * quotient
+
+  is_nat_lcm(lcm_value, left, right: nat): bool =
+    nat_divides(left, lcm_value)
+      AND nat_divides(right, lcm_value)
+      AND (FORALL (common_multiple: nat):
+        nat_divides(left, common_multiple)
+          AND nat_divides(right, common_multiple)
+          IMPLIES nat_divides(lcm_value, common_multiple))
+
+  strictly_increasing(a: natural_sequence): bool =
+    FORALL (m, n: nat):
+      m < n IMPLIES a(m) < a(n)
+
+  positive(a: natural_sequence): bool =
+    FORALL (n: nat): 0 < a(n)
+
+  running_lcms(a, b: natural_sequence): bool =
+    b(0) = a(0)
+      AND FORALL (n: nat):
+        is_nat_lcm(b(n + 1), b(n), a(n + 1))
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN 0 ELSE numerator / denominator ENDIF
+
+  reciprocal_partial_sum(
+      b: natural_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      reciprocal_partial_sum(b, count - 1)
+        + safe_div(1, b(count - 1) :: real)
+    ENDIF
+  MEASURE count
+
+  reciprocal_series_converges(b: natural_sequence): bool =
+    EXISTS (total: real):
+      FORALL (epsilon_value: posreal):
+        EXISTS (cutoff: nat):
+          FORALL (count: nat):
+            cutoff <= count IMPLIES
+              abs(reciprocal_partial_sum(b, count) - total)
+                < epsilon_value
+
+  putnam_1964_b5: bool =
+    FORALL (a, b: natural_sequence):
+      (strictly_increasing(a)
+        AND positive(a)
+        AND running_lcms(a, b))
+      IMPLIES reciprocal_series_converges(b)
+END putnam_1964_b5

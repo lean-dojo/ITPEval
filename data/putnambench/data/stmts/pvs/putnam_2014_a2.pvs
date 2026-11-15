@@ -1,0 +1,183 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2014_a2:
+% the determinant of the n-by-n real matrix with (i,j)-entry 1/min(i,j),
+% indexed from 1, equals (-1)^(n-1)/((n-1)! n!). This file contains no proof.
+
+putnam_2014_a2: THEORY
+BEGIN
+  square_matrix: TYPE = [nat, nat -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  nat_min(left, right: nat): nat =
+    IF left <= right THEN left ELSE right ENDIF
+
+  nat_factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * nat_factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  nat_predecessor(index: nat): nat =
+    IF index = 0 THEN 0 ELSE index - 1 ENDIF
+
+  quotient_aux(
+      numerator, denominator, fuel: nat): RECURSIVE nat =
+    IF fuel = 0
+        OR denominator = 0
+        OR numerator < denominator THEN
+      0
+    ELSE
+      1
+        + quotient_aux(
+            numerator - denominator,
+            denominator,
+            fuel - 1)
+    ENDIF
+  MEASURE fuel
+
+  remainder_aux(
+      numerator, denominator, fuel: nat): RECURSIVE nat =
+    IF fuel = 0
+        OR denominator = 0
+        OR numerator < denominator THEN
+      numerator
+    ELSE
+      remainder_aux(
+        numerator - denominator,
+        denominator,
+        fuel - 1)
+    ENDIF
+  MEASURE fuel
+
+  safe_ndiv(numerator, denominator: nat): nat =
+    quotient_aux(
+      numerator,
+      denominator,
+      numerator + 1)
+
+  safe_mod(numerator, denominator: nat): nat =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      remainder_aux(
+        numerator,
+        denominator,
+        numerator + 1)
+    ENDIF
+
+  function_code_count(size: nat): nat =
+    IF size = 0 THEN 1 ELSE size ^ size ENDIF
+
+  permutation_entry(code, row, size: nat): nat =
+    IF size = 0 THEN
+      0
+    ELSE
+      safe_mod(safe_ndiv(code, size ^ row), size)
+    ENDIF
+
+  permutation_code(code, size: nat): bool =
+    code < function_code_count(size)
+      AND (FORALL (row_1, row_2: nat):
+        (row_1 < size
+          AND row_2 < size
+          AND permutation_entry(code, row_1, size)
+            = permutation_entry(code, row_2, size))
+        IMPLIES row_1 = row_2)
+
+  pair_row(pair, size: nat): nat =
+    safe_ndiv(pair, size)
+
+  pair_column(pair, size: nat): nat =
+    safe_mod(pair, size)
+
+  inversion_at(code, pair, size: nat): bool =
+    pair_row(pair, size) < size
+      AND pair_column(pair, size) < size
+      AND pair_row(pair, size) < pair_column(pair, size)
+      AND permutation_entry(code, pair_row(pair, size), size)
+        > permutation_entry(code, pair_column(pair, size), size)
+
+  count_true(
+      property: [nat -> bool],
+      count: nat): RECURSIVE nat =
+    IF count = 0 THEN
+      0
+    ELSE
+      count_true(property, count - 1)
+        + IF property(count - 1) THEN 1 ELSE 0 ENDIF
+    ENDIF
+  MEASURE count
+
+  inversion_count(code, size: nat): nat =
+    count_true(
+      (LAMBDA (pair: nat): inversion_at(code, pair, size)),
+      size * size)
+
+  permutation_sign(code, size: nat): real =
+    IF mod(inversion_count(code, size), 2) = 0 THEN
+      1
+    ELSE
+      -1
+    ENDIF
+
+  permutation_product(
+      A: square_matrix,
+      code, size, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      1
+    ELSE
+      permutation_product(A, code, size, count - 1)
+        * A(
+            count - 1,
+            permutation_entry(code, count - 1, size))
+    ENDIF
+  MEASURE count
+
+  determinant_sum(
+      A: square_matrix,
+      size, limit: nat): RECURSIVE real =
+    IF limit = 0 THEN
+      0
+    ELSE
+      LET code: nat = limit - 1 IN
+        determinant_sum(A, size, limit - 1)
+          + IF permutation_code(code, size) THEN
+              permutation_sign(code, size)
+                * permutation_product(A, code, size, size)
+            ELSE
+              0
+            ENDIF
+    ENDIF
+  MEASURE limit
+
+  determinant(A: square_matrix, size: nat): real =
+    determinant_sum(A, size, function_code_count(size))
+
+  has_putnam_entries(A: square_matrix, n: nat): bool =
+    FORALL (i, j: nat):
+      (i < n AND j < n)
+        IMPLIES
+          A(i, j)
+            = safe_div(
+                1,
+                nat_min(i + 1, j + 1) :: real)
+
+  putnam_2014_a2_solution(n: nat): real =
+    safe_div(
+      (-1 :: real) ^ nat_predecessor(n),
+      (nat_factorial(nat_predecessor(n))
+        * nat_factorial(n)) :: real)
+
+  putnam_2014_a2: bool =
+    FORALL (n: nat), (A: square_matrix):
+      (n > 0 AND has_putnam_entries(A, n))
+        IMPLIES
+          determinant(A, n) = putnam_2014_a2_solution(n)
+END putnam_2014_a2

@@ -1,0 +1,77 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/isqrt_NewtonMethod_sqrtqtvc: the Newton-method integer-square-root
+% verification condition, including initialization and universally quantified
+% loop-invariant preservation under truncated integer division. This file
+% contains no proof.
+
+isqrt_NewtonMethod_sqrtqtvc: THEORY
+BEGIN
+
+  trunc_div(numerator, denominator: int): int =
+    IF denominator = 0 THEN
+      0
+    ELSIF numerator * denominator >= 0 THEN
+      floor((numerator :: real) / (denominator :: real))
+    ELSE
+      -floor(-((numerator :: real) / (denominator :: real)))
+    ENDIF
+
+  integer_square(value: int): int =
+    value * value
+
+  isqrt_spec(x, result: int): bool =
+    0 <= result
+      AND integer_square(result) <= x
+      AND x < integer_square(result + 1)
+
+  newton_step(x, estimate: int): int =
+    trunc_div(trunc_div(x, estimate) + estimate, 2)
+
+  initialization(x: int): bool =
+    LET first: int = trunc_div(1 + x, 2)
+    IN
+      0 < first
+        AND 0 < x
+        AND first = newton_step(x, x)
+        AND x < integer_square(x + 1)
+        AND x < integer_square(first + 1)
+
+  loop_conclusion(x, estimate: int): bool =
+    LET next: int = newton_step(x, estimate),
+        next_next: int = newton_step(x, next)
+    IN
+      IF next < estimate THEN
+        NOT (next = 0)
+          AND NOT (2 = 0)
+          AND (0 <= estimate AND next < estimate)
+          AND 0 < next_next
+          AND 0 < next
+          AND x < integer_square(next + 1)
+          AND x < integer_square(next_next + 1)
+      ELSE
+        isqrt_spec(x, estimate)
+      ENDIF
+
+  sqrt_vc: bool =
+    FORALL (x: int):
+      0 <= x IMPLIES
+        IF x = 0 THEN
+          isqrt_spec(x, 0)
+        ELSIF x <= 3 THEN
+          isqrt_spec(x, 1)
+        ELSE
+          NOT (2 = 0)
+            AND initialization(x)
+            AND
+              (FORALL (estimate: int):
+                (0 < newton_step(x, estimate)
+                  AND 0 < estimate
+                  AND x < integer_square(estimate + 1)
+                  AND
+                    x
+                      < integer_square(
+                          newton_step(x, estimate) + 1))
+                IMPLIES loop_conclusion(x, estimate))
+        ENDIF
+
+END isqrt_NewtonMethod_sqrtqtvc

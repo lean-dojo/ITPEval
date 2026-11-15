@@ -1,0 +1,188 @@
+% Statement-only formalization of the VERINA corpus artifact verina_basic_51,
+% catalog title "BinarySearch": lower-bound binary search on a sorted finite
+% integer array returns the first insertion index satisfying the source
+% precondition and postcondition. This file contains no proof.
+
+verina_basic_51: THEORY
+BEGIN
+
+  % Finite PVS lists preserve exactly the contents and order of Lean arrays.
+  int_list_length(values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        int_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  % Lean Array.get! on integer arrays returns zero outside the array.
+  int_list_get_bang(
+      index: nat,
+      values: list[int]): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          int_list_get_bang(index - 1, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  int_list_all_at_least(
+      lower: int,
+      values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        lower <= head
+          AND int_list_all_at_least(lower, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  % This is Lean List.Pairwise (fun first later => first <= later).
+  int_list_pairwise_nondecreasing(
+      values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        int_list_all_at_least(head, tail)
+          AND int_list_pairwise_nondecreasing(tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  BinarySearch_precond(
+      a: list[int],
+      key: int): bool =
+    int_list_pairwise_nondecreasing(a)
+
+  % When lo < hi, each source recursive call strictly shrinks hi - lo.
+  % Therefore hi - lo + 1 fuel is sufficient, and the fuel-zero branch is
+  % unreachable from binarySearchLoop.
+  binarySearchLoop_fuel(
+      a: list[int],
+      key: int,
+      lo, hi, fuel: nat): RECURSIVE nat =
+    IF fuel = 0 THEN
+      lo
+    ELSIF lo < hi THEN
+      LET mid: nat = ndiv(lo + hi, 2)
+      IN
+        IF int_list_get_bang(mid, a) < key THEN
+          binarySearchLoop_fuel(
+            a,
+            key,
+            mid + 1,
+            hi,
+            fuel - 1)
+        ELSE
+          binarySearchLoop_fuel(
+            a,
+            key,
+            lo,
+            mid,
+            fuel - 1)
+        ENDIF
+    ELSE
+      lo
+    ENDIF
+  MEASURE fuel
+
+  binarySearchLoop(
+      a: list[int],
+      key: int,
+      lo, hi: nat): nat =
+    IF lo < hi THEN
+      binarySearchLoop_fuel(
+        a,
+        key,
+        lo,
+        hi,
+        hi - lo + 1)
+    ELSE
+      lo
+    ENDIF
+
+  % The source precondition proof argument is computationally irrelevant.
+  BinarySearch(
+      a: list[int],
+      key: int): nat =
+    binarySearchLoop(
+      a,
+      key,
+      0,
+      int_list_length(a))
+
+  int_list_take(
+      count: nat,
+      values: list[int]): RECURSIVE list[int] =
+    IF count = 0 THEN
+      null[int]
+    ELSE
+      CASES values OF
+        null:
+          null[int],
+        cons(head, tail):
+          cons(
+            head,
+            int_list_take(count - 1, tail))
+      ENDCASES
+    ENDIF
+  MEASURE count
+
+  int_list_drop(
+      count: nat,
+      values: list[int]): RECURSIVE list[int] =
+    IF count = 0 THEN
+      values
+    ELSE
+      CASES values OF
+        null:
+          null[int],
+        cons(head, tail):
+          int_list_drop(count - 1, tail)
+      ENDCASES
+    ENDIF
+  MEASURE count
+
+  int_list_all_less_than(
+      upper: int,
+      values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        head < upper
+          AND int_list_all_less_than(upper, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  BinarySearch_postcond(
+      a: list[int],
+      key: int,
+      result: nat): bool =
+    result <= int_list_length(a)
+      AND
+        int_list_all_less_than(
+          key,
+          int_list_take(result, a))
+      AND
+        int_list_all_at_least(
+          key,
+          int_list_drop(result, a))
+
+  BinarySearch_spec_satisfied: bool =
+    FORALL (a: list[int], key: int):
+      BinarySearch_precond(a, key)
+        IMPLIES
+          BinarySearch_postcond(
+            a,
+            key,
+            BinarySearch(a, key))
+
+END verina_basic_51

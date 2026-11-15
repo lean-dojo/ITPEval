@@ -9,8 +9,9 @@ who redistribute, modify, or build on the benchmark data should also review the
 upstream projects listed below.
 
 This file is an index of license texts, not a theorem-by-theorem source map.
-Statement files under `data/*/stmts/` are generated from the
-corresponding proof/source files unless a dataset README says otherwise.
+Historical statements under `data/*/stmts/` and extended representations under
+`data/*/data/stmts/` retain their source provenance in dataset indexes and
+[the dataset description](../../docs/new_data_description.md).
 
 ## License Index
 
@@ -37,3 +38,25 @@ corresponding proof/source files unless a dataset README says otherwise.
 | `ekdohibs-coq-proofs-MIT.txt` | Ekdohibs/coq-proofs | <https://github.com/Ekdohibs/coq-proofs> | <https://github.com/Ekdohibs/coq-proofs/blob/master/LICENSE> | MIT |
 | `hol-light-BSD-style.txt` | HOL Light | <https://github.com/jrh13/hol-light> | <https://github.com/jrh13/hol-light/blob/master/LICENSE> | HOL Light BSD-style copyright notice, license, and disclaimer |
 | `isabelle-COPYRIGHT-BSD-style.txt` | Isabelle | <https://github.com/isabelle-prover/mirror-isabelle> | <https://github.com/isabelle-prover/mirror-isabelle/blob/master/COPYRIGHT> | Isabelle BSD-style copyright notice, license, and disclaimer |
+
+## Extended sources
+
+The extended release preserves the existing notices above and adds:
+
+| Included notice | Source |
+|---|---|
+| `putnambench-lean4-LICENSE.txt` | Pinned PutnamBench `lean4/LICENSE` |
+| `putnambench-coq-LICENSE.txt` | Pinned PutnamBench `coq/LICENSE` |
+| `putnambench-isabelle-LICENSE.txt` | Pinned PutnamBench `isabelle/LICENSE` |
+| `verina-Apache-2.0.txt` | VERINA source revision `66b3ce5014edafb20cb26b87c681e7f31847249f` |
+
+Dataset indexes preserve source identifiers for nTP4VC, Logipedia, and Thousand
+Theorems. No standalone license file was found in the locally pinned checkouts
+of those three sources; this index does not assign them the repository's MIT
+license or invent replacement notices. Their existing file headers and source
+attributions are retained. See the source links in `data/<dataset>/data/index.json`
+and the [dataset description](../../docs/new_data_description.md).
+
+The release copies Putnam problem metadata into
+`data/putnambench/data/upstream_problem_metadata.json` for a self-contained audit.
+Development-only upstream gitlinks and generated build caches are not required.

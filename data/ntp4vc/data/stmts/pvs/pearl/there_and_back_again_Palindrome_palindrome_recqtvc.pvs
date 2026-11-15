@@ -1,0 +1,125 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/there_and_back_again_Palindrome_palindrome_recqtvc: the recursive
+% palindrome verification condition relating consumed prefixes, palindrome
+% symmetry, equality testing, and exceptional mismatch witnesses.
+% This file contains no proof.
+
+there_and_back_again_Palindrome_palindrome_recqtvc[
+    Element: TYPE+]: THEORY
+BEGIN
+
+  element_option: DATATYPE
+  BEGIN
+    NoElement: NoElement?
+    SomeElement(option_value: Element): SomeElement?
+  END element_option
+
+  nth_option(
+      values: list[Element],
+      index: int): RECURSIVE element_option =
+    IF index < 0 THEN
+      NoElement
+    ELSE
+      CASES values OF
+        null:
+          NoElement,
+        cons(head, tail):
+          IF index = 0 THEN
+            SomeElement(head)
+          ELSE
+            nth_option(tail, index - 1)
+          ENDIF
+      ENDCASES
+    ENDIF
+  MEASURE values BY <<
+
+  pal(values: list[Element], n: int): bool =
+    FORALL (index: int):
+      (0 <= index AND index < n)
+        IMPLIES
+          nth_option(values, index)
+            = nth_option(values, n - 1 - index)
+
+  normal_result(
+      source, span, remainder: list[Element]): bool =
+    (EXISTS (prefix: list[Element]):
+      length(prefix) = length(span)
+        AND source = append(prefix, remainder))
+      AND pal(source, length(span))
+
+  mismatch_result(
+      source, span: list[Element]): bool =
+    EXISTS (index: int):
+      (0 <= index AND index < length(span))
+        AND
+      nth_option(source, index)
+        /= nth_option(source, length(span) - 1 - index)
+
+  equality_specification(
+      equal: [Element, Element -> bool]): bool =
+    FORALL (left, right: Element):
+      equal(left, right) IFF left = right
+
+  tail_consistency(
+      source, expected_tail: list[Element]): bool =
+    CASES source OF
+      null:
+        FALSE,
+      cons(ignored_head, actual_tail):
+        actual_tail = expected_tail
+    ENDCASES
+
+  palindrome_rec_vc: bool =
+    FORALL
+        (equal: [Element, Element -> bool]),
+        (y, x: list[Element]):
+      (equality_specification(equal)
+        AND length(y) <= length(x))
+      IMPLIES
+        CASES y OF
+          null:
+            normal_result(x, y, x),
+          cons(y_head, y_tail):
+            CASES y_tail OF
+              null:
+                CASES x OF
+                  null:
+                    FALSE,
+                  cons(x_head, x_tail):
+                    normal_result(x, y, x_tail)
+                ENDCASES,
+              cons(y_second, y_rest):
+                CASES x OF
+                  null:
+                    FALSE,
+                  cons(x_head, x_tail):
+                    (tail_consistency(x, x_tail)
+                      AND length(y_rest) <= length(x_tail))
+                      AND
+                    (FORALL (recursive_remainder: list[Element]):
+                      (normal_result(
+                          x_tail,
+                          y_rest,
+                          recursive_remainder))
+                        IMPLIES
+                          CASES recursive_remainder OF
+                            null:
+                              FALSE,
+                            cons(mirrored_head, result_tail):
+                              (equal(x_head, mirrored_head)
+                                IFF x_head = mirrored_head)
+                              IMPLIES
+                                (IF equal(x_head, mirrored_head) THEN
+                                   normal_result(x, y, result_tail)
+                                 ELSE
+                                   mismatch_result(x, y)
+                                 ENDIF)
+                          ENDCASES)
+                      AND
+                    (mismatch_result(x_tail, y_rest)
+                      IMPLIES mismatch_result(x, y))
+                ENDCASES
+            ENDCASES
+        ENDCASES
+
+END there_and_back_again_Palindrome_palindrome_recqtvc

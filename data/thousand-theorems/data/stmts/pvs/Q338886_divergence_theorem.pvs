@@ -1,0 +1,1099 @@
+% Statement-only formalization of the Thousand Theorems corpus artifact Q338886,
+% "Divergence theorem": a continuous finite-dimensional vector field valued in
+% a complete normed real vector space, Frechet differentiable off a countable
+% subset of a box interior, has integral of its divergence equal to the signed
+% sum of its Bochner face integrals.
+% This file contains no proof.
+
+Q338886_divergence_theorem[
+  E: TYPE+,
+  zeroE: E,
+  addE: [E, E -> E],
+  negE: [E -> E],
+  smulE: [real, E -> E],
+  normE: [E -> real]
+]: THEORY
+BEGIN
+  vector: TYPE = [nat -> real]
+  e_vector: TYPE = [nat -> E]
+  event: TYPE = [vector -> bool]
+  event_sequence: TYPE = [nat -> event]
+  sigma_algebra: TYPE = [event -> bool]
+
+  measure_value: TYPE =
+    [# infinite_flag: bool, finite_part: real #]
+  measure_value_sequence: TYPE = [nat -> measure_value]
+  measure_map: TYPE = [event -> measure_value]
+  measure_family: TYPE = [nat -> measure_map]
+  sigma_family: TYPE = [nat -> sigma_algebra]
+
+  real_sequence: TYPE = [nat -> real]
+  e_sequence: TYPE = [nat -> E]
+  e_function: TYPE = [vector -> E]
+  e_function_sequence: TYPE = [nat -> e_function]
+  nonnegative_function: TYPE = [vector -> measure_value]
+  vector_field: TYPE = [vector -> e_vector]
+  linear_candidate: TYPE = [vector -> e_vector]
+  derivative_field: TYPE = [vector -> linear_candidate]
+
+  subE(x, y: E): E =
+    addE(x, negE(y))
+
+  normed_real_vector_space: bool =
+    (FORALL (x, y: E): addE(x, y) = addE(y, x))
+      AND (FORALL (x, y, z: E):
+        addE(addE(x, y), z) = addE(x, addE(y, z)))
+      AND (FORALL (x: E): addE(x, zeroE) = x)
+      AND (FORALL (x: E): addE(x, negE(x)) = zeroE)
+      AND (FORALL (a: real), (x, y: E):
+        smulE(a, addE(x, y)) =
+          addE(smulE(a, x), smulE(a, y)))
+      AND (FORALL (a, b: real), (x: E):
+        smulE(a + b, x) =
+          addE(smulE(a, x), smulE(b, x)))
+      AND (FORALL (a, b: real), (x: E):
+        smulE(a * b, x) = smulE(a, smulE(b, x)))
+      AND (FORALL (x: E): smulE(1, x) = x)
+      AND (FORALL (x: E): normE(x) >= 0)
+      AND (FORALL (x: E): normE(x) = 0 IFF x = zeroE)
+      AND (FORALL (a: real), (x: E):
+        normE(smulE(a, x)) = abs(a) * normE(x))
+      AND (FORALL (x, y: E):
+        normE(addE(x, y)) <= normE(x) + normE(y))
+
+  zero_vector: vector =
+    LAMBDA (index: nat): 0
+
+  vector_add(left, right: vector): vector =
+    LAMBDA (index: nat):
+      left(index) + right(index)
+
+  vector_scale(scalar: real, value: vector): vector =
+    LAMBDA (index: nat):
+      scalar * value(index)
+
+  vector_sub(left, right: vector): vector =
+    LAMBDA (index: nat):
+      left(index) - right(index)
+
+  zero_e_vector: e_vector =
+    LAMBDA (index: nat): zeroE
+
+  e_vector_add(left, right: e_vector): e_vector =
+    LAMBDA (index: nat):
+      addE(left(index), right(index))
+
+  e_vector_scale(scalar: real, value: e_vector): e_vector =
+    LAMBDA (index: nat):
+      smulE(scalar, value(index))
+
+  e_vector_sub(left, right: e_vector): e_vector =
+    LAMBDA (index: nat):
+      subE(left(index), right(index))
+
+  supported(value: vector, dimension: nat): bool =
+    FORALL (index: nat):
+      dimension <= index IMPLIES value(index) = 0
+
+  e_supported(value: e_vector, dimension: nat): bool =
+    FORALL (index: nat):
+      dimension <= index IMPLIES value(index) = zeroE
+
+  finite_real_sum(values: real_sequence, count: nat):
+      RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      finite_real_sum(values, count - 1)
+        + values(count - 1)
+    ENDIF
+  MEASURE count
+
+  finite_real_product(values: real_sequence, count: nat):
+      RECURSIVE real =
+    IF count = 0 THEN
+      1
+    ELSE
+      finite_real_product(values, count - 1)
+        * values(count - 1)
+    ENDIF
+  MEASURE count
+
+  finite_e_sum(values: e_sequence, count: nat):
+      RECURSIVE E =
+    IF count = 0 THEN
+      zeroE
+    ELSE
+      addE(
+        finite_e_sum(values, count - 1),
+        values(count - 1))
+    ENDIF
+  MEASURE count
+
+  vector_norm_squared(value: vector, dimension: nat): real =
+    finite_real_sum(
+      LAMBDA (index: nat): value(index) ^ 2,
+      dimension)
+
+  e_vector_norm_squared(
+      value: e_vector,
+      dimension: nat): real =
+    finite_real_sum(
+      LAMBDA (index: nat): normE(value(index)) ^ 2,
+      dimension)
+
+  converges_to_e(values: e_sequence, limit: E): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            normE(subE(values(index), limit)) < epsilon_value
+
+  cauchy_e(values: e_sequence): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (left_index, right_index: nat):
+          cutoff <= left_index AND cutoff <= right_index
+            IMPLIES
+              normE(
+                subE(values(left_index), values(right_index)))
+                < epsilon_value
+
+  complete_space_e: bool =
+    FORALL (values: e_sequence):
+      cauchy_e(values) IMPLIES
+        EXISTS (limit: E): converges_to_e(values, limit)
+
+  converges_to_real(values: real_sequence, limit: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(values(index) - limit) < epsilon_value
+
+  zero_measure_value: measure_value =
+    (# infinite_flag := FALSE, finite_part := 0 #)
+
+  infinite_measure_value: measure_value =
+    (# infinite_flag := TRUE, finite_part := 0 #)
+
+  finite_measure_value(value: real): measure_value =
+    (# infinite_flag := FALSE, finite_part := value #)
+
+  canonical_measure_value(value: measure_value): bool =
+    IF infinite_flag(value) THEN
+      finite_part(value) = 0
+    ELSE
+      finite_part(value) >= 0
+    ENDIF
+
+  measure_value_is_zero(value: measure_value): bool =
+    canonical_measure_value(value)
+      AND NOT infinite_flag(value)
+      AND finite_part(value) = 0
+
+  measure_value_le(left, right: measure_value): bool =
+    canonical_measure_value(left)
+      AND canonical_measure_value(right)
+      AND IF infinite_flag(right) THEN
+        TRUE
+      ELSIF infinite_flag(left) THEN
+        FALSE
+      ELSE
+        finite_part(left) <= finite_part(right)
+      ENDIF
+
+  measure_value_add(left, right: measure_value): measure_value =
+    IF infinite_flag(left) OR infinite_flag(right) THEN
+      infinite_measure_value
+    ELSE
+      finite_measure_value(
+        finite_part(left) + finite_part(right))
+    ENDIF
+
+  measure_value_product(left, right: measure_value):
+      measure_value =
+    IF measure_value_is_zero(left)
+        OR measure_value_is_zero(right) THEN
+      zero_measure_value
+    ELSIF infinite_flag(left)
+        OR infinite_flag(right) THEN
+      infinite_measure_value
+    ELSE
+      finite_measure_value(
+        finite_part(left) * finite_part(right))
+    ENDIF
+
+  full_event(dimension: nat): event =
+    LAMBDA (x: vector): supported(x, dimension)
+
+  empty_event: event =
+    LAMBDA (x: vector): FALSE
+
+  carrier_event(dimension: nat, A: event): bool =
+    FORALL (x: vector):
+      A(x) IMPLIES supported(x, dimension)
+
+  event_complement(dimension: nat, A: event): event =
+    LAMBDA (x: vector):
+      supported(x, dimension) AND NOT A(x)
+
+  countable_union(
+      dimension: nat,
+      sets: event_sequence): event =
+    LAMBDA (x: vector):
+      supported(x, dimension)
+        AND EXISTS (index: nat): sets(index)(x)
+
+  pairwise_disjoint(sets: event_sequence): bool =
+    FORALL (left_index, right_index: nat):
+      left_index /= right_index IMPLIES
+        FORALL (x: vector):
+          NOT (sets(left_index)(x)
+            AND sets(right_index)(x))
+
+  pairwise_disjoint_below(
+      sets: event_sequence,
+      count: nat): bool =
+    FORALL (left_index, right_index: nat):
+      left_index < count
+        AND right_index < count
+        AND left_index /= right_index
+      IMPLIES
+        FORALL (x: vector):
+          NOT (sets(left_index)(x)
+            AND sets(right_index)(x))
+
+  open_set(dimension: nat, A: event): bool =
+    carrier_event(dimension, A)
+      AND FORALL (x: vector):
+        A(x) IMPLIES
+          EXISTS (radius: posreal):
+            FORALL (y: vector):
+              (supported(y, dimension)
+                AND vector_norm_squared(
+                  vector_sub(y, x), dimension)
+                  < radius ^ 2)
+              IMPLIES A(y)
+
+  is_sigma_algebra(
+      dimension: nat,
+      Sigma: sigma_algebra): bool =
+    Sigma(full_event(dimension))
+      AND (FORALL (A: event):
+        Sigma(A) IMPLIES
+          (carrier_event(dimension, A)
+            AND Sigma(event_complement(dimension, A))))
+      AND (FORALL (sets: event_sequence):
+        (FORALL (index: nat): Sigma(sets(index)))
+          IMPLIES Sigma(countable_union(dimension, sets)))
+
+  generated_borel_sigma(
+      dimension: nat,
+      Sigma: sigma_algebra): bool =
+    is_sigma_algebra(dimension, Sigma)
+      AND (FORALL (A: event):
+        open_set(dimension, A) IMPLIES Sigma(A))
+      AND (FORALL (Other: sigma_algebra):
+        (is_sigma_algebra(dimension, Other)
+          AND (FORALL (A: event):
+            open_set(dimension, A) IMPLIES Other(A)))
+        IMPLIES
+          FORALL (A: event):
+            Sigma(A) IMPLIES Other(A))
+
+  unbounded_above(values: real_sequence): bool =
+    FORALL (bound: real):
+      EXISTS (index: nat):
+        bound < values(index)
+
+  partial_measure_sum(
+      values: measure_value_sequence,
+      count: nat): real =
+    finite_real_sum(
+      LAMBDA (index: nat):
+        finite_part(values(index)),
+      count)
+
+  extended_nonnegative_sum(
+      values: measure_value_sequence,
+      total: measure_value): bool =
+    canonical_measure_value(total)
+      AND (FORALL (index: nat):
+        canonical_measure_value(values(index)))
+      AND IF infinite_flag(total) THEN
+        (EXISTS (index: nat):
+          infinite_flag(values(index)))
+          OR ((FORALL (index: nat):
+                NOT infinite_flag(values(index)))
+            AND unbounded_above(
+              LAMBDA (count: nat):
+                partial_measure_sum(values, count)))
+      ELSE
+        (FORALL (index: nat):
+          NOT infinite_flag(values(index)))
+          AND converges_to_real(
+            LAMBDA (count: nat):
+              partial_measure_sum(values, count),
+            finite_part(total))
+      ENDIF
+
+  is_measure(
+      dimension: nat,
+      M: measure_map,
+      Sigma: sigma_algebra): bool =
+    is_sigma_algebra(dimension, Sigma)
+      AND measure_value_is_zero(M(empty_event))
+      AND (FORALL (A: event):
+        Sigma(A) IMPLIES
+          canonical_measure_value(M(A)))
+      AND (FORALL (sets: event_sequence):
+        ((FORALL (index: nat): Sigma(sets(index)))
+          AND pairwise_disjoint(sets))
+        IMPLIES
+          extended_nonnegative_sum(
+            LAMBDA (index: nat): M(sets(index)),
+            M(countable_union(dimension, sets))))
+
+  open_closed_box(
+      dimension: nat,
+      lower, upper: vector): event =
+    LAMBDA (x: vector):
+      supported(x, dimension)
+        AND FORALL (index: nat):
+          index < dimension IMPLIES
+            lower(index) < x(index)
+              AND x(index) <= upper(index)
+
+  interval_length(lower, upper: real): real =
+    IF lower <= upper THEN upper - lower ELSE 0 ENDIF
+
+  box_volume(
+      dimension: nat,
+      lower, upper: vector): real =
+    finite_real_product(
+      LAMBDA (index: nat):
+        interval_length(lower(index), upper(index)),
+      dimension)
+
+  euclidean_volume_space(
+      dimension: nat,
+      M: measure_map,
+      Sigma: sigma_algebra): bool =
+    generated_borel_sigma(dimension, Sigma)
+      AND is_measure(dimension, M, Sigma)
+      AND (FORALL (lower, upper: vector):
+        M(open_closed_box(dimension, lower, upper)) =
+          finite_measure_value(
+            box_volume(dimension, lower, upper)))
+
+  null_event(
+      dimension: nat,
+      M: measure_map,
+      Sigma: sigma_algebra,
+      A: event): bool =
+    EXISTS (measurable_cover: event):
+      Sigma(measurable_cover)
+        AND (FORALL (x: vector):
+          A(x) IMPLIES measurable_cover(x))
+        AND measure_value_is_zero(M(measurable_cover))
+
+  almost_everywhere(
+      dimension: nat,
+      M: measure_map,
+      Sigma: sigma_algebra,
+      property: [vector -> bool]): bool =
+    null_event(
+      dimension,
+      M,
+      Sigma,
+      LAMBDA (x: vector):
+        supported(x, dimension) AND NOT property(x))
+
+  finite_simple_e_value(
+      coefficients: e_sequence,
+      pieces: event_sequence,
+      count: nat,
+      x: vector): E =
+    finite_e_sum(
+      LAMBDA (index: nat):
+        IF index < count AND pieces(index)(x) THEN
+          coefficients(index)
+        ELSE
+          zeroE
+        ENDIF,
+      count)
+
+  measurable_simple_e_data(
+      dimension: nat,
+      Sigma: sigma_algebra,
+      coefficients: e_sequence,
+      pieces: event_sequence,
+      count: nat): bool =
+    pairwise_disjoint_below(pieces, count)
+      AND (FORALL (index: nat):
+        index < count IMPLIES
+          Sigma(pieces(index))
+            AND carrier_event(dimension, pieces(index)))
+
+  measurable_simple_e(
+      dimension: nat,
+      Sigma: sigma_algebra,
+      function_value: e_function): bool =
+    EXISTS
+        (coefficients: e_sequence),
+        (pieces: event_sequence),
+        (count: nat):
+      measurable_simple_e_data(
+        dimension, Sigma, coefficients, pieces, count)
+        AND (FORALL (x: vector):
+          supported(x, dimension) IMPLIES
+            function_value(x) =
+              finite_simple_e_value(
+                coefficients, pieces, count, x))
+
+  strongly_measurable_e(
+      dimension: nat,
+      Sigma: sigma_algebra,
+      function_value: e_function): bool =
+    EXISTS (approximants: e_function_sequence):
+      (FORALL (index: nat):
+        measurable_simple_e(
+          dimension, Sigma, approximants(index)))
+        AND (FORALL (x: vector):
+          supported(x, dimension) IMPLIES
+            converges_to_e(
+              LAMBDA (index: nat):
+                approximants(index)(x),
+              function_value(x)))
+
+  ae_strongly_measurable_e(
+      dimension: nat,
+      M: measure_map,
+      Sigma: sigma_algebra,
+      function_value: e_function): bool =
+    EXISTS (measurable_version: e_function):
+      strongly_measurable_e(
+        dimension, Sigma, measurable_version)
+        AND almost_everywhere(
+          dimension,
+          M,
+          Sigma,
+          LAMBDA (x: vector):
+            function_value(x) = measurable_version(x))
+
+  restrict_e_function(
+      dimension: nat,
+      function_value: e_function,
+      A: event): e_function =
+    LAMBDA (x: vector):
+      IF supported(x, dimension) AND A(x)
+      THEN function_value(x)
+      ELSE zeroE
+      ENDIF
+
+  canonical_nonnegative_function(
+      dimension: nat,
+      function_value: nonnegative_function): bool =
+    FORALL (x: vector):
+      supported(x, dimension) IMPLIES
+        canonical_measure_value(function_value(x))
+
+  finite_simple_nonnegative_value(
+      coefficients: measure_value_sequence,
+      pieces: event_sequence,
+      count: nat,
+      x: vector): RECURSIVE measure_value =
+    IF count = 0 THEN
+      zero_measure_value
+    ELSE
+      measure_value_add(
+        finite_simple_nonnegative_value(
+          coefficients, pieces, count - 1, x),
+        IF pieces(count - 1)(x) THEN
+          coefficients(count - 1)
+        ELSE
+          zero_measure_value
+        ENDIF)
+    ENDIF
+  MEASURE count
+
+  measurable_simple_nonnegative(
+      dimension: nat,
+      Sigma: sigma_algebra,
+      coefficients: measure_value_sequence,
+      pieces: event_sequence,
+      count: nat): bool =
+    pairwise_disjoint_below(pieces, count)
+      AND (FORALL (index: nat):
+        index < count IMPLIES
+          canonical_measure_value(coefficients(index))
+            AND NOT infinite_flag(coefficients(index))
+            AND Sigma(pieces(index))
+            AND carrier_event(dimension, pieces(index)))
+
+  measurable_simple_minorant(
+      dimension: nat,
+      Sigma: sigma_algebra,
+      function_value: nonnegative_function,
+      coefficients: measure_value_sequence,
+      pieces: event_sequence,
+      count: nat): bool =
+    canonical_nonnegative_function(dimension, function_value)
+      AND measurable_simple_nonnegative(
+        dimension, Sigma, coefficients, pieces, count)
+      AND (FORALL (x: vector):
+        supported(x, dimension) IMPLIES
+          measure_value_le(
+            finite_simple_nonnegative_value(
+              coefficients, pieces, count, x),
+            function_value(x)))
+
+  finite_simple_nonnegative_integral(
+      M: measure_map,
+      coefficients: measure_value_sequence,
+      pieces: event_sequence,
+      count: nat): RECURSIVE measure_value =
+    IF count = 0 THEN
+      zero_measure_value
+    ELSE
+      measure_value_add(
+        finite_simple_nonnegative_integral(
+          M, coefficients, pieces, count - 1),
+        measure_value_product(
+          coefficients(count - 1),
+          M(pieces(count - 1))))
+    ENDIF
+  MEASURE count
+
+  lower_integral_upper_bound(
+      dimension: nat,
+      M: measure_map,
+      Sigma: sigma_algebra,
+      function_value: nonnegative_function,
+      upper: measure_value): bool =
+    canonical_measure_value(upper)
+      AND FORALL
+          (coefficients: measure_value_sequence),
+          (pieces: event_sequence),
+          (count: nat):
+        measurable_simple_minorant(
+          dimension, Sigma, function_value,
+          coefficients, pieces, count)
+        IMPLIES
+          measure_value_le(
+            finite_simple_nonnegative_integral(
+              M, coefficients, pieces, count),
+            upper)
+
+  has_lower_lebesgue_integral(
+      dimension: nat,
+      M: measure_map,
+      Sigma: sigma_algebra,
+      function_value: nonnegative_function,
+      integral_value: measure_value): bool =
+    canonical_nonnegative_function(dimension, function_value)
+      AND canonical_measure_value(integral_value)
+      AND lower_integral_upper_bound(
+        dimension, M, Sigma,
+        function_value, integral_value)
+      AND (FORALL (upper: measure_value):
+        lower_integral_upper_bound(
+          dimension, M, Sigma, function_value, upper)
+        IMPLIES
+          measure_value_le(integral_value, upper))
+
+  enorm_e(function_value: e_function):
+      nonnegative_function =
+    LAMBDA (x: vector):
+      finite_measure_value(normE(function_value(x)))
+
+  has_finite_integral(
+      dimension: nat,
+      M: measure_map,
+      Sigma: sigma_algebra,
+      function_value: e_function): bool =
+    EXISTS (integral_value: measure_value):
+      has_lower_lebesgue_integral(
+        dimension,
+        M,
+        Sigma,
+        enorm_e(function_value),
+        integral_value)
+        AND NOT infinite_flag(integral_value)
+
+  bochner_integrable(
+      dimension: nat,
+      M: measure_map,
+      Sigma: sigma_algebra,
+      function_value: e_function): bool =
+    ae_strongly_measurable_e(
+      dimension, M, Sigma, function_value)
+      AND has_finite_integral(
+        dimension, M, Sigma, function_value)
+
+  integrable_simple_e_data(
+      dimension: nat,
+      M: measure_map,
+      Sigma: sigma_algebra,
+      coefficients: e_sequence,
+      pieces: event_sequence,
+      count: nat): bool =
+    measurable_simple_e_data(
+      dimension, Sigma, coefficients, pieces, count)
+      AND (FORALL (index: nat):
+        index < count IMPLIES
+          coefficients(index) = zeroE
+            OR NOT infinite_flag(M(pieces(index))))
+
+  finite_simple_e_integral(
+      M: measure_map,
+      coefficients: e_sequence,
+      pieces: event_sequence,
+      count: nat): RECURSIVE E =
+    IF count = 0 THEN
+      zeroE
+    ELSE
+      addE(
+        finite_simple_e_integral(
+          M, coefficients, pieces, count - 1),
+        smulE(
+          finite_part(M(pieces(count - 1))),
+          coefficients(count - 1)))
+    ENDIF
+  MEASURE count
+
+  has_simple_e_integral(
+      dimension: nat,
+      M: measure_map,
+      Sigma: sigma_algebra,
+      function_value: e_function,
+      integral_value: E): bool =
+    EXISTS
+        (coefficients: e_sequence),
+        (pieces: event_sequence),
+        (count: nat):
+      integrable_simple_e_data(
+        dimension, M, Sigma,
+        coefficients, pieces, count)
+        AND (FORALL (x: vector):
+          supported(x, dimension) IMPLIES
+            function_value(x) =
+              finite_simple_e_value(
+                coefficients, pieces, count, x))
+        AND integral_value =
+          finite_simple_e_integral(
+            M, coefficients, pieces, count)
+
+  l1_error(
+      dimension: nat,
+      M: measure_map,
+      Sigma: sigma_algebra,
+      function_value,
+      approximant: e_function,
+      error_value: real): bool =
+    error_value >= 0
+      AND has_lower_lebesgue_integral(
+        dimension,
+        M,
+        Sigma,
+        enorm_e(
+          LAMBDA (x: vector):
+            subE(
+              function_value(x),
+              approximant(x))),
+        finite_measure_value(error_value))
+
+  approximates_in_l1(
+      dimension: nat,
+      M: measure_map,
+      Sigma: sigma_algebra,
+      function_value: e_function,
+      approximants: e_function_sequence): bool =
+    (FORALL (index: nat):
+      measurable_simple_e(
+        dimension, Sigma, approximants(index)))
+      AND EXISTS (errors: real_sequence):
+        (FORALL (index: nat):
+          l1_error(
+            dimension,
+            M,
+            Sigma,
+            function_value,
+            approximants(index),
+            errors(index)))
+          AND converges_to_real(errors, 0)
+
+  has_bochner_integral(
+      dimension: nat,
+      M: measure_map,
+      Sigma: sigma_algebra,
+      function_value: e_function,
+      integral_value: E): bool =
+    EXISTS
+        (approximants: e_function_sequence),
+        (simple_integrals: e_sequence):
+      approximates_in_l1(
+        dimension, M, Sigma, function_value, approximants)
+        AND (FORALL (index: nat):
+          has_simple_e_integral(
+            dimension,
+            M,
+            Sigma,
+            approximants(index),
+            simple_integrals(index)))
+        AND converges_to_e(
+          simple_integrals, integral_value)
+
+  bochner_integral(
+      dimension: nat,
+      M: measure_map,
+      Sigma: sigma_algebra,
+      function_value: e_function): E =
+    IF complete_space_e
+        AND bochner_integrable(
+          dimension, M, Sigma, function_value)
+        AND (EXISTS (integral_value: E):
+          has_bochner_integral(
+            dimension, M, Sigma,
+            function_value, integral_value))
+    THEN
+      epsilon(
+        LAMBDA (integral_value: E):
+          has_bochner_integral(
+            dimension, M, Sigma,
+            function_value, integral_value))
+    ELSE
+      zeroE
+    ENDIF
+
+  integrable_on(
+      dimension: nat,
+      M: measure_map,
+      Sigma: sigma_algebra,
+      function_value: e_function,
+      A: event): bool =
+    bochner_integrable(
+      dimension,
+      M,
+      Sigma,
+      restrict_e_function(
+        dimension, function_value, A))
+
+  integral_on(
+      dimension: nat,
+      M: measure_map,
+      Sigma: sigma_algebra,
+      function_value: e_function,
+      A: event): E =
+    bochner_integral(
+      dimension,
+      M,
+      Sigma,
+      restrict_e_function(
+        dimension, function_value, A))
+
+  closed_box(
+      dimension: nat,
+      lower, upper: vector): event =
+    LAMBDA (x: vector):
+      supported(x, dimension)
+        AND FORALL (index: nat):
+          index < dimension IMPLIES
+            lower(index) <= x(index)
+              AND x(index) <= upper(index)
+
+  open_box(
+      dimension: nat,
+      lower, upper: vector): event =
+    LAMBDA (x: vector):
+      supported(x, dimension)
+        AND FORALL (index: nat):
+          index < dimension IMPLIES
+            lower(index) < x(index)
+              AND x(index) < upper(index)
+
+  coordinatewise_le(
+      dimension: nat,
+      lower, upper: vector): bool =
+    FORALL (index: nat):
+      index < dimension IMPLIES
+        lower(index) <= upper(index)
+
+  countable_event(
+      dimension: nat,
+      A: event): bool =
+    carrier_event(dimension, A)
+      AND EXISTS (enumeration: [nat -> vector]):
+        FORALL (x: vector):
+          A(x) IMPLIES
+            EXISTS (index: nat):
+              supported(enumeration(index), dimension)
+                AND enumeration(index) = x
+
+  vector_field_supported(
+      dimension: nat,
+      f: vector_field): bool =
+    FORALL (x: vector):
+      supported(x, dimension) IMPLIES
+        e_supported(f(x), dimension)
+
+  continuous_on(
+      dimension: nat,
+      f: vector_field,
+      A: event): bool =
+    FORALL (x: vector):
+      A(x) IMPLIES
+        FORALL (epsilon_value: posreal):
+          EXISTS (radius: posreal):
+            FORALL (y: vector):
+              (A(y)
+                AND vector_norm_squared(
+                  vector_sub(y, x), dimension)
+                  < radius ^ 2)
+              IMPLIES
+                e_vector_norm_squared(
+                  e_vector_sub(f(y), f(x)),
+                  dimension)
+                  < epsilon_value ^ 2
+
+  continuous_linear_map(
+      dimension: nat,
+      derivative: linear_candidate): bool =
+    (FORALL (x: vector):
+      supported(x, dimension) IMPLIES
+        e_supported(derivative(x), dimension))
+      AND (FORALL (x, y: vector):
+        supported(x, dimension)
+          AND supported(y, dimension)
+        IMPLIES
+          derivative(vector_add(x, y)) =
+            e_vector_add(derivative(x), derivative(y)))
+      AND (FORALL (scalar: real), (x: vector):
+        supported(x, dimension) IMPLIES
+          derivative(vector_scale(scalar, x)) =
+            e_vector_scale(scalar, derivative(x)))
+      AND EXISTS (bound: real):
+        bound >= 0
+          AND FORALL (x: vector):
+            supported(x, dimension) IMPLIES
+              e_vector_norm_squared(
+                derivative(x), dimension)
+                <= bound ^ 2
+                  * vector_norm_squared(x, dimension)
+
+  has_frechet_derivative_at(
+      dimension: nat,
+      f: vector_field,
+      derivative: linear_candidate,
+      point: vector): bool =
+    supported(point, dimension)
+      AND continuous_linear_map(dimension, derivative)
+      AND FORALL (epsilon_value: posreal):
+        EXISTS (radius: posreal):
+          FORALL (increment: vector):
+            (supported(increment, dimension)
+              AND vector_norm_squared(
+                increment, dimension) < radius ^ 2)
+            IMPLIES
+              e_vector_norm_squared(
+                e_vector_sub(
+                  e_vector_sub(
+                    f(vector_add(point, increment)),
+                    f(point)),
+                  derivative(increment)),
+                dimension)
+                <= epsilon_value ^ 2
+                  * vector_norm_squared(
+                    increment, dimension)
+
+  derivative_field_well_typed(
+      dimension: nat,
+      f_prime: derivative_field): bool =
+    FORALL (x: vector):
+      supported(x, dimension) IMPLIES
+        continuous_linear_map(dimension, f_prime(x))
+
+  basis_vector(index, dimension: nat): vector =
+    LAMBDA (coordinate: nat):
+      IF coordinate < dimension AND coordinate = index
+      THEN 1
+      ELSE 0
+      ENDIF
+
+  divergence_value(
+      dimension: nat,
+      f_prime: derivative_field,
+      point: vector): E =
+    finite_e_sum(
+      LAMBDA (index: nat):
+        f_prime(point)(
+          basis_vector(index, dimension))(index),
+      dimension)
+
+  face_source_index(
+      face_index, source_index: nat): nat =
+    IF source_index < face_index
+    THEN source_index
+    ELSE source_index + 1
+    ENDIF
+
+  insert_coordinate(
+      dimension, face_index: nat,
+      coordinate_value: real,
+      point: vector): vector =
+    LAMBDA (index: nat):
+      IF index < dimension THEN
+        IF index < face_index THEN
+          point(index)
+        ELSIF index = face_index THEN
+          coordinate_value
+        ELSE
+          point(index - 1)
+        ENDIF
+      ELSE
+        0
+      ENDIF
+
+  closed_face_box(
+      dimension, face_index: nat,
+      lower, upper: vector): event =
+    LAMBDA (point: vector):
+      supported(point, dimension - 1)
+        AND FORALL (index: nat):
+          index < dimension - 1 IMPLIES
+            lower(face_source_index(face_index, index))
+              <= point(index)
+              AND point(index)
+                <= upper(
+                  face_source_index(face_index, index))
+
+  face_component(
+      dimension, face_index: nat,
+      coordinate_value: real,
+      f: vector_field): e_function =
+    LAMBDA (point: vector):
+      f(insert_coordinate(
+        dimension,
+        face_index,
+        coordinate_value,
+        point))(face_index)
+
+  face_flux(
+      dimension, face_index: nat,
+      M: measure_family,
+      Sigma: sigma_family,
+      lower, upper: vector,
+      f: vector_field): E =
+    subE(
+      integral_on(
+        dimension - 1,
+        M(dimension - 1),
+        Sigma(dimension - 1),
+        face_component(
+          dimension,
+          face_index,
+          upper(face_index),
+          f),
+        closed_face_box(
+          dimension, face_index, lower, upper)),
+      integral_on(
+        dimension - 1,
+        M(dimension - 1),
+        Sigma(dimension - 1),
+        face_component(
+          dimension,
+          face_index,
+          lower(face_index),
+          f),
+        closed_face_box(
+          dimension, face_index, lower, upper)))
+
+  boundary_flux_sum(
+      dimension: nat,
+      M: measure_family,
+      Sigma: sigma_family,
+      lower, upper: vector,
+      f: vector_field,
+      count: nat): RECURSIVE E =
+    IF count = 0 THEN
+      zeroE
+    ELSE
+      addE(
+        boundary_flux_sum(
+          dimension, M, Sigma,
+          lower, upper, f, count - 1),
+        face_flux(
+          dimension,
+          count - 1,
+          M,
+          Sigma,
+          lower,
+          upper,
+          f))
+    ENDIF
+  MEASURE count
+
+  divergence_theorem: bool =
+    (normed_real_vector_space AND complete_space_e) IMPLIES
+      FORALL
+          (dimension: posnat),
+          (M: measure_family),
+          (Sigma: sigma_family),
+          (lower, upper: vector),
+          (f: vector_field),
+          (f_prime: derivative_field),
+          (exceptional: event):
+        (euclidean_volume_space(
+            dimension, M(dimension), Sigma(dimension))
+          AND euclidean_volume_space(
+            dimension - 1,
+            M(dimension - 1),
+            Sigma(dimension - 1))
+          AND supported(lower, dimension)
+          AND supported(upper, dimension)
+          AND coordinatewise_le(dimension, lower, upper)
+          AND vector_field_supported(dimension, f)
+          AND derivative_field_well_typed(
+            dimension, f_prime)
+          AND countable_event(dimension, exceptional)
+          AND continuous_on(
+            dimension,
+            f,
+            closed_box(dimension, lower, upper))
+          AND (FORALL (point: vector):
+            (open_box(dimension, lower, upper)(point)
+              AND NOT exceptional(point))
+            IMPLIES
+              has_frechet_derivative_at(
+                dimension,
+                f,
+                f_prime(point),
+                point))
+          AND integrable_on(
+            dimension,
+            M(dimension),
+            Sigma(dimension),
+            LAMBDA (point: vector):
+              divergence_value(
+                dimension, f_prime, point),
+            closed_box(dimension, lower, upper)))
+        IMPLIES
+          integral_on(
+            dimension,
+            M(dimension),
+            Sigma(dimension),
+            LAMBDA (point: vector):
+              divergence_value(
+                dimension, f_prime, point),
+            closed_box(dimension, lower, upper))
+            =
+          boundary_flux_sum(
+            dimension,
+            M,
+            Sigma,
+            lower,
+            upper,
+            f,
+            dimension)
+END Q338886_divergence_theorem

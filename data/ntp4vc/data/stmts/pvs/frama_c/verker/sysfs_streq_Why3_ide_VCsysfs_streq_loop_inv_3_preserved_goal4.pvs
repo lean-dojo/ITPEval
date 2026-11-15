@@ -1,0 +1,201 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% frama_c/verker/sysfs_streq_Why3_ide_VCsysfs_streq_loop_inv_3_preserved_goal4:
+% preservation of valid-string predicates for both strings after advancing one
+% byte beyond a matched nonzero loop position. This file contains no proof.
+
+sysfs_streq_Why3_ide_VCsysfs_streq_loop_inv_3_preserved_goal4: THEORY
+BEGIN
+  addr: TYPE = [# base: int, offset: int #]
+  allocation_table: TYPE = [int -> int]
+  integer_memory: TYPE = [addr -> int]
+  integer_conversion: TYPE = [int -> int]
+  string_length_function: TYPE = [integer_memory, addr -> int]
+  bounded_string_compare: TYPE =
+    [integer_memory, addr, addr, int -> int]
+
+  shift(p: addr, k: int): addr =
+    (# base := base(p), offset := offset(p) + k #)
+
+  is_sint8(value: int): bool =
+    -128 <= value AND value < 128
+
+  is_uint32(value: int): bool =
+    0 <= value AND value < 4294967296
+
+  is_sint32(value: int): bool =
+    -2147483648 <= value AND value < 2147483648
+
+  is_uint64(value: int): bool =
+    0 <= value AND value < 18446744073709551616
+
+  is_sint64(value: int): bool =
+    -9223372036854775808 <= value AND value < 9223372036854775808
+
+  valid_rw(
+      malloc_0: allocation_table,
+      p: addr,
+      size: int): bool =
+    0 < size IMPLIES
+      0 < base(p)
+        AND 0 <= offset(p)
+        AND offset(p) + size <= malloc_0(base(p))
+
+  p_valid_str(
+      malloc_0: allocation_table,
+      mchar_0: integer_memory,
+      s: addr): bool =
+    EXISTS (terminator: int):
+      mchar_0(shift(s, terminator)) = 0
+        AND is_uint64(terminator)
+        AND valid_rw(malloc_0, shift(s, 0), 1 + terminator)
+        AND (FORALL (j: int):
+          j <= terminator IMPLIES
+            is_sint8(mchar_0(shift(s, j))))
+
+  p_strnequal(
+      l_strncmp_2: bounded_string_compare,
+      mchar_0: integer_memory,
+      s1_0, s2_0: addr,
+      n: int): bool =
+    l_strncmp_2(mchar_0, s1_0, s2_0, n) = 0
+
+  conversion_laws(
+      to_uint32, to_sint32,
+      to_uint64, to_sint64: integer_conversion): bool =
+    (FORALL (value: int):
+      is_uint32(to_uint32(value)))
+      AND
+    (FORALL (value: int):
+      is_uint32(value) IMPLIES to_uint32(value) = value)
+      AND
+    (FORALL (value: int):
+      to_uint32(to_uint32(value)) = to_uint32(value))
+      AND
+    (FORALL (value: int):
+      is_uint64(to_uint64(value)))
+      AND
+    (FORALL (value: int):
+      is_uint64(value) IMPLIES to_uint64(value) = value)
+      AND
+    (FORALL (value: int):
+      to_uint64(to_uint64(value)) = to_uint64(value))
+      AND
+    (FORALL (value: int):
+      is_sint32(to_sint32(value)))
+      AND
+    (FORALL (value: int):
+      is_sint32(value) IMPLIES to_sint32(value) = value)
+      AND
+    (FORALL (value: int):
+      to_sint32(to_sint32(value)) = to_sint32(value))
+      AND
+    (FORALL (value: int):
+      is_sint64(to_sint64(value)))
+      AND
+    (FORALL (value: int):
+      is_sint64(value) IMPLIES to_sint64(value) = value)
+      AND
+    (FORALL (value: int):
+      to_sint64(to_sint64(value)) = to_sint64(value))
+      AND
+    (FORALL (value: int):
+      to_sint32(to_uint32(value)) = to_sint32(value))
+      AND
+    (FORALL (value: int):
+      to_sint64(to_uint64(value)) = to_sint64(value))
+
+  strlen_laws(
+      to_uint64: integer_conversion,
+      l_strlen: string_length_function): bool =
+    (FORALL (mchar_0: integer_memory), (s: addr):
+      IF mchar_0(shift(s, 0)) = 0
+      THEN l_strlen(mchar_0, s) = 0
+      ELSE
+        to_uint64(1 + l_strlen(mchar_0, shift(s, 1))) =
+          l_strlen(mchar_0, s)
+      ENDIF)
+      AND
+    (FORALL (mchar_0: integer_memory), (s: addr):
+      is_uint64(l_strlen(mchar_0, s)))
+
+  strncmp_2_laws(
+      to_uint64, to_sint32: integer_conversion,
+      l_strncmp_2: bounded_string_compare): bool =
+    (FORALL
+      (mchar_0: integer_memory),
+      (s1_0, s2_0: addr),
+      (n: int):
+      IF n = 0
+      THEN l_strncmp_2(mchar_0, s1_0, s2_0, n) = 0
+      ELSIF mchar_0(shift(s2_0, 0)) = mchar_0(shift(s1_0, 0))
+      THEN
+        IF mchar_0(shift(s1_0, 0)) = 0
+        THEN l_strncmp_2(mchar_0, s1_0, s2_0, n) = 0
+        ELSE
+          l_strncmp_2(
+            mchar_0,
+            shift(s1_0, 1),
+            shift(s2_0, 1),
+            to_uint64(n - 1)) =
+              l_strncmp_2(mchar_0, s1_0, s2_0, n)
+        ENDIF
+      ELSE
+        to_sint32(
+          mchar_0(shift(s1_0, 0)) -
+            mchar_0(shift(s2_0, 0))) =
+              l_strncmp_2(mchar_0, s1_0, s2_0, n)
+      ENDIF)
+      AND
+    (FORALL
+      (mchar_0: integer_memory),
+      (s1_0, s2_0: addr),
+      (n: int):
+      is_sint32(l_strncmp_2(mchar_0, s1_0, s2_0, n)))
+
+  goal4: bool =
+    FORALL
+      (region: [int -> int]),
+      (linked: [allocation_table -> bool]),
+      (sconst: [integer_memory -> bool]),
+      (to_uint32, to_sint32,
+       to_uint64, to_sint64: integer_conversion),
+      (l_strlen: string_length_function),
+      (l_strncmp_2: bounded_string_compare),
+      (a_1: addr),
+      (i: int),
+      (t_1: integer_memory),
+      (a: addr),
+      (t: allocation_table):
+      conversion_laws(
+        to_uint32, to_sint32, to_uint64, to_sint64) IMPLIES
+      strlen_laws(to_uint64, l_strlen) IMPLIES
+      strncmp_2_laws(to_uint64, to_sint32, l_strncmp_2) IMPLIES
+      LET a_2: addr = shift(a_1, i),
+          x: int = t_1(a_2),
+          a_3: addr = shift(a, i),
+          x_1: int = t_1(a_3),
+          x_2: int = 1 + i
+      IN
+        x /= 0 IMPLIES
+        x = x_1 IMPLIES
+        i <= l_strlen(t_1, a) IMPLIES
+        i <= l_strlen(t_1, a_1) IMPLIES
+        region(base(a)) <= 0 IMPLIES
+        region(base(a_1)) <= 0 IMPLIES
+        linked(t) IMPLIES
+        sconst(t_1) IMPLIES
+        is_uint64(i) IMPLIES
+        p_valid_str(t, t_1, a) IMPLIES
+        p_valid_str(t, t_1, a_1) IMPLIES
+        p_strnequal(l_strncmp_2, t_1, a_1, a, i) IMPLIES
+        is_sint8(x_1) IMPLIES
+        is_sint8(x) IMPLIES
+        p_valid_str(t, t_1, a_3) IMPLIES
+        p_valid_str(t, t_1, a_2) IMPLIES
+        (FORALL (i_1: int):
+          0 <= i_1 IMPLIES
+          i_1 < i IMPLIES
+          t_1(shift(a_1, i_1)) = t_1(shift(a, i_1))) IMPLIES
+        p_valid_str(t, t_1, shift(a, x_2))
+          AND p_valid_str(t, t_1, shift(a_1, x_2))
+END sysfs_streq_Why3_ide_VCsysfs_streq_loop_inv_3_preserved_goal4

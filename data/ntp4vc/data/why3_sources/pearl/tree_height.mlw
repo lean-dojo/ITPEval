@@ -1,0 +1,247 @@
+
+(** Computing the height of a tree in CPS style
+    (author: Jean-Christophe Filliâtre) *)
+
+module HeightCPS
+
+  use int.Int
+  use int.MinMax
+  use bintree.Tree
+  use bintree.Height
+
+  let rec height_cps (t: tree 'a) (k: int -> 'b) : 'b
+    variant { t }
+    ensures { result = k (height t) }
+  = match t with
+    | Empty -> k 0
+    | Node l _ r ->
+        height_cps l (fun hl ->
+        height_cps r (fun hr ->
+        k (1 + max hl hr)))
+    end
+
+  let height (t: tree 'a) : int
+    ensures { result = height t }
+  = height_cps t (fun h -> h)
+
+end
+
+(** with a while loop, manually obtained by compiling out recursion *)
+
+module Iteration
+
+  use int.Int
+  use int.MinMax
+  use list.List
+  use bintree.Tree
+  use bintree.Size
+  use bintree.Height
+  use ref.Ref
+
+  type cont 'a = Id | Kleft (tree 'a) (cont 'a) | Kright int (cont 'a)
+
+  type what 'a = Argument (tree 'a) | Result int
+
+  let predicate is_id (k: cont 'a) =
+    match k with Id -> true | _ -> false end
+
+  let predicate is_result (w: what 'a) =
+    match w with Result _ -> true | _ -> false end
+
+  function evalk (k: cont 'a) (r: int) : int =
+    match k with
+    | Id         -> r
+    | Kleft  l k -> evalk k (1 + max (height l) r)
+    | Kright x k -> evalk k (1 + max x r)
+    end
+
+  function evalw (w: what 'a) : int =
+    match w with
+    | Argument t -> height t
+    | Result   x -> x
+    end
+
+  function sizek (k: cont 'a) : int =
+    match k with
+    | Id         -> 0
+    | Kleft  t k -> 3 + 4 * size t + sizek k
+    | Kright _ k -> 1 + sizek k
+    end
+
+  let ghost sizek_nonneg (k: cont 'a) : unit
+    ensures { sizek k >= 0 }
+  = ()
+
+  function sizew (w: what 'a) : int =
+    match w with
+    | Argument t -> 1 + 4 * size t
+    | Result   _ -> 0
+    end
+
+  let ghost helper1 (t: tree 'a) : unit
+    ensures { 4 * size t >= 0 }
+  = ()
+
+  let ghost sizew_nonneg (w: what 'a) : unit
+    ensures { sizew w >= 0 }
+  = ()
+
+  let height1 (t: tree 'a) : int
+    ensures { result = height t }
+  =
+    let w = ref (Argument t) in
+    let k = ref Id in
+    while not (is_id !k && is_result !w) do
+      invariant { evalk !k (evalw !w) = height t }
+      variant   { sizek !k + sizew !w }
+      match !w, !k with
+      | Argument Empty,        _ -> w := Result 0
+      | Argument (Node l _ r), _ -> w := Argument l; k := Kleft r !k
+      | Result _, Id             -> absurd
+      | Result v, Kleft r k0     -> w := Argument r; k := Kright v k0
+      | Result v, Kright hl k0   -> w := Result (1 + max hl v); k := k0
+      end
+    done;
+    match !w with Result r -> r | _ -> absurd end
+
+end
+
+(** Computing the height of a tree with an explicit stack
+    (code: Andrei Paskevich / proof: Jean-Christophe Filliâtre) *)
+
+module HeightStack
+
+  use int.Int
+  use int.MinMax
+  use list.List
+  use bintree.Tree
+  use bintree.Size
+  use bintree.Height
+
+  type stack 'a = list (int, tree 'a)
+
+  function heights (s: stack 'a) : int =
+    match s with
+    | Nil            -> 0
+    | Cons (h, t) s' -> max (h + height t) (heights s')
+    end
+
+  function sizes (s: stack 'a) : int =
+    match s with
+    | Nil            -> 0
+    | Cons (_, t) s' -> size t + sizes s'
+    end
+
+  let ghost sizes_nonneg (s: stack 'a) : unit
+    ensures { sizes s >= 0 }
+  = ()
+
+  let rec height_stack (m: int) (s: stack 'a) : int
+    requires { m >= 0 }
+    variant  { sizes s, s }
+    ensures  { result = max m (heights s) }
+  = match s with
+    | Nil                     -> m
+    | Cons (h, Empty) s'      -> height_stack (max m h) s'
+    | Cons (h, Node l _ r) s' -> height_stack m (Cons (h+1,l) (Cons (h+1,r) s'))
+   end
+
+  let height1 (t: tree 'a) : int
+    ensures { result = height t }
+  = height_stack 0 (Cons (0, t) Nil)
+
+end
+
+(** Computing the height of a tree with a small amount of memory:
+    Stack size is only proportional to the logarithm of the tree size.
+    (author: Martin Clochard) *)
+
+module HeightSmallSpace
+
+  use int.Int
+  use int.MinMax
+  use int.ComputerDivision
+  use option.Option
+  use bintree.Tree
+  use bintree.Size
+  use bintree.Height
+
+  (** Count number of leaves in a tree. *)
+  function leaves (t: tree 'a) : int = 1 + size t
+
+  (** `height_limited acc depth lim t`:
+       Compute the `height t` if the number of leaves in `t` is at most `lim`,
+         fails otherwise. `acc` and `depth` are accumulators.
+         For maintaining the limit within the recursion, this routine
+         also send back the difference between the number of leaves and
+         the limit in case of success.
+       Method: find out one child with number of leaves at most `lim/2` using
+         recursive calls. If no such child is found, the tree has at
+         least `lim+1` leaves, hence fails. Otherwise, accumulate the result
+         of the recursive call for that child and make a recursive tail-call
+         for the other child, using the computed difference in order to
+         update `lim`. Since non-tail-recursive calls halve the limit,
+         the space complexity is logarithmic in `lim`.
+       Note that as is, this has a degenerate case:
+         if the small child is extremely small, we may waste a lot
+         of computing time on the large child to notice it is large,
+         while in the end processing only the small child until the
+         tail-recursive call. Analysis shows that this results in
+         super-polynomial time behavior (recursion T(N) = T(N/2)+T(N-1))
+       To mitigate this, we perform recursive calls on all `lim/2^k` limits
+         in increasing order (see process_small_child subroutine), until
+         one succeed or maximal limits both fails. This way,
+         the time spent by a single phase of the algorithm is representative
+         of the size of the processed set of nodes.
+         Time complexity: open
+   *)
+  let rec height_limited (acc depth lim: int) (t:tree 'a) : option (int,int)
+    requires { 0 < lim /\ 0 <= acc }
+    returns  { None -> leaves t > lim
+      | Some (res,dl) -> res = max acc (depth + height t)
+                         /\ lim = leaves t + dl /\ 0 <= dl }
+    variant { lim }
+  = match t with
+    | Empty -> Some (max acc depth,lim-1)
+    | Node l _ r ->
+      let rec process_small_child (limc: int) : option (int,int,tree 'a)
+        requires { 0 <= limc < lim }
+        returns  { None -> leaves l > limc /\ leaves r > limc
+          | Some (h,sz,rm) -> height t = 1 + max h (height rm)
+                              /\ leaves t = leaves rm + sz
+                              /\ 0 < sz <= limc }
+        variant { limc }
+      = if limc = 0 then None else
+        match process_small_child (div limc 2) with
+        | (Some _) as s -> s
+        | None -> match height_limited 0 0 limc l with
+        | Some (h,dl) -> Some (h,limc-dl,r)
+        | None -> match height_limited 0 0 limc r with
+        | Some (h,dl) -> Some (h,limc-dl,l)
+        | None -> None
+        end end end
+      in
+      let limc = div lim 2 in
+      match process_small_child limc with
+      | None -> None
+      | Some (h,sz,rm) ->
+        height_limited (max acc (depth + h + 1)) (depth+1) (lim-sz) rm
+      end
+    end
+
+  use ref.Ref
+
+  let height (t: tree 'a) : int
+    ensures { result = height t }
+  = let lim = ref 1 in
+    while true do
+      invariant { !lim > 0 }
+      variant { leaves t - !lim }
+      match height_limited 0 0 !lim t with
+      | None -> lim := !lim * 2
+      | Some (h,_) -> return h
+      end
+    done; absurd
+
+
+end

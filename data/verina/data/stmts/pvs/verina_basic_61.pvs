@@ -1,0 +1,73 @@
+% Statement-only formalization of the VERINA corpus artifact verina_basic_61
+% (verina__pvs__verina_basic_61), catalog title "allDigits": an executable
+% Unicode-scalar string scan returns true exactly when every character is an
+% ASCII digit, including true for the empty string. This file contains no proof.
+
+verina_basic_61: THEORY
+BEGIN
+
+  % String.toList observes a Lean string as its finite list of Unicode scalar
+  % characters, preserving the full extensional source string domain.
+  lean_char: TYPE =
+    {codepoint: nat |
+      codepoint < 1114112
+        AND (codepoint < 55296 OR codepoint >= 57344)}
+
+  lean_string: TYPE = list[lean_char]
+
+  isDigit(c: lean_char): bool =
+    c >= 48 AND c <= 57
+
+  allDigits_precond(s: lean_string): bool =
+    TRUE
+
+  % This recursion is the exact proof-erased iterator scan: exhaustion returns
+  % true, a non-digit returns false, and a digit advances to the next character.
+  allDigits_loop(
+      remaining: list[lean_char]): RECURSIVE bool =
+    CASES remaining OF
+      null:
+        TRUE,
+      cons(head, tail):
+        IF NOT isDigit(head) THEN
+          FALSE
+        ELSE
+          allDigits_loop(tail)
+        ENDIF
+    ENDCASES
+  MEASURE remaining BY <<
+
+  % The source precondition proof argument is computationally irrelevant.
+  allDigits(s: lean_string): bool =
+    allDigits_loop(s)
+
+  lean_char_list_member(
+      requested: lean_char,
+      values: list[lean_char]): RECURSIVE bool =
+    CASES values OF
+      null:
+        FALSE,
+      cons(head, tail):
+        head = requested
+          OR lean_char_list_member(requested, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  allDigits_postcond(
+      s: lean_string,
+      result: bool): bool =
+    (result = TRUE)
+      IFF
+        (FORALL (c: lean_char):
+          lean_char_list_member(c, s)
+            IMPLIES isDigit(c))
+
+  allDigits_spec_satisfied: bool =
+    FORALL (s: lean_string):
+      allDigits_precond(s)
+        IMPLIES
+          allDigits_postcond(
+            s,
+            allDigits(s))
+
+END verina_basic_61

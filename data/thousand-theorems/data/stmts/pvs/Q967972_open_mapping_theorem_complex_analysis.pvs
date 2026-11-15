@@ -1,0 +1,212 @@
+% Statement-only formalization of the Thousand Theorems corpus artifact Q967972,
+% "Open mapping theorem (complex analysis)": a complex-analytic function on a
+% preconnected subset of a complex normed vector space is constant there or
+% maps every open subset of its domain to an open subset of the complex plane.
+% This file contains no proof.
+
+Q967972_open_mapping_theorem_complex_analysis[
+  E: TYPE+,
+  zeroE: E,
+  addE: [E, E -> E],
+  negE: [E -> E],
+  cscaleE: [real, real, E -> E],
+  normE: [E -> real]
+]: THEORY
+BEGIN
+  complex: TYPE = [# real_part: real, imag_part: real #]
+  e_set: TYPE = [E -> bool]
+  complex_set: TYPE = [complex -> bool]
+  function_type: TYPE = [E -> complex]
+  linear_candidate: TYPE = [E -> complex]
+
+  complex_zero: complex =
+    (# real_part := 0, imag_part := 0 #)
+
+  complex_one: complex =
+    (# real_part := 1, imag_part := 0 #)
+
+  complex_add(a, b: complex): complex =
+    (# real_part := real_part(a) + real_part(b),
+       imag_part := imag_part(a) + imag_part(b) #)
+
+  complex_neg(a: complex): complex =
+    (# real_part := -real_part(a),
+       imag_part := -imag_part(a) #)
+
+  complex_sub(a, b: complex): complex =
+    complex_add(a, complex_neg(b))
+
+  complex_mul(a, b: complex): complex =
+    (# real_part := real_part(a) * real_part(b)
+                       - imag_part(a) * imag_part(b),
+       imag_part := real_part(a) * imag_part(b)
+                       + imag_part(a) * real_part(b) #)
+
+  complex_norm_squared(a: complex): real =
+    real_part(a) * real_part(a)
+      + imag_part(a) * imag_part(a)
+
+  smulE(a: complex, x: E): E =
+    cscaleE(real_part(a), imag_part(a), x)
+
+  subE(x, y: E): E =
+    addE(x, negE(y))
+
+  distanceE_squared(x, y: E): real =
+    normE(subE(x, y)) * normE(subE(x, y))
+
+  distanceC_squared(x, y: complex): real =
+    complex_norm_squared(complex_sub(x, y))
+
+  normed_complex_vector_space_E: bool =
+    (FORALL (x, y: E):
+      addE(x, y) = addE(y, x))
+      AND (FORALL (x, y, z: E):
+        addE(addE(x, y), z) = addE(x, addE(y, z)))
+      AND (FORALL (x: E):
+        addE(x, zeroE) = x)
+      AND (FORALL (x: E):
+        addE(x, negE(x)) = zeroE)
+      AND normE(zeroE) = 0
+      AND (FORALL (x: E):
+        0 <= normE(x))
+      AND (FORALL (x: E):
+        (normE(x) = 0 IFF x = zeroE))
+      AND (FORALL (x: E):
+        normE(negE(x)) = normE(x))
+      AND (FORALL (x, y: E):
+        normE(addE(x, y)) <= normE(x) + normE(y))
+      AND (FORALL (a: complex), (x, y: E):
+        smulE(a, addE(x, y)) =
+          addE(smulE(a, x), smulE(a, y)))
+      AND (FORALL (a, b: complex), (x: E):
+        smulE(complex_add(a, b), x) =
+          addE(smulE(a, x), smulE(b, x)))
+      AND (FORALL (a, b: complex), (x: E):
+        smulE(complex_mul(a, b), x) =
+          smulE(a, smulE(b, x)))
+      AND (FORALL (x: E):
+        smulE(complex_one, x) = x)
+      AND (FORALL (x: E):
+        smulE(complex_zero, x) = zeroE)
+      AND (FORALL (a: complex):
+        smulE(a, zeroE) = zeroE)
+      AND (FORALL (a: complex), (x: E):
+        normE(smulE(a, x)) * normE(smulE(a, x)) =
+          complex_norm_squared(a) * normE(x) * normE(x))
+
+  subsetE(A, B: e_set): bool =
+    FORALL (x: E):
+      A(x) IMPLIES B(x)
+
+  is_open_E(A: e_set): bool =
+    FORALL (x: E):
+      A(x)
+        IMPLIES
+          EXISTS (radius: real):
+            0 < radius
+              AND FORALL (y: E):
+                distanceE_squared(y, x) < radius * radius
+                  IMPLIES A(y)
+
+  is_open_C(A: complex_set): bool =
+    FORALL (x: complex):
+      A(x)
+        IMPLIES
+          EXISTS (radius: real):
+            0 < radius
+              AND FORALL (y: complex):
+                distanceC_squared(y, x) < radius * radius
+                  IMPLIES A(y)
+
+  is_preconnected(U: e_set): bool =
+    FORALL (A, B: e_set):
+      (is_open_E(A)
+        AND is_open_E(B)
+        AND (FORALL (x: E):
+          U(x) IMPLIES (A(x) OR B(x)))
+        AND (EXISTS (x: E):
+          U(x) AND A(x))
+        AND (EXISTS (y: E):
+          U(y) AND B(y)))
+      IMPLIES
+        EXISTS (z: E):
+          U(z) AND A(z) AND B(z)
+
+  bounded_complex_linear_map(L: linear_candidate): bool =
+    (FORALL (x, y: E):
+      L(addE(x, y)) = complex_add(L(x), L(y)))
+      AND (FORALL (a: complex), (x: E):
+        L(smulE(a, x)) =
+          complex_mul(a, L(x)))
+      AND EXISTS (bound: real):
+        0 <= bound
+          AND FORALL (x: E):
+            complex_norm_squared(L(x))
+              <= bound * bound * normE(x) * normE(x)
+
+  has_complex_frechet_derivative_at(
+      f: function_type,
+      derivative: linear_candidate,
+      point: E): bool =
+    bounded_complex_linear_map(derivative)
+      AND FORALL (epsilon_value: posreal):
+        EXISTS (radius: posreal):
+          FORALL (increment: E):
+            normE(increment) < radius
+              IMPLIES
+                complex_norm_squared(
+                  complex_sub(
+                    complex_sub(
+                      f(addE(point, increment)),
+                      f(point)),
+                    derivative(increment)))
+                  <= epsilon_value * epsilon_value
+                       * normE(increment) * normE(increment)
+
+  complex_differentiable_at(
+      f: function_type,
+      point: E): bool =
+    EXISTS (derivative: linear_candidate):
+      has_complex_frechet_derivative_at(
+        f,
+        derivative,
+        point)
+
+  analytic_on_neighborhood(
+      f: function_type,
+      U: e_set): bool =
+    FORALL (x: E):
+      U(x)
+        IMPLIES
+          EXISTS (radius: real):
+            0 < radius
+              AND FORALL (y: E):
+                distanceE_squared(y, x) < radius * radius
+                  IMPLIES complex_differentiable_at(f, y)
+
+  image_on(f: function_type, A: e_set): complex_set =
+    LAMBDA (w: complex):
+      EXISTS (x: E):
+        A(x) AND f(x) = w
+
+  constant_on(f: function_type, U: e_set): bool =
+    EXISTS (w: complex):
+      FORALL (x: E):
+        U(x) IMPLIES f(x) = w
+
+  open_on_subsets(f: function_type, U: e_set): bool =
+    FORALL (A: e_set):
+      (subsetE(A, U) AND is_open_E(A))
+        IMPLIES is_open_C(image_on(f, A))
+
+  open_mapping_theorem: bool =
+    normed_complex_vector_space_E
+      IMPLIES
+        FORALL (f: function_type), (U: e_set):
+          (analytic_on_neighborhood(f, U)
+            AND is_preconnected(U))
+          IMPLIES
+            (constant_on(f, U)
+              OR open_on_subsets(f, U))
+END Q967972_open_mapping_theorem_complex_analysis

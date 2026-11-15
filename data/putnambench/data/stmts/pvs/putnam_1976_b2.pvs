@@ -1,0 +1,163 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1976_b2:
+% a two-generator group with the stated relations has exactly eight squares,
+% represented by 1, A^2, B, B^2, B^3, B^4, B^5, and B^6. This file contains no proof.
+
+putnam_1976_b2[
+  Element: TYPE+,
+  multiply: [Element, Element -> Element],
+  inverse: [Element -> Element],
+  one: Element
+]: THEORY
+BEGIN
+  element_set: TYPE = [Element -> bool]
+  element_enumeration: TYPE = [nat -> Element]
+  exponent_pair: TYPE =
+    [# a_exponent: int, b_exponent: int #]
+  word_entries: TYPE = [nat -> exponent_pair]
+
+  group_laws: bool =
+    (FORALL (x, y, z: Element):
+      multiply(multiply(x, y), z)
+        = multiply(x, multiply(y, z)))
+      AND (FORALL (x: Element):
+        multiply(one, x) = x
+          AND multiply(x, one) = x)
+      AND (FORALL (x: Element):
+        multiply(inverse(x), x) = one
+          AND multiply(x, inverse(x)) = one)
+
+  group_power(base: Element, exponent: nat): RECURSIVE Element =
+    IF exponent = 0 THEN
+      one
+    ELSE
+      multiply(
+        group_power(base, exponent - 1),
+        base)
+    ENDIF
+  MEASURE exponent
+
+  integer_power_value(
+      base: Element,
+      exponent: int,
+      value: Element): bool =
+    (exponent >= 0
+      AND EXISTS (power: nat):
+        exponent = (power :: int)
+          AND value = group_power(base, power))
+      OR
+    (exponent < 0
+      AND EXISTS (power: posnat):
+        exponent = -(power :: int)
+          AND multiply(value, group_power(base, power)) = one)
+
+  word_value(
+      A, B: Element,
+      length: nat,
+      entries: word_entries,
+      value: Element): bool =
+    EXISTS
+        (a_powers, b_powers, prefixes: [nat -> Element]):
+      prefixes(0) = one
+        AND value = prefixes(length)
+        AND
+          (FORALL (index: nat):
+            index < length IMPLIES
+              integer_power_value(
+                A,
+                a_exponent(entries(index)),
+                a_powers(index))
+              AND integer_power_value(
+                B,
+                b_exponent(entries(index)),
+                b_powers(index))
+              AND prefixes(index + 1)
+                = multiply(
+                    prefixes(index),
+                    multiply(
+                      a_powers(index),
+                      b_powers(index))))
+
+  generated_by(A, B: Element): bool =
+    FORALL (g: Element):
+      EXISTS (length: nat), (entries: word_entries):
+        word_value(A, B, length, entries, g)
+
+  square_set: element_set =
+    LAMBDA (g: Element):
+      EXISTS (C: Element):
+        multiply(C, C) = g
+
+  injective_below(
+      enumeration: element_enumeration,
+      bound: nat): bool =
+    FORALL (i, j: nat):
+      i < bound
+        AND j < bound
+        AND enumeration(i) = enumeration(j)
+      IMPLIES i = j
+
+  enumerates_exactly(
+      enumeration: element_enumeration,
+      set_value: element_set,
+      bound: nat): bool =
+    FORALL (g: Element):
+      set_value(g)
+        IFF
+          EXISTS (index: nat):
+            index < bound
+              AND enumeration(index) = g
+
+  has_cardinality(
+      set_value: element_set,
+      cardinality: nat): bool =
+    EXISTS (enumeration: element_enumeration):
+      injective_below(enumeration, cardinality)
+        AND enumerates_exactly(
+          enumeration, set_value, cardinality)
+
+  solution_representative(
+      A, B: Element,
+      index: nat): Element =
+    IF index = 0 THEN
+      one
+    ELSIF index = 1 THEN
+      group_power(A, 2)
+    ELSIF index = 2 THEN
+      group_power(B, 1)
+    ELSIF index = 3 THEN
+      group_power(B, 2)
+    ELSIF index = 4 THEN
+      group_power(B, 3)
+    ELSIF index = 5 THEN
+      group_power(B, 4)
+    ELSIF index = 6 THEN
+      group_power(B, 5)
+    ELSE
+      group_power(B, 6)
+    ENDIF
+
+  solution_set(A, B: Element): element_set =
+    LAMBDA (g: Element):
+      EXISTS (index: nat):
+        index < 8
+          AND solution_representative(A, B, index) = g
+
+  putnam_1976_b2: bool =
+    group_laws IMPLIES
+      (FORALL (A, B: Element):
+        (generated_by(A, B)
+          AND group_power(A, 4) = one
+          AND group_power(A, 2) /= one
+          AND group_power(B, 7) = one
+          AND B /= one
+          AND multiply(
+                multiply(
+                  multiply(A, B),
+                  inverse(A)),
+                B)
+              = one)
+        IMPLIES
+          (has_cardinality(square_set, 8)
+            AND (FORALL (g: Element):
+              square_set(g) IFF solution_set(A, B)(g))))
+END putnam_1976_b2

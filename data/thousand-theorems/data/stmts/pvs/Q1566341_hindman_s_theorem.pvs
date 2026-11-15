@@ -1,0 +1,60 @@
+% Statement-only formalization of the Thousand Theorems artifact Q1566341,
+% "Hindman's theorem": every finite cover of the finite-product set of an
+% infinite sequence in a semigroup has a member containing another
+% finite-product set. This file contains no proof.
+
+Q1566341_hindman_s_theorem[M: TYPE, mul: [M, M -> M]]: THEORY
+BEGIN
+  element_set: TYPE = [M -> bool]
+  finite_family: TYPE = finite_set[element_set]
+  stream: TYPE = [nat -> M]
+
+  IMPORTING finite_sets[element_set]
+
+  semigroup_laws: bool =
+    FORALL (x, y, z: M):
+      mul(mul(x, y), z) = mul(x, mul(y, z))
+
+  strictly_after(first: nat, rest: list[nat]): RECURSIVE bool =
+    CASES rest OF
+      null: TRUE,
+      cons(next, tail):
+        first < next AND strictly_after(next, tail)
+    ENDCASES
+  MEASURE rest BY <<
+
+  indexed_product(
+      a: stream,
+      first: nat,
+      rest: list[nat]): RECURSIVE M =
+    CASES rest OF
+      null: a(first),
+      cons(next, tail):
+        mul(a(first), indexed_product(a, next, tail))
+    ENDCASES
+  MEASURE rest BY <<
+
+  finite_products(a: stream): element_set =
+    LAMBDA (value: M):
+      EXISTS (first: nat), (rest: list[nat]):
+        strictly_after(first, rest)
+          AND value = indexed_product(a, first, rest)
+
+  subset(left, right: element_set): bool =
+    FORALL (value: M):
+      left(value) IMPLIES right(value)
+
+  covers(target: element_set, family: finite_family): bool =
+    FORALL (value: M):
+      target(value) IMPLIES
+        EXISTS (part: element_set):
+          member(part, family) AND part(value)
+
+  FP_partition_regular: bool =
+    semigroup_laws IMPLIES
+      FORALL (a: stream), (family: finite_family):
+        covers(finite_products(a), family) IMPLIES
+          EXISTS (part: element_set), (b: stream):
+            member(part, family)
+              AND subset(finite_products(b), part)
+END Q1566341_hindman_s_theorem

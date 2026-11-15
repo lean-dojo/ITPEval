@@ -1,0 +1,72 @@
+% Statement-only formalization of PutnamBench artifact putnam_2003_a1:
+% for every positive integer n, exactly n eventually-zero sequences encode
+% nondecreasing positive summands whose largest is at most the smallest plus one.
+% This file contains no proof.
+
+putnam_2003_a1: THEORY
+BEGIN
+  integer_sequence: TYPE = [nat -> int]
+  integer_sequence_set: TYPE = [integer_sequence -> bool]
+  sequence_enumeration: TYPE = [nat -> integer_sequence]
+
+  prefix_sum(
+      values: integer_sequence,
+      count: nat): RECURSIVE int =
+    IF count = 0 THEN
+      0
+    ELSE
+      prefix_sum(values, count - 1) + values(count - 1)
+    ENDIF
+  MEASURE count
+
+  admissible_sequence(
+      values: integer_sequence,
+      n: nat): bool =
+    EXISTS (k: nat):
+      k > 0
+        AND prefix_sum(values, k) = (n :: int)
+        AND (FORALL (i: nat):
+          i < k IMPLIES values(i) > 0)
+        AND (FORALL (i: nat):
+          i + 1 < k IMPLIES values(i) <= values(i + 1))
+        AND values(k - 1) <= values(0) + 1
+        AND (FORALL (i: nat):
+          i >= k IMPLIES values(i) = 0)
+
+  admissible_sequences(n: nat): integer_sequence_set =
+    LAMBDA (values: integer_sequence):
+      admissible_sequence(values, n)
+
+  injective_below(
+      enumeration: sequence_enumeration,
+      cardinality: nat): bool =
+    FORALL (i, j: nat):
+      i < cardinality
+        AND j < cardinality
+        AND enumeration(i) = enumeration(j)
+      IMPLIES i = j
+
+  enumerates_exactly(
+      enumeration: sequence_enumeration,
+      set_value: integer_sequence_set,
+      cardinality: nat): bool =
+    FORALL (values: integer_sequence):
+      set_value(values)
+        IFF
+          EXISTS (position: nat):
+            position < cardinality
+              AND enumeration(position) = values
+
+  has_cardinality(
+      set_value: integer_sequence_set,
+      cardinality: nat): bool =
+    EXISTS (enumeration: sequence_enumeration):
+      injective_below(enumeration, cardinality)
+        AND enumerates_exactly(
+          enumeration, set_value, cardinality)
+
+  putnam_2003_a1: bool =
+    FORALL (n: nat):
+      n > 0 IMPLIES
+        has_cardinality(admissible_sequences(n), n)
+END putnam_2003_a1

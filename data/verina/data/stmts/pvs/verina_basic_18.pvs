@@ -1,0 +1,101 @@
+% Statement-only formalization of the VERINA corpus artifact verina_basic_18,
+% catalog title "sumOfDigits": computing a natural number's decimal digit sum
+% and specifying equality with the digit sum of its canonical decimal representation.
+% This file contains no proof.
+
+verina_basic_18: THEORY
+BEGIN
+
+  sumOfDigits_precond(n: nat): bool =
+    TRUE
+
+  % The fuel is solely a PVS structural termination index. Starting with n
+  % permits every recursive division-by-ten step of the source loop.
+  sumOfDigits_loop(
+      n, accumulator, fuel: nat): RECURSIVE nat =
+    IF n = 0 THEN
+      accumulator
+    ELSIF fuel = 0 THEN
+      accumulator
+    ELSE
+      sumOfDigits_loop(
+        ndiv(n, 10),
+        accumulator + mod(n, 10),
+        fuel - 1)
+    ENDIF
+  MEASURE fuel
+
+  % The source precondition proof argument is computationally irrelevant.
+  sumOfDigits(n: nat): nat =
+    sumOfDigits_loop(n, 0, n)
+
+  decimal_digits_reversed_fuel(
+      n, fuel: nat): RECURSIVE list[nat] =
+    IF n = 0 THEN
+      null[nat]
+    ELSIF fuel = 0 THEN
+      null[nat]
+    ELSE
+      cons(
+        mod(n, 10),
+        decimal_digits_reversed_fuel(
+          ndiv(n, 10),
+          fuel - 1))
+    ENDIF
+  MEASURE fuel
+
+  decimal_digits_reversed(n: nat): list[nat] =
+    IF n = 0 THEN
+      cons(0, null[nat])
+    ELSE
+      decimal_digits_reversed_fuel(n, n)
+    ENDIF
+
+  reverse_nat_list_acc(
+      values, accumulator: list[nat]): RECURSIVE list[nat] =
+    CASES values OF
+      null:
+        accumulator,
+      cons(head, tail):
+        reverse_nat_list_acc(
+          tail,
+          cons(head, accumulator))
+    ENDCASES
+  MEASURE values BY <<
+
+  % These are exactly the base-ten digit values obtained by mapping
+  % Char.toNat(c) - Char.toNat('0') over String.toList(Nat.repr(n)).
+  decimal_repr_digits(n: nat): list[nat] =
+    reverse_nat_list_acc(
+      decimal_digits_reversed(n),
+      null[nat])
+
+  nat_list_sum(values: list[nat]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        head + nat_list_sum(tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  % Lean natural-number subtraction is truncated at zero.
+  nat_subtract(first, second: nat): nat =
+    IF first >= second THEN first - second ELSE 0 ENDIF
+
+  sumOfDigits_postcond(
+      n, result: nat): bool =
+    LET expected: nat = nat_list_sum(decimal_repr_digits(n))
+    IN
+      nat_subtract(result, expected) = 0
+        AND nat_subtract(expected, result) = 0
+
+  sumOfDigits_spec_satisfied: bool =
+    FORALL (n: nat):
+      sumOfDigits_precond(n)
+        IMPLIES
+          sumOfDigits_postcond(
+            n,
+            sumOfDigits(n))
+
+END verina_basic_18

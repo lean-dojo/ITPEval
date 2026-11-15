@@ -1,0 +1,100 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2008_b6:
+% the number of permutations of n elements moving every index by at most k is
+% odd exactly when n is congruent to zero or one modulo 2*k+1. This file
+% contains no proof.
+
+putnam_2008_b6: THEORY
+BEGIN
+  quotient_aux(
+      numerator, denominator, fuel: nat): RECURSIVE nat =
+    IF fuel = 0
+        OR denominator = 0
+        OR numerator < denominator THEN
+      0
+    ELSE
+      1
+        + quotient_aux(
+            numerator - denominator,
+            denominator,
+            fuel - 1)
+    ENDIF
+  MEASURE fuel
+
+  remainder_aux(
+      numerator, denominator, fuel: nat): RECURSIVE nat =
+    IF fuel = 0
+        OR denominator = 0
+        OR numerator < denominator THEN
+      numerator
+    ELSE
+      remainder_aux(
+        numerator - denominator,
+        denominator,
+        fuel - 1)
+    ENDIF
+  MEASURE fuel
+
+  safe_ndiv(numerator, denominator: nat): nat =
+    quotient_aux(
+      numerator,
+      denominator,
+      numerator + 1)
+
+  safe_mod(numerator, denominator: nat): nat =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      remainder_aux(
+        numerator,
+        denominator,
+        numerator + 1)
+    ENDIF
+
+  function_code_count(n: nat): nat =
+    IF n = 0 THEN 1 ELSE n ^ n ENDIF
+
+  permutation_entry(code, index, n: nat): nat =
+    IF n = 0 THEN
+      0
+    ELSE
+      safe_mod(safe_ndiv(code, n ^ index), n)
+    ENDIF
+
+  permutation_code(code, n: nat): bool =
+    code < function_code_count(n)
+      AND (FORALL (i, j: nat):
+        (i < n
+          AND j < n
+          AND permutation_entry(code, i, n)
+            = permutation_entry(code, j, n))
+        IMPLIES i = j)
+
+  k_limited(code, n, k: nat): bool =
+    permutation_code(code, n)
+      AND (FORALL (i: nat):
+        i < n IMPLIES
+          permutation_entry(code, i, n) <= i + k
+            AND i <= permutation_entry(code, i, n) + k)
+
+  count_k_limited(
+      n, k, limit: nat): RECURSIVE nat =
+    IF limit = 0 THEN
+      0
+    ELSE
+      count_k_limited(n, k, limit - 1)
+        + IF k_limited(limit - 1, n, k) THEN 1 ELSE 0 ENDIF
+    ENDIF
+  MEASURE limit
+
+  number_of_k_limited_permutations(n, k: nat): nat =
+    count_k_limited(n, k, function_code_count(n))
+
+  putnam_2008_b6: bool =
+    FORALL (n, k: nat):
+      (n > 0 AND k > 0)
+      IMPLIES
+        (mod(number_of_k_limited_permutations(n, k), 2) = 1
+          IFF
+            (mod(n, 2 * k + 1) = 0
+              OR mod(n, 2 * k + 1) = 1))
+END putnam_2008_b6

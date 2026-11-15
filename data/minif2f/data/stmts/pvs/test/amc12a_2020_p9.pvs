@@ -1,0 +1,84 @@
+% Statement-only formalization of miniF2F test problem amc12a_2020_p9. This file contains no
+% proof.
+
+amc12a_2020_p9: THEORY
+BEGIN
+  IMPORTING finite_sets[real]
+
+  safe_div(x, y: real): real =
+    IF y = 0 THEN 0 ELSE x / y ENDIF
+
+  nat_factorial(n: nat): RECURSIVE nat =
+    IF n = 0 THEN
+      1
+    ELSE
+      n * nat_factorial(n - 1)
+    ENDIF
+  MEASURE n
+
+  sine_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET j: nat = count - 1 IN
+        sine_partial(x, count - 1)
+          + safe_div(
+              ((-1 :: real) ^ j) * x ^ (2 * j + 1),
+              nat_factorial(2 * j + 1) :: real)
+    ENDIF
+  MEASURE count
+
+  cosine_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET j: nat = count - 1 IN
+        cosine_partial(x, count - 1)
+          + safe_div(
+              ((-1 :: real) ^ j) * x ^ (2 * j),
+              nat_factorial(2 * j) :: real)
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: [nat -> real], value: real): bool =
+    FORALL (eps: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < eps
+
+  sine_value(x, value: real): bool =
+    converges_to(
+      (LAMBDA (count: nat): sine_partial(x, count)),
+      value)
+
+  cosine_value(x, value: real): bool =
+    converges_to(
+      (LAMBDA (count: nat): cosine_partial(x, count)),
+      value)
+
+  tangent_value(x, value: real): bool =
+    EXISTS (sine_x, cosine_x: real):
+      sine_value(x, sine_x)
+        AND cosine_value(x, cosine_x)
+        AND value = safe_div(sine_x, cosine_x)
+
+  pi_value(p: posreal): bool =
+    3 < p AND p < 4 AND cosine_value(p / 2, 0)
+
+  solution(x: real, p: posreal): bool =
+    0 <= x
+      AND x <= 2 * p
+      AND EXISTS (tan_2x, cos_half_x: real):
+        tangent_value(2 * x, tan_2x)
+          AND cosine_value(x / 2, cos_half_x)
+          AND tan_2x = cos_half_x
+
+  amc12a_2020_p9: bool =
+    FORALL (p: posreal):
+      pi_value(p) IMPLIES
+        EXISTS (S: finite_set[real]):
+          card(S) = 5
+            AND (FORALL (x: real):
+              S(x) IFF solution(x, p))
+END amc12a_2020_p9

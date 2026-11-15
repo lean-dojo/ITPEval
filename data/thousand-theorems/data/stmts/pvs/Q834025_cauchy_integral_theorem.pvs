@@ -1,0 +1,363 @@
+% Statement-only formalization of the Thousand Theorems artifact Q834025,
+% "Cauchy integral theorem": Cauchy's circle integral formula for a complex
+% function continuous on a closed disc and complex differentiable in its
+% interior away from a countable set. This file contains no proof.
+
+Q834025_cauchy_integral_theorem: THEORY
+BEGIN
+  complex: TYPE = [# real_part: real, imag_part: real #]
+  complex_function: TYPE = [complex -> complex]
+  complex_set: TYPE = [complex -> bool]
+  complex_sequence: TYPE = [nat -> complex]
+  real_sequence: TYPE = [nat -> real]
+  real_function: TYPE = [real -> real]
+
+  complex_zero: complex =
+    (# real_part := 0, imag_part := 0 #)
+
+  complex_one: complex =
+    (# real_part := 1, imag_part := 0 #)
+
+  complex_i: complex =
+    (# real_part := 0, imag_part := 1 #)
+
+  complex_of_real(x: real): complex =
+    (# real_part := x, imag_part := 0 #)
+
+  complex_add(x, y: complex): complex =
+    (# real_part := real_part(x) + real_part(y),
+       imag_part := imag_part(x) + imag_part(y) #)
+
+  complex_neg(x: complex): complex =
+    (# real_part := -real_part(x),
+       imag_part := -imag_part(x) #)
+
+  complex_sub(x, y: complex): complex =
+    complex_add(x, complex_neg(y))
+
+  complex_mul(x, y: complex): complex =
+    (# real_part :=
+         real_part(x) * real_part(y)
+           - imag_part(x) * imag_part(y),
+       imag_part :=
+         real_part(x) * imag_part(y)
+           + imag_part(x) * real_part(y) #)
+
+  complex_norm_squared(x: complex): real =
+    real_part(x) ^ 2 + imag_part(x) ^ 2
+
+  complex_norm(x: complex): real =
+    epsilon(
+      LAMBDA (value: real):
+        0 <= value
+          AND value ^ 2 = complex_norm_squared(x))
+
+  complex_inv(x: complex): complex =
+    IF complex_norm_squared(x) = 0 THEN
+      complex_zero
+    ELSE
+      (# real_part :=
+           real_part(x) / complex_norm_squared(x),
+         imag_part :=
+           -imag_part(x) / complex_norm_squared(x) #)
+    ENDIF
+
+  complex_div(x, y: complex): complex =
+    complex_mul(x, complex_inv(y))
+
+  complex_power(x: complex, exponent: nat):
+      RECURSIVE complex =
+    IF exponent = 0 THEN
+      complex_one
+    ELSE
+      complex_mul(
+        complex_power(x, exponent - 1),
+        x)
+    ENDIF
+  MEASURE exponent
+
+  factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  complex_div_real(x: complex, denominator: real): complex =
+    IF denominator = 0 THEN
+      complex_zero
+    ELSE
+      (# real_part := real_part(x) / denominator,
+         imag_part := imag_part(x) / denominator #)
+    ENDIF
+
+  complex_exp_partial_sum(
+      x: complex,
+      count: nat): RECURSIVE complex =
+    IF count = 0 THEN
+      complex_zero
+    ELSE
+      LET index: nat = count - 1 IN
+        complex_add(
+          complex_exp_partial_sum(x, count - 1),
+          complex_div_real(
+            complex_power(x, index),
+            (factorial(index) :: real)))
+    ENDIF
+  MEASURE count
+
+  converges_to_complex(
+      values: complex_sequence,
+      limit: complex): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            complex_norm(
+              complex_sub(values(index), limit))
+              < epsilon_value
+
+  complex_exp(x: complex): complex =
+    epsilon(
+      LAMBDA (value: complex):
+        converges_to_complex(
+          LAMBDA (count: nat):
+            complex_exp_partial_sum(x, count),
+          value))
+
+  alternating_sign(index: nat): RECURSIVE real =
+    IF index = 0 THEN
+      1
+    ELSE
+      -alternating_sign(index - 1)
+    ENDIF
+  MEASURE index
+
+  leibniz_partial_sum(count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        leibniz_partial_sum(count - 1)
+          + alternating_sign(index)
+              / ((2 * index + 1) :: real)
+    ENDIF
+  MEASURE count
+
+  converges_to_real(
+      values: real_sequence,
+      limit: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(values(index) - limit) < epsilon_value
+
+  is_pi(value: real): bool =
+    converges_to_real(
+      LAMBDA (count: nat):
+        4 * leibniz_partial_sum(count),
+      value)
+
+  pi: real =
+    epsilon(LAMBDA (value: real): is_pi(value))
+
+  in_open_ball(
+      z, center: complex,
+      radius: real): bool =
+    complex_norm(complex_sub(z, center)) < radius
+
+  in_closed_ball(
+      z, center: complex,
+      radius: real): bool =
+    complex_norm(complex_sub(z, center)) <= radius
+
+  countable_set(s: complex_set): bool =
+    EXISTS (enumeration: complex_sequence):
+      FORALL (z: complex):
+        s(z) IMPLIES
+          EXISTS (index: nat):
+            enumeration(index) = z
+
+  continuous_on_closed_ball(
+      f: complex_function,
+      center: complex,
+      radius: real): bool =
+    FORALL (z: complex):
+      in_closed_ball(z, center, radius) IMPLIES
+        FORALL (epsilon_value: posreal):
+          EXISTS (delta: posreal):
+            FORALL (y: complex):
+              (in_closed_ball(y, center, radius)
+                AND complex_norm(complex_sub(y, z)) < delta)
+              IMPLIES
+                complex_norm(
+                  complex_sub(f(y), f(z)))
+                  < epsilon_value
+
+  has_complex_derivative_at(
+      f: complex_function,
+      derivative: complex,
+      z: complex): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (delta: posreal):
+        FORALL (y: complex):
+          (y /= z
+            AND complex_norm(complex_sub(y, z)) < delta)
+          IMPLIES
+            complex_norm(
+              complex_sub(
+                complex_sub(f(y), f(z)),
+                complex_mul(
+                  derivative,
+                  complex_sub(y, z))))
+              < epsilon_value
+                  * complex_norm(complex_sub(y, z))
+
+  complex_differentiable_at(
+      f: complex_function,
+      z: complex): bool =
+    EXISTS (derivative: complex):
+      has_complex_derivative_at(f, derivative, z)
+
+  circle_map(
+      center: complex,
+      radius, theta: real): complex =
+    complex_add(
+      center,
+      complex_mul(
+        complex_of_real(radius),
+        complex_exp(
+          complex_mul(
+            complex_i,
+            complex_of_real(theta)))))
+
+  circle_map_derivative(
+      center: complex,
+      radius, theta: real): complex =
+    complex_mul(
+      complex_i,
+      complex_sub(
+        circle_map(center, radius, theta),
+        center))
+
+  positive_gauge(gauge: real_function): bool =
+    FORALL (x: real): 0 < gauge(x)
+
+  tagged_partition(
+      left, right: real,
+      count: nat,
+      points, tags: real_sequence): bool =
+    points(0) = left
+      AND points(count) = right
+      AND (FORALL (index: nat):
+        index < count IMPLIES
+          (points(index) < points(index + 1)
+            AND points(index) <= tags(index)
+            AND tags(index) <= points(index + 1)))
+
+  gauge_fine(
+      gauge: real_function,
+      count: nat,
+      points, tags: real_sequence): bool =
+    FORALL (index: nat):
+      index < count IMPLIES
+        (tags(index) - gauge(tags(index)) < points(index)
+          AND points(index + 1)
+            < tags(index) + gauge(tags(index)))
+
+  complex_tagged_sum(
+      integrand: [real -> complex],
+      count: nat,
+      points, tags: real_sequence): RECURSIVE complex =
+    IF count = 0 THEN
+      complex_zero
+    ELSE
+      complex_add(
+        complex_tagged_sum(
+          integrand, count - 1, points, tags),
+        complex_mul(
+          integrand(tags(count - 1)),
+          complex_of_real(
+            points(count) - points(count - 1))))
+    ENDIF
+  MEASURE count
+
+  has_complex_interval_integral(
+      integrand: [real -> complex],
+      left, right: real,
+      integral_value: complex): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (gauge: real_function):
+        positive_gauge(gauge)
+          AND (FORALL
+              (count: nat),
+              (points, tags: real_sequence):
+            (tagged_partition(
+                left, right, count, points, tags)
+              AND gauge_fine(
+                gauge, count, points, tags))
+            IMPLIES
+              complex_norm(
+                complex_sub(
+                  complex_tagged_sum(
+                    integrand, count, points, tags),
+                  integral_value))
+                < epsilon_value)
+
+  complex_interval_integral(
+      integrand: [real -> complex],
+      left, right: real): complex =
+    epsilon(
+      LAMBDA (integral_value: complex):
+        has_complex_interval_integral(
+          integrand, left, right, integral_value))
+
+  circle_integrand(
+      f: complex_function,
+      center: complex,
+      radius: real,
+      w: complex): [real -> complex] =
+    LAMBDA (theta: real):
+      complex_mul(
+        complex_div(
+          f(circle_map(center, radius, theta)),
+          complex_sub(
+            circle_map(center, radius, theta),
+            w)),
+        circle_map_derivative(
+          center, radius, theta))
+
+  circle_integral(
+      f: complex_function,
+      center: complex,
+      radius: real,
+      w: complex): complex =
+    complex_interval_integral(
+      circle_integrand(f, center, radius, w),
+      0,
+      2 * pi)
+
+  cauchy_integral_theorem: bool =
+    FORALL
+        (radius: real),
+        (center, w: complex),
+        (s: complex_set),
+        (f: complex_function):
+      (countable_set(s)
+        AND in_open_ball(w, center, radius)
+        AND continuous_on_closed_ball(
+          f, center, radius)
+        AND (FORALL (z: complex):
+          (in_open_ball(z, center, radius)
+            AND NOT s(z))
+          IMPLIES complex_differentiable_at(f, z)))
+      IMPLIES
+        circle_integral(f, center, radius, w)
+          = complex_mul(
+              complex_mul(
+                complex_of_real(2 * pi),
+                complex_i),
+              f(w))
+END Q834025_cauchy_integral_theorem

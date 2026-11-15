@@ -1,0 +1,119 @@
+
+(* Floyd's cycle detection, also known as ``tortoise and hare'' algorithm.
+
+   See The Art of Computer Programming, vol 2, exercise 6 page 7. *)
+
+module TortoiseAndHareAlgorithm
+
+  use int.Int
+  use int.EuclideanDivision
+  use int.Iter
+  use seq.Seq
+  use seq.Distinct
+  use ref.Refint
+  use pigeon.Pigeonhole
+
+  val function f int : int
+
+  (* f maps 0..m-1 to 0..m-1 *)
+  constant m: int
+  axiom m_positive: m > 0
+
+  axiom f_range: forall x. 0 <= x < m -> 0 <= f x < m
+
+  (* given some initial value x0 *)
+  val constant x0: int
+    ensures { 0 <= result < m }
+
+  (* we can build the infinite sequence defined by x{i+1} = f(xi) *)
+  function x (i: int): int = iter f i x0
+
+  let ghost x_in_range (n: int) : unit
+    requires { 0 <= n } ensures { 0 <= x n < m }
+  = ()
+
+  (* First, we prove the existence of mu and lambda, with a ghost program.
+     Starting with x0, we repeatedly apply f, storing the elements in
+     a sequence, until we find a repetition. *)
+  let ghost periodicity () : (mu:int, lambda:int)
+    ensures { 0 <= mu < m /\ 1 <= lambda <= m /\ mu + lambda <= m /\
+              x (mu + lambda) = x mu }
+    ensures { forall i j. 0 <= i < j < mu + lambda -> x i <> x j }
+  = let s = ref (singleton x0) in
+    let cur = ref x0 in
+    for k = 1 to m do
+      invariant { 1 <= length !s = k <= m /\ !cur = !s[length !s - 1] }
+      invariant { forall i. 0 <= i < length !s -> !s[i] = x i }
+      invariant { distinct !s }
+      cur := f !cur;
+      (* look for a repetition *)
+      for mu = 0 to length !s - 1 do
+        invariant { forall i. 0 <= i < mu -> !s[i] <> !cur }
+        if !cur = !s[mu] then return (mu, length !s - mu)
+      done;
+      s := snoc !s !cur;
+      if k = m then pigeonhole (m+1) m (pure { fun i -> !s[i] })
+    done;
+    absurd
+
+  (* Then we can state the condition for two elements to be equal. *)
+  let ghost equality (mu lambda: int) : unit
+    requires { 0 <= mu < m /\ 1 <= lambda <= m /\ mu + lambda <= m /\
+               x (mu + lambda) = x mu }
+    requires { forall i j. 0 <= i < j < mu + lambda -> x i <> x j }
+    ensures  { forall r n. r > n >= 0 ->
+               x r = x n <-> n >= mu /\ exists k. k >= 1 /\ r-n = k*lambda }
+  = ()
+
+  (* Finally, we implement the tortoise and hare algorithm that computes
+     the values of mu and lambda in time O(mu+lambda) and constant space *)
+  let tortoise_and_hare () : (mu:int, lambda:int)
+    ensures { 0 <= mu < m /\ 1 <= lambda <= m /\ mu + lambda <= m /\
+              x (mu + lambda) = x mu }
+    ensures { forall i j. 0 <= i < j < mu + lambda -> x i <> x j }
+  = [@vc:do_not_keep_trace] (* traceability info breaks the proofs *)
+    let mu, lambda = periodicity () in
+    (* the first loop implements the tortoise and hare,
+       and finds the smallest n >= 1 such that x n = x (2n), in O(mu+lambda) *)
+    let tortoise = ref (f x0) in
+    let hare = ref (f (f x0)) in
+    let n = ref 1 in
+    while !tortoise <> !hare do
+      invariant {
+        1 <= !n <= mu+lambda /\ !tortoise = x !n /\ !hare = x (2 * !n) /\
+        forall i. 1 <= i < !n -> x i <> x (2*i) }
+      variant { mu + lambda - !n }
+      tortoise := f !tortoise;
+      hare     := f (f !hare);
+      incr n;
+      if !n > mu + lambda then begin
+        let m = lambda - mod mu lambda in
+        let i = mu + m in
+        absurd
+      end
+    done;
+    let n = !n in
+    let xn = !tortoise in
+    (* then a second loop finds mu and lambda, in O(mu) *)
+    let i   = ref 0  in
+    let xi  = ref x0 in (* = x i     *)
+    let xni = ref xn in (* = x (n+i) *)
+    let lam = ref 0  in (* 0 or lambda *)
+    while !xi <> !xni do
+      invariant { 0 <= !i <= mu }
+      invariant { !xi = x !i /\ !xni = x (n + !i) }
+      invariant { forall j. 0 <= j < !i -> x j <> x (n + j) }
+      invariant { if !lam = 0 then forall j. 0 < j < !i -> x (n + j) <> x n
+                  else !lam = lambda }
+      variant   { mu - !i }
+      if !lam = 0 && !i > 0 && !xni = xn then lam := !i;
+      xi  := f !xi;
+      xni := f !xni;
+      incr i;
+    done;
+    let m = !i in
+    let l = if !lam = 0 then n else !lam in
+    m, l
+
+end
+

@@ -1,0 +1,232 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/multiprecision/powm_Powm_binvert_limbqtvc: the verification condition
+% for constructing the inverse of an odd unsigned 64-bit limb by a table
+% lookup followed by three modular Newton precision-doubling steps.
+% This file contains no proof.
+
+powm_Powm_binvert_limbqtvc: THEORY
+BEGIN
+
+  IMPORTING
+    bv[64],
+    bv_nat[64]
+
+  word64: TYPE = bvec[64]
+
+  radix: int = 18446744073709551616
+  max_word64: int = 18446744073709551615
+
+  unsigned64(value: word64): int =
+    bv2nat[64](value)
+
+  uint64_in_bounds(value: int): bool =
+    0 <= value AND value <= max_word64
+
+  odd_integer(value: int): bool =
+    mod(value, 2) = 1
+
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  nat_power(base: int, exponent: nat): RECURSIVE int =
+    IF exponent = 0 THEN
+      1
+    ELSE
+      base * nat_power(base, exponent - 1)
+    ENDIF
+  MEASURE exponent
+
+  int_power(base, exponent: int): int =
+    nat_power(base, int_to_nat(exponent))
+
+  euclidean_div_positive(
+      numerator, denominator: int): int =
+    IF denominator <= 0 THEN
+      0
+    ELSE
+      floor((numerator :: real) / (denominator :: real))
+    ENDIF
+
+  double_precision_step: bool =
+    FORALL (n1, inverse, precision: int):
+      ((0 <= n1 AND 0 <= inverse)
+        AND
+          mod(
+            inverse * n1,
+            int_power(2, precision)) = 1
+        AND 0 <= 2 * precision
+        AND 2 * precision <= 64)
+      IMPLIES
+        mod(
+          mod(
+            2 * inverse - inverse * (inverse * n1),
+            radix)
+            * n1,
+          int_power(2, 2 * precision)) = 1
+
+  binvert_limb_vc: bool =
+    FORALL (n: word64):
+      odd_integer(unsigned64(n))
+        IMPLIES
+          double_precision_step
+          AND NOT (2 = 0)
+          AND
+            uint64_in_bounds(
+              euclidean_div_positive(unsigned64(n), 2))
+          AND
+            (FORALL (o1: word64):
+              unsigned64(o1)
+                  = euclidean_div_positive(unsigned64(n), 2)
+                IMPLIES
+                  (NOT (128 = 0)
+                    AND
+                      uint64_in_bounds(
+                        mod(unsigned64(o1), 128)))
+                  AND
+                    (FORALL (h: word64):
+                      unsigned64(h) = mod(unsigned64(o1), 128)
+                        IMPLIES
+                          (0 <= unsigned64(h)
+                            AND unsigned64(h) < 128)
+                          AND
+                            (FORALL (o2: word64):
+                              ((0 <= unsigned64(o2)
+                                  AND unsigned64(o2) < 256)
+                                AND
+                                  mod(
+                                    unsigned64(o2)
+                                      * (2 * unsigned64(h) + 1),
+                                    int_power(2, 8)) = 1)
+                              IMPLIES
+                                (FORALL (o3: word64):
+                                  unsigned64(o3)
+                                      =
+                                    mod(
+                                      unsigned64(o2) * unsigned64(n),
+                                      radix)
+                                  IMPLIES
+                                    (FORALL (o4: word64):
+                                      unsigned64(o4)
+                                          =
+                                        mod(
+                                          unsigned64(o2)
+                                            * unsigned64(o3),
+                                          radix)
+                                      IMPLIES
+                                        (FORALL (o5: word64):
+                                          unsigned64(o5)
+                                              =
+                                            mod(2 * unsigned64(o2), radix)
+                                          IMPLIES
+                                            (FORALL (o6: word64):
+                                              unsigned64(o6)
+                                                  =
+                                                mod(
+                                                  unsigned64(o5)
+                                                    - unsigned64(o4),
+                                                  radix)
+                                              IMPLIES
+                                                (FORALL (o7: word64):
+                                                  unsigned64(o7)
+                                                      =
+                                                    mod(
+                                                      unsigned64(o6)
+                                                        * unsigned64(n),
+                                                      radix)
+                                                  IMPLIES
+                                                    (FORALL (o8: word64):
+                                                      unsigned64(o8)
+                                                          =
+                                                        mod(
+                                                          unsigned64(o6)
+                                                            * unsigned64(o7),
+                                                          radix)
+                                                      IMPLIES
+                                                        (FORALL
+                                                            (o9: word64):
+                                                          unsigned64(o9)
+                                                              =
+                                                            mod(
+                                                              2
+                                                                * unsigned64(
+                                                                    o6),
+                                                              radix)
+                                                          IMPLIES
+                                                            (FORALL
+                                                                (o10: word64):
+                                                              unsigned64(o10)
+                                                                  =
+                                                                mod(
+                                                                  unsigned64(
+                                                                    o9)
+                                                                    -
+                                                                  unsigned64(
+                                                                    o8),
+                                                                  radix)
+                                                              IMPLIES
+                                                                (FORALL
+                                                                    (o11:
+                                                                      word64):
+                                                                  unsigned64(
+                                                                    o11)
+                                                                      =
+                                                                    mod(
+                                                                      unsigned64(
+                                                                        o10)
+                                                                        *
+                                                                      unsigned64(
+                                                                        n),
+                                                                      radix)
+                                                                  IMPLIES
+                                                                    (FORALL
+                                                                        (o12:
+                                                                          word64):
+                                                                      unsigned64(
+                                                                        o12)
+                                                                          =
+                                                                        mod(
+                                                                          unsigned64(
+                                                                            o10)
+                                                                            *
+                                                                          unsigned64(
+                                                                            o11),
+                                                                          radix)
+                                                                      IMPLIES
+                                                                        (FORALL
+                                                                            (o13:
+                                                                              word64):
+                                                                          unsigned64(
+                                                                            o13)
+                                                                              =
+                                                                            mod(
+                                                                              2
+                                                                                *
+                                                                              unsigned64(
+                                                                                o10),
+                                                                              radix)
+                                                                          IMPLIES
+                                                                            (FORALL
+                                                                                (o14:
+                                                                                  word64):
+                                                                              unsigned64(
+                                                                                o14)
+                                                                                  =
+                                                                                mod(
+                                                                                  unsigned64(
+                                                                                    o13)
+                                                                                    -
+                                                                                  unsigned64(
+                                                                                    o12),
+                                                                                  radix)
+                                                                              IMPLIES
+                                                                                mod(
+                                                                                  unsigned64(
+                                                                                    o14)
+                                                                                    *
+                                                                                  unsigned64(
+                                                                                    n),
+                                                                                  radix)
+                                                                                  =
+                                                                                1)))))))))))))))
+
+END powm_Powm_binvert_limbqtvc

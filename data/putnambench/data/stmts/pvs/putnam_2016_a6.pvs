@@ -1,0 +1,148 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2016_a6:
+% the least constant bounding the integral of the absolute value of a real
+% cubic with a root in [0,1] by its maximum there is 5/6.
+% This file contains no proof.
+
+putnam_2016_a6: THEORY
+BEGIN
+  real_function: TYPE = [real -> real]
+  real_sequence: TYPE = [nat -> real]
+
+  cubic_polynomial: TYPE =
+    [# c0: real, c1: real, c2: real, c3: real #]
+
+  polynomial_value(p: cubic_polynomial, x: real): real =
+    c0(p) + x * (c1(p) + x * (c2(p) + x * c3(p)))
+
+  degree_three(p: cubic_polynomial): bool =
+    c3(p) /= 0
+
+  absolute_polynomial(p: cubic_polynomial): real_function =
+    LAMBDA (x: real): abs(polynomial_value(p, x))
+
+  in_unit_interval(x: real): bool =
+    0 <= x AND x <= 1
+
+  has_root_in_unit_interval(p: cubic_polynomial): bool =
+    EXISTS (x: real):
+      in_unit_interval(x) AND polynomial_value(p, x) = 0
+
+  valid_tagged_partition(
+      left, right: real,
+      points, tags: real_sequence,
+      count: nat): bool =
+    count > 0
+      AND points(0) = left
+      AND points(count) = right
+      AND FORALL (index: nat):
+        index < count IMPLIES
+          (points(index) < points(index + 1)
+            AND points(index) <= tags(index)
+            AND tags(index) <= points(index + 1))
+
+  mesh_less_than(
+      points: real_sequence,
+      count: nat,
+      bound: real): bool =
+    FORALL (index: nat):
+      index < count IMPLIES
+        points(index + 1) - points(index) < bound
+
+  riemann_sum(
+      f: real_function,
+      points, tags: real_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      riemann_sum(f, points, tags, count - 1)
+        + f(tags(count - 1))
+            * (points(count) - points(count - 1))
+    ENDIF
+  MEASURE count
+
+  has_interval_integral(
+      f: real_function,
+      left, right, integral_value: real): bool =
+    left < right
+      AND FORALL (epsilon_value: posreal):
+        EXISTS (mesh_bound: posreal):
+          FORALL
+              (points, tags: real_sequence),
+              (count: nat):
+            (valid_tagged_partition(
+                left, right, points, tags, count)
+              AND mesh_less_than(
+                points, count, mesh_bound))
+            IMPLIES
+              abs(
+                riemann_sum(f, points, tags, count)
+                  - integral_value)
+                < epsilon_value
+
+  interval_integral(
+      f: real_function,
+      left, right: real): real =
+    IF left = right THEN
+      0
+    ELSIF left < right THEN
+      IF EXISTS (integral_value: real):
+          has_interval_integral(
+            f, left, right, integral_value)
+      THEN
+        epsilon(
+          LAMBDA (integral_value: real):
+            has_interval_integral(
+              f, left, right, integral_value))
+      ELSE
+        0
+      ENDIF
+    ELSE
+      IF EXISTS (integral_value: real):
+          has_interval_integral(
+            f, right, left, integral_value)
+      THEN
+        -epsilon(
+          LAMBDA (integral_value: real):
+            has_interval_integral(
+              f, right, left, integral_value))
+      ELSE
+        0
+      ENDIF
+    ENDIF
+
+  has_maximum_on_unit_interval(
+      f: real_function,
+      maximum_value: real): bool =
+    (EXISTS (x: real):
+      in_unit_interval(x) AND f(x) = maximum_value)
+      AND (FORALL (x: real):
+        in_unit_interval(x) IMPLIES f(x) <= maximum_value)
+
+  interval_maximum(f: real_function): real =
+    IF EXISTS (maximum_value: real):
+        has_maximum_on_unit_interval(f, maximum_value)
+    THEN
+      epsilon(
+        LAMBDA (maximum_value: real):
+          has_maximum_on_unit_interval(f, maximum_value))
+    ELSE
+      0
+    ENDIF
+
+  admissible_constant(C: real): bool =
+    FORALL (p: cubic_polynomial):
+      (degree_three(p)
+        AND has_root_in_unit_interval(p))
+      IMPLIES
+        interval_integral(absolute_polynomial(p), 0, 1)
+          <= C * interval_maximum(absolute_polynomial(p))
+
+  putnam_2016_a6_solution: real = 5 / 6
+
+  putnam_2016_a6: bool =
+    admissible_constant(putnam_2016_a6_solution)
+      AND (FORALL (C: real):
+        admissible_constant(C)
+          IMPLIES putnam_2016_a6_solution <= C)
+END putnam_2016_a6

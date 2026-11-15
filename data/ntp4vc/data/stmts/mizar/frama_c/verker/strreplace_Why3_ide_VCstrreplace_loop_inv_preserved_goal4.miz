@@ -1,0 +1,174 @@
+:: Statement-only formalization of the NTP4VC corpus artifact
+:: frama_c/verker/strreplace_Why3_ide_VCstrreplace_loop_inv_preserved_goal4:
+:: the strreplace loop-invariant preservation condition concludes that after
+:: conditionally replacing the byte at the current address, the following
+:: address begins a valid C string, under the stated havoc-memory, address-
+:: order, byte-range, string-validity, linkage, constancy, and prefix-update
+:: assumptions. This file contains no proof.
+
+environ
+  vocabularies TARSKI, XBOOLE_0, SUBSET_1, RELAT_1, FUNCT_1,
+    FUNCT_2, FUNCT_4, FUNCT_7, FUNCOP_1, PARTFUN1, ZFMISC_1,
+    NUMBERS, XREAL_0, CARD_1, XXREAL_0, ARYTM_1, ARYTM_3,
+    REAL_1, INT_1, NAT_1, VALUED_0, VALUED_1, ORDINAL1,
+    MCART_1;
+  notations TARSKI, XBOOLE_0, SUBSET_1, ZFMISC_1, XTUPLE_0,
+    MCART_1, RELAT_1, FUNCT_1, RELSET_1, PARTFUN1, FUNCT_2,
+    FUNCT_4, FUNCOP_1, FUNCT_7, ORDINAL1, CARD_1, NUMBERS,
+    XCMPLX_0, XREAL_0, REAL_1, INT_1, NAT_1, XXREAL_0;
+  constructors FUNCT_1, RELSET_1, PARTFUN1, FUNCT_2, FUNCT_4,
+    FUNCT_7, FUNCOP_1, CARD_1, REAL_1, INT_1, XXREAL_0,
+    ZFMISC_1, MCART_1, NAT_1;
+  registrations XBOOLE_0, SUBSET_1, RELAT_1, FUNCT_1, RELSET_1,
+    FUNCT_2, FUNCT_4, FUNCT_7, FUNCOP_1, NUMBERS, CARD_1,
+    XXREAL_0, MEMBERED, VALUED_0, VALUED_1, XCMPLX_0,
+    XREAL_0, ORDINAL1, INT_1, NAT_1;
+  requirements REAL, NUMERALS, SUBSET, BOOLE, ARITHM;
+
+begin
+
+::$P-
+theorem
+  for a1,a,a2 being Element of [:INT,INT:],
+      t2,t1,a3,t3 being Function of [:INT,INT:],INT,
+      t,Region,ToUint64 being Function of INT,INT,
+      Base,Offset being Function of [:INT,INT:],INT,
+      shft being Function of
+        [:[:INT,INT:],INT:],[:INT,INT:],
+      LStrlen being Function of
+        [:Funcs([:INT,INT:],INT),[:INT,INT:]:],INT,
+      Linked being Subset of Funcs(INT,INT),
+      SConst being Subset of Funcs([:INT,INT:],INT),
+      AddrLE,AddrLT,ValidRW,Separated,PValidStr being set,
+      i,i1,x,a4 being Integer
+  st
+    (for b,o being Integer holds
+       Base.[b,o] = b & Offset.[b,o] = o) &
+
+    (for p being Element of [:INT,INT:], k being Integer holds
+       shft.[p,k] = [Base.p,Offset.p + k]) &
+
+    (for p,q being Element of [:INT,INT:]
+       st Base.p = Base.q
+     holds
+       ([p,q] in AddrLE iff Offset.p <= Offset.q)) &
+
+    (for p,q being Element of [:INT,INT:]
+       st Base.p = Base.q
+     holds
+       ([p,q] in AddrLT iff Offset.p < Offset.q)) &
+
+    (for p,q being Element of [:INT,INT:],
+         plen,qlen being Integer
+     holds
+       [p,[plen,[q,qlen]]] in Separated iff
+       plen <= 0 or qlen <= 0 or Base.p <> Base.q or
+       Offset.q + qlen <= Offset.p or
+       Offset.p + plen <= Offset.q) &
+
+    (for malloc being Function of INT,INT,
+         p being Element of [:INT,INT:],
+         n being Integer
+     holds
+       [malloc,[p,n]] in ValidRW iff
+       (0 < n implies
+         0 < Base.p &
+         0 <= Offset.p &
+         Offset.p + n <= malloc.(Base.p))) &
+
+    (for z being Integer holds
+       ex w being Integer st
+         w = ToUint64.z &
+         0 <= w &
+         w < 65536 * 65536 * 65536 * 65536) &
+
+    (for z being Integer
+       st 0 <= z & z < 65536 * 65536 * 65536 * 65536
+     holds
+       ToUint64.z = z) &
+
+    (for z being Integer holds
+       ToUint64.(ToUint64.z) = ToUint64.z) &
+
+    (for mchar being Function of [:INT,INT:],INT,
+         s being Element of [:INT,INT:]
+     holds
+       ex len0,len1,cast being Integer st
+         len0 = LStrlen.[mchar,s] &
+         len1 = LStrlen.[mchar,shft.[s,1]] &
+         cast = ToUint64.(1 + len1) &
+         (mchar.(shft.[s,0]) = 0 implies len0 = 0) &
+         (mchar.(shft.[s,0]) <> 0 implies cast = len0) &
+         0 <= len0 &
+         len0 < 65536 * 65536 * 65536 * 65536) &
+
+    (for malloc being Function of INT,INT,
+         mchar being Function of [:INT,INT:],INT,
+         s being Element of [:INT,INT:]
+     holds
+       [malloc,[mchar,s]] in PValidStr iff
+       ex j being Integer st
+         mchar.(shft.[s,j]) = 0 &
+         0 <= j &
+         j < 65536 * 65536 * 65536 * 65536 &
+         [malloc,[shft.[s,0],1+j]] in ValidRW &
+         (for k being Integer st k <= j holds
+            ex c being Integer st
+              c = mchar.(shft.[s,k]) &
+              -(128) <= c & c < 128)) &
+
+    x = LStrlen.[t2,a1] &
+    a2 = shft.[a1,x] &
+
+    (for p being Element of [:INT,INT:] holds
+       ([p,[1,[shft.[a1,0],x]]] in Separated
+          implies a3.p = t2.p) &
+       (not [p,[1,[shft.[a1,0],x]]] in Separated
+          implies a3.p = t1.p)) &
+
+    a4 = a3.a &
+    t2.a2 = 0 &
+    a4 <> 0 &
+    Region.(Base.a1) <= 0 &
+    t in Linked &
+    t2 in SConst &
+    -(128) <= i & i < 128 &
+    -(128) <= i1 & i1 < 128 &
+    [a1,a] in AddrLE &
+    [t,[t2,a1]] in PValidStr &
+    0 <= x &
+    x < 65536 * 65536 * 65536 * 65536 &
+    [a,a2] in AddrLE &
+    -(128) <= a4 & a4 < 128 &
+    [t,[a3,a]] in PValidStr &
+    [t,[a3,a1]] in PValidStr &
+    (a4 = i implies
+       (for p being Element of [:INT,INT:] holds
+          (p = a implies t3.p = i1) &
+          (p <> a implies t3.p = a3.p))) &
+    (a4 <> i implies a3 = t3) &
+
+    (for i2 being Integer
+       st 0 <= i2 & i2 < x
+     holds
+       t2.(shft.[a1,i2]) <> 0) &
+
+    (for a5 being Element of [:INT,INT:]
+       st [a,a5] in AddrLE & [a5,a2] in AddrLT
+     holds
+       a3.a5 = t2.a5) &
+
+    (for a5 being Element of [:INT,INT:]
+       st t2.a5 = i & [a5,a] in AddrLT & [a1,a5] in AddrLE
+     holds
+       a3.a5 = i1) &
+
+    (for a5 being Element of [:INT,INT:]
+       st t2.a5 <> i & [a5,a] in AddrLT & [a1,a5] in AddrLE
+     holds
+       a3.a5 = t2.a5)
+  holds
+    [t,[t3,shft.[a,1]]] in PValidStr
+proof
+end;
+::$P+

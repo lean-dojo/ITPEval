@@ -1,0 +1,98 @@
+% Statement-only formalization of the thousand-theorems corpus artifact Q288465
+% (thousand-theorems__pvs__Q288465), "Orbit-stabilizer theorem": for any group
+% action and point, the point's orbit is canonically bijective to the left-coset
+% quotient of the acting group by the point's stabilizer. This file contains no proof.
+
+Q288465_orbit_stabilizer_theorem[
+  G: TYPE+,
+  X: TYPE,
+  mul: [G, G -> G],
+  inv: [G -> G],
+  one: G,
+  action: [G, X -> X]
+]: THEORY
+BEGIN
+
+  group_set: TYPE = [G -> bool]
+  point_set: TYPE = [X -> bool]
+  coset_point_relation: TYPE = [group_set, X -> bool]
+
+  group_laws: bool =
+    (FORALL (g, h, k: G):
+      mul(mul(g, h), k) = mul(g, mul(h, k)))
+      AND (FORALL (g: G):
+        mul(one, g) = g
+          AND mul(g, one) = g)
+      AND (FORALL (g: G):
+        mul(inv(g), g) = one
+          AND mul(g, inv(g)) = one)
+
+  action_laws: bool =
+    (FORALL (x: X):
+      action(one, x) = x)
+      AND (FORALL (g, h: G), (x: X):
+        action(mul(g, h), x) = action(g, action(h, x)))
+
+  orbit(b: X): point_set =
+    LAMBDA (x: X):
+      EXISTS (g: G):
+        x = action(g, b)
+
+  stabilizer(b: X): group_set =
+    LAMBDA (g: G):
+      action(g, b) = b
+
+  left_coset(g: G, H: group_set): group_set =
+    LAMBDA (x: G):
+      EXISTS (h: G):
+        H(h) AND x = mul(g, h)
+
+  quotient_stabilizer(b: X): [group_set -> bool] =
+    LAMBDA (C: group_set):
+      EXISTS (g: G):
+        C = left_coset(g, stabilizer(b))
+
+  canonical_relation(C: group_set, x, b: X): bool =
+    EXISTS (g: G):
+      C = left_coset(g, stabilizer(b))
+        AND x = action(g, b)
+
+  is_bijection(
+      relation: coset_point_relation,
+      b: X): bool =
+    (FORALL (C: group_set), (x: X):
+      relation(C, x) IMPLIES
+        quotient_stabilizer(b)(C) AND orbit(b)(x))
+      AND (FORALL (C: group_set):
+        quotient_stabilizer(b)(C) IMPLIES
+          EXISTS (x: X):
+            orbit(b)(x) AND relation(C, x))
+      AND (FORALL (C: group_set), (x, y: X):
+        quotient_stabilizer(b)(C)
+          AND orbit(b)(x)
+          AND orbit(b)(y)
+          AND relation(C, x)
+          AND relation(C, y)
+          IMPLIES x = y)
+      AND (FORALL (x: X):
+        orbit(b)(x) IMPLIES
+          EXISTS (C: group_set):
+            quotient_stabilizer(b)(C) AND relation(C, x))
+      AND (FORALL (C, D: group_set), (x: X):
+        quotient_stabilizer(b)(C)
+          AND quotient_stabilizer(b)(D)
+          AND orbit(b)(x)
+          AND relation(C, x)
+          AND relation(D, x)
+          IMPLIES C = D)
+
+  orbitEquivQuotientStabilizer: bool =
+    (group_laws AND action_laws)
+      IMPLIES
+        FORALL (b: X):
+          is_bijection(
+            LAMBDA (C: group_set), (x: X):
+              canonical_relation(C, x, b),
+            b)
+
+END Q288465_orbit_stabilizer_theorem

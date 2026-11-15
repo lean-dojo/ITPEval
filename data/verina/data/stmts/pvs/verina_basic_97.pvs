@@ -1,0 +1,96 @@
+% Statement-only formalization of the VERINA corpus artifact verina_basic_97
+% (verina__pvs__verina_basic_97), catalog title "TestArrayElements": the
+% executable integer-array program sets the element at a valid natural-number
+% index to 60, preserves the array length and every other element, and
+% satisfies that update contract. This file contains no proof.
+
+verina_basic_97: THEORY
+BEGIN
+
+  % Finite PVS lists preserve exactly the contents and order of Lean arrays.
+  int_list_length(
+      values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        int_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  % Lean Array.get! on integer arrays returns zero outside the array.
+  int_list_get_bang(
+      index: nat,
+      values: list[int]): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          int_list_get_bang(index - 1, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  % This positional replacement is exactly Lean Array.set!: an in-bounds
+  % entry is replaced, and an out-of-bounds update leaves the array unchanged.
+  int_list_set_bang(
+      index: nat,
+      new_value: int,
+      values: list[int]): RECURSIVE list[int] =
+    CASES values OF
+      null:
+        null[int],
+      cons(head, tail):
+        IF index = 0 THEN
+          cons(new_value, tail)
+        ELSE
+          cons(
+            head,
+            int_list_set_bang(
+              index - 1,
+              new_value,
+              tail))
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  TestArrayElements_precond(
+      a: list[int],
+      j: nat): bool =
+    j < int_list_length(a)
+
+  % The source precondition proof argument is computationally irrelevant.
+  TestArrayElements(
+      a: list[int],
+      j: nat): list[int] =
+    int_list_set_bang(j, 60, a)
+
+  % The source proof argument to the postcondition is logically irrelevant.
+  TestArrayElements_postcond(
+      a: list[int],
+      j: nat,
+      result: list[int]): bool =
+    int_list_length(result) = int_list_length(a)
+      AND int_list_get_bang(j, result) = 60
+      AND
+        (FORALL (k: nat):
+          k < int_list_length(a)
+            IMPLIES
+              k /= j
+                IMPLIES
+                  int_list_get_bang(k, result)
+                    = int_list_get_bang(k, a))
+
+  TestArrayElements_spec_satisfied: bool =
+    FORALL (a: list[int], j: nat):
+      TestArrayElements_precond(a, j)
+        IMPLIES
+          TestArrayElements_postcond(
+            a,
+            j,
+            TestArrayElements(a, j))
+
+END verina_basic_97

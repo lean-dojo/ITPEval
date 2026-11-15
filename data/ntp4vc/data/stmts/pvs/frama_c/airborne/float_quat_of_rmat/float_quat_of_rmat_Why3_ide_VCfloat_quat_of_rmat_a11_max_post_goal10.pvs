@@ -1,0 +1,414 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% frama_c/airborne/float_quat_of_rmat/float_quat_of_rmat_Why3_ide_VCfloat_quat_of_rmat_a11_max_post_goal10:
+% the a11-max branch postcondition relating a rotation matrix in memory to its
+% computed real quaternion. This file contains no proof.
+
+float_quat_of_rmat_Why3_ide_VCfloat_quat_of_rmat_a11_max_post_goal10[
+  region: [int -> int],
+  linked: [[int -> int] -> bool]
+]: THEORY
+BEGIN
+  addr: TYPE = [# base: int, offset: int #]
+  real_memory: TYPE = [addr -> real]
+  allocation_table: TYPE = [int -> int]
+
+  real_rmat: TYPE =
+    [# a00: real, a01: real, a02: real,
+       a10: real, a11: real, a12: real,
+       a20: real, a21: real, a22: real #]
+
+  real_quat: TYPE =
+    [# qi: real, qx: real, qy: real, qz: real #]
+
+  shift(p: addr, k: int): addr =
+    (# base := base(p), offset := offset(p) + k #)
+
+  store(memory: real_memory, p: addr, value: real): real_memory =
+    memory WITH [(p) := value]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  nonnegative_sqrt(value: real): real =
+    IF value >= 0 THEN
+      epsilon(
+        LAMBDA (root: real):
+          root >= 0 AND root * root = value)
+    ELSE
+      0
+    ENDIF
+
+  valid_rw(malloc: allocation_table, p: addr, n: int): bool =
+    0 < n IMPLIES
+      0 < base(p)
+        AND 0 <= offset(p)
+        AND offset(p) + n <= malloc(base(p))
+
+  valid_rd(malloc: allocation_table, p: addr, n: int): bool =
+    0 < n IMPLIES
+      base(p) /= 0
+        AND 0 <= offset(p)
+        AND offset(p) + n <= malloc(base(p))
+
+  separated(p: addr, p_size: int, q: addr, q_size: int): bool =
+    p_size <= 0
+      OR q_size <= 0
+      OR base(p) /= base(q)
+      OR offset(q) + q_size <= offset(p)
+      OR offset(p) + p_size <= offset(q)
+
+  % These predicates are universally true in the official Why3 real model.
+  is_float32(value: real): bool = TRUE
+  is_finite32(value: real): bool = TRUE
+
+  p_finite_floatrmat(memory: real_memory, rm: addr): bool =
+    LET start: addr = shift(rm, 0)
+    IN
+      is_finite32(memory(shift(start, 0)))
+        AND is_finite32(memory(shift(start, 1)))
+        AND is_finite32(memory(shift(start, 2)))
+        AND is_finite32(memory(shift(start, 3)))
+        AND is_finite32(memory(shift(start, 4)))
+        AND is_finite32(memory(shift(start, 5)))
+        AND is_finite32(memory(shift(start, 6)))
+        AND is_finite32(memory(shift(start, 7)))
+        AND is_finite32(memory(shift(start, 8)))
+
+  p_rvalid_floatrmat(
+      malloc: allocation_table,
+      memory: real_memory,
+      rm: addr): bool =
+    p_finite_floatrmat(memory, rm)
+      AND valid_rd(malloc, rm, 9)
+
+  rmat_of_floatrmat(memory: real_memory, rm: addr): real_rmat =
+    LET start: addr = shift(rm, 0)
+    IN
+      (# a00 := memory(shift(start, 0)),
+         a01 := memory(shift(start, 1)),
+         a02 := memory(shift(start, 2)),
+         a10 := memory(shift(start, 3)),
+         a11 := memory(shift(start, 4)),
+         a12 := memory(shift(start, 5)),
+         a20 := memory(shift(start, 6)),
+         a21 := memory(shift(start, 7)),
+         a22 := memory(shift(start, 8)) #)
+
+  eq_rmat(left, right: real_rmat): bool =
+    a00(right) = a00(left)
+      AND a01(right) = a01(left)
+      AND a02(right) = a02(left)
+      AND a10(right) = a10(left)
+      AND a11(right) = a11(left)
+      AND a12(right) = a12(left)
+      AND a20(right) = a20(left)
+      AND a21(right) = a21(left)
+      AND a22(right) = a22(left)
+
+  determinant(matrix: real_rmat): real =
+    a00(matrix) * a11(matrix) * a22(matrix)
+      + a01(matrix) * a12(matrix) * a20(matrix)
+      + a02(matrix) * a10(matrix) * a21(matrix)
+      - a00(matrix) * a12(matrix) * a21(matrix)
+      - a01(matrix) * a10(matrix) * a22(matrix)
+      - a02(matrix) * a11(matrix) * a20(matrix)
+
+  special_orthogonal(matrix: real_rmat): bool =
+    determinant(matrix) = 1
+
+  transpose(matrix: real_rmat): real_rmat =
+    (# a00 := a00(matrix),
+       a01 := a10(matrix),
+       a02 := a20(matrix),
+       a10 := a01(matrix),
+       a11 := a11(matrix),
+       a12 := a21(matrix),
+       a20 := a02(matrix),
+       a21 := a12(matrix),
+       a22 := a22(matrix) #)
+
+  multiply(left, right: real_rmat): real_rmat =
+    (# a00 :=
+         a00(left) * a00(right)
+           + a01(left) * a10(right)
+           + a02(left) * a20(right),
+       a01 :=
+         a00(left) * a01(right)
+           + a01(left) * a11(right)
+           + a02(left) * a21(right),
+       a02 :=
+         a00(left) * a02(right)
+           + a01(left) * a12(right)
+           + a02(left) * a22(right),
+       a10 :=
+         a10(left) * a00(right)
+           + a11(left) * a10(right)
+           + a12(left) * a20(right),
+       a11 :=
+         a10(left) * a01(right)
+           + a11(left) * a11(right)
+           + a12(left) * a21(right),
+       a12 :=
+         a10(left) * a02(right)
+           + a11(left) * a12(right)
+           + a12(left) * a22(right),
+       a20 :=
+         a20(left) * a00(right)
+           + a21(left) * a10(right)
+           + a22(left) * a20(right),
+       a21 :=
+         a20(left) * a01(right)
+           + a21(left) * a11(right)
+           + a22(left) * a21(right),
+       a22 :=
+         a20(left) * a02(right)
+           + a21(left) * a12(right)
+           + a22(left) * a22(right) #)
+
+  identity_rmat: real_rmat =
+    (# a00 := 1, a01 := 0, a02 := 0,
+       a10 := 0, a11 := 1, a12 := 0,
+       a20 := 0, a21 := 0, a22 := 1 #)
+
+  rotation_matrix(matrix: real_rmat): bool =
+    eq_rmat(multiply(matrix, transpose(matrix)), identity_rmat)
+
+  trace_of_floatrmat(memory: real_memory, rm: addr): real =
+    LET matrix: real_rmat = rmat_of_floatrmat(memory, rm)
+    IN a00(matrix) + a11(matrix) + a22(matrix)
+
+  eq_quat(left, right: real_quat): bool =
+    qi(right) = qi(left)
+      AND qx(right) = qx(left)
+      AND qy(right) = qy(left)
+      AND qz(right) = qz(left)
+
+  floatquat_of_rmat_1_max(
+      memory: real_memory,
+      rm: addr): real_quat =
+    LET matrix: real_rmat =
+          transpose(rmat_of_floatrmat(memory, rm)),
+        root: real =
+          nonnegative_sqrt(
+            1 + a11(matrix) - a00(matrix) - a22(matrix)),
+        denominator: real = 2 * root
+    IN
+      (# qi := safe_div(a02(matrix) - a20(matrix), denominator),
+         qx := safe_div(a01(matrix) + a10(matrix), denominator),
+         qy := safe_div(1, 2) * root,
+         qz := safe_div(a12(matrix) + a21(matrix), denominator) #)
+
+  quat_of_floatquat(memory: real_memory, q: addr): real_quat =
+    (# qi := memory(shift(q, 0)),
+       qx := memory(shift(q, 1)),
+       qy := memory(shift(q, 2)),
+       qz := memory(shift(q, 3)) #)
+
+  goal10: bool =
+    FORALL (a, a_1: addr),
+           (t_1, t_8, t_7, t_4, t_6, t_5, t_9, t_2, t_3: real_memory),
+           (r_3, r_7, r_6, r_2, r_1, r_5, r, r_4: real),
+           (t: allocation_table):
+      LET a_2: addr = shift(a, 0),
+          a_3: addr = shift(a_2, 0),
+          r_8: real = t_1(a_3),
+          a_4: addr = shift(a_2, 4),
+          r_9: real = t_1(a_4),
+          a_5: addr = shift(a_2, 8),
+          r_10: real = t_1(a_5),
+          a_6: real_rmat = rmat_of_floatrmat(t_1, a),
+          r_11: real = r_8 + r_9 + r_10,
+          a_7: addr = shift(a_1, 0),
+          m: real_memory =
+            store(t_8, a_7, safe_div(1, 2) * r_3),
+          a_8: addr = shift(a_1, 1),
+          a_9: addr = shift(a_2, 5),
+          a_10: addr = shift(a_2, 7),
+          m_1: real_memory =
+            store(
+              m,
+              a_8,
+              safe_div(m(a_9) - m(a_10), r_7)),
+          a_11: addr = shift(a_1, 2),
+          a_12: addr = shift(a_2, 6),
+          a_13: addr = shift(a_2, 2),
+          m_2: real_memory =
+            store(
+              m_1,
+              a_11,
+              safe_div(m_1(a_12) - m_1(a_13), r_7)),
+          a_14: addr = shift(a_1, 3),
+          a_15: addr = shift(a_2, 1),
+          a_16: addr = shift(a_2, 3),
+          r_13: real =
+            1 + (t_8(a_3) + t_8(a_4) + t_8(a_5)),
+          m_3: real_memory =
+            store(
+              store(
+                t_7,
+                a_7,
+                safe_div(t_7(a_9) - t_7(a_10), r_6)),
+              a_8,
+              safe_div(1, 2) * r_2),
+          m_4: real_memory =
+            store(
+              m_3,
+              a_11,
+              safe_div(m_3(a_15) + m_3(a_16), r_6)),
+          r_15: real =
+            t_7(a_3) - t_7(a_4) - t_7(a_5) + 1,
+          r_16: real = t_4(a_5),
+          r_17: real = t_4(a_4),
+          r_19: real = 2 * r_1,
+          m_5: real_memory =
+            store(
+              t_6,
+              a_7,
+              safe_div(t_6(a_12) - t_6(a_13), r_5)),
+          m_6: real_memory =
+            store(
+              store(
+                m_5,
+                a_8,
+                safe_div(m_5(a_15) + m_5(a_16), r_5)),
+              a_11,
+              safe_div(1, 2) * r_1),
+          m_7: real_memory =
+            store(
+              m_6,
+              a_14,
+              safe_div(m_6(a_9) + m_6(a_10), r_5)),
+          r_20: real =
+            t_6(a_4) - t_6(a_3) - t_6(a_5) + 1,
+          r_22: real = 2 * r,
+          m_8: real_memory =
+            store(
+              t_5,
+              a_7,
+              safe_div(t_5(a_15) - t_5(a_16), r_4)),
+          m_9: real_memory =
+            store(
+              m_8,
+              a_8,
+              safe_div(m_8(a_12) + m_8(a_13), r_4)),
+          m_10: real_memory =
+            store(
+              store(
+                m_9,
+                a_11,
+                safe_div(m_9(a_9) + m_9(a_10), r_4)),
+              a_14,
+              safe_div(1, 2) * r),
+          r_23: real =
+            t_5(a_5) - t_5(a_3) - t_5(a_4) + 1,
+          branch_condition: bool =
+            IF 0 < r_11 THEN
+              t_8 = t_1
+                AND 2 * r_3 = r_7
+                AND store(
+                      m_2,
+                      a_14,
+                      safe_div(m_2(a_15) - m_2(a_16), r_7))
+                    = t_9
+                AND 0 <= r_3
+                AND 0 <= r_13
+                AND is_finite32(r_3)
+                AND is_finite32(r_13)
+            ELSE
+              t_2 = t_1
+                AND
+                  (IF t_2(a_4) < t_2(a_3) THEN
+                     t_3 = t_2
+                       AND
+                         (IF t_3(a_5) < t_3(a_3) THEN
+                            t_7 = t_3
+                              AND 2 * r_2 = r_6
+                              AND store(
+                                    m_4,
+                                    a_14,
+                                    safe_div(
+                                      m_4(a_12) + m_4(a_13),
+                                      r_6))
+                                  = t_9
+                              AND 0 <= r_2
+                              AND 0 <= r_15
+                              AND is_finite32(r_2)
+                              AND is_finite32(r_15)
+                          ELSE
+                            t_4 = t_3
+                              AND
+                                (IF r_16 < r_17 THEN
+                                   t_6 = t_4
+                                     AND r_19 = r_5
+                                     AND m_7 = t_9
+                                     AND 0 <= r_1
+                                     AND 0 <= r_20
+                                     AND is_finite32(r_1)
+                                     AND is_finite32(r_20)
+                                 ELSE
+                                   t_5 = t_4
+                                     AND r_22 = r_4
+                                     AND m_10 = t_9
+                                     AND 0 <= r
+                                     AND 0 <= r_23
+                                     AND is_finite32(r)
+                                     AND is_finite32(r_23)
+                                 ENDIF)
+                          ENDIF)
+                   ELSE
+                     t_4 = t_2
+                       AND
+                         (IF r_16 < r_17 THEN
+                            t_6 = t_4
+                              AND r_19 = r_5
+                              AND m_7 = t_9
+                              AND 0 <= r_1
+                              AND 0 <= r_20
+                              AND is_finite32(r_1)
+                              AND is_finite32(r_20)
+                          ELSE
+                            t_5 = t_4
+                              AND r_22 = r_4
+                              AND m_10 = t_9
+                              AND 0 <= r
+                              AND 0 <= r_23
+                              AND is_finite32(r)
+                              AND is_finite32(r_23)
+                          ENDIF)
+                   ENDIF)
+            ENDIF
+      IN
+        (trace_of_floatrmat(t_1, a) <= 0
+          AND region(base(a)) <= 0
+          AND region(base(a_1)) <= 0
+          AND r_8 <= r_9
+          AND r_10 < r_9
+          AND linked(t)
+          AND is_float32(r)
+          AND is_float32(r_1)
+          AND is_float32(r_2)
+          AND is_float32(r_3)
+          AND is_float32(r_4)
+          AND is_float32(r_5)
+          AND is_float32(r_6)
+          AND is_float32(r_7)
+          AND valid_rw(t, a_1, 4)
+          AND p_rvalid_floatrmat(t, t_1, a)
+          AND separated(a, 9, a_1, 4)
+          AND rotation_matrix(a_6)
+          AND special_orthogonal(a_6)
+          AND is_float32(r_8)
+          AND is_float32(r_9)
+          AND is_float32(r_10)
+          AND is_float32(r_11)
+          AND branch_condition
+          AND r_1 = nonnegative_sqrt(r_20))
+        IMPLIES
+          eq_quat(
+            floatquat_of_rmat_1_max(t_9, a),
+            quat_of_floatquat(t_9, a_1))
+END float_quat_of_rmat_Why3_ide_VCfloat_quat_of_rmat_a11_max_post_goal10

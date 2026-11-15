@@ -1,0 +1,115 @@
+% Statement-only formalization of the VERINA corpus artifact verina_basic_75
+% (verina__pvs__verina_basic_75), catalog title "minArray": the exact
+% left-to-right scan computes an attained minimum of a nonempty finite integer
+% array and satisfies its full correctness contract. This file contains no proof.
+
+verina_basic_75: THEORY
+BEGIN
+
+  % Finite PVS lists preserve exactly the contents and order of Lean arrays.
+  int_list_length(
+      values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        int_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  % Lean Array.get! on integer arrays returns zero outside the array.
+  int_list_get_bang(
+      index: nat,
+      values: list[int]): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          int_list_get_bang(index - 1, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  int_list_drop(
+      count: nat,
+      values: list[int]): RECURSIVE list[int] =
+    IF count = 0 THEN
+      values
+    ELSE
+      CASES values OF
+        null:
+          null[int],
+        cons(head, tail):
+          int_list_drop(count - 1, tail)
+      ENDCASES
+    ENDIF
+  MEASURE count
+
+  minArray_precond(
+      a: list[int]): bool =
+    int_list_length(a) > 0
+
+  % Consuming the suffix beginning at index is exactly the source indexed
+  % recursion: each call compares the current accumulator with that entry,
+  % keeps the smaller value, and advances to the next index.
+  minArray_aux_loop(
+      remaining: list[int],
+      current: int): RECURSIVE int =
+    CASES remaining OF
+      null:
+        current,
+      cons(head, tail):
+        LET new_current: int =
+              IF current > head THEN
+                head
+              ELSE
+                current
+              ENDIF
+        IN
+          minArray_aux_loop(
+            tail,
+            new_current)
+    ENDCASES
+  MEASURE remaining BY <<
+
+  minArray_aux(
+      a: list[int],
+      index: nat,
+      current: int): int =
+    minArray_aux_loop(
+      int_list_drop(index, a),
+      current)
+
+  % The source precondition proof argument is computationally irrelevant.
+  minArray(
+      a: list[int]): int =
+    minArray_aux(
+      a,
+      1,
+      int_list_get_bang(0, a))
+
+  % The source proof argument to the postcondition is logically irrelevant.
+  minArray_postcond(
+      a: list[int],
+      result: int): bool =
+    (FORALL (k: nat):
+      k < int_list_length(a)
+        IMPLIES
+          result <= int_list_get_bang(k, a))
+      AND
+        (EXISTS (k: nat):
+          k < int_list_length(a)
+            AND result = int_list_get_bang(k, a))
+
+  minArray_spec_satisfied: bool =
+    FORALL (a: list[int]):
+      minArray_precond(a)
+        IMPLIES
+          minArray_postcond(
+            a,
+            minArray(a))
+
+END verina_basic_75

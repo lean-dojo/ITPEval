@@ -1,0 +1,89 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2023_a3:
+% pi/2 is the least positive zero time attainable by globally differentiable
+% real functions satisfying the stated mutual derivative bounds. This file
+% contains no proof.
+
+putnam_2023_a3: THEORY
+BEGIN
+  real_function: TYPE = [real -> real]
+  real_sequence: TYPE = [nat -> real]
+
+  alternating_sign(index: nat): RECURSIVE real =
+    IF index = 0 THEN
+      1
+    ELSE
+      -alternating_sign(index - 1)
+    ENDIF
+  MEASURE index
+
+  leibniz_partial_sum(count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        leibniz_partial_sum(count - 1)
+          + alternating_sign(index)
+              / ((2 * index + 1) :: real)
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  is_pi(value: real): bool =
+    converges_to(
+      LAMBDA (count: nat):
+        4 * leibniz_partial_sum(count),
+      value)
+
+  pi: real =
+    epsilon(
+      LAMBDA (value: real):
+        is_pi(value))
+
+  has_derivative_at(
+      f: real_function,
+      derivative, x: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (delta: posreal):
+        FORALL (h: real):
+          (h /= 0 AND abs(h) < delta)
+            IMPLIES
+              abs(
+                f(x + h) - f(x)
+                  - derivative * h)
+                < epsilon_value * abs(h)
+
+  differentiable_with_derivative(
+      f, derivative: real_function): bool =
+    FORALL (x: real):
+      has_derivative_at(f, derivative(x), x)
+
+  admissible_zero_time(r: real): bool =
+    EXISTS (f, g, f_derivative, g_derivative: real_function):
+      differentiable_with_derivative(f, f_derivative)
+        AND differentiable_with_derivative(g, g_derivative)
+        AND f(0) > 0
+        AND g(0) = 0
+        AND (FORALL (x: real):
+          abs(f_derivative(x)) <= abs(g(x))
+            AND abs(g_derivative(x)) <= abs(f(x)))
+        AND f(r) = 0
+
+  is_least_positive_admissible(value: real): bool =
+    value > 0
+      AND admissible_zero_time(value)
+      AND (FORALL (r: real):
+        (r > 0 AND admissible_zero_time(r))
+          IMPLIES value <= r)
+
+  putnam_2023_a3_solution: real = pi / 2
+
+  putnam_2023_a3: bool =
+    is_least_positive_admissible(
+      putnam_2023_a3_solution)
+END putnam_2023_a3

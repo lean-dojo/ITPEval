@@ -1,0 +1,311 @@
+% Statement-only formalization of the VERINA corpus artifact
+% verina_advanced_57, catalog title "nextGreaterElement": computing for each
+% selected integer the first greater integer to its right in a duplicate-free
+% containing list, using the specified monotonic-stack program and correctness
+% contract. This file contains no proof.
+
+verina_advanced_57: THEORY
+BEGIN
+
+  map_entry: TYPE =
+    [# mapped_value: int, next_greater: int #]
+
+  stack_map_state: TYPE =
+    [# remaining_stack: list[nat],
+       built_map: list[map_entry] #]
+
+  int_list_length(values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        int_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  int_list_get_bang(
+      index: nat,
+      values: list[int]): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          int_list_get_bang(index - 1, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  int_member(
+      requested: int,
+      values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        FALSE,
+      cons(head, tail):
+        head = requested
+          OR int_member(requested, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  no_duplicate_ints(values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        NOT int_member(head, tail)
+          AND no_duplicate_ints(tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  all_members(
+      selected_values,
+      containing_values: list[int]): RECURSIVE bool =
+    CASES selected_values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        int_member(head, containing_values)
+          AND all_members(tail, containing_values)
+    ENDCASES
+  MEASURE selected_values BY <<
+
+  nextGreaterElement_precond(
+      nums1, nums2: list[int]): bool =
+    no_duplicate_ints(nums1)
+      AND no_duplicate_ints(nums2)
+      AND all_members(nums1, nums2)
+
+  processStack(
+      current_value: int,
+      nums2: list[int],
+      stack_positions: list[nat],
+      entries: list[map_entry]): RECURSIVE stack_map_state =
+    CASES stack_positions OF
+      null:
+        (# remaining_stack := null[nat],
+           built_map := entries #),
+      cons(top_index, rest):
+        LET top_value: int =
+              int_list_get_bang(top_index, nums2)
+        IN
+          IF current_value > top_value THEN
+            processStack(
+              current_value,
+              nums2,
+              rest,
+              cons(
+                (# mapped_value := top_value,
+                   next_greater := current_value #),
+                entries))
+          ELSE
+            (# remaining_stack := stack_positions,
+               built_map := entries #)
+          ENDIF
+    ENDCASES
+  MEASURE stack_positions BY <<
+
+  finalizeStack(
+      nums2: list[int],
+      stack_positions: list[nat],
+      entries: list[map_entry]): RECURSIVE list[map_entry] =
+    CASES stack_positions OF
+      null:
+        entries,
+      cons(position, rest):
+        finalizeStack(
+          nums2,
+          rest,
+          cons(
+            (# mapped_value :=
+                 int_list_get_bang(position, nums2),
+               next_greater := -1 #),
+            entries))
+    ENDCASES
+  MEASURE stack_positions BY <<
+
+  mapLoop(
+      nums2: list[int],
+      index, remaining: nat,
+      stack_positions: list[nat],
+      entries: list[map_entry]): RECURSIVE list[map_entry] =
+    IF remaining = 0 THEN
+      finalizeStack(nums2, stack_positions, entries)
+    ELSE
+      LET current_value: int =
+            int_list_get_bang(index, nums2),
+          processed: stack_map_state =
+            processStack(
+              current_value,
+              nums2,
+              stack_positions,
+              entries)
+      IN
+        mapLoop(
+          nums2,
+          index + 1,
+          remaining - 1,
+          cons(index, remaining_stack(processed)),
+          built_map(processed))
+    ENDIF
+  MEASURE remaining
+
+  buildNextGreaterMap(
+      nums2: list[int]): list[map_entry] =
+    mapLoop(
+      nums2,
+      0,
+      int_list_length(nums2),
+      null[nat],
+      null[map_entry])
+
+  findInMap(
+      requested: int,
+      entries: list[map_entry]): RECURSIVE int =
+    CASES entries OF
+      null:
+        -1,
+      cons(entry, rest):
+        IF mapped_value(entry) = requested THEN
+          next_greater(entry)
+        ELSE
+          findInMap(requested, rest)
+        ENDIF
+    ENDCASES
+  MEASURE entries BY <<
+
+  reverse_int_list_acc(
+      values, accumulator: list[int]): RECURSIVE list[int] =
+    CASES values OF
+      null:
+        accumulator,
+      cons(head, tail):
+        reverse_int_list_acc(
+          tail,
+          cons(head, accumulator))
+    ENDCASES
+  MEASURE values BY <<
+
+  reverse_int_list(values: list[int]): list[int] =
+    reverse_int_list_acc(values, null[int])
+
+  resultLoop(
+      nums1: list[int],
+      entries: list[map_entry],
+      index, remaining: nat,
+      result: list[int]): RECURSIVE list[int] =
+    IF remaining = 0 THEN
+      reverse_int_list(result)
+    ELSE
+      LET value: int =
+            int_list_get_bang(index, nums1),
+          answer: int =
+            findInMap(value, entries)
+      IN
+        resultLoop(
+          nums1,
+          entries,
+          index + 1,
+          remaining - 1,
+          cons(answer, result))
+    ENDIF
+  MEASURE remaining
+
+  % The source proof argument is computationally irrelevant. This definition
+  % is the exact proof-erased executable monotonic-stack computation.
+  nextGreaterElement(
+      nums1, nums2: list[int]): list[int] =
+    resultLoop(
+      nums1,
+      buildNextGreaterMap(nums2),
+      0,
+      int_list_length(nums1),
+      null[int])
+
+  first_greater_to_right(
+      value: int,
+      values: list[int]): RECURSIVE int =
+    CASES values OF
+      null:
+        -1,
+      cons(head, tail):
+        IF head > value THEN
+          head
+        ELSE
+          first_greater_to_right(value, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  matches_first_occurrence(
+      source_value, output_value: int,
+      containing_values: list[int]): RECURSIVE bool =
+    CASES containing_values OF
+      null:
+        FALSE,
+      cons(head, tail):
+        IF head = source_value THEN
+          output_value =
+            first_greater_to_right(source_value, tail)
+        ELSE
+          matches_first_occurrence(
+            source_value,
+            output_value,
+            tail)
+        ENDIF
+    ENDCASES
+  MEASURE containing_values BY <<
+
+  result_positions_match(
+      nums1, nums2, result: list[int],
+      index, remaining: nat): RECURSIVE bool =
+    IF remaining = 0 THEN
+      TRUE
+    ELSE
+      matches_first_occurrence(
+        int_list_get_bang(index, nums1),
+        int_list_get_bang(index, result),
+        nums2)
+        AND result_positions_match(
+          nums1,
+          nums2,
+          result,
+          index + 1,
+          remaining - 1)
+    ENDIF
+  MEASURE remaining
+
+  result_values_valid(
+      result, nums2: list[int]): RECURSIVE bool =
+    CASES result OF
+      null:
+        TRUE,
+      cons(head, tail):
+        (head = -1 OR int_member(head, nums2))
+          AND result_values_valid(tail, nums2)
+    ENDCASES
+  MEASURE result BY <<
+
+  nextGreaterElement_postcond(
+      nums1, nums2, result: list[int]): bool =
+    int_list_length(result) = int_list_length(nums1)
+      AND result_positions_match(
+        nums1,
+        nums2,
+        result,
+        0,
+        int_list_length(nums1))
+      AND result_values_valid(result, nums2)
+
+  nextGreaterElement_spec_satisfied: bool =
+    FORALL (nums1, nums2: list[int]):
+      nextGreaterElement_precond(nums1, nums2)
+        IMPLIES
+          nextGreaterElement_postcond(
+            nums1,
+            nums2,
+            nextGreaterElement(nums1, nums2))
+
+END verina_advanced_57

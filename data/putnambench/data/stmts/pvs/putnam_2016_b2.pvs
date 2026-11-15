@@ -1,0 +1,125 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2016_b2:
+% the asymptotic count of positive integers that are squares or lie a square
+% distance from a nearest square has solution pair (3/4, 4/3), or no positive
+% exponent and limit pair exists. This file contains no proof.
+
+putnam_2016_b2: THEORY
+BEGIN
+  real_sequence: TYPE = [nat -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  nat_factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * nat_factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  exponential_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        exponential_partial(x, count - 1)
+          + safe_div(
+              x ^ index,
+              nat_factorial(index) :: real)
+    ENDIF
+  MEASURE count
+
+  real_exponential(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat):
+            exponential_partial(x, count),
+          value))
+
+  natural_log(x: real): real =
+    IF x > 0 THEN
+      epsilon(
+        LAMBDA (value: real):
+          real_exponential(value) = x)
+    ELSE
+      0
+    ENDIF
+
+  real_power(base, exponent: real): real =
+    IF base > 0 THEN
+      real_exponential(exponent * natural_log(base))
+    ELSIF base = 0 AND exponent = 0 THEN
+      1
+    ELSE
+      0
+    ENDIF
+
+  perfect_square(value: nat): bool =
+    EXISTS (root: nat):
+      value = root ^ 2
+
+  nat_distance(left, right: nat): nat =
+    IF left >= right THEN
+      left - right
+    ELSE
+      right - left
+    ENDIF
+
+  squarish(value: nat): bool =
+    perfect_square(value)
+      OR EXISTS (nearest_root: nat):
+        perfect_square(
+          nat_distance(value, nearest_root ^ 2))
+          AND FORALL (root: nat):
+            nat_distance(value, nearest_root ^ 2)
+              <= nat_distance(value, root ^ 2)
+
+  squarish_count(upper: nat): RECURSIVE nat =
+    IF upper = 0 THEN
+      0
+    ELSE
+      squarish_count(upper - 1)
+        + IF squarish(upper) THEN 1 ELSE 0 ENDIF
+    ENDIF
+  MEASURE upper
+
+  normalized_count(alpha: real): real_sequence =
+    LAMBDA (upper: nat):
+      IF upper = 0 THEN
+        0
+      ELSE
+        safe_div(
+          squarish_count(upper) :: real,
+          real_power(upper :: real, alpha))
+      ENDIF
+
+  admissible_pair(alpha, beta: real): bool =
+    alpha > 0
+      AND beta > 0
+      AND converges_to(normalized_count(alpha), beta)
+
+  solution_alpha: real = 3 / 4
+  solution_beta: real = 4 / 3
+
+  putnam_2016_b2: bool =
+    (FORALL (alpha, beta: real):
+      admissible_pair(alpha, beta)
+        IFF
+          (alpha = solution_alpha
+            AND beta = solution_beta))
+      OR NOT EXISTS (alpha, beta: real):
+        admissible_pair(alpha, beta)
+END putnam_2016_b2

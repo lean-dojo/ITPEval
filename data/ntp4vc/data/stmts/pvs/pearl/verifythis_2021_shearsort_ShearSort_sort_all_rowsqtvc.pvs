@@ -1,0 +1,228 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/verifythis_2021_shearsort_ShearSort_sort_all_rowsqtvc: the
+% verification condition for sorting every row of an integer matrix in
+% alternating ascending and descending order while preserving each row's
+% multiplicities. This file contains no proof.
+
+verifythis_2021_shearsort_ShearSort_sort_all_rowsqtvc: THEORY
+BEGIN
+
+  matrix_int: TYPE =
+    [# rows: nat, columns: nat, elts: [int, int -> int] #]
+
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  matrix_rows(m: matrix_int): int =
+    rows(m)
+
+  matrix_columns(m: matrix_int): int =
+    columns(m)
+
+  interval_count_from(
+      predicate: [int -> bool],
+      current: int,
+      remaining: nat): RECURSIVE nat =
+    IF remaining = 0 THEN
+      0
+    ELSE
+      (IF predicate(current) THEN 1 ELSE 0 ENDIF)
+        + interval_count_from(predicate, current + 1, remaining - 1)
+    ENDIF
+  MEASURE remaining
+
+  numof(
+      predicate: [int -> bool],
+      lower_bound, upper_bound: int): int =
+    interval_count_from(
+      predicate,
+      lower_bound,
+      int_to_nat(upper_bound - lower_bound))
+
+  interval_permutation(
+      first, second: [int -> int],
+      lower_bound, upper_bound: int): bool =
+    FORALL (value: int):
+      numof(
+        LAMBDA (index: int): first(index) = value,
+        lower_bound,
+        upper_bound)
+      =
+      numof(
+        LAMBDA (index: int): second(index) = value,
+        lower_bound,
+        upper_bound)
+
+  % Why3 ComputerDivision uses truncating signed integer division. The row
+  % indices tested for parity in this VC are nonnegative, but these helpers
+  % preserve the source operation on all integer arguments.
+  computer_div(dividend, divisor: int): int =
+    IF divisor = 0 THEN
+      0
+    ELSIF 0 <= dividend THEN
+      IF 0 < divisor THEN
+        ndiv(int_to_nat(dividend), int_to_nat(divisor))
+      ELSE
+        -ndiv(int_to_nat(dividend), int_to_nat(-divisor))
+      ENDIF
+    ELSE
+      IF 0 < divisor THEN
+        -ndiv(int_to_nat(-dividend), int_to_nat(divisor))
+      ELSE
+        ndiv(int_to_nat(-dividend), int_to_nat(-divisor))
+      ENDIF
+    ENDIF
+
+  computer_mod(dividend, divisor: int): int =
+    dividend - divisor * computer_div(dividend, divisor)
+
+  same_shape(first, second: matrix_int): bool =
+    matrix_rows(first) = matrix_rows(second)
+      AND matrix_columns(first) = matrix_columns(second)
+
+  row_permutation(
+      after, before: matrix_int,
+      row_index: int): bool =
+    interval_permutation(
+      LAMBDA (column_index: int):
+        elts(after)(row_index, column_index),
+      LAMBDA (column_index: int):
+        elts(before)(row_index, column_index),
+      0,
+      matrix_columns(after))
+
+  rows_permuted_to(
+      current, original: matrix_int): bool =
+    FORALL (row_index: int):
+      (0 <= row_index
+        AND row_index < matrix_rows(current))
+      IMPLIES
+        row_permutation(current, original, row_index)
+
+  rows_sorted_before(
+      current: matrix_int,
+      limit: int): bool =
+    FORALL (row_index, lower_column, upper_column: int):
+      ((0 <= row_index AND row_index < limit)
+        AND 0 <= lower_column
+        AND lower_column <= upper_column
+        AND upper_column < matrix_columns(current))
+      IMPLIES
+        IF computer_mod(row_index, 2) = 0 THEN
+          elts(current)(row_index, lower_column)
+            <= elts(current)(row_index, upper_column)
+        ELSE
+          elts(current)(row_index, upper_column)
+            <= elts(current)(row_index, lower_column)
+        ENDIF
+
+  rows_postcondition(
+      current, original: matrix_int): bool =
+    rows_permuted_to(current, original)
+      AND rows_sorted_before(current, matrix_rows(current))
+
+  other_rows_unchanged(
+      after, before: matrix_int,
+      selected_row: int): bool =
+    FORALL (row_index, column_index: int):
+      (0 <= row_index
+        AND row_index < matrix_rows(after)
+        AND (0 <= column_index
+          AND column_index < matrix_columns(after))
+        AND NOT (row_index = selected_row))
+      IMPLIES
+        elts(after)(row_index, column_index)
+          = elts(before)(row_index, column_index)
+
+  selected_row_sorted(
+      current: matrix_int,
+      selected_row: int): bool =
+    FORALL (lower_column, upper_column: int):
+      (0 <= lower_column
+        AND lower_column <= upper_column
+        AND upper_column < matrix_columns(current))
+      IMPLIES
+        IF computer_mod(selected_row, 2) = 0 THEN
+          elts(current)(selected_row, lower_column)
+            <= elts(current)(selected_row, upper_column)
+        ELSE
+          elts(current)(selected_row, upper_column)
+            <= elts(current)(selected_row, lower_column)
+        ENDIF
+
+  selected_row_permuted(
+      after, before: matrix_int,
+      selected_row: int): bool =
+    row_permutation(after, before, selected_row)
+
+  row_step_relation(
+      before, after: matrix_int,
+      selected_row: int): bool =
+    other_rows_unchanged(after, before, selected_row)
+      AND selected_row_sorted(after, selected_row)
+      AND selected_row_permuted(after, before, selected_row)
+
+  row_iteration_result(
+      original, before, after: matrix_int,
+      selected_row: int): bool =
+    row_step_relation(before, after, selected_row)
+      IMPLIES
+        rows_permuted_to(after, original)
+          AND rows_sorted_before(after, selected_row + 1)
+
+  row_iteration(
+      original, current: matrix_int,
+      selected_row: int): bool =
+    NOT (2 = 0)
+      AND (0 <= selected_row
+        AND selected_row < matrix_rows(current))
+      AND
+      (FORALL (next: matrix_int):
+        same_shape(next, current)
+        IMPLIES
+          row_iteration_result(
+            original, current, next, selected_row))
+
+  row_loop_iterations(
+      original, current: matrix_int,
+      upper: int): bool =
+    FORALL (selected_row: int):
+      ((0 <= selected_row AND selected_row <= upper)
+        AND rows_permuted_to(current, original)
+        AND rows_sorted_before(current, selected_row))
+      IMPLIES
+        row_iteration(original, current, selected_row)
+
+  row_loop_completion(
+      original, current: matrix_int,
+      upper: int): bool =
+    (rows_permuted_to(current, original)
+      AND rows_sorted_before(current, upper + 1))
+    IMPLIES
+      rows_postcondition(current, original)
+
+  row_loop_vc(
+      original, initial: matrix_int,
+      upper: int): bool =
+    FORALL (current: matrix_int):
+      same_shape(current, initial)
+      IMPLIES
+        row_loop_iterations(original, current, upper)
+          AND row_loop_completion(original, current, upper)
+
+  initial_state(original: matrix_int): bool =
+    rows_permuted_to(original, original)
+      AND rows_sorted_before(original, 0)
+
+  sort_all_rows_vc: bool =
+    FORALL (original: matrix_int):
+      LET upper: int = matrix_rows(original) - 1 IN
+        (0 <= upper + 1
+          IMPLIES
+            initial_state(original)
+              AND row_loop_vc(original, original, upper))
+        AND
+        (upper + 1 < 0
+          IMPLIES rows_postcondition(original, original))
+
+END verifythis_2021_shearsort_ShearSort_sort_all_rowsqtvc

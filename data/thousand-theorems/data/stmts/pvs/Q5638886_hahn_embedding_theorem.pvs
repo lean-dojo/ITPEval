@@ -1,0 +1,159 @@
+% Statement-only formalization of the Thousand Theorems corpus artifact Q5638886,
+% "Hahn embedding theorem": every linearly ordered abelian group embeds
+% injectively by an order-preserving additive homomorphism into the real Hahn
+% series indexed by its finite Archimedean classes, preserving each element's
+% leading Archimedean class. This file contains no proof.
+
+Q5638886_hahn_embedding_theorem[
+  M: TYPE+,
+  zeroM: M,
+  negM: [M -> M],
+  addM: [M, M -> M],
+  leM: [M, M -> bool]
+]: THEORY
+BEGIN
+  arch_class_set: TYPE = [M -> bool]
+  arch_class_family: TYPE = [arch_class_set -> bool]
+  hahn_function: TYPE = [arch_class_set -> real]
+  embedding_function: TYPE = [M -> hahn_function]
+
+  additive_commutative_group_laws: bool =
+    (FORALL (x, y, z: M):
+      addM(addM(x, y), z) = addM(x, addM(y, z)))
+      AND
+    (FORALL (x, y: M):
+      addM(x, y) = addM(y, x))
+      AND
+    (FORALL (x: M):
+      addM(zeroM, x) = x
+        AND addM(negM(x), x) = zeroM)
+
+  linear_order_laws: bool =
+    (FORALL (x: M):
+      leM(x, x))
+      AND
+    (FORALL (x, y, z: M):
+      leM(x, y) AND leM(y, z) IMPLIES leM(x, z))
+      AND
+    (FORALL (x, y: M):
+      leM(x, y) AND leM(y, x) IMPLIES x = y)
+      AND
+    (FORALL (x, y: M):
+      leM(x, y) OR leM(y, x))
+
+  ordered_add_monoid_laws: bool =
+    FORALL (x, y, z: M):
+      leM(x, y) IMPLIES leM(addM(z, x), addM(z, y))
+
+  linearly_ordered_abelian_group: bool =
+    additive_commutative_group_laws
+      AND linear_order_laws
+      AND ordered_add_monoid_laws
+
+  group_abs(x: M): M =
+    IF leM(zeroM, x) THEN x ELSE negM(x) ENDIF
+
+  natural_multiple(n: nat, x: M): RECURSIVE M =
+    IF n = 0 THEN
+      zeroM
+    ELSE
+      addM(x, natural_multiple(n - 1, x))
+    ENDIF
+  MEASURE n
+
+  archimedean_le(x, y: M): bool =
+    EXISTS (n: nat):
+      leM(group_abs(y), natural_multiple(n, group_abs(x)))
+
+  archimedean_equivalent(x, y: M): bool =
+    archimedean_le(x, y) AND archimedean_le(y, x)
+
+  archimedean_class(x: M): arch_class_set =
+    LAMBDA (y: M): archimedean_equivalent(x, y)
+
+  finite_archimedean_class(C: arch_class_set): bool =
+    EXISTS (x: M):
+      x /= zeroM AND C = archimedean_class(x)
+
+  archimedean_class_le(C, D: arch_class_set): bool =
+    EXISTS (x, y: M):
+      x /= zeroM
+        AND y /= zeroM
+        AND C = archimedean_class(x)
+        AND D = archimedean_class(y)
+        AND archimedean_le(x, y)
+
+  archimedean_class_lt(C, D: arch_class_set): bool =
+    archimedean_class_le(C, D) AND C /= D
+
+  support_member(s: hahn_function, C: arch_class_set): bool =
+    finite_archimedean_class(C) AND s(C) /= 0
+
+  support_well_ordered(s: hahn_function): bool =
+    FORALL (U: arch_class_family):
+      ((EXISTS (C: arch_class_set): U(C))
+        AND
+       (FORALL (C: arch_class_set):
+         U(C) IMPLIES support_member(s, C)))
+      IMPLIES
+        EXISTS (least: arch_class_set):
+          U(least)
+            AND
+          (FORALL (C: arch_class_set):
+            U(C) IMPLIES archimedean_class_le(least, C))
+
+  is_hahn_series(s: hahn_function): bool =
+    (FORALL (C: arch_class_set):
+      NOT finite_archimedean_class(C) IMPLIES s(C) = 0)
+      AND support_well_ordered(s)
+
+  lexicographically_less(s, t: hahn_function): bool =
+    EXISTS (pivot: arch_class_set):
+      finite_archimedean_class(pivot)
+        AND
+      (FORALL (earlier: arch_class_set):
+        finite_archimedean_class(earlier)
+          AND archimedean_class_lt(earlier, pivot)
+        IMPLIES s(earlier) = t(earlier))
+        AND s(pivot) < t(pivot)
+
+  lexicographically_le(s, t: hahn_function): bool =
+    s = t OR lexicographically_less(s, t)
+
+  leading_class_matches(a: M, s: hahn_function): bool =
+    IF a = zeroM THEN
+      FORALL (C: arch_class_set): s(C) = 0
+    ELSE
+      s(archimedean_class(a)) /= 0
+        AND
+      (FORALL (C: arch_class_set):
+        finite_archimedean_class(C)
+          AND archimedean_class_lt(C, archimedean_class(a))
+        IMPLIES s(C) = 0)
+    ENDIF
+
+  is_ordered_additive_embedding(f: embedding_function): bool =
+    (FORALL (x: M):
+      is_hahn_series(f(x)))
+      AND
+    (FORALL (C: arch_class_set):
+      f(zeroM)(C) = 0)
+      AND
+    (FORALL (x, y: M), (C: arch_class_set):
+      f(addM(x, y))(C) = f(x)(C) + f(y)(C))
+      AND
+    (FORALL (x, y: M):
+      leM(x, y) IMPLIES lexicographically_le(f(x), f(y)))
+      AND
+    (FORALL (x, y: M):
+      f(x) = f(y) IMPLIES x = y)
+      AND
+    (FORALL (x: M):
+      leading_class_matches(x, f(x)))
+
+  hahnEmbedding_isOrderedAddMonoid: bool =
+    linearly_ordered_abelian_group
+      IMPLIES
+        EXISTS (f: embedding_function):
+          is_ordered_additive_embedding(f)
+END Q5638886_hahn_embedding_theorem

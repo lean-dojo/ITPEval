@@ -1,97 +1,61 @@
-# Data
+# Benchmark sources
 
-This document describes the benchmark dataset structure across two axes:
+The primary statement corpus has 2,634 dataset-scoped items represented in all
+ten provers, across Babel-formal, Hundred Theorems, miniF2F, PutnamBench, nTP4VC,
+Logipedia, Thousand Theorems, and VERINA. See
+[the exact coverage description](../docs/new_data_description.md).
 
-- **Tier** — A (controlled/axiomatized) vs. B (ecosystem-backed)
-- **Task** — theorem-only (`stmts`: statement + sorry placeholder) vs. theorem-and-proof (`proofs`: full proof file)
+## Source layout
 
-## Benchmarks
+Statement sources use `data/<dataset>/data/stmts/<prover>/`, with source metadata
+in `data/<dataset>/data/index.json`. miniF2F keeps `test/` and `valid/` subdirectories;
+nTP4VC and Logipedia preserve nested source identities. Prover IDs are `lean4`,
+`rocq`, `isabelle`, `hol-light`, `acl2`, `agda`, `hol4`, `metamath`, `mizar`, and `pvs`.
 
-| Benchmark | Tier | Theorems | ITPs | Notes |
-|---|---|---|---|---|
-| **babel-formal** | A | 16 | isabelle, lean4, rocq, hol-light | Axiomatized, self-contained (no library imports) |
-| **hundred-theorems** | B | 58 (4-way) | isabelle, lean4, rocq, hol-light | Freek's 100 theorems list, scraped from upstream libraries |
-| **minif2f** | B | 316 (4-way) | isabelle, lean4, rocq, hol-light | Competition math (IMO, Putnam, AIME); already sorry-stripped at source |
+The source directories also retain candidate items outside the ten-way intersection.
+Only the 2,634 identities in `eval/subsets/extended_stmts_2634.json` are exported.
+The 59 excluded candidates lack ordinary ACL2 statements. ACL2r files are not used.
+miniF2F aliases and nTP4VC filename normalization are explicit in
+`extended_inventory.py`; supporting modules and alias files are not extra items.
 
-**Not in current eval:**
-- `putnambench` — only 3 ITP variants (no HOL-Light); excluded for uniform 4-ITP coverage
-- `ntp4vc` — verification conditions from Why3; very large, file-path-based rather than inlined
+nTP4VC includes the selected 600 candidate identities, the selection list, and
+Why3 source/repair records. Source statements that were symlinks in the development
+checkout are materialized as ordinary files. No external git checkout is needed
+to build or audit this release. Putnam metadata used by the audit is bundled in
+`putnambench/data/upstream_problem_metadata.json`.
 
-## Raw File Structure (`data/`)
+Archived source exports stay at `data/{babel-formal,hundred-theorems,minif2f}/`
+under their existing `stmts/` and `proofs/` directories. They provide provenance
+for retained reference and proof files; statement runs use the ten-way membership.
 
-Each benchmark lives under `data/<source>/`:
-
-```
-data/
-  babel-formal/
-    proofs/                     # full proofs (one file per topic per ITP)
-      isabelle/                 # 16 .thy files
-      lean4/                    # 16 .lean files
-      rocq/                     # 16 .v files
-      hol-light/                # 16 .ml files
-    stmts/                      # sorry-stripped versions
-      isabelle/
-      lean4/
-      rocq/
-      hol-light/
-
-  hundred-theorems/
-    proofs/                     # full proofs scraped from upstream
-      hol-light/                # 86 theorems
-      isabelle/                 # 88 theorems
-      lean4/                    # 77 theorems
-      rocq/                     # 79 theorems
-    stmts/                      # sorry-stripped versions
-      hol-light/
-      isabelle/
-      lean4/
-      rocq/
-
-  minif2f/
-    proofs/                     # already sorry-stripped at source
-      hol-light/
-        test/  valid/
-      isabelle/
-        test/  valid/
-      lean4/
-        test/  valid/
-      rocq/
-        test/  valid/
-```
-
-**Convention:** `proofs/` contains the original scraped or authored files. `stmts/` mirrors `proofs/` with all proof bodies replaced by the appropriate placeholder (`sorry`, `Admitted`, etc.).
-
-Third-party license texts for included or derived benchmark data are collected in `data/third_party_licenses/`.
-
-## Eval JSON Files (`eval/data/`)
-
-The eval pipeline consumes two flat JSON files built from the above raw data:
-
-| File | Content |
-|---|---|
-| `eval/data/stmts.json` | Sorry-stripped theorem statements |
-| `eval/data/proofs.json` | Full proof files |
-
-Both files have the same schema — one JSON array with one record per (theorem, ITP) pair:
-
-```json
-[
-  {
-    "theorem_id": 1,
-    "title":      "circle_average",
-    "source":     "babel-formal",
-    "tier":       "a",
-    "prover":     "lean4",
-    "content":    "<full file text>"
-  },
-  ...
-]
-```
-
-`theorem_id` is globally unique (1–390). Only theorems in the 4-way intersection (all 4 ITPs) are included: babel-formal 1–16, hundred-theorems 17–74, minif2f 75–390.
-
-To regenerate the eval JSONs from raw data:
+## Rebuilding exports
 
 ```bash
-python3 data/build_eval_jsons.py
+python3 data/build_eval_jsons.py          # statement shards
+python3 data/build_eval_jsons.py --check  # read-only byte-for-byte consistency check
+python3 docs/audit_extended_dataset.py    # read-only inventory and source breakdowns
 ```
+
+The builder preserves assigned IDs for existing identities and allocates
+new IDs above 390. The checked-in extended membership freezes those assignments:
+a changed identity/path map is rejected for explicit review. Exports include the
+source path and SHA256 for every representation, and the manifest hashes each shard.
+
+The archived `eval/data/stmts.json` reference export and `proofs.json` proof
+records are preserved as separate artifacts; the statement builder only writes
+the ten-prover shards and membership manifest.
+
+## Interpretation
+
+Statements can contain multiple declarations, axioms inherited from a source
+signature, or complete program contracts. Presence in all ten systems is an
+inventory criterion, not an equivalence or proof certificate. The
+`tier` field uses `a` for Babel's controlled axiomatized files and `b` for the
+other datasets; it is a repository grouping, not an upstream difficulty label.
+
+The available proof data contains 74 items / 296 records in four provers.
+Statement coverage does not imply proof availability. miniF2F's test/validation
+split and nTP4VC's source-level leakage constraints remain relevant.
+
+See [the record schema](../eval/data/README.md) and
+[third-party provenance and notices](third_party_licenses/README.md).

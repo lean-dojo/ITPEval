@@ -1,0 +1,173 @@
+% Statement-only formalization of the VERINA corpus artifact
+% verina_advanced_52, catalog title "minOperations": an executable reverse-list
+% scan counts the minimum removals from the end needed to collect every natural
+% number from 1 through k under the source coverage precondition.
+% This file contains no proof.
+
+verina_advanced_52: THEORY
+BEGIN
+
+  nat_range_from(
+      start, count: nat): RECURSIVE list[nat] =
+    IF count = 0 THEN
+      null
+    ELSE
+      cons(
+        start,
+        nat_range_from(start + 1, count - 1))
+    ENDIF
+  MEASURE count
+
+  minOperations_target_nums(k: nat): list[nat] =
+    nat_range_from(1, k)
+
+  nat_list_elem(
+      sought: nat,
+      values: list[nat]): RECURSIVE bool =
+    CASES values OF
+      null:
+        FALSE,
+      cons(head, tail):
+        head = sought
+          OR nat_list_elem(sought, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  all_targets_present(
+      targets, values: list[nat]): RECURSIVE bool =
+    CASES targets OF
+      null:
+        TRUE,
+      cons(head, tail):
+        nat_list_elem(head, values)
+          AND all_targets_present(tail, values)
+    ENDCASES
+  MEASURE targets BY <<
+
+  minOperations_precond(
+      nums: list[nat],
+      k: nat): bool =
+    all_targets_present(
+      minOperations_target_nums(k),
+      nums)
+
+  reverse_nat_list_acc(
+      values, accumulator: list[nat]):
+        RECURSIVE list[nat] =
+    CASES values OF
+      null:
+        accumulator,
+      cons(head, tail):
+        reverse_nat_list_acc(
+          tail,
+          cons(head, accumulator))
+    ENDCASES
+  MEASURE values BY <<
+
+  reverse_nat_list(values: list[nat]): list[nat] =
+    reverse_nat_list_acc(values, null)
+
+  minOperations_loop(
+      remaining, collected: list[nat],
+      collected_count, ops, k: nat): RECURSIVE nat =
+    CASES remaining OF
+      null:
+        ops,
+      cons(head, tail):
+        LET next_ops: nat = ops + 1
+        IN
+          IF head > 0
+               AND head <= k
+               AND NOT nat_list_elem(head, collected)
+          THEN
+            LET next_collected: list[nat] =
+                  cons(head, collected),
+                next_count: nat =
+                  collected_count + 1
+            IN
+              IF next_count = k THEN
+                next_ops
+              ELSE
+                minOperations_loop(
+                  tail,
+                  next_collected,
+                  next_count,
+                  next_ops,
+                  k)
+              ENDIF
+          ELSE
+            minOperations_loop(
+              tail,
+              collected,
+              collected_count,
+              next_ops,
+              k)
+          ENDIF
+    ENDCASES
+  MEASURE remaining BY <<
+
+  % The Lean precondition proof argument is computationally irrelevant. This
+  % definition is its exact proof-erased executable computation.
+  minOperations(
+      nums: list[nat],
+      k: nat): nat =
+    IF k = 0 THEN
+      0
+    ELSE
+      minOperations_loop(
+        reverse_nat_list(nums),
+        null,
+        0,
+        0,
+        k)
+    ENDIF
+
+  take_nat_list(
+      count: nat,
+      values: list[nat]): RECURSIVE list[nat] =
+    IF count = 0 THEN
+      null
+    ELSE
+      CASES values OF
+        null:
+          null,
+        cons(head, tail):
+          cons(
+            head,
+            take_nat_list(count - 1, tail))
+      ENDCASES
+    ENDIF
+  MEASURE count
+
+  minOperations_postcond(
+      nums: list[nat],
+      k, result: nat): bool =
+    LET reversed: list[nat] =
+          reverse_nat_list(nums),
+        targets: list[nat] =
+          minOperations_target_nums(k),
+        processed: list[nat] =
+          take_nat_list(result, reversed),
+        collected_all: bool =
+          all_targets_present(targets, processed),
+        is_minimal: bool =
+          IF result > 0 THEN
+            NOT all_targets_present(
+              targets,
+              take_nat_list(result - 1, reversed))
+          ELSE
+            k = 0
+          ENDIF
+    IN
+      collected_all AND is_minimal
+
+  minOperations_spec_satisfied: bool =
+    FORALL (nums: list[nat], k: nat):
+      minOperations_precond(nums, k)
+        IMPLIES
+          minOperations_postcond(
+            nums,
+            k,
+            minOperations(nums, k))
+
+END verina_advanced_52

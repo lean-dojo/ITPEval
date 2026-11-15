@@ -1,0 +1,209 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% frama_c/verker/strspn_Why3_ide_VCstrspn_post_2_goal0:
+% a strspn postcondition verification condition concluding that the source
+% byte at the span offset differs from a constrained accept-string byte.
+% This file contains no proof.
+
+strspn_Why3_ide_VCstrspn_post_2_goal0: THEORY
+BEGIN
+  addr: TYPE = [# base: int, offset: int #]
+  allocation_table: TYPE = [int -> int]
+  integer_memory: TYPE = [addr -> int]
+  integer_conversion: TYPE = [int -> int]
+  address_relation: TYPE = [addr, addr -> bool]
+  string_length_function: TYPE = [integer_memory, addr -> int]
+  string_span_function: TYPE = [addr, addr -> int]
+
+  shift(p: addr, k: int): addr =
+    (# base := base(p), offset := offset(p) + k #)
+
+  is_sint8(value: int): bool =
+    -128 <= value AND value < 128
+
+  is_sint64(value: int): bool =
+    -9223372036854775808 <= value AND value < 9223372036854775808
+
+  is_uint64(value: int): bool =
+    0 <= value AND value < 18446744073709551616
+
+  valid_rw(
+      malloc_0: allocation_table,
+      p: addr,
+      size: int): bool =
+    0 < size IMPLIES
+      0 < base(p)
+        AND 0 <= offset(p)
+        AND offset(p) + size <= malloc_0(base(p))
+
+  p_valid_str(
+      malloc_0: allocation_table,
+      mchar_0: integer_memory,
+      s: addr): bool =
+    EXISTS (terminator: int):
+      mchar_0(shift(s, terminator)) = 0
+        AND is_uint64(terminator)
+        AND valid_rw(malloc_0, shift(s, 0), 1 + terminator)
+        AND (FORALL (j: int):
+          j <= terminator IMPLIES
+            is_sint8(mchar_0(shift(s, j))))
+
+  address_order_laws(
+      addr_le, addr_lt: address_relation): bool =
+    (FORALL (p, q: addr):
+      base(p) = base(q) IMPLIES
+        (addr_le(p, q) IFF offset(p) <= offset(q)))
+      AND
+    (FORALL (p, q: addr):
+      base(p) = base(q) IMPLIES
+        (addr_lt(p, q) IFF offset(p) < offset(q)))
+
+  int64_conversion_laws(
+      to_uint64, to_sint64: integer_conversion): bool =
+    (FORALL (value: int):
+      is_uint64(to_uint64(value)))
+      AND
+    (FORALL (value: int):
+      is_uint64(value) IMPLIES to_uint64(value) = value)
+      AND
+    (FORALL (value: int):
+      to_uint64(to_uint64(value)) = to_uint64(value))
+      AND
+    (FORALL (value: int):
+      is_sint64(to_sint64(value)))
+      AND
+    (FORALL (value: int):
+      is_sint64(value) IMPLIES to_sint64(value) = value)
+      AND
+    (FORALL (value: int):
+      to_sint64(to_sint64(value)) = to_sint64(value))
+      AND
+    (FORALL (value: int):
+      to_sint64(to_uint64(value)) = to_sint64(value))
+
+  strlen_laws(
+      to_uint64: integer_conversion,
+      l_strlen: string_length_function): bool =
+    (FORALL (mchar_0: integer_memory), (s: addr):
+      IF mchar_0(shift(s, 0)) = 0
+      THEN l_strlen(mchar_0, s) = 0
+      ELSE
+        to_uint64(1 + l_strlen(mchar_0, shift(s, 1))) =
+          l_strlen(mchar_0, s)
+      ENDIF)
+      AND
+    (FORALL (mchar_0: integer_memory), (s: addr):
+      is_uint64(l_strlen(mchar_0, s)))
+
+  p_in_array(
+      mchar_0: integer_memory,
+      s: addr,
+      c: int,
+      addr_le, addr_lt: address_relation,
+      l_strlen: string_length_function): bool =
+    EXISTS (candidate: addr):
+      mchar_0(candidate) = c
+        AND addr_le(s, candidate)
+        AND addr_lt(
+          candidate, shift(s, l_strlen(mchar_0, s)))
+
+  strspn_laws(
+      l_strspn: string_span_function,
+      l_strlen: string_length_function,
+      addr_le, addr_lt: address_relation): bool =
+    (FORALL
+      (mchar_0: integer_memory),
+      (s, accept_0: addr):
+      mchar_0(s) = 0 IMPLIES
+        l_strspn(s, accept_0) = 0)
+      AND
+    (FORALL
+      (mchar_0: integer_memory),
+      (s, accept_0: addr):
+      NOT (mchar_0(s) = 0) IMPLIES
+      NOT p_in_array(
+        mchar_0, accept_0, mchar_0(s),
+        addr_le, addr_lt, l_strlen) IMPLIES
+        l_strspn(s, accept_0) = 0)
+      AND
+    (FORALL
+      (mchar_0: integer_memory),
+      (s, accept_0: addr):
+      NOT (mchar_0(s) = 0) IMPLIES
+      p_in_array(
+        mchar_0, accept_0, mchar_0(s),
+        addr_le, addr_lt, l_strlen) IMPLIES
+        1 + l_strspn(shift(s, 1), accept_0) =
+          l_strspn(s, accept_0))
+
+  goal0: bool =
+    FORALL
+      (region: [int -> int]),
+      (linked: [allocation_table -> bool]),
+      (sconst: [integer_memory -> bool]),
+      (addr_le, addr_lt: address_relation),
+      (to_uint64, to_sint64: integer_conversion),
+      (l_strlen: string_length_function),
+      (l_strspn: string_span_function),
+      (a_1, a: addr),
+      (t_1: integer_memory),
+      (a_2, a_3: addr),
+      (i: int),
+      (t: allocation_table),
+      (a_5, a_4: addr):
+      address_order_laws(addr_le, addr_lt) IMPLIES
+      int64_conversion_laws(to_uint64, to_sint64) IMPLIES
+      strlen_laws(to_uint64, l_strlen) IMPLIES
+      strspn_laws(
+        l_strspn, l_strlen, addr_le, addr_lt) IMPLIES
+      LET x: int = offset(a_1),
+          x_1: int = offset(a),
+          x_2: int = l_strlen(t_1, a),
+          x_3: int = t_1(a_1),
+          x_4: int = t_1(a_2),
+          a_6: addr = shift(a_3, l_strlen(t_1, a_3)),
+          x_5: int = i + x_1
+      IN
+        x + l_strspn(a_1, a_3) =
+          x_1 + l_strspn(a, a_3) IMPLIES
+        x_1 <= x IMPLIES
+        region(base(a)) <= 0 IMPLIES
+        region(base(a_3)) <= 0 IMPLIES
+        x <= x_1 + x_2 IMPLIES
+        linked(t) IMPLIES
+        sconst(t_1) IMPLIES
+        is_uint64(i) IMPLIES
+        addr_le(a, a_1) IMPLIES
+        addr_le(a_3, a_5) IMPLIES
+        is_sint8(x_3) IMPLIES
+        is_sint8(x_4) IMPLIES
+        p_valid_str(t, t_1, a) IMPLIES
+        p_valid_str(t, t_1, a_1) IMPLIES
+        p_valid_str(t, t_1, a_3) IMPLIES
+        is_uint64(x - x_1) IMPLIES
+        addr_lt(a_5, a_6) IMPLIES
+        addr_le(a_1, shift(a, x_2)) IMPLIES
+        (IF x_3 = 0
+         THEN x_5 = x
+         ELSE
+           a_2 = a_1
+             AND t_1(a_4) = 0
+             AND x_5 = offset(a_2)
+             AND addr_le(a_3, a_4)
+             AND p_valid_str(t, t_1, a_4)
+             AND NOT p_in_array(
+               t_1, a_3, x_4, addr_le, addr_lt, l_strlen)
+             AND addr_le(a_4, a_6)
+             AND (FORALL (a_7: addr):
+               addr_lt(a_7, a_4) IMPLIES
+               addr_le(a_3, a_7) IMPLIES
+               NOT (x_4 = t_1(a_7)))
+         ENDIF) IMPLIES
+        (FORALL (a_7: addr):
+          addr_lt(a_7, a_1) IMPLIES
+          addr_le(a, a_7) IMPLIES
+          (EXISTS (a_8: addr):
+            t_1(a_7) = t_1(a_8)
+              AND addr_le(a_3, a_8)
+              AND addr_lt(a_8, a_6))) IMPLIES
+        NOT (t_1(shift(a, i)) = t_1(a_5))
+END strspn_Why3_ide_VCstrspn_post_2_goal0

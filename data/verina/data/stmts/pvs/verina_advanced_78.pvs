@@ -1,0 +1,184 @@
+% Statement-only formalization of the VERINA corpus artifact
+% verina_advanced_78, catalog title "twoSum": scanning an integer list for
+% the unique index pair whose entries sum to a target, with the exact
+% executable search and its index-and-sum correctness contract. This file
+% contains no proof.
+
+verina_advanced_78: THEORY
+BEGIN
+
+  nat_option: DATATYPE
+  BEGIN
+    NoNat: NoNat?
+    SomeNat(option_value: nat): SomeNat?
+  END nat_option
+
+  nat_pair: TYPE =
+    [# first_index: nat,
+       second_index: nat #]
+
+  int_list_length(values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        int_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  int_list_get_bang(
+      index: nat,
+      values: list[int]): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          int_list_get_bang(index - 1, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  append_int_lists(
+      first, second: list[int]): RECURSIVE list[int] =
+    CASES first OF
+      null:
+        second,
+      cons(head, tail):
+        cons(
+          head,
+          append_int_lists(tail, second))
+    ENDCASES
+  MEASURE first BY <<
+
+  add_to_each(
+      addend: int,
+      values: list[int]): RECURSIVE list[int] =
+    CASES values OF
+      null:
+        null[int],
+      cons(head, tail):
+        cons(
+          addend + head,
+          add_to_each(addend, tail))
+    ENDCASES
+  MEASURE values BY <<
+
+  % This is exactly the source List.range/flatMap/map enumeration: for each
+  % index in increasing order, list its sums with all strictly later entries.
+  pairwiseSum(nums: list[int]): RECURSIVE list[int] =
+    CASES nums OF
+      null:
+        null[int],
+      cons(head, tail):
+        append_int_lists(
+          add_to_each(head, tail),
+          pairwiseSum(tail))
+    ENDCASES
+  MEASURE nums BY <<
+
+  count_int(
+      requested: int,
+      values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        (IF head = requested THEN 1 ELSE 0 ENDIF)
+          + count_int(requested, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  twoSum_precond(
+      nums: list[int],
+      target: int): bool =
+    int_list_length(nums) > 1
+      AND count_int(target, pairwiseSum(nums)) = 1
+
+  findComplement_aux(
+      nums: list[int],
+      target: int,
+      i: nat,
+      x: int,
+      j: nat): RECURSIVE nat_option =
+    CASES nums OF
+      null:
+        NoNat,
+      cons(y, ys):
+        IF x + y = target THEN
+          SomeNat(i + j + 1)
+        ELSE
+          findComplement_aux(
+            ys,
+            target,
+            i,
+            x,
+            j + 1)
+        ENDIF
+    ENDCASES
+  MEASURE nums BY <<
+
+  findComplement(
+      nums: list[int],
+      target: int,
+      i: nat,
+      x: int): nat_option =
+    findComplement_aux(nums, target, i, x, 0)
+
+  % Lean's panic value at the unreachable empty-list branch is the inhabited
+  % default pair (0, 0); diagnostic side effects are irrelevant to the value.
+  default_nat_pair: nat_pair =
+    (# first_index := 0,
+       second_index := 0 #)
+
+  twoSumAux(
+      nums: list[int],
+      target: int,
+      i: nat): RECURSIVE nat_pair =
+    CASES nums OF
+      null:
+        default_nat_pair,
+      cons(x, xs):
+        CASES findComplement(xs, target, i, x) OF
+          NoNat:
+            twoSumAux(xs, target, i + 1),
+          SomeNat(j):
+            (# first_index := i,
+               second_index := j #)
+        ENDCASES
+    ENDCASES
+  MEASURE nums BY <<
+
+  % The source precondition proof argument is computationally irrelevant.
+  % This is the exact proof-erased first-complement recursive computation.
+  twoSum(
+      nums: list[int],
+      target: int): nat_pair =
+    twoSumAux(nums, target, 0)
+
+  twoSum_postcond(
+      nums: list[int],
+      target: int,
+      result: nat_pair): bool =
+    LET i: nat = first_index(result),
+        j: nat = second_index(result)
+    IN
+      i < j
+        AND i < int_list_length(nums)
+        AND j < int_list_length(nums)
+        AND int_list_get_bang(i, nums)
+              + int_list_get_bang(j, nums)
+            = target
+
+  twoSum_spec_satisfied: bool =
+    FORALL (nums: list[int], target: int):
+      twoSum_precond(nums, target)
+        IMPLIES
+          twoSum_postcond(
+            nums,
+            target,
+            twoSum(nums, target))
+
+END verina_advanced_78

@@ -1,0 +1,103 @@
+% Statement-only formalization of the VERINA corpus artifact verina_basic_62
+% (verina__pvs__verina_basic_62), catalog title "Find": the executable linear
+% search returns the first index of an integer key in a finite integer array,
+% or -1 when the key is absent. This file contains no proof.
+
+verina_basic_62: THEORY
+BEGIN
+
+  % Finite PVS lists preserve exactly the contents and order of Lean arrays.
+  int_list_length(
+      values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        int_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  % Lean Array.get! on integer arrays returns zero outside the array. Every
+  % access in the source implementation is guarded by the array length.
+  int_list_get_bang(
+      index: nat,
+      values: list[int]): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          int_list_get_bang(index - 1, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  Find_precond(
+      a: list[int],
+      key: int): bool =
+    TRUE
+
+  % Recursing over the remaining suffix performs exactly the source indexed
+  % search: inspect positions from left to right, return the first matching
+  % index, and return -1 only after exhausting the array.
+  Find_search(
+      remaining: list[int],
+      key: int,
+      index: nat): RECURSIVE int =
+    CASES remaining OF
+      null:
+        -1,
+      cons(head, tail):
+        IF head = key THEN
+          (index :: int)
+        ELSE
+          Find_search(
+            tail,
+            key,
+            index + 1)
+        ENDIF
+    ENDCASES
+  MEASURE remaining BY <<
+
+  % The source precondition proof argument is computationally irrelevant.
+  Find(
+      a: list[int],
+      key: int): int =
+    Find_search(a, key, 0)
+
+  % This is Lean Int.toNat: negative integers map to zero.
+  int_to_nat(value: int): nat =
+    IF value >= 0 THEN value ELSE 0 ENDIF
+
+  Find_postcond(
+      a: list[int],
+      key, result: int): bool =
+    (result = -1
+      OR
+        (result >= 0
+          AND result < int_list_length(a)))
+      AND
+        (result /= -1 IMPLIES
+          int_list_get_bang(int_to_nat(result), a) = key
+            AND
+              (FORALL (i: nat):
+                i < int_to_nat(result) IMPLIES
+                  int_list_get_bang(i, a) /= key))
+      AND
+        (result = -1 IMPLIES
+          (FORALL (i: nat):
+            i < int_list_length(a) IMPLIES
+              int_list_get_bang(i, a) /= key))
+
+  Find_spec_satisfied: bool =
+    FORALL (a: list[int], key: int):
+      Find_precond(a, key)
+        IMPLIES
+          Find_postcond(
+            a,
+            key,
+            Find(a, key))
+
+END verina_basic_62

@@ -1,0 +1,72 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2004_a4:
+% the product of n real variables is identically a fixed finite rational
+% linear combination of nth powers of linear forms with coefficients in
+% {-1, 0, 1}. This file contains no proof.
+
+putnam_2004_a4[n: posnat]: THEORY
+BEGIN
+  coordinate: TYPE = below(n)
+  real_vector: TYPE = [coordinate -> real]
+  rational_sequence: TYPE = [nat -> rat]
+  coefficient_matrix: TYPE = [nat, coordinate -> real]
+
+  bounded_sum(
+      values: [coordinate -> real],
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      bounded_sum(values, count - 1)
+        + IF count <= n THEN values(count - 1) ELSE 0 ENDIF
+    ENDIF
+  MEASURE count
+
+  bounded_product(
+      values: [coordinate -> real],
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      1
+    ELSE
+      bounded_product(values, count - 1)
+        * IF count <= n THEN values(count - 1) ELSE 1 ENDIF
+    ENDIF
+  MEASURE count
+
+  linear_form(
+      a: coefficient_matrix,
+      row: nat,
+      x: real_vector): real =
+    bounded_sum(
+      LAMBDA (j: coordinate): a(row, j) * x(j),
+      n)
+
+  representation_sum(
+      c: rational_sequence,
+      a: coefficient_matrix,
+      x: real_vector,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      representation_sum(c, a, x, count - 1)
+        + (c(count - 1) :: real)
+            * linear_form(a, count - 1, x) ^ n
+    ENDIF
+  MEASURE count
+
+  ternary_coefficients(
+      a: coefficient_matrix,
+      count: nat): bool =
+    FORALL (i: nat), (j: coordinate):
+      i < count IMPLIES
+        (a(i, j) = -1 OR a(i, j) = 0 OR a(i, j) = 1)
+
+  putnam_2004_a4: bool =
+    EXISTS (N: nat),
+           (c: rational_sequence),
+           (a: coefficient_matrix):
+      ternary_coefficients(a, N)
+        AND (FORALL (x: real_vector):
+          bounded_product(x, n)
+            = representation_sum(c, a, x, N))
+END putnam_2004_a4

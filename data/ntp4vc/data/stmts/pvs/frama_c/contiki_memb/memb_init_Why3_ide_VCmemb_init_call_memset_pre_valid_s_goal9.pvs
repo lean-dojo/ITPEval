@@ -1,0 +1,98 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% frama_c/contiki_memb/memb_init_Why3_ide_VCmemb_init_call_memset_pre_valid_s_goal9:
+% a Contiki memb-initialization verification condition asserting validity or
+% emptiness of the destination block for the first memset call under the
+% source memory-model assumptions. This file contains no proof.
+
+memb_init_Why3_ide_VCmemb_init_call_memset_pre_valid_s_goal9: THEORY
+BEGIN
+  addr: TYPE = [# base: int, offset: int #]
+  pointer_memory: TYPE = [addr -> addr]
+  integer_memory: TYPE = [addr -> int]
+  allocation_table: TYPE = [int -> int]
+
+  shift(p: addr, k: int): addr =
+    (# base := base(p), offset := offset(p) + k #)
+
+  valid_rw(m: allocation_table, p: addr, n: int): bool =
+    n > 0 IMPLIES
+      base(p) > 0 AND
+      offset(p) >= 0 AND
+      offset(p) + n <= m(base(p))
+
+  valid_rd(m: allocation_table, p: addr, n: int): bool =
+    n > 0 IMPLIES
+      base(p) /= 0 AND
+      offset(p) >= 0 AND
+      offset(p) + n <= m(base(p))
+
+  separated(p: addr, a: int, q: addr, b: int): bool =
+    a <= 0 OR
+    b <= 0 OR
+    base(p) /= base(q) OR
+    offset(q) + b <= offset(p) OR
+    offset(p) + a <= offset(q)
+
+  framed(
+      region: [int -> int],
+      m: pointer_memory): bool =
+    FORALL (p: addr): region(base(m(p))) <= 0
+
+  is_uint16(x: int): bool =
+    0 <= x AND x < 65536
+
+  p_valid_memb(
+      malloc_0: allocation_table,
+      mptr_0: pointer_memory,
+      mint_0: integer_memory,
+      m: addr): bool =
+    LET x: int = mint_0(shift(m, 0)) IN
+    LET x_1: int = mint_0(shift(m, 1)) IN
+    LET x_2: int = x_1 * x IN
+    LET a: addr = mptr_0(shift(m, 2)) IN
+    LET a_1: addr = mptr_0(shift(m, 3)) IN
+    LET a_2: addr = shift(a, 0) IN
+    LET a_3: addr = shift(a_1, 0) IN
+      x > 0 AND
+      x_2 <= 2147483647 AND
+      valid_rw(malloc_0, m, 4) AND
+      valid_rw(malloc_0, a, 1) AND
+      valid_rw(malloc_0, a_1, 1) AND
+      valid_rw(malloc_0, a_2, x_1) AND
+      valid_rw(malloc_0, a_3, x_2) AND
+      separated(a_2, x_1, a_3, x_2)
+
+  p_empty_block(malloc_0: allocation_table, s: addr): bool =
+    malloc_0(base(s)) = 0 AND offset(s) = 0
+
+  p_valid_or_empty(
+      malloc_0: allocation_table,
+      s: addr,
+      n: int): bool =
+    valid_rw(malloc_0, shift(s, 0), n) AND
+      (p_empty_block(malloc_0, s) OR valid_rd(malloc_0, s, 1))
+
+  goal9: bool =
+    FORALL
+      (region: [int -> int]),
+      (linked: [allocation_table -> bool]),
+      (sconst: [integer_memory -> bool]),
+      (a: addr),
+      (t_1: integer_memory),
+      (t_3: pointer_memory),
+      (t: allocation_table),
+      (t_2: integer_memory):
+      LET a_1: addr = shift(a, 1) IN
+      LET x: int = t_1(a_1) IN
+      LET a_2: addr = shift(a, 2) IN
+        region(base(a)) <= 0 IMPLIES
+        framed(region, t_3) IMPLIES
+        linked(t) IMPLIES
+        sconst(t_2) IMPLIES
+        is_uint16(x) IMPLIES
+        is_uint16(t_1(shift(a, 0))) IMPLIES
+        p_valid_memb(t, t_3, t_1, a) IMPLIES
+        valid_rd(t, a_2, 1) IMPLIES
+        valid_rd(t, a_1, 1) IMPLIES
+        p_valid_or_empty(t, t_3(a_2), x)
+END memb_init_Why3_ide_VCmemb_init_call_memset_pre_valid_s_goal9

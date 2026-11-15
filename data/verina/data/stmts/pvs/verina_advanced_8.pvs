@@ -1,0 +1,252 @@
+% Statement-only formalization of the VERINA corpus artifact
+% verina_advanced_8, catalog title "canCompleteCircuit": deterministically
+% finding the least gas-station index that completes a circular trip, or -1,
+% with the specified executable scan and correctness contract. This file contains no proof.
+
+verina_advanced_8: THEORY
+BEGIN
+
+  station_pair: TYPE =
+    [# gas_amount: int,
+       cost_amount: int #]
+
+  int_list_length(values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        int_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  int_list_sum(values: list[int]): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        head + int_list_sum(tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  canCompleteCircuit_precond(
+      gas, cost: list[int]): bool =
+    int_list_length(gas) > 0
+      AND int_list_length(gas) = int_list_length(cost)
+
+  % This is the source's local loop, including its mismatched-length branch.
+  % It is defined in the Lean program even though the final expression uses
+  % the zipped-list walk below.
+  canCompleteCircuit_loop(
+      gas, cost: list[int],
+      index: nat,
+      tank: int,
+      start: nat): RECURSIVE int =
+    CASES gas OF
+      null:
+        CASES cost OF
+          null:
+            start,
+          cons(cost_head, cost_tail):
+            -1
+        ENDCASES,
+      cons(gas_head, gas_tail):
+        CASES cost OF
+          null:
+            -1,
+          cons(cost_head, cost_tail):
+            LET next_tank: int =
+                  tank + gas_head - cost_head
+            IN
+              IF next_tank < 0 THEN
+                canCompleteCircuit_loop(
+                  gas_tail,
+                  cost_tail,
+                  index + 1,
+                  0,
+                  index + 1)
+              ELSE
+                canCompleteCircuit_loop(
+                  gas_tail,
+                  cost_tail,
+                  index + 1,
+                  next_tank,
+                  start)
+              ENDIF
+        ENDCASES
+    ENDCASES
+  MEASURE gas BY <<
+
+  zip_stations(
+      gas, cost: list[int]): RECURSIVE list[station_pair] =
+    CASES gas OF
+      null:
+        null[station_pair],
+      cons(gas_head, gas_tail):
+        CASES cost OF
+          null:
+            null[station_pair],
+          cons(cost_head, cost_tail):
+            cons(
+              (# gas_amount := gas_head,
+                 cost_amount := cost_head #),
+              zip_stations(gas_tail, cost_tail))
+        ENDCASES
+    ENDCASES
+  MEASURE gas BY <<
+
+  canCompleteCircuit_walk(
+      stations: list[station_pair],
+      index: nat,
+      tank: int,
+      start: nat): RECURSIVE int =
+    CASES stations OF
+      null:
+        start,
+      cons(station, rest):
+        LET next_tank: int =
+              tank + gas_amount(station) - cost_amount(station)
+        IN
+          IF next_tank < 0 THEN
+            canCompleteCircuit_walk(
+              rest,
+              index + 1,
+              0,
+              index + 1)
+          ELSE
+            canCompleteCircuit_walk(
+              rest,
+              index + 1,
+              next_tank,
+              start)
+          ENDIF
+    ENDCASES
+  MEASURE stations BY <<
+
+  % The precondition proof argument is computationally irrelevant. The
+  % definition otherwise follows the source folds, zip, and recursive walk.
+  canCompleteCircuit(
+      gas, cost: list[int]): int =
+    LET total_gas: int = int_list_sum(gas),
+        total_cost: int = int_list_sum(cost)
+    IN
+      IF total_gas < total_cost THEN
+        -1
+      ELSE
+        canCompleteCircuit_walk(
+          zip_stations(gas, cost),
+          0,
+          0,
+          0)
+      ENDIF
+
+  int_list_get_bang(
+      index: nat,
+      values: list[int]): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          int_list_get_bang(index - 1, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  nat_mod_fuel(
+      value, divisor, fuel: nat): RECURSIVE nat =
+    IF divisor = 0 THEN
+      0
+    ELSIF value < divisor THEN
+      value
+    ELSIF fuel = 0 THEN
+      value
+    ELSE
+      nat_mod_fuel(
+        value - divisor,
+        divisor,
+        fuel - 1)
+    ENDIF
+  MEASURE fuel
+
+  % With value + 1 fuel and a positive divisor, repeated subtraction reaches
+  % the unique natural remainder, so this is exactly natural-number modulo.
+  nat_mod(value, divisor: nat): nat =
+    nat_mod_fuel(value, divisor, value + 1)
+
+  cyclic_index(
+      start, offset, length: nat): nat =
+    nat_mod(start + offset, length)
+
+  % This is the source fold over List.range steps, in increasing offset order.
+  circuit_prefix_balance(
+      gas, cost: list[int],
+      start, steps: nat): RECURSIVE int =
+    IF steps = 0 THEN
+      0
+    ELSE
+      LET offset: nat = steps - 1,
+          index: nat =
+            cyclic_index(
+              start,
+              offset,
+              int_list_length(gas))
+      IN
+        circuit_prefix_balance(
+          gas,
+          cost,
+          start,
+          steps - 1)
+          + int_list_get_bang(index, gas)
+          - int_list_get_bang(index, cost)
+    ENDIF
+  MEASURE steps
+
+  % Quantifying i below the list length is exactly List.range length |>.all.
+  valid_start(
+      gas, cost: list[int],
+      start: nat): bool =
+    FORALL (i: nat):
+      i < int_list_length(gas) IMPLIES
+        circuit_prefix_balance(
+          gas,
+          cost,
+          start,
+          i + 1)
+          >= 0
+
+  int_to_nat(value: int): nat =
+    IF value >= 0 THEN value ELSE 0 ENDIF
+
+  canCompleteCircuit_postcond(
+      gas, cost: list[int],
+      result: int): bool =
+    result >= -1
+      AND
+        (result = -1 IMPLIES
+          (FORALL (start: nat):
+            start < int_list_length(gas) IMPLIES
+              NOT valid_start(gas, cost, start)))
+      AND
+        (result >= 0 IMPLIES
+          result < int_list_length(gas)
+            AND valid_start(
+              gas,
+              cost,
+              int_to_nat(result))
+            AND
+              (FORALL (start: nat):
+                start < int_to_nat(result) IMPLIES
+                  NOT valid_start(gas, cost, start)))
+
+  canCompleteCircuit_spec_satisfied: bool =
+    FORALL (gas, cost: list[int]):
+      canCompleteCircuit_precond(gas, cost)
+        IMPLIES
+          canCompleteCircuit_postcond(
+            gas,
+            cost,
+            canCompleteCircuit(gas, cost))
+
+END verina_advanced_8

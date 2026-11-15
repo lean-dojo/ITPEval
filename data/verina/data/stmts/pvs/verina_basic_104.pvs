@@ -1,0 +1,270 @@
+% Statement-only formalization of the VERINA corpus artifact verina_basic_104,
+% catalog title "update_map": replacing entries of one unique-key integer map
+% from a second map, sorting by key, and stating the full correctness contract.
+% This file contains no proof.
+
+verina_basic_104: THEORY
+BEGIN
+
+  int_map_entry: TYPE =
+    [# map_key: int,
+       map_value: int #]
+
+  int_map: TYPE =
+    [# map_entries: list[int_map_entry] #]
+
+  int_option: DATATYPE
+  BEGIN
+    NoInt: NoInt?
+    SomeInt(option_value: int): SomeInt?
+  END int_option
+
+  empty_map: int_map =
+    (# map_entries := null #)
+
+  key_member(
+      requested_key: int,
+      values: list[int_map_entry]): RECURSIVE bool =
+    CASES values OF
+      null:
+        FALSE,
+      cons(entry, rest):
+        map_key(entry) = requested_key
+          OR key_member(requested_key, rest)
+    ENDCASES
+  MEASURE values BY <<
+
+  unique_keys(
+      values: list[int_map_entry]): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(entry, rest):
+        NOT key_member(map_key(entry), rest)
+          AND unique_keys(rest)
+    ENDCASES
+  MEASURE values BY <<
+
+  % This is exactly filter-by-different-key followed by appending the new pair.
+  insert_entries(
+      values: list[int_map_entry],
+      requested_key, requested_value: int):
+        RECURSIVE list[int_map_entry] =
+    CASES values OF
+      null:
+        cons(
+          (# map_key := requested_key,
+             map_value := requested_value #),
+          null),
+      cons(entry, rest):
+        IF map_key(entry) = requested_key THEN
+          insert_entries(
+            rest,
+            requested_key,
+            requested_value)
+        ELSE
+          cons(
+            entry,
+            insert_entries(
+              rest,
+              requested_key,
+              requested_value))
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  insert(
+      m: int_map,
+      requested_key, requested_value: int): int_map =
+    (# map_entries :=
+         insert_entries(
+           map_entries(m),
+           requested_key,
+           requested_value) #)
+
+  fold_insert(
+      remaining: list[int_map_entry],
+      accumulator: int_map): RECURSIVE int_map =
+    CASES remaining OF
+      null:
+        accumulator,
+      cons(entry, rest):
+        fold_insert(
+          rest,
+          insert(
+            accumulator,
+            map_key(entry),
+            map_value(entry)))
+    ENDCASES
+  MEASURE remaining BY <<
+
+  insert_sorted(
+      entry: int_map_entry,
+      values: list[int_map_entry]):
+        RECURSIVE list[int_map_entry] =
+    CASES values OF
+      null:
+        cons(entry, null),
+      cons(head, tail):
+        IF map_key(entry) <= map_key(head) THEN
+          cons(entry, cons(head, tail))
+        ELSE
+          cons(head, insert_sorted(entry, tail))
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  sort_entries(
+      values: list[int_map_entry]):
+        RECURSIVE list[int_map_entry] =
+    CASES values OF
+      null:
+        null,
+      cons(entry, rest):
+        insert_sorted(entry, sort_entries(rest))
+    ENDCASES
+  MEASURE values BY <<
+
+  update_map_precond(
+      m1, m2: int_map): bool =
+    unique_keys(map_entries(m1))
+      AND unique_keys(map_entries(m2))
+
+  % The source proof argument is computationally irrelevant. On the
+  % unique-key precondition, sorting by insertion and Lean's mergeSort with
+  % integer-key comparison return the same uniquely ordered entry list.
+  update_map(
+      m1, m2: int_map): int_map =
+    LET updated: int_map =
+          fold_insert(map_entries(m2), m1)
+    IN
+      (# map_entries :=
+           sort_entries(map_entries(updated)) #)
+
+  find_value(
+      values: list[int_map_entry],
+      requested_key: int): RECURSIVE int_option =
+    CASES values OF
+      null:
+        NoInt,
+      cons(entry, rest):
+        IF map_key(entry) = requested_key THEN
+          SomeInt(map_value(entry))
+        ELSE
+          find_value(rest, requested_key)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  all_keys_at_least(
+      lower: int,
+      values: list[int_map_entry]): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(entry, rest):
+        lower <= map_key(entry)
+          AND all_keys_at_least(lower, rest)
+    ENDCASES
+  MEASURE values BY <<
+
+  pairwise_nondecreasing(
+      values: list[int_map_entry]): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(entry, rest):
+        all_keys_at_least(map_key(entry), rest)
+          AND pairwise_nondecreasing(rest)
+    ENDCASES
+  MEASURE values BY <<
+
+  second_entries_present(
+      remaining, result_entries: list[int_map_entry]):
+        RECURSIVE bool =
+    CASES remaining OF
+      null:
+        TRUE,
+      cons(entry, rest):
+        find_value(result_entries, map_key(entry))
+            = SomeInt(map_value(entry))
+          AND second_entries_present(rest, result_entries)
+    ENDCASES
+  MEASURE remaining BY <<
+
+  first_entries_preserved(
+      remaining,
+      second_entries,
+      result_entries: list[int_map_entry]):
+        RECURSIVE bool =
+    CASES remaining OF
+      null:
+        TRUE,
+      cons(entry, rest):
+        (CASES find_value(second_entries, map_key(entry)) OF
+           NoInt:
+             find_value(result_entries, map_key(entry))
+               = SomeInt(map_value(entry)),
+           SomeInt(second_value):
+             TRUE
+         ENDCASES)
+          AND first_entries_preserved(
+                rest,
+                second_entries,
+                result_entries)
+    ENDCASES
+  MEASURE remaining BY <<
+
+  result_entries_valid(
+      remaining,
+      first_entries,
+      second_entries: list[int_map_entry]):
+        RECURSIVE bool =
+    CASES remaining OF
+      null:
+        TRUE,
+      cons(entry, rest):
+        (CASES find_value(first_entries, map_key(entry)) OF
+           NoInt:
+             find_value(second_entries, map_key(entry))
+               = SomeInt(map_value(entry)),
+           SomeInt(first_value):
+             CASES find_value(second_entries, map_key(entry)) OF
+               NoInt:
+                 map_value(entry) = first_value,
+               SomeInt(second_value):
+                 map_value(entry) = second_value
+             ENDCASES
+         ENDCASES)
+          AND result_entries_valid(
+                rest,
+                first_entries,
+                second_entries)
+    ENDCASES
+  MEASURE remaining BY <<
+
+  update_map_postcond(
+      m1, m2, result: int_map): bool =
+    pairwise_nondecreasing(map_entries(result))
+      AND second_entries_present(
+            map_entries(m2),
+            map_entries(result))
+      AND first_entries_preserved(
+            map_entries(m1),
+            map_entries(m2),
+            map_entries(result))
+      AND result_entries_valid(
+            map_entries(result),
+            map_entries(m1),
+            map_entries(m2))
+
+  update_map_spec_satisfied: bool =
+    FORALL (m1, m2: int_map):
+      update_map_precond(m1, m2)
+        IMPLIES
+          update_map_postcond(
+            m1,
+            m2,
+            update_map(m1, m2))
+
+END verina_basic_104

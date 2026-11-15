@@ -1,0 +1,88 @@
+% Statement-only formalization of PutnamBench artifact putnam_1966_a2:
+% the side lengths, semiperimeter, and inradius of a nondegenerate real
+% Euclidean triangle satisfy a reciprocal-square inequality. This file
+% contains no proof.
+
+putnam_1966_a2: THEORY
+BEGIN
+  point: TYPE = [# x_coord: real, y_coord: real #]
+  point_set: TYPE = [point -> bool]
+
+  squared_distance(P, Q: point): real =
+    (x_coord(Q) - x_coord(P)) ^ 2
+      + (y_coord(Q) - y_coord(P)) ^ 2
+
+  distance(P, Q: point): real =
+    epsilon(
+      LAMBDA (length: real):
+        0 <= length
+          AND length * length = squared_distance(P, Q))
+
+  cross_from(P, Q, R: point): real =
+    (x_coord(Q) - x_coord(P)) * (y_coord(R) - y_coord(P))
+      - (y_coord(Q) - y_coord(P)) * (x_coord(R) - x_coord(P))
+
+  collinear(P, Q, R: point): bool =
+    cross_from(P, Q, R) = 0
+
+  affine_combination(t: real, P, Q: point): point =
+    (# x_coord := (1 - t) * x_coord(P) + t * x_coord(Q),
+       y_coord := (1 - t) * y_coord(P) + t * y_coord(Q) #)
+
+  point_subset(A, B: point_set): bool =
+    FORALL (P: point):
+      A(P) IMPLIES B(P)
+
+  convex(A: point_set): bool =
+    FORALL (P, Q: point), (t: real):
+      A(P) AND A(Q) AND 0 <= t AND t <= 1
+        IMPLIES A(affine_combination(t, P, Q))
+
+  convex_hull(A: point_set): point_set =
+    LAMBDA (P: point):
+      FORALL (C: point_set):
+        convex(C) AND point_subset(A, C) IMPLIES C(P)
+
+  triangle_vertices(A, B, C: point): point_set =
+    LAMBDA (P: point):
+      P = A OR P = B OR P = C
+
+  unique_circle_line_point(I: point, r: real, U, V: point): bool =
+    EXISTS (P: point):
+      distance(I, P) = r
+        AND collinear(P, U, V)
+        AND FORALL (Q: point):
+          distance(I, Q) = r
+            AND collinear(Q, U, V)
+            IMPLIES Q = P
+
+  quotient_or_zero(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  putnam_1966_a2: bool =
+    FORALL
+        (r: real), (A, B, C: point), (a, b, c, p: real):
+      (NOT collinear(A, B, C)
+        AND a = distance(B, C)
+        AND b = distance(C, A)
+        AND c = distance(A, B)
+        AND p = quotient_or_zero(
+          distance(B, C) + distance(C, A) + distance(A, B),
+          2)
+        AND EXISTS (I: point):
+          unique_circle_line_point(I, r, B, C)
+            AND unique_circle_line_point(I, r, C, A)
+            AND unique_circle_line_point(I, r, A, B)
+            AND FORALL (Z: point):
+              distance(I, Z) <= r
+                IMPLIES convex_hull(triangle_vertices(A, B, C))(Z))
+      IMPLIES
+        quotient_or_zero(1, (p - a) ^ 2)
+          + quotient_or_zero(1, (p - b) ^ 2)
+          + quotient_or_zero(1, (p - c) ^ 2)
+          >= quotient_or_zero(1, r ^ 2)
+END putnam_1966_a2

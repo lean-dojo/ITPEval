@@ -1,0 +1,133 @@
+% Statement-only formalization of PutnamBench artifact putnam_1986_a5:
+% a real vector field on a positive-dimensional Euclidean space whose
+% second partial derivatives are continuous and whose skew first-partial
+% differences are constant admits a scalar correction making every
+% component real-linear. This file contains no proof.
+
+putnam_1986_a5[n: posnat]: THEORY
+BEGIN
+  coordinate: TYPE = below(n)
+  vector: TYPE = [coordinate -> real]
+  scalar_field: TYPE = [vector -> real]
+  vector_field: TYPE = [coordinate -> scalar_field]
+  constant_matrix: TYPE = [coordinate, coordinate -> real]
+
+  zero_vector: vector =
+    LAMBDA (i: coordinate): 0
+
+  vector_add(x, y: vector): vector =
+    LAMBDA (i: coordinate): x(i) + y(i)
+
+  scalar_multiply(a: real, x: vector): vector =
+    LAMBDA (i: coordinate): a * x(i)
+
+  replace_coordinate(
+      x: vector,
+      i: coordinate,
+      value: real): vector =
+    LAMBDA (j: coordinate):
+      IF j = i THEN value ELSE x(j) ENDIF
+
+  vectors_close(x, y: vector, radius: real): bool =
+    FORALL (i: coordinate):
+      abs(x(i) - y(i)) < radius
+
+  continuous_at(f: scalar_field, x: vector): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (delta: posreal):
+        FORALL (y: vector):
+          vectors_close(y, x, delta)
+            IMPLIES abs(f(y) - f(x)) < epsilon_value
+
+  continuous_field(f: scalar_field): bool =
+    FORALL (x: vector):
+      continuous_at(f, x)
+
+  has_partial_derivative_at(
+      f: scalar_field,
+      i: coordinate,
+      derivative: real,
+      x: vector): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (delta: posreal):
+        FORALL (value: real):
+          (value /= x(i)
+            AND abs(value - x(i)) < delta)
+          IMPLIES
+            abs(
+              f(replace_coordinate(x, i, value)) - f(x)
+                - derivative * (value - x(i)))
+              < epsilon_value * abs(value - x(i))
+
+  partial_differentiable_at(
+      f: scalar_field,
+      i: coordinate,
+      x: vector): bool =
+    EXISTS (derivative: real):
+      has_partial_derivative_at(f, i, derivative, x)
+
+  partial_derivative_value(
+      f: scalar_field,
+      i: coordinate,
+      x: vector): real =
+    IF partial_differentiable_at(f, i, x) THEN
+      epsilon(
+        LAMBDA (derivative: real):
+          has_partial_derivative_at(f, i, derivative, x))
+    ELSE
+      0
+    ENDIF
+
+  first_partial(
+      f: scalar_field,
+      i: coordinate): scalar_field =
+    LAMBDA (x: vector):
+      partial_derivative_value(f, i, x)
+
+  second_partial(
+      f: scalar_field,
+      i, j: coordinate): scalar_field =
+    first_partial(first_partial(f, i), j)
+
+  continuously_twice_partially_differentiable(
+      f: scalar_field): bool =
+    continuous_field(f)
+      AND (FORALL (i: coordinate), (x: vector):
+        partial_differentiable_at(f, i, x))
+      AND (FORALL (i, j: coordinate), (x: vector):
+        partial_differentiable_at(first_partial(f, i), j, x))
+      AND (FORALL (i: coordinate):
+        continuous_field(first_partial(f, i)))
+      AND (FORALL (i, j: coordinate):
+        continuous_field(second_partial(f, i, j)))
+
+  has_continuous_second_partials(f: vector_field): bool =
+    FORALL (i: coordinate):
+      continuously_twice_partially_differentiable(f(i))
+
+  has_constant_skew_partial_differences(
+      f: vector_field): bool =
+    EXISTS (c: constant_matrix):
+      FORALL (i, j: coordinate), (x: vector):
+        partial_derivative_value(f(i), j, x)
+          - partial_derivative_value(f(j), i, x)
+          = c(i, j)
+
+  real_linear(f: scalar_field): bool =
+    (FORALL (x, y: vector):
+      f(vector_add(x, y)) = f(x) + f(y))
+      AND (FORALL (a: real), (x: vector):
+        f(scalar_multiply(a, x)) = a * f(x))
+
+  putnam_1986_a5: bool =
+    FORALL (f: vector_field):
+      (has_continuous_second_partials(f)
+        AND has_constant_skew_partial_differences(f))
+      IMPLIES
+        EXISTS (g: scalar_field):
+          FORALL (i: coordinate):
+            real_linear(
+              LAMBDA (x: vector):
+                f(i)(x)
+                  + partial_derivative_value(g, i, x))
+END putnam_1986_a5

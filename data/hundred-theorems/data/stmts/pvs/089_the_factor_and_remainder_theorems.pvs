@@ -1,0 +1,117 @@
+% Statement-only formalization of Hundred Theorems artifact 089, "The Factor and
+% Remainder Theorems": division by X - a has remainder p(a), and X - a divides p
+% exactly when a is a root. This file contains no proof.
+
+the_factor_and_remainder_theorems_089[
+  R: TYPE+,
+  zero, one: R,
+  neg: [R -> R],
+  add, mul: [R, R -> R]
+]: THEORY
+BEGIN
+  commutative_ring_laws: bool =
+    (FORALL (x, y: R): add(x, y) = add(y, x))
+      AND (FORALL (x, y, z: R):
+        add(add(x, y), z) = add(x, add(y, z)))
+      AND (FORALL (x: R): add(x, zero) = x)
+      AND (FORALL (x: R): add(x, neg(x)) = zero)
+      AND (FORALL (x, y: R): mul(x, y) = mul(y, x))
+      AND (FORALL (x, y, z: R):
+        mul(mul(x, y), z) = mul(x, mul(y, z)))
+      AND (FORALL (x: R): mul(x, one) = x)
+      AND (FORALL (x, y, z: R):
+        mul(x, add(y, z)) =
+          add(mul(x, y), mul(x, z)))
+
+  polynomial_value(p: list[R], x: R): RECURSIVE R =
+    CASES p OF
+      null: zero,
+      cons(coefficient, tail):
+        add(coefficient, mul(x, polynomial_value(tail, x)))
+    ENDCASES
+  MEASURE p BY <<
+
+  polynomial_coefficient(p: list[R], degree: nat): RECURSIVE R =
+    CASES p OF
+      null: zero,
+      cons(coefficient, tail):
+        IF degree = 0 THEN
+          coefficient
+        ELSE
+          polynomial_coefficient(tail, degree - 1)
+        ENDIF
+    ENDCASES
+  MEASURE p BY <<
+
+  polynomial_equal(p, q: list[R]): bool =
+    FORALL (degree: nat):
+      polynomial_coefficient(p, degree)
+        = polynomial_coefficient(q, degree)
+
+  polynomial_add(p, q: list[R]): RECURSIVE list[R] =
+    CASES p OF
+      null: q,
+      cons(left_coefficient, left_tail):
+        CASES q OF
+          null: p,
+          cons(right_coefficient, right_tail):
+            cons(
+              add(left_coefficient, right_coefficient),
+              polynomial_add(left_tail, right_tail))
+        ENDCASES
+    ENDCASES
+  MEASURE p BY <<
+
+  polynomial_scale(value: R, p: list[R]): RECURSIVE list[R] =
+    CASES p OF
+      null: null,
+      cons(coefficient, tail):
+        cons(
+          mul(value, coefficient),
+          polynomial_scale(value, tail))
+    ENDCASES
+  MEASURE p BY <<
+
+  polynomial_multiply(p, q: list[R]): RECURSIVE list[R] =
+    CASES p OF
+      null: null,
+      cons(coefficient, tail):
+        polynomial_add(
+          polynomial_scale(coefficient, q),
+          cons(
+            zero,
+            polynomial_multiply(tail, q)))
+    ENDCASES
+  MEASURE p BY <<
+
+  constant_polynomial(value: R): list[R] =
+    cons(value, null)
+
+  linear_factor(a: R): list[R] =
+    cons(neg(a), cons(one, null))
+
+  polynomial_divides(divisor, dividend: list[R]): bool =
+    EXISTS (quotient: list[R]):
+      polynomial_equal(
+        dividend,
+        polynomial_multiply(divisor, quotient))
+
+  remainder_theorem: bool =
+    commutative_ring_laws IMPLIES
+      (FORALL (p: list[R]), (a: R):
+        EXISTS (quotient: list[R]):
+          polynomial_equal(
+            p,
+            polynomial_add(
+              polynomial_multiply(linear_factor(a), quotient),
+              constant_polynomial(polynomial_value(p, a)))))
+
+  factor_theorem: bool =
+    commutative_ring_laws IMPLIES
+      (FORALL (p: list[R]), (a: R):
+        polynomial_value(p, a) = zero
+          IFF polynomial_divides(linear_factor(a), p))
+
+  the_factor_and_remainder_theorems: bool =
+    remainder_theorem AND factor_theorem
+END the_factor_and_remainder_theorems_089

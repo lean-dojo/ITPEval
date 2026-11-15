@@ -1,0 +1,194 @@
+% Statement-only formalization of "Minkowski's Fundamental Theorem" from Hundred Theorems item
+% 040. Using Euclidean Lebesgue outer measure from countable open-box covers, it states
+% Blichfeldt's principle and the strict and compact forms of Minkowski's integer-lattice
+% point theorem. This file contains no proof.
+
+minkowski_s_fundamental_theorem[N: posnat]: THEORY
+BEGIN
+  coordinate: TYPE = below(N)
+  vector: TYPE = [coordinate -> real]
+  region: TYPE = [vector -> bool]
+  vector_sequence: TYPE = [nat -> vector]
+  index_sequence: TYPE = [nat -> nat]
+
+  box: TYPE =
+    [# lower_corner: [nat -> real],
+       upper_corner: [nat -> real] #]
+  box_sequence: TYPE = [nat -> box]
+
+  zero_vector: vector =
+    LAMBDA (i: coordinate): 0
+
+  vector_neg(x: vector): vector =
+    LAMBDA (i: coordinate): -x(i)
+
+  vector_sub(x, y: vector): vector =
+    LAMBDA (i: coordinate): x(i) - y(i)
+
+  affine_combination(t: real, x, y: vector): vector =
+    LAMBDA (i: coordinate):
+      t * x(i) + (1 - t) * y(i)
+
+  region_intersection(A, B: region): region =
+    LAMBDA (x: vector):
+      A(x) AND B(x)
+
+  region_difference(A, B: region): region =
+    LAMBDA (x: vector):
+      A(x) AND NOT B(x)
+
+  in_open_box(x: vector, b: box): bool =
+    FORALL (i: coordinate):
+      lower_corner(b)(i) < x(i)
+        AND x(i) < upper_corner(b)(i)
+
+  box_width(b: box, i: nat): real =
+    IF lower_corner(b)(i) < upper_corner(b)(i) THEN
+      upper_corner(b)(i) - lower_corner(b)(i)
+    ELSE
+      0
+    ENDIF
+
+  box_volume_prefix(b: box, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      1
+    ELSE
+      box_volume_prefix(b, count - 1)
+        * box_width(b, count - 1)
+    ENDIF
+  MEASURE count
+
+  box_volume(b: box): real =
+    box_volume_prefix(b, N)
+
+  partial_box_volume(
+      boxes: box_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      partial_box_volume(boxes, count - 1)
+        + box_volume(boxes(count - 1))
+    ENDIF
+  MEASURE count
+
+  covers(S: region, boxes: box_sequence): bool =
+    FORALL (x: vector):
+      S(x) IMPLIES
+        EXISTS (index: nat):
+          in_open_box(x, boxes(index))
+
+  outer_measure_greater_than(S: region, threshold: real): bool =
+    EXISTS (margin: real):
+      margin > 0
+        AND FORALL (boxes: box_sequence):
+          covers(S, boxes) IMPLIES
+            EXISTS (count: nat):
+              threshold + margin
+                < partial_box_volume(boxes, count)
+
+  outer_measure_at_least(S: region, threshold: real): bool =
+    FORALL (boxes: box_sequence):
+      covers(S, boxes) IMPLIES
+        FORALL (margin: real):
+          margin > 0 IMPLIES
+            EXISTS (count: nat):
+              threshold - margin
+                < partial_box_volume(boxes, count)
+
+  lebesgue_measurable(S: region): bool =
+    FORALL (T: region), (left_bound, right_bound: real):
+      (outer_measure_greater_than(
+          region_intersection(T, S),
+          left_bound)
+        AND outer_measure_greater_than(
+          region_difference(T, S),
+          right_bound))
+      IMPLIES
+        outer_measure_at_least(
+          T,
+          left_bound + right_bound)
+
+  coordinate_close(x, y: vector, epsilon: real): bool =
+    FORALL (i: coordinate):
+      abs(x(i) - y(i)) < epsilon
+
+  converges(sequence: vector_sequence, limit: vector): bool =
+    FORALL (epsilon: real):
+      epsilon > 0 IMPLIES
+        EXISTS (cutoff: nat):
+          FORALL (index: nat):
+            cutoff <= index IMPLIES
+              coordinate_close(sequence(index), limit, epsilon)
+
+  strictly_increasing(indices: index_sequence): bool =
+    FORALL (index: nat):
+      indices(index) < indices(index + 1)
+
+  compact_region(S: region): bool =
+    FORALL (sequence: vector_sequence):
+      (FORALL (index: nat): S(sequence(index)))
+      IMPLIES
+        EXISTS (limit: vector), (indices: index_sequence):
+          S(limit)
+            AND strictly_increasing(indices)
+            AND converges(
+              LAMBDA (index: nat):
+                sequence(indices(index)),
+              limit)
+
+  convex_region(S: region): bool =
+    FORALL (x, y: vector), (t: real):
+      (S(x)
+        AND S(y)
+        AND 0 <= t
+        AND t <= 1)
+      IMPLIES S(affine_combination(t, x, y))
+
+  origin_symmetric(S: region): bool =
+    FORALL (x: vector):
+      S(x) IMPLIES S(vector_neg(x))
+
+  integer_lattice_point(x: vector): bool =
+    FORALL (i: coordinate):
+      integer?(x(i))
+
+  blichfeldt: bool =
+    FORALL (S: region):
+      (lebesgue_measurable(S)
+        AND outer_measure_greater_than(S, 1))
+      IMPLIES
+        EXISTS (x, y: vector):
+          S(x)
+            AND S(y)
+            AND x /= y
+            AND integer_lattice_point(vector_sub(x, y))
+
+  minkowski_fundamental_theorem: bool =
+    FORALL (S: region):
+      (convex_region(S)
+        AND origin_symmetric(S)
+        AND lebesgue_measurable(S)
+        AND outer_measure_greater_than(
+          S,
+          (2 :: real) ^ N))
+      IMPLIES
+        EXISTS (u: vector):
+          u /= zero_vector
+            AND integer_lattice_point(u)
+            AND S(u)
+
+  minkowski_compact: bool =
+    FORALL (S: region):
+      (convex_region(S)
+        AND compact_region(S)
+        AND origin_symmetric(S)
+        AND outer_measure_at_least(
+          S,
+          (2 :: real) ^ N))
+      IMPLIES
+        EXISTS (u: vector):
+          u /= zero_vector
+            AND integer_lattice_point(u)
+            AND S(u)
+END minkowski_s_fundamental_theorem

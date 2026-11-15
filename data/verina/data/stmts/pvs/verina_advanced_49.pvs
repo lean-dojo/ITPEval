@@ -1,0 +1,121 @@
+% Statement-only formalization of the VERINA corpus artifact
+% verina_advanced_49, catalog title "mergeSortedLists": recursively merging
+% two nondecreasing integer lists into a nondecreasing permutation of their
+% concatenation. This file contains no proof.
+
+verina_advanced_49: THEORY
+BEGIN
+
+  int_list_length(values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        int_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  append_int_lists(
+      first, second: list[int]): RECURSIVE list[int] =
+    CASES first OF
+      null:
+        second,
+      cons(head, tail):
+        cons(
+          head,
+          append_int_lists(tail, second))
+    ENDCASES
+  MEASURE first BY <<
+
+  all_at_least(
+      lower: int,
+      values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        lower <= head
+          AND all_at_least(lower, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  pairwise_nondecreasing(
+      values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        all_at_least(head, tail)
+          AND pairwise_nondecreasing(tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  mergeSortedLists_precond(
+      arr1, arr2: list[int]): bool =
+    pairwise_nondecreasing(arr1)
+      AND pairwise_nondecreasing(arr2)
+
+  merge_int_lists(
+      xs, ys: list[int]): RECURSIVE list[int] =
+    CASES xs OF
+      null:
+        ys,
+      cons(x, xt):
+        CASES ys OF
+          null:
+            xs,
+          cons(y, yt):
+            IF x <= y THEN
+              cons(
+                x,
+                merge_int_lists(xt, ys))
+            ELSE
+              cons(
+                y,
+                merge_int_lists(xs, yt))
+            ENDIF
+        ENDCASES
+    ENDCASES
+  MEASURE int_list_length(xs) + int_list_length(ys)
+
+  % The Lean precondition proof argument is unused by the program, so this is
+  % its exact proof-erased executable computation.
+  mergeSortedLists(
+      arr1, arr2: list[int]): list[int] =
+    merge_int_lists(arr1, arr2)
+
+  occurrence_count(
+      value: int,
+      values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        (IF head = value THEN 1 ELSE 0 ENDIF)
+          + occurrence_count(value, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  int_list_is_permutation(
+      first, second: list[int]): bool =
+    FORALL (value: int):
+      occurrence_count(value, first)
+        = occurrence_count(value, second)
+
+  mergeSortedLists_postcond(
+      arr1, arr2, result: list[int]): bool =
+    pairwise_nondecreasing(result)
+      AND int_list_is_permutation(
+        append_int_lists(arr1, arr2),
+        result)
+
+  mergeSortedLists_spec_satisfied: bool =
+    FORALL (arr1, arr2: list[int]):
+      mergeSortedLists_precond(arr1, arr2)
+        IMPLIES
+          mergeSortedLists_postcond(
+            arr1,
+            arr2,
+            mergeSortedLists(arr1, arr2))
+
+END verina_advanced_49

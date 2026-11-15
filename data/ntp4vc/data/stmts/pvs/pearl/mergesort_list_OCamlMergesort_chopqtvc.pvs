@@ -1,0 +1,67 @@
+% Statement-only formalization of NTP4VC corpus artifact
+% pearl/mergesort_list_OCamlMergesort_chopqtvc: the list-chopping verification
+% condition establishing recursive-call bounds and reconstruction by an
+% abstract prefix operation. This file contains no proof.
+
+mergesort_list_OCamlMergesort_chopqtvc[Elt: TYPE+]: THEORY
+BEGIN
+
+  prefix_specification(
+      prefix1: [int, list[Elt] -> list[Elt]]): bool =
+    (FORALL (values: list[Elt]):
+      prefix1(0, values) = null)
+      AND
+    (FORALL
+        (n: int),
+        (head: Elt),
+        (tail: list[Elt]):
+      0 < n
+        IMPLIES
+          prefix1(n, cons(head, tail))
+            = cons(head, prefix1(n - 1, tail)))
+
+  recursive_call_bounds(n: int, values: list[Elt]): bool =
+    n /= 0
+      IMPLIES
+        CASES values OF
+          null:
+            FALSE,
+          cons(head, tail):
+            LET o1: int = n - 1 IN
+              (0 <= n AND o1 < n)
+                AND 0 <= o1
+                AND o1 <= length(tail)
+        ENDCASES
+
+  result_case(
+      prefix1: [int, list[Elt] -> list[Elt]],
+      n: int,
+      values, result: list[Elt]): bool =
+    IF n = 0 THEN
+      result = values
+    ELSE
+      CASES values OF
+        null:
+          FALSE,
+        cons(head, tail):
+          tail = append(prefix1(n - 1, tail), result)
+      ENDCASES
+    ENDIF
+
+  chop_vc: bool =
+    FORALL
+        (prefix1: [int, list[Elt] -> list[Elt]]),
+        (n: int),
+        (values: list[Elt]):
+      (prefix_specification(prefix1)
+        AND 0 <= n
+        AND n <= length(values))
+      IMPLIES
+        recursive_call_bounds(n, values)
+          AND
+        (FORALL (result: list[Elt]):
+          result_case(prefix1, n, values, result)
+            IMPLIES
+              values = append(prefix1(n, values), result))
+
+END mergesort_list_OCamlMergesort_chopqtvc

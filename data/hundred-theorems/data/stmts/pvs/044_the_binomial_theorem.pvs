@@ -1,0 +1,155 @@
+% Statement-only formalization of "The Binomial Theorem" from Hundred Theorems item 044:
+% in every commutative semiring, including the natural and real instances, a power of a sum
+% expands as a finite sum with binomial coefficients. This file contains no proof.
+
+the_binomial_theorem_044[
+  Carrier: TYPE+,
+  zero, one: Carrier,
+  semiring_add, semiring_multiply: [Carrier, Carrier -> Carrier]
+]: THEORY
+BEGIN
+  binomial_coefficient(n, k: nat): RECURSIVE nat =
+    IF k = 0 THEN
+      1
+    ELSIF n = 0 THEN
+      0
+    ELSE
+      binomial_coefficient(n - 1, k - 1)
+        + binomial_coefficient(n - 1, k)
+    ENDIF
+  MEASURE n
+
+  commutative_semiring_laws: bool =
+    (FORALL (a, b, c: Carrier):
+      semiring_add(semiring_add(a, b), c)
+        = semiring_add(a, semiring_add(b, c)))
+      AND (FORALL (a, b: Carrier):
+        semiring_add(a, b) = semiring_add(b, a))
+      AND (FORALL (a: Carrier):
+        semiring_add(zero, a) = a
+          AND semiring_add(a, zero) = a)
+      AND (FORALL (a, b, c: Carrier):
+        semiring_multiply(semiring_multiply(a, b), c)
+          = semiring_multiply(a, semiring_multiply(b, c)))
+      AND (FORALL (a, b: Carrier):
+        semiring_multiply(a, b) = semiring_multiply(b, a))
+      AND (FORALL (a: Carrier):
+        semiring_multiply(one, a) = a
+          AND semiring_multiply(a, one) = a)
+      AND (FORALL (a, b, c: Carrier):
+        semiring_multiply(a, semiring_add(b, c))
+          = semiring_add(
+              semiring_multiply(a, b),
+              semiring_multiply(a, c)))
+      AND (FORALL (a, b, c: Carrier):
+        semiring_multiply(semiring_add(a, b), c)
+          = semiring_add(
+              semiring_multiply(a, c),
+              semiring_multiply(b, c)))
+      AND (FORALL (a: Carrier):
+        semiring_multiply(zero, a) = zero
+          AND semiring_multiply(a, zero) = zero)
+
+  semiring_power(a: Carrier, exponent: nat): RECURSIVE Carrier =
+    IF exponent = 0 THEN
+      one
+    ELSE
+      semiring_multiply(
+        semiring_power(a, exponent - 1),
+        a)
+    ENDIF
+  MEASURE exponent
+
+  embed_natural(coefficient: nat): RECURSIVE Carrier =
+    IF coefficient = 0 THEN
+      zero
+    ELSE
+      semiring_add(
+        embed_natural(coefficient - 1),
+        one)
+    ENDIF
+  MEASURE coefficient
+
+  commutative_semiring_binomial_sum(
+      x, y: Carrier,
+      n, term_count: nat): RECURSIVE Carrier =
+    IF term_count = 0 THEN
+      zero
+    ELSE
+      LET k: nat = term_count - 1
+      IN
+        semiring_add(
+          commutative_semiring_binomial_sum(
+            x, y, n, term_count - 1),
+          IF k <= n THEN
+            semiring_multiply(
+              embed_natural(binomial_coefficient(n, k)),
+              semiring_multiply(
+                semiring_power(x, k),
+                semiring_power(y, n - k)))
+          ELSE
+            zero
+          ENDIF)
+    ENDIF
+  MEASURE term_count
+
+  commutative_semiring_binomial_theorem: bool =
+    commutative_semiring_laws IMPLIES
+      (FORALL (x, y: Carrier), (n: nat):
+        semiring_power(semiring_add(x, y), n)
+          = commutative_semiring_binomial_sum(
+              x, y, n, n + 1))
+
+  natural_binomial_sum(
+      x, y, n, term_count: nat): RECURSIVE nat =
+    IF term_count = 0 THEN
+      0
+    ELSE
+      LET k: nat = term_count - 1
+      IN
+        natural_binomial_sum(x, y, n, term_count - 1)
+          + IF k <= n THEN
+              binomial_coefficient(n, k)
+                * x ^ k
+                * y ^ (n - k)
+            ELSE
+              0
+            ENDIF
+    ENDIF
+  MEASURE term_count
+
+  real_binomial_sum(
+      x, y: real,
+      n, term_count: nat): RECURSIVE real =
+    IF term_count = 0 THEN
+      0
+    ELSE
+      LET k: nat = term_count - 1
+      IN
+        real_binomial_sum(x, y, n, term_count - 1)
+          + IF k <= n THEN
+              (binomial_coefficient(n, k) :: real)
+                * x ^ k
+                * y ^ (n - k)
+            ELSE
+              0
+            ENDIF
+    ENDIF
+  MEASURE term_count
+
+  natural_binomial_theorem: bool =
+    FORALL (x, y, n: nat):
+      (x + y) ^ n =
+        natural_binomial_sum(x, y, n, n + 1)
+
+  real_binomial_theorem: bool =
+    FORALL (x, y: real):
+      FORALL (n: nat):
+        (x + y) ^ n =
+          real_binomial_sum(x, y, n, n + 1)
+
+  the_binomial_theorem: bool =
+    commutative_semiring_binomial_theorem
+      AND natural_binomial_theorem
+      AND real_binomial_theorem
+END the_binomial_theorem_044

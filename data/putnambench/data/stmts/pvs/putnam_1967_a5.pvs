@@ -1,0 +1,119 @@
+% Statement-only formalization of PutnamBench artifact putnam_1967_a5:
+% every convex region in the Euclidean plane with Lebesgue area greater than pi/4
+% contains two points at Euclidean distance exactly one. This file contains no proof.
+
+putnam_1967_a5: THEORY
+BEGIN
+  point: TYPE = [# x_coord: real, y_coord: real #]
+  planar_region: TYPE = [point -> bool]
+  real_sequence: TYPE = [nat -> real]
+
+  box: TYPE =
+    [# left: real, right: real, bottom: real, top: real #]
+  box_sequence: TYPE = [nat -> box]
+
+  affine_combination(t: real, p, q: point): point =
+    (# x_coord := t * x_coord(p) + (1 - t) * x_coord(q),
+       y_coord := t * y_coord(p) + (1 - t) * y_coord(q) #)
+
+  convex_region(region: planar_region): bool =
+    FORALL (p, q: point), (t: real):
+      (region(p)
+        AND region(q)
+        AND 0 <= t
+        AND t <= 1)
+      IMPLIES region(affine_combination(t, p, q))
+
+  squared_distance(p, q: point): real =
+    (x_coord(p) - x_coord(q)) ^ 2
+      + (y_coord(p) - y_coord(q)) ^ 2
+
+  in_open_box(p: point, b: box): bool =
+    left(b) < x_coord(p)
+      AND x_coord(p) < right(b)
+      AND bottom(b) < y_coord(p)
+      AND y_coord(p) < top(b)
+
+  box_area(b: box): real =
+    IF left(b) < right(b) AND bottom(b) < top(b) THEN
+      (right(b) - left(b)) * (top(b) - bottom(b))
+    ELSE
+      0
+    ENDIF
+
+  partial_box_area(
+      boxes: box_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      partial_box_area(boxes, count - 1)
+        + box_area(boxes(count - 1))
+    ENDIF
+  MEASURE count
+
+  covers(region: planar_region, boxes: box_sequence): bool =
+    FORALL (p: point):
+      region(p) IMPLIES
+        EXISTS (index: nat):
+          in_open_box(p, boxes(index))
+
+  lebesgue_outer_area_greater_than(
+      region: planar_region,
+      threshold: real): bool =
+    EXISTS (margin: real):
+      margin > 0
+        AND FORALL (boxes: box_sequence):
+          covers(region, boxes) IMPLIES
+            EXISTS (count: nat):
+              threshold + margin
+                < partial_box_area(boxes, count)
+
+  alternating_sign(index: nat): RECURSIVE real =
+    IF index = 0 THEN
+      1
+    ELSE
+      -alternating_sign(index - 1)
+    ENDIF
+  MEASURE index
+
+  leibniz_partial_sum(count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        leibniz_partial_sum(count - 1)
+          + alternating_sign(index)
+              / ((2 * index + 1) :: real)
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  is_pi(value: real): bool =
+    converges_to(
+      LAMBDA (count: nat):
+        4 * leibniz_partial_sum(count),
+      value)
+
+  pi: real =
+    epsilon(
+      LAMBDA (value: real):
+        is_pi(value))
+
+  putnam_1967_a5: bool =
+    FORALL (region: planar_region):
+      (convex_region(region)
+        AND lebesgue_outer_area_greater_than(
+          region, pi / 4))
+      IMPLIES
+        EXISTS (p, q: point):
+          region(p)
+            AND region(q)
+            AND squared_distance(p, q) = 1
+END putnam_1967_a5

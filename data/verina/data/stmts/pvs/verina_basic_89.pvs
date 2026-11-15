@@ -1,0 +1,168 @@
+% Statement-only formalization of the VERINA corpus artifact verina_basic_89
+% (verina__pvs__verina_basic_89), catalog title "SetToSeq": the exact
+% left-fold computation removes duplicate integers while preserving first
+% occurrences and satisfies its full correctness contract. This file contains no proof.
+
+verina_basic_89: THEORY
+BEGIN
+
+  int_list_member(
+      requested: int,
+      values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        FALSE,
+      cons(head, tail):
+        requested = head
+          OR int_list_member(requested, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  int_list_append(
+      first, second: list[int]): RECURSIVE list[int] =
+    CASES first OF
+      null:
+        second,
+      cons(head, tail):
+        cons(head, int_list_append(tail, second))
+    ENDCASES
+  MEASURE first BY <<
+
+  SetToSeq_precond(
+      s: list[int]): bool =
+    TRUE
+
+  % This recursion is exactly the source List.foldl: each input is skipped
+  % when already present in the accumulator and otherwise appended at its end.
+  SetToSeq_fold(
+      remaining, accumulator: list[int]): RECURSIVE list[int] =
+    CASES remaining OF
+      null:
+        accumulator,
+      cons(head, tail):
+        IF int_list_member(head, accumulator) THEN
+          SetToSeq_fold(tail, accumulator)
+        ELSE
+          SetToSeq_fold(
+            tail,
+            int_list_append(
+              accumulator,
+              cons(head, null[int])))
+        ENDIF
+    ENDCASES
+  MEASURE remaining BY <<
+
+  % The source precondition proof argument is computationally irrelevant.
+  SetToSeq(
+      s: list[int]): list[int] =
+    SetToSeq_fold(s, null[int])
+
+  int_list_all_members_of(
+      values, container: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        int_list_member(head, container)
+          AND int_list_all_members_of(tail, container)
+    ENDCASES
+  MEASURE values BY <<
+
+  int_list_count(
+      requested: int,
+      values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        (IF requested = head THEN 1 ELSE 0 ENDIF)
+          + int_list_count(requested, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  int_list_all_count_one(
+      values, whole: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        int_list_count(head, whole) = 1
+          AND int_list_all_count_one(tail, whole)
+    ENDCASES
+  MEASURE values BY <<
+
+  % Lean List.idxOf returns the first matching index, or the list length when
+  % the requested value does not occur.
+  int_list_index_of(
+      requested: int,
+      values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF requested = head THEN
+          0
+        ELSE
+          1 + int_list_index_of(requested, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  int_list_all_later_index_order(
+      first: int,
+      later, result_values, source_values: list[int]): RECURSIVE bool =
+    CASES later OF
+      null:
+        TRUE,
+      cons(second, rest):
+        (int_list_index_of(first, result_values)
+             < int_list_index_of(second, result_values)
+          IMPLIES
+            int_list_index_of(first, source_values)
+              < int_list_index_of(second, source_values))
+          AND
+            int_list_all_later_index_order(
+              first,
+              rest,
+              result_values,
+              source_values)
+    ENDCASES
+  MEASURE later BY <<
+
+  % This is exactly List.Pairwise applied to the source relation on idxOf.
+  int_list_pairwise_index_order(
+      values, result_values, source_values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(first, later):
+        int_list_all_later_index_order(
+          first,
+          later,
+          result_values,
+          source_values)
+          AND
+            int_list_pairwise_index_order(
+              later,
+              result_values,
+              source_values)
+    ENDCASES
+  MEASURE values BY <<
+
+  % The source proof argument to the postcondition is logically irrelevant.
+  SetToSeq_postcond(
+      s, result: list[int]): bool =
+    int_list_all_members_of(result, s)
+      AND int_list_all_members_of(s, result)
+      AND int_list_all_count_one(result, result)
+      AND int_list_pairwise_index_order(result, result, s)
+
+  SetToSeq_spec_satisfied: bool =
+    FORALL (s: list[int]):
+      SetToSeq_precond(s)
+        IMPLIES
+          SetToSeq_postcond(
+            s,
+            SetToSeq(s))
+
+END verina_basic_89

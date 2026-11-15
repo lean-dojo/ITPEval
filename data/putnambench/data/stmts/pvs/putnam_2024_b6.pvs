@@ -1,0 +1,135 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2024_b6:
+% the threshold c = -1/2 separates zero and positive-infinity left limits at
+% one for a scaled real power-exponential series. This file contains no proof.
+
+putnam_2024_b6: THEORY
+BEGIN
+  real_function: TYPE = [real -> real]
+  real_family: TYPE = [real -> real_function]
+  real_sequence: TYPE = [nat -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  nat_factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * nat_factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  exponential_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        exponential_partial(x, count - 1)
+          + safe_div(
+              x ^ index,
+              nat_factorial(index) :: real)
+    ENDIF
+  MEASURE count
+
+  real_exponential(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat):
+            exponential_partial(x, count),
+          value))
+
+  natural_log(x: real): real =
+    IF x > 0 THEN
+      epsilon(
+        LAMBDA (value: real):
+          real_exponential(value) = x)
+    ELSE
+      0
+    ENDIF
+
+  real_power(base, exponent: real): real =
+    IF base > 0 THEN
+      real_exponential(exponent * natural_log(base))
+    ELSIF base = 0 AND exponent = 0 THEN
+      1
+    ELSE
+      0
+    ENDIF
+
+  series_term(a, x: real, index: nat): real =
+    LET n: nat = index + 1 IN
+      real_power(n :: real, a)
+        * real_exponential(2 * (n :: real))
+        * x ^ (n ^ 2)
+
+  series_partial_sum(
+      a, x: real,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      series_partial_sum(a, x, count - 1)
+        + series_term(a, x, count - 1)
+    ENDIF
+  MEASURE count
+
+  represents_series(F: real_family): bool =
+    FORALL (a, x: real):
+      (0 <= x AND x < 1)
+        IMPLIES
+          converges_to(
+            LAMBDA (count: nat):
+              series_partial_sum(a, x, count),
+            F(a)(x))
+
+  scaled_value(F: real_family, a, x: real): real =
+    F(a)(x)
+      * real_exponential(-safe_div(1, 1 - x))
+
+  tends_to_zero_from_left(
+      F: real_family,
+      a: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (delta: posreal):
+        FORALL (x: real):
+          (x < 1 AND 1 - x < delta)
+            IMPLIES
+              abs(scaled_value(F, a, x)) < epsilon_value
+
+  tends_to_positive_infinity_from_left(
+      F: real_family,
+      a: real): bool =
+    FORALL (bound: real):
+      EXISTS (delta: posreal):
+        FORALL (x: real):
+          (x < 1 AND 1 - x < delta)
+            IMPLIES
+              bound <= scaled_value(F, a, x)
+
+  putnam_2024_b6_solution: real = -1 / 2
+
+  putnam_2024_b6: bool =
+    FORALL (F: real_family), (c: real):
+      represents_series(F)
+        IMPLIES
+          (((FORALL (a: real):
+                a < c IMPLIES
+                  tends_to_zero_from_left(F, a))
+            AND
+              (FORALL (a: real):
+                a > c IMPLIES
+                  tends_to_positive_infinity_from_left(F, a)))
+            IFF c = putnam_2024_b6_solution)
+END putnam_2024_b6

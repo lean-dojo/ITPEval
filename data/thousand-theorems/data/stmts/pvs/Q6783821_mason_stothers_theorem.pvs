@@ -1,0 +1,174 @@
+% Statement-only formalization of the thousand-theorems corpus artifact Q6783821
+% (thousand-theorems__pvs__Q6783821), "Mason–Stothers theorem": for three
+% nonzero coprime polynomials over an arbitrary field whose sum is zero, the
+% polynomial ABC degree bounds hold unless all three derivatives vanish.
+% This file contains no proof.
+
+Q6783821_mason_stothers_theorem[
+  F, Poly: TYPE+,
+  zero_F, one_F: F,
+  neg_F, inv_F: [F -> F],
+  add_F, mul_F: [F, F -> F],
+  zero_poly, one_poly: Poly,
+  neg_poly, derivative_poly, radical_poly: [Poly -> Poly],
+  add_poly, mul_poly: [Poly, Poly -> Poly],
+  coefficient: [Poly, nat -> F],
+  nat_degree: [Poly -> nat]
+]: THEORY
+BEGIN
+
+  field_laws: bool =
+    NOT one_F = zero_F
+      AND (FORALL (x, y: F): add_F(x, y) = add_F(y, x))
+      AND (FORALL (x, y, z: F):
+        add_F(add_F(x, y), z) = add_F(x, add_F(y, z)))
+      AND (FORALL (x: F): add_F(x, zero_F) = x)
+      AND (FORALL (x: F): add_F(x, neg_F(x)) = zero_F)
+      AND (FORALL (x, y: F): mul_F(x, y) = mul_F(y, x))
+      AND (FORALL (x, y, z: F):
+        mul_F(mul_F(x, y), z) = mul_F(x, mul_F(y, z)))
+      AND (FORALL (x: F): mul_F(x, one_F) = x)
+      AND (FORALL (x, y, z: F):
+        mul_F(x, add_F(y, z))
+          = add_F(mul_F(x, y), mul_F(x, z)))
+      AND (FORALL (x: F):
+        NOT x = zero_F IMPLIES mul_F(x, inv_F(x)) = one_F)
+
+  finitely_supported(f: [nat -> F]): bool =
+    EXISTS (bound: nat):
+      FORALL (index: nat):
+        index > bound IMPLIES f(index) = zero_F
+
+  nat_sub(left, right: nat): nat =
+    IF right <= left THEN left - right ELSE 0 ENDIF
+
+  natural_scalar(value: nat): RECURSIVE F =
+    IF value = 0 THEN
+      zero_F
+    ELSE
+      add_F(natural_scalar(value - 1), one_F)
+    ENDIF
+  MEASURE value
+
+  convolution_sum(
+      p, q: Poly,
+      target_degree, count: nat): RECURSIVE F =
+    IF count = 0 THEN
+      zero_F
+    ELSE
+      add_F(
+        convolution_sum(p, q, target_degree, count - 1),
+        mul_F(
+          coefficient(p, count - 1),
+          coefficient(q, nat_sub(target_degree, count - 1))))
+    ENDIF
+  MEASURE count
+
+  polynomial_representation_laws: bool =
+    (FORALL (p, q: Poly):
+      (FORALL (index: nat):
+        coefficient(p, index) = coefficient(q, index))
+        IMPLIES p = q)
+      AND (FORALL (p: Poly):
+        finitely_supported(
+          LAMBDA (index: nat): coefficient(p, index)))
+      AND (FORALL (f: [nat -> F]):
+        finitely_supported(f) IMPLIES
+          EXISTS (p: Poly):
+            FORALL (index: nat):
+              coefficient(p, index) = f(index))
+      AND (FORALL (index: nat):
+        coefficient(zero_poly, index) = zero_F)
+      AND (FORALL (index: nat):
+        coefficient(one_poly, index)
+          = IF index = 0 THEN one_F ELSE zero_F ENDIF)
+      AND (FORALL (p: Poly), (index: nat):
+        coefficient(neg_poly(p), index)
+          = neg_F(coefficient(p, index)))
+      AND (FORALL (p, q: Poly), (index: nat):
+        coefficient(add_poly(p, q), index)
+          = add_F(coefficient(p, index), coefficient(q, index)))
+      AND (FORALL (p, q: Poly), (index: nat):
+        coefficient(mul_poly(p, q), index)
+          = convolution_sum(p, q, index, index + 1))
+      AND nat_degree(zero_poly) = 0
+      AND (FORALL (p: Poly):
+        NOT p = zero_poly IMPLIES
+          NOT coefficient(p, nat_degree(p)) = zero_F)
+      AND (FORALL (p: Poly), (index: nat):
+        index > nat_degree(p) IMPLIES
+          coefficient(p, index) = zero_F)
+
+  derivative_laws: bool =
+    FORALL (p: Poly), (index: nat):
+      coefficient(derivative_poly(p), index)
+        = mul_F(
+            natural_scalar(index + 1),
+            coefficient(p, index + 1))
+
+  divides_poly(divisor, value: Poly): bool =
+    EXISTS (quotient: Poly):
+      value = mul_poly(divisor, quotient)
+
+  unit_poly(value: Poly): bool =
+    EXISTS (inverse: Poly):
+      mul_poly(value, inverse) = one_poly
+
+  irreducible_poly(value: Poly): bool =
+    NOT value = zero_poly
+      AND NOT unit_poly(value)
+      AND (FORALL (left, right: Poly):
+        value = mul_poly(left, right)
+          IMPLIES unit_poly(left) OR unit_poly(right))
+
+  squarefree_poly(value: Poly): bool =
+    FORALL (factor: Poly):
+      irreducible_poly(factor) IMPLIES
+        NOT divides_poly(mul_poly(factor, factor), value)
+
+  radical_laws: bool =
+    FORALL (p: Poly):
+      NOT p = zero_poly IMPLIES
+        divides_poly(radical_poly(p), p)
+          AND squarefree_poly(radical_poly(p))
+          AND (FORALL (factor: Poly):
+            irreducible_poly(factor) IMPLIES
+              (divides_poly(factor, radical_poly(p))
+                IFF divides_poly(factor, p)))
+
+  is_coprime(left, right: Poly): bool =
+    EXISTS (x, y: Poly):
+      add_poly(
+        mul_poly(x, left),
+        mul_poly(y, right)) = one_poly
+
+  polynomial_context: bool =
+    field_laws
+      AND polynomial_representation_laws
+      AND derivative_laws
+      AND radical_laws
+
+  mason_stothers_theorem: bool =
+    polynomial_context IMPLIES
+      FORALL (a, b, c: Poly):
+        (NOT a = zero_poly
+          AND NOT b = zero_poly
+          AND NOT c = zero_poly
+          AND is_coprime(a, b)
+          AND add_poly(add_poly(a, b), c) = zero_poly)
+        IMPLIES
+          ((nat_degree(a) + 1
+              <= nat_degree(
+                radical_poly(mul_poly(mul_poly(a, b), c)))
+            AND nat_degree(b) + 1
+              <= nat_degree(
+                radical_poly(mul_poly(mul_poly(a, b), c)))
+            AND nat_degree(c) + 1
+              <= nat_degree(
+                radical_poly(mul_poly(mul_poly(a, b), c))))
+          OR
+            (derivative_poly(a) = zero_poly
+              AND derivative_poly(b) = zero_poly
+              AND derivative_poly(c) = zero_poly))
+
+END Q6783821_mason_stothers_theorem

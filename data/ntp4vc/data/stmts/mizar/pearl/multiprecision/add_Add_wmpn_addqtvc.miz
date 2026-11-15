@@ -1,0 +1,375 @@
+:: Statement-only formalization of the NTP4VC corpus artifact
+:: pearl/multiprecision/add_Add_wmpn_addqtvc: the verification condition for
+:: unequal-length multiprecision addition, including initial limb addition,
+:: carry propagation, copying remaining limbs, pointer aliasing, map updates,
+:: and memory framing. This file contains no proof.
+
+environ
+  vocabularies TARSKI, XBOOLE_0, SUBSET_1, RELAT_1, FUNCT_1,
+    FUNCT_2, PARTFUN1, ZFMISC_1, NUMBERS, XREAL_0, CARD_1,
+    XXREAL_0, ARYTM_1, ARYTM_3, REAL_1, INT_1, NAT_1,
+    VALUED_0, VALUED_1, ORDINAL1, MCART_1, MARGREL1,
+    XBOOLEAN, NEWTON;
+  notations TARSKI, XBOOLE_0, SUBSET_1, ZFMISC_1, XTUPLE_0,
+    MCART_1, RELAT_1, FUNCT_1, RELSET_1, PARTFUN1, FUNCT_2,
+    ORDINAL1, CARD_1, NUMBERS, XCMPLX_0, XREAL_0, REAL_1,
+    INT_1, NAT_1, NAT_D, NEWTON, XXREAL_0, MARGREL1, XBOOLEAN;
+  constructors FUNCT_1, RELSET_1, PARTFUN1, FUNCT_2, CARD_1,
+    REAL_1, INT_1, XXREAL_0, ZFMISC_1, MCART_1, NAT_1,
+    NAT_D, NEWTON, MARGREL1;
+  registrations XBOOLE_0, SUBSET_1, RELAT_1, FUNCT_1,
+    RELSET_1, FUNCT_2, NUMBERS, CARD_1, XXREAL_0, MEMBERED,
+    VALUED_0, VALUED_1, XCMPLX_0, XREAL_0, ORDINAL1, INT_1,
+    NAT_1, NEWTON, MARGREL1, XBOOLEAN;
+  requirements REAL, NUMERALS, SUBSET, BOOLE, ARITHM;
+  equalities XBOOLEAN;
+
+begin
+
+::$P-
+theorem
+  for P,Z being non empty set,
+      Len being Function of P,NAT,
+      Offset,Minimum,Maximum being Function of P,INT,
+      Writable being Function of P,BOOLEAN,
+      Zone being Function of P,Z,
+      Signed32 being Function of INT,INT,
+      Pelt being Function of [:P,INT:],INT,
+      VSub being Function of [:P,[:INT,INT:]:],INT,
+      Pow being Function of INT,INT,
+      Rebased,Snap,Mapeq,Frame,Update,Valueeq,Aliasinv,
+        Initial,Final,Carryinv,Copyinv,Copystep,Copyloop,
+        Copyphase,Carrystep,Carryloop,Carryphase being set,
+      sy,sx being Element of INT,
+      r,x,y being Element of P
+  st
+    (for fresh,shared,old being Element of P holds
+      [fresh,[shared,old]] in Rebased iff
+        Len.fresh = Len.shared &
+        (for j being Element of INT holds
+          Pelt.[fresh,j] = Pelt.[shared,j]) &
+        Len.shared = Len.old &
+        Offset.fresh = Offset.old &
+        Minimum.fresh = Minimum.old &
+        Maximum.fresh = Maximum.old &
+        Writable.fresh = Writable.old &
+        Zone.fresh = Zone.old) &
+    (for fresh,old being Element of P holds
+      [fresh,old] in Snap iff
+        Len.fresh = Len.old &
+        Offset.fresh = Offset.old &
+        Minimum.fresh = Minimum.old &
+        Maximum.fresh = Maximum.old &
+        Writable.fresh = Writable.old &
+        Zone.fresh = Zone.old) &
+    (for left,right being Element of P,
+         lower,upper being Element of INT holds
+      [left,[right,[lower,upper]]] in Mapeq iff
+        for i being Element of INT st lower <= i & i < upper
+        holds Pelt.[left,i] = Pelt.[right,i]) &
+    (for newp,old being Element of P,
+         count being Element of INT holds
+      [newp,[old,count]] in Frame iff
+        for j being Element of INT st
+          j < Offset.newp or Offset.newp + count <= j
+        holds Pelt.[newp,j] = Pelt.[old,j]) &
+    (for newp,old being Element of P,
+         index,value being Element of INT holds
+      [newp,[old,[index,value]]] in Update iff
+        for j being Element of INT holds
+          (j = index implies Pelt.[newp,j] = value) &
+          (j <> index implies Pelt.[newp,j] = Pelt.[old,j])) &
+    (for current being Element of P,
+         index,carry being Element of INT holds
+      [current,[index,carry]] in Valueeq iff
+        for vc,vx,vy,power being Integer st
+          vc = VSub.[current,
+            [Offset.current,Offset.current+index]] &
+          vx = VSub.[x,[Offset.x,Offset.x+index]] &
+          vy = VSub.[y,
+            [Offset.y,Offset.y+Signed32.sy]] &
+          power = Pow.index
+        holds vc + power * carry = vx + vy) &
+    (for current,xcur,ycur being Element of P holds
+      [current,[xcur,ycur]] in Aliasinv iff
+        (for j being Element of INT holds
+          Pelt.[xcur,j] = Pelt.[current,j]) &
+        (for j being Element of INT holds
+          Pelt.[ycur,j] = Pelt.[current,j]) &
+        (Offset.current = Offset.xcur or
+          [xcur,[x,[Offset.xcur,
+            Offset.xcur+Signed32.sx]]] in Mapeq) &
+        (Offset.current = Offset.ycur or
+          [ycur,[y,[Offset.ycur,
+            Offset.ycur+Signed32.sy]]] in Mapeq)) &
+    (for current,xcur,ycur being Element of P,
+         carry being Element of INT holds
+      [current,[xcur,[ycur,carry]]] in Initial iff
+        [current,[Signed32.sy,carry]] in Valueeq &
+        0 <= carry & carry <= 1 &
+        [current,[r,Signed32.sy]] in Frame &
+        (Offset.current = Offset.xcur or
+          [xcur,[x,[Offset.xcur,
+            Offset.xcur+Signed32.sy]]] in Mapeq) &
+        (Offset.current = Offset.ycur or
+          [ycur,[y,[Offset.ycur,
+            Offset.ycur+Signed32.sy]]] in Mapeq)) &
+    (for current,xcur,ycur being Element of P,
+         carry being Element of INT holds
+      [current,[xcur,[ycur,carry]]] in Final iff
+        [current,[Signed32.sx,carry]] in Valueeq &
+        0 <= carry & carry <= 1 &
+        [current,[r,Signed32.sx]] in Frame &
+        (Offset.current = Offset.xcur or
+          [xcur,[x,[Offset.xcur,
+            Offset.xcur+Signed32.sx]]] in Mapeq) &
+        (Offset.current = Offset.ycur or
+          [ycur,[y,[Offset.ycur,
+            Offset.ycur+Signed32.sy]]] in Mapeq)) &
+    (for index,carry being Element of INT,
+         current,xcur,ycur being Element of P holds
+      [index,[carry,[current,[xcur,ycur]]]] in Carryinv iff
+        Signed32.sy <= Signed32.index &
+        Signed32.index <= Signed32.sx &
+        [current,[Signed32.index,carry]] in Valueeq &
+        [current,[r,Signed32.index]] in Frame &
+        [current,[xcur,ycur]] in Aliasinv &
+        0 <= carry & carry <= 1 &
+        (index = sx or carry = 1)) &
+    (for index,carry being Element of INT,
+         current,xcur,ycur being Element of P holds
+      [index,[carry,[current,[xcur,ycur]]]] in Copyinv iff
+        Signed32.sy <= Signed32.index &
+        Signed32.index <= Signed32.sx &
+        (index = sx or carry = 0) &
+        [current,[Signed32.index,carry]] in Valueeq &
+        [current,[r,Signed32.index]] in Frame &
+        [current,[xcur,ycur]] in Aliasinv &
+        0 <= carry & carry <= 1) &
+    (for index,carry being Element of INT,
+         current,xcur,ycur being Element of P holds
+      [index,[carry,[current,[xcur,ycur]]]] in Copystep iff
+        (Signed32.index < Signed32.sx implies
+          Minimum.xcur <= Offset.xcur + Signed32.index &
+          Offset.xcur + Signed32.index < Maximum.xcur &
+          Minimum.x <= Offset.x + Signed32.index &
+          Offset.x + Signed32.index < Maximum.x &
+          Minimum.current <= Offset.current + Signed32.index &
+          Offset.current + Signed32.index < Maximum.current &
+          Writable.current = TRUE &
+          for ynext,xnext,rnext being Element of P st
+            [ynext,[rnext,ycur]] in Rebased &
+            [xnext,[rnext,xcur]] in Rebased &
+            [rnext,current] in Snap
+          holds
+            (([rnext,[current,
+                [Offset.rnext+Signed32.index,
+                 Pelt.[xcur,Offset.xcur+Signed32.index]]]] in Update &
+              Pelt.[rnext,Offset.rnext+Signed32.index] =
+                Pelt.[xcur,Offset.xcur+Signed32.index])
+             implies
+               -(2 |^ 31) <= Signed32.index + 1 &
+               Signed32.index + 1 <= 2147483647 &
+               for next being Element of INT st
+                 0 <= next & next < (2 |^ 32) &
+                 Signed32.next = Signed32.index + 1
+               holds
+                 0 <= Signed32.sx - Signed32.index &
+                 Signed32.sx - Signed32.next <
+                   Signed32.sx - Signed32.index &
+                 [next,[carry,[rnext,[xnext,ynext]]]] in Copyinv)) &
+        (not Signed32.index < Signed32.sx implies
+          [current,[xcur,[ycur,carry]]] in Final)) &
+    (for carry being Element of INT,
+         initial,xinitial,yinitial being Element of P holds
+      [carry,[initial,[xinitial,yinitial]]] in Copyloop iff
+        for index being Element of INT st
+          0 <= index & index < (2 |^ 32)
+        holds
+          for ycur,xcur,current being Element of P st
+            [ycur,[current,yinitial]] in Rebased &
+            [xcur,[current,xinitial]] in Rebased &
+            [current,initial] in Snap &
+            0 <= carry & carry < (2 |^ 64) &
+            [index,[carry,[current,[xcur,ycur]]]] in Copyinv
+          holds
+            [index,[carry,[current,[xcur,ycur]]]] in Copystep) &
+    (for index,carry being Element of INT,
+         current,xcur,ycur being Element of P holds
+      [index,[carry,[current,[xcur,ycur]]]] in Copyphase iff
+        [index,[carry,[current,[xcur,ycur]]]] in Copyinv &
+        [carry,[current,[xcur,ycur]]] in Copyloop) &
+    (for index,carry being Element of INT,
+         current,xcur,ycur being Element of P holds
+      [index,[carry,[current,[xcur,ycur]]]] in Carrystep iff
+        (Signed32.index < Signed32.sx implies
+          Minimum.xcur <= Offset.xcur + Signed32.index &
+          Offset.xcur + Signed32.index < Maximum.xcur &
+          Minimum.x <= Offset.x + Signed32.index &
+          Offset.x + Signed32.index < Maximum.x &
+          for result being Element of INT st
+            0 <= result & result < (2 |^ 64) &
+            (for px being Integer st
+               px = Pelt.[xcur,Offset.xcur+Signed32.index]
+             holds result = (px + 1) mod (2 |^ 64))
+          holds
+            Minimum.current <= Offset.current + Signed32.index &
+            Offset.current + Signed32.index < Maximum.current &
+            Writable.current = TRUE &
+            for ynext,xnext,rnext being Element of P st
+              [ynext,[rnext,ycur]] in Rebased &
+              [xnext,[rnext,xcur]] in Rebased &
+              [rnext,current] in Snap
+            holds
+              (([rnext,[current,
+                  [Offset.rnext+Signed32.index,result]]] in Update &
+                Pelt.[rnext,Offset.rnext+Signed32.index] = result)
+               implies
+                 -(2 |^ 31) <= Signed32.index + 1 &
+                 Signed32.index + 1 <= 2147483647 &
+                 for next being Element of INT st
+                   0 <= next & next < (2 |^ 32) &
+                   Signed32.next = Signed32.index + 1
+                 holds
+                   for flag being Element of BOOLEAN st
+                     (result = 0 implies flag = TRUE) &
+                     (flag = TRUE implies result = 0)
+                   holds
+                     (flag <> TRUE implies
+                       [next,[0,[rnext,[xnext,ynext]]]]
+                         in Copyphase) &
+                     (flag = TRUE implies
+                       0 <= Signed32.sx - Signed32.index &
+                       Signed32.sx - Signed32.next <
+                         Signed32.sx - Signed32.index &
+                       [next,[carry,[rnext,[xnext,ynext]]]]
+                         in Carryinv))) &
+        (not Signed32.index < Signed32.sx implies
+          [current,[xcur,[ycur,carry]]] in Final)) &
+    (for initial,xinitial,yinitial being Element of P holds
+      [initial,[xinitial,yinitial]] in Carryloop iff
+        for index,carry being Element of INT st
+          0 <= index & index < (2 |^ 32) &
+          0 <= carry & carry < (2 |^ 64)
+        holds
+          for ycur,xcur,current being Element of P st
+            [ycur,[current,yinitial]] in Rebased &
+            [xcur,[current,xinitial]] in Rebased &
+            [current,initial] in Snap &
+            [index,[carry,[current,[xcur,ycur]]]] in Carryinv
+          holds
+            [index,[carry,[current,[xcur,ycur]]]] in Carrystep) &
+    (for carry being Element of INT,
+         current,xcur,ycur being Element of P holds
+      [carry,[current,[xcur,ycur]]] in Carryphase iff
+        [sy,[carry,[current,[xcur,ycur]]]] in Carryinv &
+        [current,[xcur,ycur]] in Carryloop) &
+    (for w being Integer st 0 <= w & w < (2 |^ 32) holds
+      (w < (2 |^ 31) implies Signed32.w = w) &
+      (not w < (2 |^ 31) implies
+        Signed32.w = w - (2 |^ 32))) &
+    (for p being Element of P, j being Element of INT holds
+      for pj being Integer st pj = Pelt.[p,j] holds
+        0 <= pj & pj < (2 |^ 64)) &
+    Pow.0 = 1 &
+    (for n being Element of INT st n < 0 holds Pow.n = 1) &
+    (for n being Element of INT st 0 <= n holds
+      Pow.(n+1) = (2 |^ 64) * Pow.n) &
+    (for p being Element of P, n,m being Element of INT holds
+      (n < m implies
+        (for v,pn,vnext being Integer st
+           v = VSub.[p,[n,m]] &
+           pn = Pelt.[p,n] &
+           vnext = VSub.[p,[n+1,m]]
+         holds v = pn + (2 |^ 64) * vnext)) &
+      (not n < m implies VSub.[p,[n,m]] = 0)) &
+    0 <= sy & sy < (2 |^ 32) &
+    0 <= sx & sx < (2 |^ 32) &
+    0 <= Signed32.sy &
+    Signed32.sy <= Signed32.sx &
+    (-(2 |^ 31) <= Signed32.sx &
+     Signed32.sx <= 2147483647 &
+     0 <= Signed32.sx &
+     0 <= Minimum.r &
+     Minimum.r <= Offset.r &
+     Offset.r + Signed32.sx <= Maximum.r &
+     Maximum.r <= Len.r) &
+    (-(2 |^ 31) <= Signed32.sx &
+     Signed32.sx <= 2147483647 &
+     0 <= Signed32.sx &
+     0 <= Minimum.x &
+     Minimum.x <= Offset.x &
+     Offset.x + Signed32.sx <= Maximum.x &
+     Maximum.x <= Len.x) &
+    (-(2 |^ 31) <= Signed32.sy &
+     Signed32.sy <= 2147483647 &
+     0 <= Signed32.sy &
+     0 <= Minimum.y &
+     Minimum.y <= Offset.y &
+     Offset.y + Signed32.sy <= Maximum.y &
+     Maximum.y <= Len.y) &
+    (Offset.r = Offset.x or
+     Offset.r + Signed32.sx <= Offset.x or
+     Offset.x + Signed32.sx <= Offset.r) &
+    (Offset.r = Offset.y or
+     Offset.r + Signed32.sx <= Offset.y or
+     Offset.y + Signed32.sy <= Offset.r) &
+    Len.r = Len.x &
+    (for j being Element of INT holds Pelt.[r,j] = Pelt.[x,j]) &
+    Len.x = Len.y &
+    (for j being Element of INT holds Pelt.[x,j] = Pelt.[y,j]) &
+    Writable.r = TRUE
+  holds
+    0 <= Signed32.sy &
+    (-(2 |^ 31) <= Signed32.sy &
+     Signed32.sy <= 2147483647 &
+     0 <= Signed32.sy &
+     0 <= Minimum.r &
+     Minimum.r <= Offset.r &
+     Offset.r + Signed32.sy <= Maximum.r &
+     Maximum.r <= Len.r) &
+    (-(2 |^ 31) <= Signed32.sy &
+     Signed32.sy <= 2147483647 &
+     0 <= Signed32.sy &
+     0 <= Minimum.x &
+     Minimum.x <= Offset.x &
+     Offset.x + Signed32.sy <= Maximum.x &
+     Maximum.x <= Len.x) &
+    (-(2 |^ 31) <= Signed32.sy &
+     Signed32.sy <= 2147483647 &
+     0 <= Signed32.sy &
+     0 <= Minimum.y &
+     Minimum.y <= Offset.y &
+     Offset.y + Signed32.sy <= Maximum.y &
+     Maximum.y <= Len.y) &
+    (Offset.r = Offset.x or
+     Offset.r + Signed32.sy <= Offset.x or
+     Offset.x + Signed32.sy <= Offset.r) &
+    (Offset.r = Offset.y or
+     Offset.r + Signed32.sy <= Offset.y or
+     Offset.y + Signed32.sy <= Offset.r) &
+    Len.r = Len.x &
+    (for j being Element of INT holds Pelt.[r,j] = Pelt.[x,j]) &
+    Len.x = Len.y &
+    (for j being Element of INT holds Pelt.[x,j] = Pelt.[y,j]) &
+    Writable.r = TRUE &
+    for ycur,xcur,current being Element of P st
+      [ycur,[current,y]] in Rebased &
+      [xcur,[current,x]] in Rebased &
+      [current,r] in Snap
+    holds
+      for carry being Element of INT st
+        0 <= carry & carry < (2 |^ 64) &
+        [current,[xcur,[ycur,carry]]] in Initial
+      holds
+        for flag being Element of BOOLEAN st
+          (carry = 0 implies flag = TRUE) &
+          (flag = TRUE implies carry = 0)
+        holds
+          (flag <> TRUE implies
+            [carry,[current,[xcur,ycur]]] in Carryphase) &
+          (flag = TRUE implies
+            [sy,[carry,[current,[xcur,ycur]]]] in Copyphase)
+proof
+end;
+::$P+

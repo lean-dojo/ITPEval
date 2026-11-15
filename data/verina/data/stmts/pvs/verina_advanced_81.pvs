@@ -1,0 +1,139 @@
+% Statement-only formalization of the VERINA corpus artifact
+% verina_advanced_81, catalog title "uniqueSorted": removing duplicate
+% integers while preserving first occurrences, then insertion-sorting the
+% result, with its permutation and nondecreasing-order correctness contract.
+% This file contains no proof.
+
+verina_advanced_81: THEORY
+BEGIN
+
+  int_member(
+      requested: int,
+      values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        FALSE,
+      cons(head, tail):
+        requested = head OR int_member(requested, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  reverse_int_acc(
+      values, accumulator: list[int]): RECURSIVE list[int] =
+    CASES values OF
+      null:
+        accumulator,
+      cons(head, tail):
+        reverse_int_acc(tail, cons(head, accumulator))
+    ENDCASES
+  MEASURE values BY <<
+
+  removeDups_aux(
+      remaining, seen, accumulator: list[int]): RECURSIVE list[int] =
+    CASES remaining OF
+      null:
+        reverse_int_acc(accumulator, null[int]),
+      cons(head, tail):
+        IF int_member(head, seen) THEN
+          removeDups_aux(tail, seen, accumulator)
+        ELSE
+          removeDups_aux(
+            tail,
+            cons(head, seen),
+            cons(head, accumulator))
+        ENDIF
+    ENDCASES
+  MEASURE remaining BY <<
+
+  % This is both the source-local duplicate remover and, on integer lists,
+  % Lean's List.eraseDups computation: scan left to right with a seen list,
+  % accumulate unseen values in reverse order, then reverse the accumulator.
+  removeDups(values: list[int]): list[int] =
+    removeDups_aux(values, null[int], null[int])
+
+  insert(
+      value: int,
+      sorted_values: list[int]): RECURSIVE list[int] =
+    CASES sorted_values OF
+      null:
+        cons(value, null[int]),
+      cons(head, tail):
+        IF value <= head THEN
+          cons(value, cons(head, tail))
+        ELSE
+          cons(head, insert(value, tail))
+        ENDIF
+    ENDCASES
+  MEASURE sorted_values BY <<
+
+  insertionSort(values: list[int]): RECURSIVE list[int] =
+    CASES values OF
+      null:
+        null[int],
+      cons(head, tail):
+        insert(head, insertionSort(tail))
+    ENDCASES
+  MEASURE values BY <<
+
+  uniqueSorted_precond(arr: list[int]): bool =
+    TRUE
+
+  % The source precondition proof argument is computationally irrelevant.
+  uniqueSorted(arr: list[int]): list[int] =
+    insertionSort(removeDups(arr))
+
+  occurrence_count(
+      requested: int,
+      values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        (IF requested = head THEN 1 ELSE 0 ENDIF)
+          + occurrence_count(requested, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  list_permutation(
+      left, right: list[int]): bool =
+    FORALL (value: int):
+      occurrence_count(value, left)
+        = occurrence_count(value, right)
+
+  all_at_least(
+      lower: int,
+      values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        lower <= head
+          AND all_at_least(lower, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  pairwise_nondecreasing(
+      values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        all_at_least(head, tail)
+          AND pairwise_nondecreasing(tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  uniqueSorted_postcond(
+      arr, result: list[int]): bool =
+    list_permutation(removeDups(arr), result)
+      AND pairwise_nondecreasing(result)
+
+  uniqueSorted_spec_satisfied: bool =
+    FORALL (arr: list[int]):
+      uniqueSorted_precond(arr)
+        IMPLIES
+          uniqueSorted_postcond(
+            arr,
+            uniqueSorted(arr))
+
+END verina_advanced_81

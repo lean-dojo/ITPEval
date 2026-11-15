@@ -1,0 +1,78 @@
+% Statement-only formalization of the VERINA corpus artifact
+% verina_advanced_7, catalog title "binaryToDecimal": converting a big-endian
+% list of binary natural-number digits to its decimal natural-number value.
+% This file contains no proof.
+
+verina_advanced_7: THEORY
+BEGIN
+
+  nat_list_length(values: list[nat]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        nat_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  all_binary_digits(digits: list[nat]): RECURSIVE bool =
+    CASES digits OF
+      null:
+        TRUE,
+      cons(digit, rest):
+        (digit = 0 OR digit = 1)
+          AND all_binary_digits(rest)
+    ENDCASES
+  MEASURE digits BY <<
+
+  binaryToDecimal_precond(digits: list[nat]): bool =
+    all_binary_digits(digits)
+
+  binaryToDecimal_helper(
+      digits: list[nat]): RECURSIVE nat =
+    CASES digits OF
+      null:
+        0,
+      cons(first, rest):
+        first * (2 ^ nat_list_length(rest))
+          + binaryToDecimal_helper(rest)
+    ENDCASES
+  MEASURE digits BY <<
+
+  % The Lean precondition proof is computationally irrelevant. This is the
+  % exact proof-erased recursive implementation.
+  binaryToDecimal(digits: list[nat]): nat =
+    binaryToDecimal_helper(digits)
+
+  binary_foldl(
+      digits: list[nat],
+      accumulator: nat): RECURSIVE nat =
+    CASES digits OF
+      null:
+        accumulator,
+      cons(bit, rest):
+        binary_foldl(rest, accumulator * 2 + bit)
+    ENDCASES
+  MEASURE digits BY <<
+
+  % Lean natural-number subtraction is truncated at zero.
+  nat_subtract(first, second: nat): nat =
+    IF first >= second THEN first - second ELSE 0 ENDIF
+
+  binaryToDecimal_postcond(
+      digits: list[nat],
+      result: nat): bool =
+    LET folded: nat = binary_foldl(digits, 0)
+    IN
+      nat_subtract(result, folded) = 0
+        AND nat_subtract(folded, result) = 0
+
+  binaryToDecimal_spec_satisfied: bool =
+    FORALL (digits: list[nat]):
+      binaryToDecimal_precond(digits)
+        IMPLIES
+          binaryToDecimal_postcond(
+            digits,
+            binaryToDecimal(digits))
+
+END verina_advanced_7

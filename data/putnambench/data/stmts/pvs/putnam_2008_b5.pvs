@@ -1,0 +1,70 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2008_b5:
+% continuously differentiable real functions preserving the reduced denominator
+% of every rational are exactly integer translates of x or -x. This file contains no proof.
+
+putnam_2008_b5: THEORY
+BEGIN
+  real_function: TYPE = [real -> real]
+
+  continuous(f: real_function): bool =
+    FORALL (x: real), (epsilon_value: posreal):
+      EXISTS (delta: posreal):
+        FORALL (y: real):
+          abs(y - x) < delta IMPLIES
+            abs(f(y) - f(x)) < epsilon_value
+
+  has_derivative_at(
+      f: real_function,
+      derivative, x: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (delta: posreal):
+        FORALL (h: real):
+          (NOT (h = 0) AND abs(h) < delta)
+            IMPLIES
+              abs(
+                f(x + h) - f(x)
+                  - derivative * h)
+                < epsilon_value * abs(h)
+
+  continuously_differentiable(f: real_function): bool =
+    EXISTS (derivative: real_function):
+      (FORALL (x: real):
+        has_derivative_at(f, derivative(x), x))
+        AND continuous(derivative)
+
+  reduced_fraction(
+      value: rat,
+      numerator: int,
+      denominator: posnat): bool =
+    value = numerator / denominator
+      AND (FORALL (divisor: posnat):
+        ((EXISTS (integer_quotient: int):
+            numerator = divisor * integer_quotient)
+          AND (EXISTS (natural_quotient: nat):
+            denominator = divisor * natural_quotient))
+        IMPLIES divisor = 1)
+
+  same_reduced_denominator(left, right: rat): bool =
+    EXISTS
+        (left_numerator, right_numerator: int),
+        (denominator: posnat):
+      reduced_fraction(left, left_numerator, denominator)
+        AND reduced_fraction(right, right_numerator, denominator)
+
+  preserves_reduced_denominators(f: real_function): bool =
+    FORALL (q: rat):
+      EXISTS (value: rat):
+        f(q) = value
+          AND same_reduced_denominator(q, value)
+
+  putnam_2008_b5_solution(f: real_function): bool =
+    EXISTS (n: int):
+      f = (LAMBDA (x: real): x + n)
+        OR f = (LAMBDA (x: real): -x + n)
+
+  putnam_2008_b5: bool =
+    FORALL (f: real_function):
+      (continuously_differentiable(f)
+        AND preserves_reduced_denominators(f))
+      IFF putnam_2008_b5_solution(f)
+END putnam_2008_b5

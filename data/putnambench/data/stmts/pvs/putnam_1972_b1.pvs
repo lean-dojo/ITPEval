@@ -1,0 +1,93 @@
+% Statement-only formalization of PutnamBench artifact putnam_1972_b1:
+% no three consecutive coefficients vanish in the real power series for
+% the displayed factorial-denominator series near zero. This file contains no proof.
+
+putnam_1972_b1: THEORY
+BEGIN
+  real_sequence: TYPE = [nat -> real]
+  real_function: TYPE = [real -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  nat_factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * nat_factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  finite_sum(values: real_sequence, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      finite_sum(values, count - 1) + values(count - 1)
+    ENDIF
+  MEASURE count
+
+  converges_to(values: real_sequence, limit: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (count: nat):
+          cutoff <= count IMPLIES
+            abs(values(count) - limit) < epsilon_value
+
+  source_term(x: real, index: nat): real =
+    safe_div(
+      x ^ index * (x - 1) ^ (2 * index),
+      nat_factorial(index) :: real)
+
+  source_partial_sum(x: real, count: nat): real =
+    finite_sum(
+      LAMBDA (index: nat): source_term(x, index),
+      count)
+
+  coefficient_partial_sum(
+      coefficients: real_sequence,
+      x: real,
+      count: nat): real =
+    finite_sum(
+      LAMBDA (index: nat):
+        coefficients(index) * x ^ index,
+      count)
+
+  is_source_series(series: real_function): bool =
+    FORALL (x: real):
+      converges_to(
+        LAMBDA (count: nat): source_partial_sum(x, count),
+        series(x))
+
+  represents_near_zero(
+      coefficients: real_sequence,
+      series: real_function): bool =
+    EXISTS (radius: real):
+      radius > 0
+        AND FORALL (x: real):
+          abs(x) < radius IMPLIES
+            converges_to(
+              LAMBDA (count: nat):
+                coefficient_partial_sum(
+                  coefficients, x, count),
+              series(x))
+
+  no_three_consecutive_zero_coefficients(
+      coefficients: real_sequence): bool =
+    NOT EXISTS (index: nat):
+      coefficients(index) = 0
+        AND coefficients(index + 1) = 0
+        AND coefficients(index + 2) = 0
+
+  putnam_1972_b1: bool =
+    FORALL
+        (series: real_function),
+        (coefficients: real_sequence):
+      (is_source_series(series)
+        AND represents_near_zero(coefficients, series))
+      IMPLIES
+        no_three_consecutive_zero_coefficients(coefficients)
+END putnam_1972_b1

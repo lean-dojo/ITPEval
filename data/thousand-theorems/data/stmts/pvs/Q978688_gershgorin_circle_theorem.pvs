@@ -1,0 +1,172 @@
+% Statement-only formalization of Thousand Theorems artifact Q978688,
+% "Gershgorin circle theorem": every eigenvalue of a square matrix over a
+% normed field with an arbitrary finite index type lies in a closed ball
+% determined by one row's diagonal entry and off-diagonal norm sum.
+% This file contains no proof.
+
+Q978688_gershgorin_circle_theorem[
+  Index: TYPE,
+  K: TYPE+,
+  zeroK, oneK: K,
+  negK, invK: [K -> K],
+  addK, mulK: [K, K -> K],
+  normK: [K -> real]
+]: THEORY
+BEGIN
+  IMPORTING finite_sets[Index]
+
+  vector: TYPE = [Index -> K]
+  matrix: TYPE = [Index, Index -> K]
+
+  subK(x, y: K): K =
+    addK(x, negK(y))
+
+  field_laws: bool =
+    (FORALL (x, y: K):
+      addK(x, y) = addK(y, x))
+      AND
+    (FORALL (x, y, z: K):
+      addK(addK(x, y), z) = addK(x, addK(y, z)))
+      AND
+    (FORALL (x: K):
+      addK(x, zeroK) = x
+        AND addK(x, negK(x)) = zeroK)
+      AND
+    (FORALL (x, y: K):
+      mulK(x, y) = mulK(y, x))
+      AND
+    (FORALL (x, y, z: K):
+      mulK(mulK(x, y), z) = mulK(x, mulK(y, z)))
+      AND
+    (FORALL (x: K):
+      mulK(x, oneK) = x)
+      AND
+    (FORALL (x, y, z: K):
+      mulK(x, addK(y, z)) =
+        addK(mulK(x, y), mulK(x, z)))
+      AND zeroK /= oneK
+      AND invK(zeroK) = zeroK
+      AND
+    (FORALL (x: K):
+      x /= zeroK IMPLIES mulK(x, invK(x)) = oneK)
+
+  normed_field_laws: bool =
+    field_laws
+      AND normK(zeroK) = 0
+      AND normK(oneK) = 1
+      AND
+    (FORALL (x: K):
+      0 <= normK(x))
+      AND
+    (FORALL (x: K):
+      (normK(x) = 0 IFF x = zeroK))
+      AND
+    (FORALL (x: K):
+      normK(negK(x)) = normK(x))
+      AND
+    (FORALL (x, y: K):
+      normK(addK(x, y)) <= normK(x) + normK(y))
+      AND
+    (FORALL (x, y: K):
+      normK(mulK(x, y)) = normK(x) * normK(y))
+
+  field_sum_value(
+      support: finite_set[Index],
+      values: [Index -> K],
+      total: K): bool =
+    EXISTS
+      (enumeration:
+        [below(card(support)) -> (support)]),
+      (partial_sums:
+        [upto(card(support)) -> K]):
+        bijective?(enumeration)
+          AND partial_sums(0) = zeroK
+          AND
+        (FORALL (position: below(card(support))):
+          partial_sums(position + 1) =
+            addK(
+              partial_sums(position),
+              values(enumeration(position))))
+          AND total = partial_sums(card(support))
+
+  real_sum_value(
+      support: finite_set[Index],
+      values: [Index -> real],
+      total: real): bool =
+    EXISTS
+      (enumeration:
+        [below(card(support)) -> (support)]),
+      (partial_sums:
+        [upto(card(support)) -> real]):
+        bijective?(enumeration)
+          AND partial_sums(0) = 0
+          AND
+        (FORALL (position: below(card(support))):
+          partial_sums(position + 1) =
+            partial_sums(position)
+              + values(enumeration(position)))
+          AND total = partial_sums(card(support))
+
+  all_indices(support: finite_set[Index]): bool =
+    FORALL (index: Index):
+      member(index, support)
+
+  nonzero_vector(v: vector): bool =
+    EXISTS (index: Index):
+      v(index) /= zeroK
+
+  matrix_vector_entry_value(
+      support: finite_set[Index],
+      A: matrix,
+      v: vector,
+      row: Index,
+      total: K): bool =
+    field_sum_value(
+      support,
+      (LAMBDA (column: Index):
+        mulK(A(row, column), v(column))),
+      total)
+
+  has_eigenvalue(
+      support: finite_set[Index],
+      A: matrix,
+      mu: K): bool =
+    EXISTS (v: vector):
+      nonzero_vector(v)
+        AND
+      (FORALL (row: Index):
+        EXISTS (entry: K):
+          matrix_vector_entry_value(
+            support, A, v, row, entry)
+            AND entry = mulK(mu, v(row)))
+
+  off_diagonal_radius_value(
+      support: finite_set[Index],
+      A: matrix,
+      row: Index,
+      radius: real): bool =
+    real_sum_value(
+      support,
+      (LAMBDA (column: Index):
+        IF column = row THEN
+          0
+        ELSE
+          normK(A(row, column))
+        ENDIF),
+      radius)
+
+  gershgorin_circle_theorem: bool =
+    (is_finite_type[Index] AND normed_field_laws)
+      IMPLIES
+        FORALL
+          (support: finite_set[Index]),
+          (A: matrix),
+          (mu: K):
+            (all_indices(support)
+              AND has_eigenvalue(support, A, mu))
+            IMPLIES
+              EXISTS (row: Index), (radius: real):
+                off_diagonal_radius_value(
+                  support, A, row, radius)
+                  AND normK(subK(mu, A(row, row))) <= radius
+END Q978688_gershgorin_circle_theorem

@@ -1,0 +1,103 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2015_b6:
+% the alternating real series whose kth coefficient counts odd divisors of k
+% below sqrt(2k) converges to pi squared divided by 16. This file contains no
+% proof.
+
+putnam_2015_b6: THEORY
+BEGIN
+  real_sequence: TYPE = [nat -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  alternating_sign(index: nat): RECURSIVE real =
+    IF index = 0 THEN
+      1
+    ELSE
+      -alternating_sign(index - 1)
+    ENDIF
+  MEASURE index
+
+  count_below(
+      limit: nat,
+      property: [nat -> bool]): RECURSIVE nat =
+    IF limit = 0 THEN
+      0
+    ELSE
+      count_below(limit - 1, property)
+        + IF property(limit - 1) THEN 1 ELSE 0 ENDIF
+    ENDIF
+  MEASURE limit
+
+  nat_divides(divisor, value: nat): bool =
+    EXISTS (quotient: nat):
+      value = divisor * quotient
+
+  odd_nat(value: nat): bool =
+    EXISTS (half: nat):
+      value = 2 * half + 1
+
+  eligible_divisor(j, k: nat): bool =
+    odd_nat(j)
+      AND nat_divides(j, k)
+      AND j * j < 2 * k
+
+  divisor_count(k: nat): nat =
+    count_below(
+      k + 1,
+      LAMBDA (j: nat): eligible_divisor(j, k))
+
+  series_partial_sum(
+      A: [nat -> nat],
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      series_partial_sum(A, count - 1)
+        + safe_div(
+            alternating_sign(count - 1) * (A(count) :: real),
+            count :: real)
+    ENDIF
+  MEASURE count
+
+  leibniz_partial_sum(count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        leibniz_partial_sum(count - 1)
+          + safe_div(
+              alternating_sign(index),
+              (2 * index + 1) :: real)
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (count: nat):
+          cutoff <= count IMPLIES
+            abs(sequence(count) - value) < epsilon_value
+
+  pi: real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat):
+            4 * leibniz_partial_sum(count),
+          value))
+
+  putnam_2015_b6: bool =
+    FORALL (A: [nat -> nat]):
+      (FORALL (k: nat):
+        k > 0 IMPLIES A(k) = divisor_count(k))
+      IMPLIES
+        converges_to(
+          LAMBDA (count: nat):
+            series_partial_sum(A, count),
+          safe_div(pi ^ 2, 16))
+END putnam_2015_b6

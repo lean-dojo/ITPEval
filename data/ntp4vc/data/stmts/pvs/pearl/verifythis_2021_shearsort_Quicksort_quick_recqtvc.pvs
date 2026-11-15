@@ -1,0 +1,336 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/verifythis_2021_shearsort_Quicksort_quick_recqtvc: the Bentley-style
+% quicksort recursion verification condition for partition-loop invariants,
+% swaps, recursive variant decreases, sorted subranges, and subrange
+% permutations. This file contains no proof.
+
+verifythis_2021_shearsort_Quicksort_quick_recqtvc: THEORY
+BEGIN
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  nth_default(values: list[int], index: nat): RECURSIVE int =
+    CASES values OF
+      null: 0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          nth_default(tail, index - 1)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  list_set(
+      values: list[int],
+      index: nat,
+      value: int): RECURSIVE list[int] =
+    CASES values OF
+      null: null,
+      cons(head, tail):
+        IF index = 0 THEN
+          cons(value, tail)
+        ELSE
+          cons(head, list_set(tail, index - 1, value))
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  list_take(count: nat, values: list[int]): RECURSIVE list[int] =
+    IF count = 0 THEN
+      null
+    ELSE
+      CASES values OF
+        null: null,
+        cons(head, tail):
+          cons(head, list_take(count - 1, tail))
+      ENDCASES
+    ENDIF
+  MEASURE count
+
+  list_drop(count: nat, values: list[int]): RECURSIVE list[int] =
+    IF count = 0 THEN
+      values
+    ELSE
+      CASES values OF
+        null: null,
+        cons(head, tail):
+          list_drop(count - 1, tail)
+      ENDCASES
+    ENDIF
+  MEASURE count
+
+  nat_minus(left, right: nat): RECURSIVE nat =
+    IF left = 0 OR right = 0 THEN
+      left
+    ELSE
+      nat_minus(left - 1, right - 1)
+    ENDIF
+  MEASURE left + right
+
+  list_slice(values: list[int], lower, upper: nat): list[int] =
+    list_take(nat_minus(upper, lower), list_drop(lower, values))
+
+  occurrence_count(value: int, values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null: 0,
+      cons(head, tail):
+        (IF value = head THEN 1 ELSE 0 ENDIF)
+          + occurrence_count(value, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  list_permutation(left, right: list[int]): bool =
+    FORALL (value: int):
+      occurrence_count(value, left) = occurrence_count(value, right)
+
+  permut_sub_prime(
+      left, right: list[int],
+      lower, upper: nat): bool =
+    length(left) = length(right)
+      AND list_slice(left, 0, lower) = list_slice(right, 0, lower)
+      AND list_slice(left, upper, length(left))
+        = list_slice(right, upper, length(right))
+      AND list_permutation(
+        list_slice(left, lower, upper),
+        list_slice(right, lower, upper))
+
+  sorted_sub(values: list[int], lower, upper: int): bool =
+    FORALL (i1, i2: int):
+      (lower <= i1 AND i1 <= i2 AND i2 < upper)
+        IMPLIES
+          nth_default(values, int_to_nat(i1))
+            <= nth_default(values, int_to_nat(i2))
+
+  array_exchange(
+      before, after: list[int],
+      i, j: int): bool =
+    after =
+      list_set(
+        list_set(
+          before,
+          int_to_nat(i),
+          nth_default(before, int_to_nat(j))),
+        int_to_nat(j),
+        nth_default(before, int_to_nat(i)))
+
+  qs_partition(
+      before, after: list[int],
+      l, m, r, pivot: int): bool =
+    permut_sub_prime(
+      before, after, int_to_nat(l), int_to_nat(r))
+      AND
+    (FORALL (j: int):
+      (l <= j AND j < m)
+        IMPLIES nth_default(after, int_to_nat(j)) < pivot)
+      AND
+    (FORALL (j: int):
+      (m < j AND j < r)
+        IMPLIES pivot <= nth_default(after, int_to_nat(j)))
+      AND
+    nth_default(after, int_to_nat(m)) = pivot
+
+  bounds(index: int, values: list[int]): bool =
+    0 <= index AND index < length(values)
+
+  initial_state(
+      original: list[int],
+      l, r, pivot, next: int): bool =
+    (nth_default(original, int_to_nat(l)) = pivot
+      AND l <= l
+      AND l < next)
+      AND
+    (FORALL (j: int):
+      (l < j AND j <= l)
+        IMPLIES nth_default(original, int_to_nat(j)) < pivot)
+      AND
+    (FORALL (j: int):
+      (l < j AND j < next)
+        IMPLIES pivot <= nth_default(original, int_to_nat(j)))
+      AND
+    permut_sub_prime(
+      original, original, int_to_nat(l), int_to_nat(r))
+
+  loop_invariant(
+      original, current: list[int],
+      l, m, i, r, pivot: int): bool =
+    (nth_default(current, int_to_nat(l)) = pivot
+      AND l <= m
+      AND m < i)
+      AND
+    (FORALL (j: int):
+      (l < j AND j <= m)
+        IMPLIES nth_default(current, int_to_nat(j)) < pivot)
+      AND
+    (FORALL (j: int):
+      (m < j AND j < i)
+        IMPLIES pivot <= nth_default(current, int_to_nat(j)))
+      AND
+    permut_sub_prime(
+      original, current, int_to_nat(l), int_to_nat(r))
+
+  less_result(
+      original, updated: list[int],
+      l, m, i, r, pivot: int): bool =
+    (nth_default(updated, int_to_nat(l)) = pivot
+      AND l <= m + 1
+      AND m + 1 < i + 1)
+      AND
+    (FORALL (j: int):
+      (l < j AND j <= m + 1)
+        IMPLIES nth_default(updated, int_to_nat(j)) < pivot)
+      AND
+    (FORALL (j: int):
+      (m + 1 < j AND j < i + 1)
+        IMPLIES pivot <= nth_default(updated, int_to_nat(j)))
+      AND
+    permut_sub_prime(
+      original, updated, int_to_nat(l), int_to_nat(r))
+
+  less_branch(
+      original, current: list[int],
+      l, m, i, r, pivot: int): bool =
+    (bounds(i, current) AND bounds(m + 1, current))
+      AND
+    (FORALL (updated: list[int]):
+      length(updated) = length(current)
+        IMPLIES
+      array_exchange(current, updated, i, m + 1)
+        IMPLIES
+      less_result(original, updated, l, m, i, r, pivot))
+
+  greater_or_equal_result(
+      original, current: list[int],
+      l, m, i, r, pivot: int): bool =
+    loop_invariant(
+      original, current, l, m, i + 1, r, pivot)
+
+  loop_step(
+      original, current: list[int],
+      l, m, i, r, pivot: int): bool =
+    bounds(i, current)
+      AND
+    IF nth_default(current, int_to_nat(i)) < pivot THEN
+      less_branch(original, current, l, m, i, r, pivot)
+    ELSE
+      greater_or_equal_result(
+        original, current, l, m, i, r, pivot)
+    ENDIF
+
+  recursive_calls(
+      original, partitioned: list[int],
+      l, m, r: int): bool =
+    ((0 <= r - l AND m - l < r - l)
+      AND 0 <= l
+      AND l <= m
+      AND m <= length(partitioned))
+      AND
+    (FORALL (left_sorted: list[int]):
+      length(left_sorted) = length(partitioned)
+        IMPLIES
+      (sorted_sub(left_sorted, l, m)
+        AND permut_sub_prime(
+          partitioned,
+          left_sorted,
+          int_to_nat(l),
+          int_to_nat(m)))
+        IMPLIES
+      LET right_start: int = m + 1 IN
+        ((0 <= r - l AND r - right_start < r - l)
+          AND 0 <= right_start
+          AND right_start <= r
+          AND r <= length(left_sorted))
+          AND
+        (FORALL (right_sorted: list[int]):
+          length(right_sorted) = length(left_sorted)
+            IMPLIES
+          (sorted_sub(right_sorted, right_start, r)
+            AND permut_sub_prime(
+              left_sorted,
+              right_sorted,
+              int_to_nat(right_start),
+              int_to_nat(r)))
+            IMPLIES
+          (sorted_sub(right_sorted, l, r)
+            AND permut_sub_prime(
+              original,
+              right_sorted,
+              int_to_nat(l),
+              int_to_nat(r)))))
+
+  after_loop(
+      original, current: list[int],
+      l, m, r: int): bool =
+    (bounds(l, current) AND bounds(m, current))
+      AND
+    (FORALL (partitioned: list[int]):
+      length(partitioned) = length(current)
+        IMPLIES
+      array_exchange(current, partitioned, l, m)
+        IMPLIES
+      recursive_calls(original, partitioned, l, m, r))
+
+  loop_obligation(
+      original: list[int],
+      l, r, pivot, last, next: int): bool =
+    FORALL (m: int), (current: list[int]):
+      length(current) = length(original)
+        IMPLIES
+      ((FORALL (i: int):
+        ((next <= i AND i <= last)
+          AND loop_invariant(
+            original, current, l, m, i, r, pivot))
+          IMPLIES
+        loop_step(
+          original, current, l, m, i, r, pivot))
+        AND
+      (loop_invariant(
+        original, current, l, m, last + 1, r, pivot)
+        IMPLIES
+      after_loop(original, current, l, m, r)))
+
+  empty_loop(
+      original: list[int],
+      l, r: int): bool =
+    bounds(l, original)
+      AND
+    (FORALL (partitioned: list[int]):
+      length(partitioned) = length(original)
+        IMPLIES
+      array_exchange(original, partitioned, l, l)
+        IMPLIES
+      recursive_calls(original, partitioned, l, l, r))
+
+  base_case(values: list[int], l, r: int): bool =
+    sorted_sub(values, l, r)
+      AND
+    permut_sub_prime(
+      values, values, int_to_nat(l), int_to_nat(r))
+
+  quick_rec_vc: bool =
+    FORALL (l, r: int), (a: list[int]):
+      0 <= l
+        IMPLIES
+      l <= r
+        IMPLIES
+      r <= length(a)
+        IMPLIES
+      IF l + 1 < r THEN
+        bounds(l, a)
+          AND
+        LET pivot: int = nth_default(a, int_to_nat(l)) IN
+        LET last: int = r - 1 IN
+        LET next: int = l + 1 IN
+          ((next <= last + 1)
+            IMPLIES
+          (initial_state(a, l, r, pivot, next)
+            AND loop_obligation(
+              a, l, r, pivot, last, next)))
+          AND
+          ((last + 1 < next)
+            IMPLIES
+          empty_loop(a, l, r))
+      ELSE
+        base_case(a, l, r)
+      ENDIF
+END verifythis_2021_shearsort_Quicksort_quick_recqtvc

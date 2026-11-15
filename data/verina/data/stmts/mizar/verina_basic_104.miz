@@ -1,0 +1,133 @@
+:: Statement-only formalization of the VERINA corpus artifact
+:: verina_basic_104, catalog title "update_map": the unique-key precondition,
+:: exact key-removing insertion and left-fold implementation, key-sorted
+:: output, first-match lookup helper, full update postcondition, and final
+:: correctness contract. This file contains no proof.
+
+environ
+  vocabularies TARSKI, XBOOLE_0, ZFMISC_1, SUBSET_1, RELAT_1, FUNCT_1,
+    PARTFUN1, FUNCT_2, NUMBERS, NAT_1, INT_1, FINSEQ_1, FINSEQ_2,
+    CARD_1, ARYTM_1, ARYTM_3, ORDINAL1, ORDINAL4, XCMPLX_0,
+    XREAL_0, XXREAL_0, MCART_1, XTUPLE_0, MARGREL1, XBOOLEAN;
+  notations TARSKI, XBOOLE_0, ZFMISC_1, SUBSET_1, XTUPLE_0, MCART_1,
+    RELAT_1, FUNCT_1, PARTFUN1, ORDINAL1, CARD_1, NUMBERS,
+    XCMPLX_0, XREAL_0, XXREAL_0, INT_1, RELSET_1, FUNCT_2,
+    NAT_1, NAT_D, FINSEQ_1, FINSEQ_2, XBOOLEAN, MARGREL1;
+  constructors RELAT_1, RELSET_1, FUNCT_1, PARTFUN1, FUNCT_2, CARD_1,
+    NUMBERS, NAT_1, NAT_D, INT_1, FINSEQ_1, FINSEQ_2, FINSEQOP,
+    XXREAL_0, XTUPLE_0, MCART_1, XBOOLEAN, MARGREL1;
+  registrations XBOOLE_0, SUBSET_1, RELAT_1, RELSET_1, FUNCT_1,
+    PARTFUN1, FUNCT_2, ORDINAL1, CARD_1, NAT_1, INT_1, FINSEQ_1,
+    FINSEQ_2, XCMPLX_0, XREAL_0, XXREAL_0, XTUPLE_0, XBOOLEAN,
+    MARGREL1;
+  requirements REAL, NUMERALS, SUBSET, BOOLE, ARITHM;
+  equalities XBOOLEAN;
+
+begin
+
+::$P-
+theorem
+  for m1,m2,result being FinSequence of [:INT,INT:] st
+    (for i,j being Nat, ki,kj,vi,vj being Integer st
+      i in dom m1 & j in dom m1 &
+      m1/.i = [ki,vi] & m1/.j = [kj,vj] & ki = kj
+    holds i = j) &
+    (for i,j being Nat, ki,kj,vi,vj being Integer st
+      i in dom m2 & j in dom m2 &
+      m2/.i = [ki,vi] & m2/.j = [kj,vj] & ki = kj
+    holds i = j) &
+    (ex removeKey being
+          Function of [:[:INT,INT:]*,INT:],[:INT,INT:]*,
+        insertMap being
+          Function of [:[:INT,INT:]*,INT,INT:],[:INT,INT:]*,
+        findMap being
+          Function of [:[:INT,INT:]*,INT:],[:BOOLEAN,INT:],
+        foldStates being FinSequence of [:INT,INT:]*,
+        updated being FinSequence of [:INT,INT:] st
+      (for key being Integer holds
+        removeKey/.[<*>[:INT,INT:],key] = <*>[:INT,INT:]) &
+      (for headKey,headValue,key being Integer,
+           tail,whole being FinSequence of [:INT,INT:] st
+        whole = <*[headKey,headValue]*> ^ tail
+      holds
+        ((headKey = key &
+          removeKey/.[whole,key] = removeKey/.[tail,key]) or
+         (headKey <> key &
+          removeKey/.[whole,key] =
+            <*[headKey,headValue]*> ^ removeKey/.[tail,key]))) &
+      (for source being FinSequence of [:INT,INT:],
+           key,value being Integer holds
+        insertMap/.[source,key,value] =
+          removeKey/.[source,key] ^ <*[key,value]*>) &
+      (for key being Integer holds
+        findMap/.[<*>[:INT,INT:],key] = [FALSE,0]) &
+      (for headKey,headValue,key being Integer,
+           tail,whole being FinSequence of [:INT,INT:] st
+        whole = <*[headKey,headValue]*> ^ tail
+      holds
+        ((headKey = key &
+          findMap/.[whole,key] = [TRUE,headValue]) or
+         (headKey <> key &
+          findMap/.[whole,key] = findMap/.[tail,key]))) &
+      len foldStates = len m2 + 1 &
+      foldStates/.1 = m1 &
+      (for k being Nat st k in dom m2 holds
+        ex current,next being FinSequence of [:INT,INT:],
+           key,value being Integer st
+          current = foldStates/.k &
+          next = foldStates/.(k + 1) &
+          m2/.k = [key,value] &
+          next = insertMap/.[current,key,value]) &
+      updated = foldStates/.(len m2 + 1) &
+      len result = len updated &
+      rng result = rng updated &
+      result is one-to-one &
+      (for i,j being Nat, ki,kj,vi,vj being Integer st
+        i in dom result & j in dom result & i < j &
+        result/.i = [ki,vi] & result/.j = [kj,vj]
+      holds ki <= kj))
+  holds
+    (for i,j being Nat, ki,kj,vi,vj being Integer st
+      i in dom result & j in dom result & i < j &
+      result/.i = [ki,vi] & result/.j = [kj,vj]
+    holds ki <= kj) &
+    (for k being Nat, key,value being Integer st
+      k in dom m2 & m2/.k = [key,value]
+    holds
+      ex q being Nat st
+        q in dom result &
+        result/.q = [key,value] &
+        for h being Nat, earlierValue being Integer st
+          h in dom result & h < q
+        holds result/.h <> [key,earlierValue]) &
+    (for k being Nat, key,value being Integer st
+      k in dom m1 & m1/.k = [key,value] &
+      not ex q being Nat, newValue being Integer st
+        q in dom m2 & m2/.q = [key,newValue]
+    holds
+      ex q being Nat st
+        q in dom result &
+        result/.q = [key,value] &
+        for h being Nat, earlierValue being Integer st
+          h in dom result & h < q
+        holds result/.h <> [key,earlierValue]) &
+    (for k being Nat, key,value being Integer st
+      k in dom result & result/.k = [key,value]
+    holds
+      ((ex q being Nat st
+          q in dom m2 &
+          m2/.q = [key,value] &
+          for h being Nat, earlierValue being Integer st
+            h in dom m2 & h < q
+          holds m2/.h <> [key,earlierValue]) or
+       (not ex q being Nat, newValue being Integer st
+          q in dom m2 & m2/.q = [key,newValue]) &
+       (ex q being Nat st
+          q in dom m1 &
+          m1/.q = [key,value] &
+          for h being Nat, earlierValue being Integer st
+            h in dom m1 & h < q
+          holds m1/.h <> [key,earlierValue])))
+proof
+end;
+::$P+

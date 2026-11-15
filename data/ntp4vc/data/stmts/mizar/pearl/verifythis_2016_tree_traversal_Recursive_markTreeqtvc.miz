@@ -1,0 +1,469 @@
+:: Statement-only formalization of the NTP4VC corpus artifact
+:: pearl/verifythis_2016_tree_traversal_Recursive_markTreeqtvc: the recursive
+:: binary-tree traversal verification condition marks every node while its
+:: pointer rotations simulate traversal and ultimately restore the tree shape.
+:: This file contains no proof.
+
+environ
+  vocabularies TARSKI, XBOOLE_0, SUBSET_1, RELAT_1, FUNCT_1,
+    FUNCT_2, FUNCT_4, FUNCT_7, FUNCOP_1, PARTFUN1, ZFMISC_1,
+    NUMBERS, XREAL_0, CARD_1, XXREAL_0, ARYTM_1, ARYTM_3,
+    REAL_1, INT_1, NAT_1, VALUED_0, VALUED_1, ORDINAL1,
+    ORDINAL4, FINSEQ_1, FINSEQ_2, MARGREL1, XBOOLEAN, MCART_1;
+  notations TARSKI, XBOOLE_0, SUBSET_1, ZFMISC_1, XTUPLE_0,
+    MCART_1, RELAT_1, FUNCT_1, RELSET_1, PARTFUN1, FUNCT_2,
+    FUNCT_4, FUNCT_7, FUNCOP_1, ORDINAL1, CARD_1, NUMBERS,
+    XCMPLX_0, XREAL_0, REAL_1, INT_1, NAT_1, XXREAL_0,
+    FINSEQ_1, FINSEQ_2, MARGREL1, XBOOLEAN;
+  constructors FUNCT_1, RELSET_1, PARTFUN1, FUNCT_2, FUNCT_4,
+    FUNCT_7, FUNCOP_1, CARD_1, REAL_1, INT_1, XXREAL_0,
+    ZFMISC_1, MCART_1, NAT_1, FINSEQ_1, FINSEQ_2, MARGREL1;
+  registrations XBOOLE_0, SUBSET_1, RELAT_1, FUNCT_1, RELSET_1,
+    FUNCT_2, FUNCT_4, FUNCT_7, FUNCOP_1, NUMBERS, CARD_1,
+    XXREAL_0, MEMBERED, VALUED_0, VALUED_1, XCMPLX_0,
+    XREAL_0, ORDINAL1, INT_1, NAT_1, FINSEQ_1, FINSEQ_2,
+    MARGREL1, XBOOLEAN;
+  requirements REAL, NUMERALS, SUBSET, BOOLE, ARITHM;
+
+begin
+
+::$P-
+theorem
+  for L,K,Phase,Tree,Memory being non empty set,
+      Keys being Function of 3,K,
+      Phases being Function of 4,Phase,
+      null being Element of L,
+      emptyT being Element of Tree,
+      node being Function of [:Tree,[:L,Tree:]:],Tree,
+      Footprint being Function of Tree,bool L,
+      Accessor being Function of Memory,Funcs(K,Funcs(L,L)),
+      PtrField being
+        Function of [:Funcs(K,Funcs(L,L)),K:],Funcs(L,L),
+      PtrVal being
+        Function of [:Funcs(K,Funcs(L,L)),[:K,L:]:],L,
+      Mark being Function of Memory,Funcs(L,BOOLEAN),
+      IsTree being
+        Subset of
+          [:Funcs(K,Funcs(L,L)),[:Tree,[:L,L:]:]:],
+      Ext being
+        Subset of
+          [:bool L,
+            [:Funcs(K,Funcs(L,L)),Funcs(K,Funcs(L,L)):]:],
+      Unchanged being
+        Subset of
+          [:Funcs(K,Funcs(L,L)),Funcs(K,Funcs(L,L)):],
+      WasMarked being
+        Subset of
+          [:Tree,[:Funcs(L,BOOLEAN),Funcs(L,BOOLEAN):]:],
+      NextPhase being Function of Phase,Phase,
+      Rotated being
+        Subset of
+          [:Funcs(K,Funcs(L,L)),
+            [:Funcs(K,Funcs(L,L)),[:Phase,L:]:]:],
+      memo being Element of Memory,
+      t being Element of Tree,
+      root being Element of L
+  st
+    Keys.0 <> Keys.1 & Keys.0 <> Keys.2 & Keys.1 <> Keys.2 &
+    (for k being Element of K holds
+       k = Keys.0 or k = Keys.1 or k = Keys.2) &
+
+    Phases.0 <> Phases.1 & Phases.0 <> Phases.2 & Phases.0 <> Phases.3 &
+    Phases.1 <> Phases.2 & Phases.1 <> Phases.3 & Phases.2 <> Phases.3 &
+    (for ph being Element of Phase holds
+       ph = Phases.0 or ph = Phases.1 or ph = Phases.2 or ph = Phases.3) &
+
+    (for l,r,l1,r1 being Element of Tree,
+         x,x1 being Element of L
+       st node.[l,[x,r]] = node.[l1,[x1,r1]]
+     holds l = l1 & x = x1 & r = r1) &
+    (for l,r being Element of Tree, x being Element of L
+     holds node.[l,[x,r]] <> emptyT) &
+    (for u being Element of Tree holds
+       u = emptyT or
+       ex l,r being Element of Tree, x being Element of L st
+         u = node.[l,[x,r]]) &
+    (for X being Subset of Tree st
+       emptyT in X &
+       (for l,r being Element of Tree, x being Element of L st
+          l in X & r in X
+        holds node.[l,[x,r]] in X)
+     holds X = Tree) &
+
+    Footprint.emptyT = {} &
+    (for l,r being Element of Tree, x being Element of L holds
+       Footprint.(node.[l,[x,r]]) =
+         {x} \/ (Footprint.l \/ Footprint.r)) &
+
+    (for pm being Function of K,Funcs(L,L),
+         k being Element of K
+     holds PtrField.[pm,k] = pm.k) &
+    (for pm being Function of K,Funcs(L,L),
+         k being Element of K, x being Element of L
+     holds PtrVal.[pm,[k,x]] = (pm.k).x) &
+
+    (for pm being Function of K,Funcs(L,L),
+         mk being Function of L,BOOLEAN
+     holds
+       ex m being Element of Memory st
+         Accessor.m = pm & Mark.m = mk) &
+    (for m1,m2 being Element of Memory st
+       Accessor.m1 = Accessor.m2 & Mark.m1 = Mark.m2
+     holds m1 = m2) &
+
+    (for pm being Function of K,Funcs(L,L),
+         c,p being Element of L
+     holds
+       ([pm,[emptyT,[c,p]]] in IsTree iff c = null)) &
+    (for pm being Function of K,Funcs(L,L),
+         l,r being Element of Tree,
+         m,c,p being Element of L
+     holds
+       ([pm,[node.[l,[m,r]],[c,p]]] in IsTree iff
+         c <> null & c = m & PtrVal.[pm,[Keys.0,c]] = p &
+         (PtrVal.[pm,[Keys.1,c]] = null iff
+          PtrVal.[pm,[Keys.2,c]] = null) &
+         [pm,[l,[PtrVal.[pm,[Keys.1,c]],c]]] in IsTree &
+         [pm,[r,[PtrVal.[pm,[Keys.2,c]],c]]] in IsTree)) &
+
+    (for S being Subset of L,
+         pm1,pm2 being Function of K,Funcs(L,L)
+     holds
+       ([S,[pm1,pm2]] in Ext iff
+         for k being Element of K, x being Element of L st x in S
+         holds PtrVal.[pm1,[k,x]] = PtrVal.[pm2,[k,x]])) &
+    (for pm1,pm2 being Function of K,Funcs(L,L)
+     holds
+       ([pm1,pm2] in Unchanged iff
+         for k being Element of K, x being Element of L
+         holds PtrVal.[pm1,[k,x]] = PtrVal.[pm2,[k,x]])) &
+    (for tr being Element of Tree,
+         mk1,mk2 being Function of L,BOOLEAN
+     holds
+       ([tr,[mk1,mk2]] in WasMarked iff
+         (for x being Element of L st x in Footprint.tr
+          holds mk2.x = TRUE) &
+         (for x being Element of L st not x in Footprint.tr
+          holds mk2.x = mk1.x))) &
+
+    NextPhase.(Phases.0) = Phases.1 &
+    NextPhase.(Phases.1) = Phases.2 &
+    NextPhase.(Phases.2) = Phases.0 &
+    NextPhase.(Phases.3) = Phases.3 &
+    (for pm1,pm2 being Function of K,Funcs(L,L),
+         ph being Element of Phase, c being Element of L
+     holds
+       ([pm1,[pm2,[ph,c]]] in Rotated iff
+         (for k being Element of K, x being Element of L st x <> c
+          holds PtrVal.[pm1,[k,x]] = PtrVal.[pm2,[k,x]]) &
+         (ph <> Phases.3 implies c <> null) &
+         ((ph = Phases.0 & [pm1,pm2] in Unchanged) or
+          (ph = Phases.1 &
+            PtrVal.[pm2,[Keys.1,c]] = PtrVal.[pm1,[Keys.2,c]] &
+            PtrVal.[pm2,[Keys.2,c]] = PtrVal.[pm1,[Keys.0,c]] &
+            PtrVal.[pm2,[Keys.0,c]] = PtrVal.[pm1,[Keys.1,c]]) or
+          (ph = Phases.2 &
+            PtrVal.[pm1,[Keys.1,c]] = PtrVal.[pm2,[Keys.2,c]] &
+            PtrVal.[pm1,[Keys.2,c]] = PtrVal.[pm2,[Keys.0,c]] &
+            PtrVal.[pm1,[Keys.0,c]] = PtrVal.[pm2,[Keys.1,c]]) or
+          (ph = Phases.3 & c = null)))) &
+
+    [Accessor.memo,[t,[root,null]]] in IsTree &
+    root <> null
+  holds
+    (for entered being Element of BOOLEAN,
+         x being Element of L,
+         memo1 being Element of Memory,
+         mem0 being Function of K,Funcs(L,L),
+         ph being Element of Phase st
+       [mem0,[Accessor.memo1,[ph,x]]] in Rotated &
+       (ph = Phases.3 implies entered = TRUE)
+     holds
+       for o2 being Element of BOOLEAN st
+         ((entered = TRUE & x = null & o2 = TRUE) or
+          (entered = TRUE & x <> null & o2 = FALSE) or
+          (entered <> TRUE & o2 = FALSE))
+       holds
+         (o2 = TRUE implies ph = Phases.3) &
+         (o2 <> TRUE implies
+           x <> null &
+           (for memo2 being Element of Memory st
+              Accessor.memo2 = Accessor.memo1 &
+              Mark.memo2 = (Mark.memo1)+*(x,TRUE)
+            holds
+              x <> null &
+              (for o3 being Element of L st
+                 o3 = PtrVal.[Accessor.memo2,[Keys.1,x]]
+               holds
+                 (o3 = null implies x <> null) &
+                 (for o4 being Element of BOOLEAN st
+                    ((o3 = null &
+                      PtrVal.[Accessor.memo2,[Keys.2,x]] = null &
+                      o4 = TRUE) or
+                     (o3 = null &
+                      PtrVal.[Accessor.memo2,[Keys.2,x]] <> null &
+                      o4 = FALSE) or
+                     (o3 <> null & o4 = FALSE))
+                  holds
+                    (o4 = TRUE implies
+                      x <> null &
+                      ph <> Phases.3 &
+                      (Mark.memo2).x = TRUE &
+                      (for l being Element of L st l <> x
+                       holds (Mark.memo2).l = (Mark.memo1).l) &
+                      (((PtrVal.[Accessor.memo1,[Keys.1,x]] = null &
+                         null =
+                           PtrVal.[Accessor.memo1,[Keys.2,x]]) &
+                        Accessor.memo2 = Accessor.memo1) or
+                       ((not
+                           (PtrVal.[Accessor.memo1,[Keys.1,x]] = null &
+                            null =
+                              PtrVal.[Accessor.memo1,[Keys.2,x]])) &
+                        [mem0,[Accessor.memo2,
+                          [NextPhase.ph,x]]] in Rotated))) &
+                    (o4 <> TRUE implies
+                      x <> null & x <> null &
+                      (for memo3 being Element of Memory st
+                         Mark.memo3 = Mark.memo2 &
+                         Accessor.memo3 =
+                           (Accessor.memo2)+*(
+                             Keys.1,
+                             PtrField.[Accessor.memo2,Keys.1]+*(
+                               x,
+                               PtrVal.[Accessor.memo2,[Keys.2,x]]))
+                       holds
+                         x <> null &
+                         (for memo4 being Element of Memory st
+                            Mark.memo4 = Mark.memo3 &
+                            Accessor.memo4 =
+                              (Accessor.memo3)+*(
+                                Keys.2,
+                                PtrField.[Accessor.memo3,Keys.2]+*(
+                                  x,
+                                  PtrVal.[Accessor.memo3,[Keys.0,x]]))
+                          holds
+                            x <> null &
+                            (for memo5 being Element of Memory st
+                               Mark.memo5 = Mark.memo4 &
+                               Accessor.memo5 =
+                                 (Accessor.memo4)+*(
+                                   Keys.0,
+                                   PtrField.[Accessor.memo4,Keys.0]+*(
+                                     x,
+                                     PtrVal.[Accessor.memo2,[Keys.1,x]]))
+                             holds
+                               PtrVal.[Accessor.memo2,[Keys.1,x]] =
+                                 PtrVal.[Accessor.memo5,[Keys.0,x]] &
+                               ph <> Phases.3 &
+                               (Mark.memo5).x = TRUE &
+                               (for l being Element of L st l <> x
+                                holds
+                                  (Mark.memo5).l = (Mark.memo1).l) &
+                               (((PtrVal.[Accessor.memo1,
+                                    [Keys.1,x]] = null &
+                                  null =
+                                    PtrVal.[Accessor.memo1,
+                                      [Keys.2,x]]) &
+                                 Accessor.memo5 = Accessor.memo1) or
+                                ((not
+                                    (PtrVal.[Accessor.memo1,
+                                       [Keys.1,x]] = null &
+                                     null =
+                                       PtrVal.[Accessor.memo1,
+                                         [Keys.2,x]])) &
+                                 [mem0,[Accessor.memo5,
+                                   [NextPhase.ph,x]]] in Rotated))))))))))) &
+
+    (for z,x being Element of L,
+         memo1 being Element of Memory,
+         t1 being Element of Tree st
+       x <> null &
+       [Accessor.memo1,[t1,[x,z]]] in IsTree
+     holds
+       x <> null &
+       (for xlf being Element of L st
+          xlf = PtrVal.[Accessor.memo1,[Keys.1,x]]
+        holds
+          x <> null &
+          (for xrg being Element of L st
+             xrg = PtrVal.[Accessor.memo1,[Keys.2,x]]
+           holds
+             (ex l0,r0 being Element of Tree,
+                 m0 being Element of L st
+                t1 = node.[l0,[m0,r0]]) &
+             (for lf,rg being Element of Tree st
+                ex m0 being Element of L st
+                  t1 = node.[lf,[m0,rg]]
+              holds
+                [Accessor.memo1,
+                  [node.[lf,[x,rg]],[x,z]]] in IsTree &
+                ((not x in Footprint.lf &
+                  not x in Footprint.rg) implies
+                  [Accessor.memo1,
+                    [Accessor.memo1,[Phases.0,x]]] in Rotated &
+                  (for memo2 being Element of Memory st
+                     (Mark.memo2).x = TRUE &
+                     (for l being Element of L st l <> x
+                      holds (Mark.memo2).l = (Mark.memo1).l) &
+                     (((PtrVal.[Accessor.memo1,[Keys.1,x]] = null &
+                        null =
+                          PtrVal.[Accessor.memo1,[Keys.2,x]]) &
+                       Accessor.memo2 = Accessor.memo1) or
+                      ((not
+                          (PtrVal.[Accessor.memo1,[Keys.1,x]] = null &
+                           null =
+                             PtrVal.[Accessor.memo1,[Keys.2,x]])) &
+                       [Accessor.memo1,
+                         [Accessor.memo2,
+                           [NextPhase.(Phases.0),x]]] in Rotated))
+                   holds
+                     (for result being Element of BOOLEAN st
+                        ((xlf = null & xrg = null &
+                          result = TRUE) or
+                         (xlf = null & xrg <> null &
+                          result = FALSE) or
+                         (xlf <> null & result = FALSE))
+                      holds
+                        (result = TRUE iff
+                          xlf = null & xrg = null) &
+                        (result = TRUE implies
+                          lf = emptyT & rg = emptyT)) &
+                     ((xlf = null & xrg = null implies
+                        lf = emptyT & rg = emptyT) implies
+                       ((not (xlf = null & xrg = null)) implies
+                         [Footprint.lf,
+                           [Accessor.memo1,Accessor.memo2]] in Ext &
+                         [Accessor.memo1,[lf,[xlf,x]]] in IsTree &
+                         ([Accessor.memo2,[lf,[xlf,x]]] in IsTree
+                          implies
+                            (ex f,f1 being Element of Tree,
+                                m0 being Element of L st
+                               t1 = node.[f,[m0,f1]] &
+                               (f = lf or f1 = lf)) &
+                            PtrVal.[Accessor.memo2,[Keys.0,x]] <>
+                              null &
+                            [Accessor.memo2,
+                              [lf,
+                                [PtrVal.[Accessor.memo2,[Keys.0,x]],
+                                  x]]] in IsTree &
+                         (for memo3 being Element of Memory st
+                            [Accessor.memo2,Accessor.memo3]
+                              in Unchanged &
+                            [lf,[Mark.memo2,Mark.memo3]]
+                              in WasMarked
+                          holds
+                            [Accessor.memo1,
+                              [Accessor.memo3,
+                                [Phases.1,x]]] in Rotated &
+                            (for memo4 being Element of Memory st
+                               (Mark.memo4).x = TRUE &
+                               (for l being Element of L st l <> x
+                                holds
+                                  (Mark.memo4).l = (Mark.memo3).l) &
+                               (((PtrVal.[Accessor.memo3,
+                                    [Keys.1,x]] = null &
+                                  null =
+                                    PtrVal.[Accessor.memo3,
+                                      [Keys.2,x]]) &
+                                 Accessor.memo4 = Accessor.memo3) or
+                                ((not
+                                    (PtrVal.[Accessor.memo3,
+                                       [Keys.1,x]] = null &
+                                     null =
+                                       PtrVal.[Accessor.memo3,
+                                         [Keys.2,x]])) &
+                                 [Accessor.memo1,
+                                   [Accessor.memo4,
+                                     [NextPhase.(Phases.1),x]]]
+                                   in Rotated))
+                             holds
+                               [Footprint.rg,
+                                 [Accessor.memo1,Accessor.memo4]]
+                                 in Ext &
+                               [Accessor.memo1,
+                                 [rg,[xrg,x]]] in IsTree &
+                               ([Accessor.memo4,
+                                  [rg,[xrg,x]]] in IsTree
+                                implies
+                                  (ex f,f1 being Element of Tree,
+                                      m0 being Element of L st
+                                     t1 = node.[f,[m0,f1]] &
+                                     (f = rg or f1 = rg)) &
+                                  PtrVal.[Accessor.memo4,[Keys.0,x]]
+                                    <> null &
+                                  [Accessor.memo4,
+                                    [rg,
+                                      [PtrVal.[Accessor.memo4,
+                                        [Keys.0,x]],x]]] in IsTree &
+                               (for memo5 being Element of Memory st
+                                  [Accessor.memo4,Accessor.memo5]
+                                    in Unchanged &
+                                  [rg,[Mark.memo4,Mark.memo5]]
+                                    in WasMarked
+                                holds
+                                  [Accessor.memo1,
+                                    [Accessor.memo5,
+                                      [Phases.2,x]]] in Rotated &
+                                  (for memo6 being Element of Memory st
+                                     (Mark.memo6).x = TRUE &
+                                     (for l being Element of L st
+                                        l <> x
+                                      holds
+                                        (Mark.memo6).l =
+                                          (Mark.memo5).l) &
+                                     (((PtrVal.[Accessor.memo5,
+                                          [Keys.1,x]] = null &
+                                        null =
+                                          PtrVal.[Accessor.memo5,
+                                            [Keys.2,x]]) &
+                                       Accessor.memo6 =
+                                         Accessor.memo5) or
+                                      ((not
+                                          (PtrVal.[Accessor.memo5,
+                                             [Keys.1,x]] = null &
+                                           null =
+                                             PtrVal.[Accessor.memo5,
+                                               [Keys.2,x]])) &
+                                       [Accessor.memo1,
+                                         [Accessor.memo6,
+                                           [NextPhase.(Phases.2),x]]]
+                                         in Rotated))
+                                   holds
+                                     [Accessor.memo1,Accessor.memo6]
+                                       in Unchanged &
+                                     PtrVal.[Accessor.memo6,
+                                       [Keys.0,x]] = z &
+                                     [t1,[Mark.memo1,Mark.memo6]]
+                                       in WasMarked)))))) &
+                       ((xlf = null & xrg = null) implies
+                         [Accessor.memo1,Accessor.memo2]
+                           in Unchanged &
+                         PtrVal.[Accessor.memo2,[Keys.0,x]] = z &
+                         [t1,[Mark.memo1,Mark.memo2]]
+                           in WasMarked))))))))) &
+
+    (root <> null &
+     [Accessor.memo,[t,[root,null]]] in IsTree) &
+    (for memo1 being Element of Memory st
+       [Accessor.memo,Accessor.memo1] in Unchanged &
+       [t,[Mark.memo,Mark.memo1]] in WasMarked
+     holds
+       [Accessor.memo,
+         [Accessor.memo1,[Phases.3,null]]] in Rotated &
+       (for x being Element of L st
+          [Accessor.memo,
+            [Accessor.memo1,[Phases.3,x]]] in Rotated
+        holds
+          [Accessor.memo,
+            [Accessor.memo1,[Phases.3,x]]] in Rotated &
+          [Footprint.t,
+            [Accessor.memo,Accessor.memo1]] in Ext &
+          [Accessor.memo,[t,[root,null]]] in IsTree &
+          ([Accessor.memo1,[t,[root,null]]] in IsTree
+           implies
+             [Accessor.memo1,[t,[root,null]]] in IsTree &
+             [Accessor.memo,Accessor.memo1] in Unchanged &
+             [t,[Mark.memo,Mark.memo1]] in WasMarked)))
+proof
+end;
+::$P+

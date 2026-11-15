@@ -1,0 +1,177 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/bitwalker_Bitwalker_pokethenpeekqtvc: the bit-stream poke-then-peek
+% verification condition relating a byte-addressed stream, 32-bit positions
+% and lengths, a 64-bit value, result codes, and recovery of the poked value.
+% This file contains no proof.
+
+bitwalker_Bitwalker_pokethenpeekqtvc: THEORY
+BEGIN
+
+  IMPORTING
+    bv[8], bv[32], bv[64],
+    bv_nat[8], bv_nat[32], bv_nat[64]
+
+  word8: TYPE = bvec[8]
+  word32: TYPE = bvec[32]
+  word64: TYPE = bvec[64]
+
+  unsigned32(value: word32): int = bv2nat[32](value)
+  unsigned64(value: word64): int = bv2nat[64](value)
+
+  zero8: word8 = fill[8](FALSE)
+  zero64: word64 = fill[64](FALSE)
+
+  bit8(value: word8, index: int): bool =
+    IF 0 <= index AND index < 8 THEN
+      value(index)
+    ELSE
+      FALSE
+    ENDIF
+
+  bit64(value: word64, index: int): bool =
+    IF 0 <= index AND index < 64 THEN
+      value(index)
+    ELSE
+      FALSE
+    ENDIF
+
+  nth_byte_default(stream: list[word8], index: int): word8 =
+    IF 0 <= index AND index < length(stream) THEN
+      nth(stream, index)
+    ELSE
+      zero8
+    ENDIF
+
+  nth8_stream(stream: list[word8], position: int): bool =
+    bit8(
+      nth_byte_default(stream, ndiv(position, 8)),
+      7 - mod(position, 8))
+
+  maxvalue(len: word32): word64 =
+    IF unsigned32(len) < 64 THEN
+      LAMBDA (index: below(64)):
+        index = unsigned32(len)
+    ELSE
+      zero64
+    ENDIF
+
+  stream_bit_length(stream: list[word8]): int =
+    8 * (length(stream) :: int)
+
+  end_position(start, len: word32): int =
+    unsigned32(start) + unsigned32(len)
+
+  poke_updates(
+      addr, addr1: list[word8],
+      len, start: word32,
+      value: word64): bool =
+    (FORALL (index: int):
+      0 <= index AND index < unsigned32(start)
+        IMPLIES
+          nth8_stream(addr, index) = nth8_stream(addr1, index))
+      AND
+    (FORALL (index: int):
+      unsigned32(start) <= index
+        AND index < end_position(start, len)
+        IMPLIES
+          nth8_stream(addr1, index)
+            =
+          bit64(
+            value,
+            unsigned32(len) - index - 1 + unsigned32(start)))
+      AND
+    (FORALL (index: int):
+      end_position(start, len) <= index
+        AND index < stream_bit_length(addr1)
+        IMPLIES
+          nth8_stream(addr1, index) = nth8_stream(addr, index))
+
+  poke_result_conditions(
+      addr, addr1: list[word8],
+      len, start: word32,
+      value: word64,
+      poke_result: int): bool =
+    (-2 <= poke_result AND poke_result <= 0)
+      AND
+    ((poke_result = -1)
+      IFF
+        stream_bit_length(addr1) < end_position(start, len))
+      AND
+    ((poke_result = -2)
+      IFF
+        (unsigned64(maxvalue(len)) <= unsigned64(value)
+          AND
+         end_position(start, len) <= stream_bit_length(addr1)))
+      AND
+    ((poke_result = 0)
+      IFF
+        (unsigned64(value) < unsigned64(maxvalue(len))
+          AND
+         end_position(start, len) <= stream_bit_length(addr1)))
+      AND
+    (poke_result = 0
+      IMPLIES poke_updates(addr, addr1, len, start, value))
+
+  peek_result_conditions(
+      addr1: list[word8],
+      len, start: word32,
+      peek_result: word64): bool =
+    (stream_bit_length(addr1) < end_position(start, len)
+      IMPLIES peek_result = zero64)
+      AND
+    (end_position(start, len) <= stream_bit_length(addr1)
+      IMPLIES
+        (FORALL (index: int):
+          0 <= index AND index < unsigned32(len)
+            IMPLIES
+              bit64(peek_result, index)
+                =
+              nth8_stream(
+                addr1,
+                end_position(start, len) - index - 1))
+          AND
+        (FORALL (index: int):
+          unsigned32(len) <= index AND index < 64
+            IMPLIES bit64(peek_result, index) = FALSE))
+
+  pokethenpeek_vc: bool =
+    FORALL
+        (addr: list[word8]),
+        (len: word32),
+        (start: word32),
+        (value: word64):
+      stream_bit_length(addr) < 4294967296
+        IMPLIES
+      0 <= unsigned32(len)
+        IMPLIES
+      unsigned32(len) < 64
+        IMPLIES
+      end_position(start, len) <= stream_bit_length(addr)
+        IMPLIES
+      unsigned64(value) < unsigned64(maxvalue(len))
+        IMPLIES
+          unsigned32(len) < 64
+            AND
+          end_position(start, len) < 4294967296
+            AND
+          stream_bit_length(addr) < 4294967296
+            AND
+          (FORALL (addr1: list[word8]):
+            length(addr1) = length(addr)
+              IMPLIES
+                (FORALL (poke_result: int):
+                  poke_result_conditions(
+                    addr, addr1, len, start, value, poke_result)
+                    IMPLIES
+                      (unsigned32(len) <= 64
+                        AND
+                       end_position(start, len) < 4294967296
+                        AND
+                       stream_bit_length(addr1) < 4294967296)
+                        AND
+                      (FORALL (peek_result: word64):
+                        peek_result_conditions(
+                          addr1, len, start, peek_result)
+                          IMPLIES peek_result = value)))
+
+END bitwalker_Bitwalker_pokethenpeekqtvc

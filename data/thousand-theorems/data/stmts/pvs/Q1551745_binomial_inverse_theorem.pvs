@@ -1,0 +1,218 @@
+% Statement-only formalization of the Thousand Theorems corpus artifact Q1551745
+% (thousand-theorems__pvs__Q1551745), "Binomial inverse theorem": over an
+% arbitrary ring and arbitrary finite row and column index types, it gives the
+% inverse of A + U C V from inverses of A and C + C V A^-1 U C. This file
+% contains no proof.
+
+Q1551745_binomial_inverse_theorem[
+  N, M: TYPE,
+  R: TYPE+,
+  zeroR, oneR: R,
+  negR: [R -> R],
+  addR, mulR: [R, R -> R],
+  n_count, m_count: nat,
+  n_enumeration: [below(n_count) -> N],
+  m_enumeration: [below(m_count) -> M],
+  sumN: [[N -> R] -> R],
+  sumM: [[M -> R] -> R],
+  A: [N, N -> R],
+  U: [N, M -> R],
+  C: [M, M -> R],
+  V: [M, N -> R],
+  inverse_A: [N, N -> R],
+  inverse_inner: [M, M -> R],
+  inverse_total: [N, N -> R]
+]: THEORY
+BEGIN
+  IMPORTING finite_sets[N], finite_sets[M]
+
+  matrix_nn: TYPE = [N, N -> R]
+  matrix_nm: TYPE = [N, M -> R]
+  matrix_mn: TYPE = [M, N -> R]
+  matrix_mm: TYPE = [M, M -> R]
+
+  ring_laws: bool =
+    (FORALL (x, y: R):
+      addR(x, y) = addR(y, x))
+      AND
+    (FORALL (x, y, z: R):
+      addR(addR(x, y), z) = addR(x, addR(y, z)))
+      AND
+    (FORALL (x: R):
+      addR(zeroR, x) = x
+        AND addR(x, zeroR) = x
+        AND addR(negR(x), x) = zeroR
+        AND addR(x, negR(x)) = zeroR)
+      AND
+    (FORALL (x, y, z: R):
+      mulR(mulR(x, y), z) = mulR(x, mulR(y, z)))
+      AND
+    (FORALL (x: R):
+      mulR(oneR, x) = x
+        AND mulR(x, oneR) = x)
+      AND
+    (FORALL (x, y, z: R):
+      mulR(x, addR(y, z)) =
+        addR(mulR(x, y), mulR(x, z)))
+      AND
+    (FORALL (x, y, z: R):
+      mulR(addR(x, y), z) =
+        addR(mulR(x, z), mulR(y, z)))
+
+  sumN_laws: bool =
+    FORALL (values: [N -> R]):
+      EXISTS (partial_sums: [upto(n_count) -> R]):
+        partial_sums(0) = zeroR
+          AND
+        (FORALL (position: below(n_count)):
+          partial_sums(position + 1) =
+            addR(
+              partial_sums(position),
+              values(n_enumeration(position))))
+          AND sumN(values) = partial_sums(n_count)
+
+  sumM_laws: bool =
+    FORALL (values: [M -> R]):
+      EXISTS (partial_sums: [upto(m_count) -> R]):
+        partial_sums(0) = zeroR
+          AND
+        (FORALL (position: below(m_count)):
+          partial_sums(position + 1) =
+            addR(
+              partial_sums(position),
+              values(m_enumeration(position))))
+          AND sumM(values) = partial_sums(m_count)
+
+  identity_nn: matrix_nn =
+    LAMBDA (row, column: N):
+      IF row = column THEN oneR ELSE zeroR ENDIF
+
+  identity_mm: matrix_mm =
+    LAMBDA (row, column: M):
+      IF row = column THEN oneR ELSE zeroR ENDIF
+
+  add_nn(X, Y: matrix_nn): matrix_nn =
+    LAMBDA (row, column: N):
+      addR(X(row, column), Y(row, column))
+
+  add_mm(X, Y: matrix_mm): matrix_mm =
+    LAMBDA (row, column: M):
+      addR(X(row, column), Y(row, column))
+
+  neg_nn(X: matrix_nn): matrix_nn =
+    LAMBDA (row, column: N):
+      negR(X(row, column))
+
+  sub_nn(X, Y: matrix_nn): matrix_nn =
+    add_nn(X, neg_nn(Y))
+
+  mul_nn_nn(X, Y: matrix_nn): matrix_nn =
+    LAMBDA (row, column: N):
+      sumN(
+        LAMBDA (index: N):
+          mulR(X(row, index), Y(index, column)))
+
+  mul_nn_nm(X: matrix_nn, Y: matrix_nm): matrix_nm =
+    LAMBDA (row: N), (column: M):
+      sumN(
+        LAMBDA (index: N):
+          mulR(X(row, index), Y(index, column)))
+
+  mul_nm_mm(X: matrix_nm, Y: matrix_mm): matrix_nm =
+    LAMBDA (row: N), (column: M):
+      sumM(
+        LAMBDA (index: M):
+          mulR(X(row, index), Y(index, column)))
+
+  mul_nm_mn(X: matrix_nm, Y: matrix_mn): matrix_nn =
+    LAMBDA (row, column: N):
+      sumM(
+        LAMBDA (index: M):
+          mulR(X(row, index), Y(index, column)))
+
+  mul_mm_mm(X, Y: matrix_mm): matrix_mm =
+    LAMBDA (row, column: M):
+      sumM(
+        LAMBDA (index: M):
+          mulR(X(row, index), Y(index, column)))
+
+  mul_mm_mn(X: matrix_mm, Y: matrix_mn): matrix_mn =
+    LAMBDA (row: M), (column: N):
+      sumM(
+        LAMBDA (index: M):
+          mulR(X(row, index), Y(index, column)))
+
+  mul_mn_nn(X: matrix_mn, Y: matrix_nn): matrix_mn =
+    LAMBDA (row: M), (column: N):
+      sumN(
+        LAMBDA (index: N):
+          mulR(X(row, index), Y(index, column)))
+
+  mul_mn_nm(X: matrix_mn, Y: matrix_nm): matrix_mm =
+    LAMBDA (row, column: M):
+      sumN(
+        LAMBDA (index: N):
+          mulR(X(row, index), Y(index, column)))
+
+  invertible_nn(X, X_inverse: matrix_nn): bool =
+    mul_nn_nn(X_inverse, X) = identity_nn
+      AND mul_nn_nn(X, X_inverse) = identity_nn
+
+  invertible_mm(X, X_inverse: matrix_mm): bool =
+    mul_mm_mm(X_inverse, X) = identity_mm
+      AND mul_mm_mm(X, X_inverse) = identity_mm
+
+  U_C: matrix_nm =
+    mul_nm_mm(U, C)
+
+  U_C_V: matrix_nn =
+    mul_nm_mn(U_C, V)
+
+  total_matrix: matrix_nn =
+    add_nn(A, U_C_V)
+
+  C_V: matrix_mn =
+    mul_mm_mn(C, V)
+
+  C_V_inverse_A: matrix_mn =
+    mul_mn_nn(C_V, inverse_A)
+
+  C_V_inverse_A_U: matrix_mm =
+    mul_mn_nm(C_V_inverse_A, U)
+
+  C_V_inverse_A_U_C: matrix_mm =
+    mul_mm_mm(C_V_inverse_A_U, C)
+
+  inner_matrix: matrix_mm =
+    add_mm(C, C_V_inverse_A_U_C)
+
+  inverse_A_U: matrix_nm =
+    mul_nn_nm(inverse_A, U)
+
+  inverse_A_U_C: matrix_nm =
+    mul_nm_mm(inverse_A_U, C)
+
+  inverse_A_U_C_inverse_inner: matrix_nm =
+    mul_nm_mm(inverse_A_U_C, inverse_inner)
+
+  inverse_A_U_C_inverse_inner_C: matrix_nm =
+    mul_nm_mm(inverse_A_U_C_inverse_inner, C)
+
+  inverse_A_U_C_inverse_inner_C_V: matrix_nn =
+    mul_nm_mn(inverse_A_U_C_inverse_inner_C, V)
+
+  correction: matrix_nn =
+    mul_nn_nn(inverse_A_U_C_inverse_inner_C_V, inverse_A)
+
+  binomial_inverse_theorem: bool =
+    (ring_laws
+      AND bijective?(n_enumeration)
+      AND bijective?(m_enumeration)
+      AND sumN_laws
+      AND sumM_laws
+      AND invertible_nn(A, inverse_A)
+      AND invertible_mm(inner_matrix, inverse_inner)
+      AND invertible_nn(total_matrix, inverse_total))
+    IMPLIES
+      inverse_total = sub_nn(inverse_A, correction)
+END Q1551745_binomial_inverse_theorem

@@ -1,0 +1,100 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/foveoos11_cm/tree_max_TreeMax_max_auxqtvc: the verification condition
+% for an accumulator-based maximum computation on integer-labeled binary
+% trees, including recursive subtree obligations and the final maximum
+% invariant. This file contains no proof.
+
+tree_max_TreeMax_max_auxqtvc: THEORY
+BEGIN
+
+  tree: DATATYPE
+  BEGIN
+    Empty: Empty?
+    Node(
+      root_value: int,
+      left_subtree: tree,
+      right_subtree: tree): Node?
+  END tree
+
+  tree_mem(element: int, values: tree): RECURSIVE bool =
+    CASES values OF
+      Empty:
+        FALSE,
+      Node(value, left, right):
+        value = element
+          OR tree_mem(element, left)
+          OR tree_mem(element, right)
+    ENDCASES
+  MEASURE values BY <<
+
+  ge_tree(bound: int, values: tree): RECURSIVE bool =
+    CASES values OF
+      Empty:
+        TRUE,
+      Node(value, left, right):
+        value <= bound
+          AND ge_tree(bound, left)
+          AND ge_tree(bound, right)
+    ENDCASES
+  MEASURE values BY <<
+
+  int_max(x, y: int): int =
+    IF x < y THEN y ELSE x ENDIF
+
+  is_child(values, expected_child: tree): bool =
+    CASES values OF
+      Empty:
+        FALSE,
+      Node(value, left, right):
+        left = expected_child OR right = expected_child
+    ENDCASES
+
+  recursive_obligations(values: tree, accumulator: int): bool =
+    CASES values OF
+      Empty:
+        TRUE,
+      Node(value, left, right):
+        LET o1: int = int_max(value, accumulator)
+        IN
+          is_child(values, right)
+            AND
+          (FORALL (o2: int):
+            (ge_tree(o2, right)
+              AND o1 <= o2
+              AND (o2 = o1 OR tree_mem(o2, right)))
+              IMPLIES is_child(values, left))
+    ENDCASES
+
+  result_antecedent(
+      values: tree,
+      accumulator: int,
+      result: int): bool =
+    CASES values OF
+      Empty:
+        result = accumulator,
+      Node(value, left, right):
+        LET o1: int = int_max(value, accumulator)
+        IN
+          EXISTS (o2: int):
+            (ge_tree(o2, right)
+              AND o1 <= o2
+              AND (o2 = o1 OR tree_mem(o2, right)))
+              AND ge_tree(result, left)
+              AND o2 <= result
+              AND (result = o2 OR tree_mem(result, left))
+    ENDCASES
+
+  max_aux_vc: bool =
+    FORALL (values: tree):
+      FORALL (accumulator: int):
+        recursive_obligations(values, accumulator)
+          AND
+        (FORALL (result: int):
+          result_antecedent(values, accumulator, result)
+            IMPLIES
+              ge_tree(result, values)
+                AND accumulator <= result
+                AND
+              (result = accumulator OR tree_mem(result, values)))
+
+END tree_max_TreeMax_max_auxqtvc

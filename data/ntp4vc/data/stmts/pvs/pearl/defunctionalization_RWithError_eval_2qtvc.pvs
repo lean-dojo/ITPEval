@@ -1,0 +1,129 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/defunctionalization_RWithError_eval_2qtvc: the verification condition
+% for structural decrease and error-aware semantic preservation when applying
+% a recomposition context to a nonnegative integer value. This file contains
+% no proof.
+
+defunctionalization_RWithError_eval_2qtvc: THEORY
+BEGIN
+
+  expr: DATATYPE
+  BEGIN
+    Cte(constant_value: int): Cte?
+    Sub(left_expression, right_expression: expr): Sub?
+  END expr
+
+  value: DATATYPE
+  BEGIN
+    Vnum(numeric_value: int): Vnum?
+    Underflow: Underflow?
+  END value
+
+  context: DATATYPE
+  BEGIN
+    Empty: Empty?
+    Left(previous_context: context, pending_expression: expr): Left?
+    Right(saved_value: int, previous_context: context): Right?
+  END context
+
+  size_e(expression: expr): RECURSIVE int =
+    CASES expression OF
+      Cte(value):
+        1,
+      Sub(left, right):
+        3 + size_e(left) + size_e(right)
+    ENDCASES
+  MEASURE expression BY <<
+
+  eval_0(expression: expr): RECURSIVE value =
+    CASES expression OF
+      Cte(n):
+        IF 0 <= n THEN Vnum(n) ELSE Underflow ENDIF,
+      Sub(left, right):
+        CASES eval_0(left) OF
+          Underflow:
+            Underflow,
+          Vnum(left_value):
+            CASES eval_0(right) OF
+              Underflow:
+                Underflow,
+              Vnum(right_value):
+                IF right_value <= left_value
+                THEN Vnum(left_value - right_value)
+                ELSE Underflow
+                ENDIF
+            ENDCASES
+        ENDCASES
+    ENDCASES
+  MEASURE expression BY <<
+
+  size_c(current_context: context): RECURSIVE int =
+    CASES current_context OF
+      Empty:
+        0,
+      Left(previous, expression):
+        2 + size_c(previous) + size_e(expression),
+      Right(value, previous):
+        1 + size_c(previous)
+    ENDCASES
+  MEASURE current_context BY <<
+
+  recompose(
+      current_context: context,
+      expression: expr): RECURSIVE expr =
+    CASES current_context OF
+      Empty:
+        expression,
+      Left(previous, right):
+        recompose(previous, Sub(expression, right)),
+      Right(left_value, previous):
+        recompose(previous, Sub(Cte(left_value), expression))
+    ENDCASES
+  MEASURE current_context BY <<
+
+  decrease_obligation(n: int, current_context: context): bool =
+    CASES current_context OF
+      Empty:
+        TRUE,
+      Left(previous, expression):
+        0 <= 1 + 2 * size_c(current_context)
+          AND
+        2 * (size_c(Right(n, previous)) + size_e(expression))
+          < 1 + 2 * size_c(current_context),
+      Right(saved, previous):
+        n <= saved
+          IMPLIES
+            (0 <= 1 + 2 * size_c(current_context)
+              AND
+            2 * (size_c(previous) + size_e(Cte(saved - n)))
+              < 1 + 2 * size_c(current_context))
+    ENDCASES
+
+  evaluation_premise(
+      n: int,
+      current_context: context,
+      result: value): bool =
+    CASES current_context OF
+      Empty:
+        result = Vnum(n),
+      Left(previous, expression):
+        result = eval_0(recompose(Right(n, previous), expression)),
+      Right(saved, previous):
+        IF n <= saved
+        THEN result = eval_0(recompose(previous, Cte(saved - n)))
+        ELSE result = Underflow
+        ENDIF
+    ENDCASES
+
+  eval_2_vc: bool =
+    FORALL (n: int), (current_context: context):
+      0 <= n
+        IMPLIES
+          (decrease_obligation(n, current_context)
+            AND
+          (FORALL (result: value):
+            evaluation_premise(n, current_context, result)
+              IMPLIES
+            result = eval_0(recompose(current_context, Cte(n)))))
+
+END defunctionalization_RWithError_eval_2qtvc

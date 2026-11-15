@@ -1,0 +1,473 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/linear_probing_LinearProbing_resizeqtvc: the verification condition
+% for resizing a linear-probing hash table while preserving its abstract view,
+% representation invariant, and doubled backing-array length. This file contains no proof.
+
+linear_probing_LinearProbing_resizeqtvc[
+  key, keym, t: TYPE+,
+  key_default: key,
+  keym1: [key -> keym],
+  key_eq: [key, key -> bool],
+  hash: [key -> int],
+  dummy: key,
+  bucket: [key, int -> int],
+  size: [t -> int],
+  data: [t -> list[key]],
+  view: [t -> [keym -> bool]],
+  loc: [t -> [keym -> int]]
+]: THEORY
+BEGIN
+
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  nth_default(
+      values: list[key],
+      index: nat): RECURSIVE key =
+    CASES values OF
+      null:
+        key_default,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          nth_default(tail, index - 1)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  list_set(
+      values: list[key],
+      index: nat,
+      value: key): RECURSIVE list[key] =
+    CASES values OF
+      null:
+        null,
+      cons(head, tail):
+        IF index = 0 THEN
+          cons(value, tail)
+        ELSE
+          cons(head, list_set(tail, index - 1, value))
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  list_contents(values: list[key]): [int -> key] =
+    LAMBDA (index: int):
+      nth_default(values, int_to_nat(index))
+
+  update_key(
+      values: [int -> key],
+      index: int,
+      value: key): [int -> key] =
+    values WITH [(index) := value]
+
+  array_function_equal(
+      values: list[key],
+      left, right: [int -> key]): bool =
+    FORALL (index: int):
+      (0 <= index AND index < length(values))
+        IMPLIES left(index) = right(index)
+
+  update_loc(
+      values: [keym -> int],
+      index: keym,
+      value: int): [keym -> int] =
+    values WITH [(index) := value]
+
+  neq(left, right: key): bool =
+    NOT key_eq(left, right)
+
+  between(left, position, right: int): bool =
+    (left <= position AND position < right)
+      OR (right < left AND left <= position)
+      OR (position < right AND right < left)
+
+  in_range(values: list[key], index: int): bool =
+    0 <= index AND index < length(values)
+
+  count_dummy_span(
+      values: list[key],
+      lower: int,
+      span: nat): RECURSIVE int =
+    IF span = 0 THEN
+      0
+    ELSE
+      (IF key_eq(
+            nth_default(values, int_to_nat(lower)),
+            dummy)
+       THEN 1 ELSE 0 ENDIF)
+        + count_dummy_span(values, lower + 1, span - 1)
+    ENDIF
+  MEASURE span
+
+  numof(values: list[key], lower, upper: int): int =
+    count_dummy_span(
+      values,
+      lower,
+      int_to_nat(upper - lower))
+
+  valid(
+      values: list[key],
+      visible: [keym -> bool],
+      locations: [keym -> int]): bool =
+    NOT (visible(keym1(dummy)) = TRUE)
+      AND
+    (FORALL (index: int):
+      in_range(values, index)
+        IMPLIES
+          LET x: key =
+            nth_default(values, int_to_nat(index))
+          IN
+            neq(x, dummy)
+              IMPLIES
+                visible(keym1(x)) = TRUE
+                  AND locations(keym1(x)) = index)
+      AND
+    (LET n: int = length(values)
+     IN
+       FORALL (x: key):
+         visible(keym1(x)) = TRUE
+           IMPLIES
+             LET index: int = locations(keym1(x))
+             IN
+               in_range(values, index)
+                 AND key_eq(
+                   nth_default(values, int_to_nat(index)),
+                   x)
+                 AND
+               (FORALL (position: int):
+                 in_range(values, position)
+                   IMPLIES
+                 between(bucket(x, n), position, index)
+                   IMPLIES
+                     neq(
+                       nth_default(
+                         values,
+                         int_to_nat(position)),
+                       x)
+                       AND
+                     neq(
+                       nth_default(
+                         values,
+                         int_to_nat(position)),
+                       dummy)))
+
+  state_invariant(
+      state_size: int,
+      values: list[key],
+      visible: [keym -> bool],
+      locations: [keym -> int]): bool =
+    0 <= state_size
+      AND state_size < length(values)
+      AND state_size + numof(values, 0, length(values))
+        = length(values)
+      AND valid(values, visible, locations)
+
+  state_equal(left, right: t): bool =
+    size(left) = size(right)
+      AND data(left) = data(right)
+      AND view(left) = view(right)
+      AND loc(left) = loc(right)
+
+  key_context: bool =
+    (FORALL (left, right: key):
+      key_eq(left, right)
+        IFF keym1(left) = keym1(right))
+      AND
+    (FORALL (left, right: key):
+      neq(left, right)
+        IFF NOT (keym1(left) = keym1(right)))
+      AND
+    (FORALL (x: key):
+      0 <= hash(x))
+      AND
+    (FORALL (left, right: key):
+      key_eq(left, right)
+        IMPLIES hash(left) = hash(right))
+
+  bucket_context: bool =
+    FORALL (n: int), (x: key):
+      0 < n
+        IMPLIES
+          bucket(x, n) = mod(hash(x), n)
+            AND 0 <= bucket(x, n)
+            AND bucket(x, n) < n
+
+  state_context: bool =
+    (FORALL (self: t):
+      state_invariant(
+        size(self),
+        data(self),
+        view(self),
+        loc(self)))
+      AND
+    (FORALL (left, right: t):
+      state_equal(left, right)
+        IMPLIES left = right)
+
+  source_context: bool =
+    key_context
+      AND bucket_context
+      AND state_context
+
+  resize_content(
+      h: t,
+      n2, cutoff: int,
+      values: list[key],
+      locations: [keym -> int]): bool =
+    numof(values, 0, n2)
+        = numof(data(h), 0, cutoff) + n2 - cutoff
+      AND
+    (FORALL (index: int):
+      0 <= index AND index < n2
+        IMPLIES
+          neq(
+            nth_default(values, int_to_nat(index)),
+            dummy)
+            IMPLIES
+              view(h)(
+                keym1(
+                  nth_default(values, int_to_nat(index))))
+                = TRUE
+                AND
+              locations(
+                keym1(
+                  nth_default(values, int_to_nat(index))))
+                = index)
+      AND
+    (FORALL (x: key):
+      view(h)(keym1(x)) = TRUE
+        IMPLIES
+          IF loc(h)(keym1(x)) < cutoff THEN
+            LET index: int = locations(keym1(x))
+            IN
+              (0 <= index AND index < n2)
+                AND
+              key_eq(
+                nth_default(values, int_to_nat(index)),
+                x)
+                AND
+              (FORALL (position: int):
+                0 <= position AND position < n2
+                  IMPLIES
+                between(bucket(x, n2), position, index)
+                  IMPLIES
+                    neq(
+                      nth_default(
+                        values,
+                        int_to_nat(position)),
+                      x)
+                      AND
+                    neq(
+                      nth_default(
+                        values,
+                        int_to_nat(position)),
+                      dummy))
+          ELSE
+            FORALL (index: int):
+              0 <= index AND index < n2
+                IMPLIES
+                  neq(
+                    nth_default(values, int_to_nat(index)),
+                    x)
+          ENDIF)
+
+  resize_state(
+      h: t,
+      values: list[key],
+      locations: [keym -> int]): bool =
+    (0 <= size(h) AND size(h) < length(values))
+      AND
+    (LET n3: int = length(values)
+     IN
+       size(h) + numof(values, 0, n3) = n3)
+      AND
+    valid(values, view(h), locations)
+
+  placement_postcondition(
+      h: t,
+      n2, index: int,
+      values: list[key],
+      locations: [keym -> int]): bool =
+    LET old_values: list[key] = data(h),
+        x: key =
+          nth_default(old_values, int_to_nat(index)),
+        old_dummy: key = dummy
+    IN
+      (0 <= index AND index < length(old_values))
+        AND
+      ((neq(x, old_dummy)
+          IFF NOT (keym1(x) = keym1(old_dummy)))
+        IMPLIES
+          IF neq(x, old_dummy) THEN
+            (neq(x, dummy)
+              AND
+             (LET n1: int = length(values)
+              IN
+                0 < n1
+                  AND 0 < numof(values, 0, n1)))
+              AND
+            (FORALL (position: int):
+              ((0 <= position
+                  AND position < length(values))
+                AND
+               (key_eq(
+                  nth_default(
+                    values,
+                    int_to_nat(position)),
+                  dummy)
+                  OR
+                key_eq(
+                  nth_default(
+                    values,
+                    int_to_nat(position)),
+                  x))
+                AND
+               (FORALL (prior: int):
+                 0 <= prior
+                   AND prior < length(values)
+                   IMPLIES
+                 between(
+                   bucket(x, length(values)),
+                   prior,
+                   position)
+                   IMPLIES
+                     neq(
+                       nth_default(
+                         values,
+                         int_to_nat(prior)),
+                       x)
+                       AND
+                     neq(
+                       nth_default(
+                         values,
+                         int_to_nat(prior)),
+                       dummy)))
+                IMPLIES
+                  (0 <= position
+                    AND position < length(values))
+                    AND
+                  (LET updated: list[key] =
+                         list_set(
+                           values,
+                           int_to_nat(position),
+                           x)
+                   IN
+                     length(updated) = length(values)
+                       IMPLIES
+                     array_function_equal(
+                       updated,
+                       list_contents(updated),
+                       update_key(
+                         list_contents(values),
+                         position,
+                         x))
+                       IMPLIES
+                         resize_content(
+                           h,
+                           n2,
+                           index + 1,
+                           updated,
+                           update_loc(
+                             locations,
+                             keym1(x),
+                             position))))
+          ELSE
+            resize_content(
+              h,
+              n2,
+              index + 1,
+              values,
+              locations)
+          ENDIF)
+
+  completed_resize(
+      h: t,
+      values: list[key],
+      locations: [keym -> int]): bool =
+    FORALL (h1: t):
+      resize_state(h, values, locations)
+        AND
+      ((locations = loc(h1)
+          AND view(h) = view(h1)
+          AND values = data(h1)
+          AND size(h) = size(h1))
+        IMPLIES
+          length(data(h1)) = 2 * length(data(h)))
+
+  resize_vc: bool =
+    source_context
+      IMPLIES
+        FORALL (h: t):
+          LET n: int = length(data(h)),
+              n2: int = 2 * n
+          IN
+            0 <= n2
+              AND
+            (FORALL (initial: list[key]):
+              ((FORALL (index: int):
+                 0 <= index AND index < n2
+                   IMPLIES
+                     nth_default(
+                       initial,
+                       int_to_nat(index))
+                       = dummy)
+                AND length(initial) = n2)
+                IMPLIES
+                  LET initial_locations: [keym -> int] =
+                        LAMBDA (item: keym): 0,
+                      last_old_index: int = n - 1
+                  IN
+                    (0 <= last_old_index + 1
+                      IMPLIES
+                        resize_content(
+                          h,
+                          n2,
+                          0,
+                          initial,
+                          initial_locations)
+                          AND
+                        (FORALL
+                           (locations: [keym -> int]),
+                           (values: list[key]):
+                          length(values) = length(initial)
+                            IMPLIES
+                              (FORALL (index: int):
+                                ((0 <= index
+                                    AND index <= last_old_index)
+                                  AND
+                                 resize_content(
+                                   h,
+                                   n2,
+                                   index,
+                                   values,
+                                   locations))
+                                  IMPLIES
+                                    placement_postcondition(
+                                      h,
+                                      n2,
+                                      index,
+                                      values,
+                                      locations))
+                                AND
+                              (resize_content(
+                                 h,
+                                 n2,
+                                 last_old_index + 1,
+                                 values,
+                                 locations)
+                                IMPLIES
+                                  completed_resize(
+                                    h,
+                                    values,
+                                    locations))))
+                      AND
+                    (last_old_index + 1 < 0
+                      IMPLIES
+                        completed_resize(
+                          h,
+                          initial,
+                          initial_locations)))
+
+END linear_probing_LinearProbing_resizeqtvc

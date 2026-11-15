@@ -1,0 +1,97 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/cursor_examples_TestListCursor_list_sumqtvc: a list-cursor verification
+% condition relating visited prefixes, cursor progress, and accumulated integer
+% sums. This file contains no proof.
+
+cursor_examples_TestListCursor_list_sumqtvc[
+  Cursor: TYPE+,
+  visited: [Cursor -> list[int]],
+  collection: [Cursor -> list[int]]
+]: THEORY
+BEGIN
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  nth_default(values: list[int], index: nat): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          nth_default(tail, index - 1)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  list_sum(values: list[int]): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        head + list_sum(tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  permitted(cursor: Cursor): bool =
+    length(visited(cursor)) <= length(collection(cursor))
+      AND
+    (FORALL (index: int):
+      (0 <= index AND index < length(visited(cursor)))
+        IMPLIES
+          nth_default(visited(cursor), int_to_nat(index))
+            =
+          nth_default(collection(cursor), int_to_nat(index)))
+
+  complete(cursor: Cursor): bool =
+    length(visited(cursor)) = length(collection(cursor))
+
+  list_sum_vc: bool =
+    FORALL (cursor: Cursor), (values: list[int]):
+      permitted(cursor)
+        AND visited(cursor) = null
+        AND collection(cursor) = values
+      IMPLIES
+        0 = list_sum(visited(cursor))
+          AND permitted(cursor)
+          AND
+        (FORALL (cursor1: Cursor):
+          collection(cursor1) = collection(cursor)
+            IMPLIES
+          permitted(cursor1)
+            IMPLIES
+              permitted(cursor1)
+                AND
+              (IF NOT complete(cursor1) THEN
+                 (NOT complete(cursor1) AND permitted(cursor1))
+                   AND
+                 (FORALL (cursor2: Cursor):
+                   collection(cursor2) = collection(cursor1)
+                     IMPLIES
+                   (FORALL (value: int):
+                     visited(cursor2)
+                         =
+                       append(
+                         visited(cursor1),
+                         cons(value, null))
+                       AND permitted(cursor2)
+                     IMPLIES
+                       (0
+                          <=
+                        (length(values) :: int)
+                          - (length(visited(cursor1)) :: int)
+                         AND
+                        (length(values) :: int)
+                          - (length(visited(cursor2)) :: int)
+                          <
+                        (length(values) :: int)
+                          - (length(visited(cursor1)) :: int))
+                         AND
+                       list_sum(visited(cursor1)) + value
+                         = list_sum(visited(cursor2))
+                         AND permitted(cursor2)))
+               ELSE
+                 list_sum(visited(cursor1)) = list_sum(values)
+               ENDIF))
+END cursor_examples_TestListCursor_list_sumqtvc

@@ -1,0 +1,77 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2007_a5:
+% in a finite group, the number of elements of a given prime order is either
+% zero or is congruent to minus one modulo that prime. This file contains no proof.
+
+putnam_2007_a5[
+  Element: TYPE+,
+  multiply: [Element, Element -> Element],
+  inverse: [Element -> Element],
+  one: Element
+]: THEORY
+BEGIN
+  IMPORTING finite_sets[Element]
+
+  group_laws(G: finite_set[Element]): bool =
+    G(one)
+      AND (FORALL (x, y: Element):
+        G(x) AND G(y) IMPLIES G(multiply(x, y)))
+      AND (FORALL (x, y, z: Element):
+        G(x) AND G(y) AND G(z) IMPLIES
+          multiply(multiply(x, y), z)
+            = multiply(x, multiply(y, z)))
+      AND (FORALL (x: Element):
+        G(x) IMPLIES
+          multiply(one, x) = x
+            AND multiply(x, one) = x)
+      AND (FORALL (x: Element):
+        G(x) IMPLIES
+          G(inverse(x))
+            AND multiply(inverse(x), x) = one
+            AND multiply(x, inverse(x)) = one)
+
+  group_power(base: Element, exponent: nat): RECURSIVE Element =
+    IF exponent = 0 THEN
+      one
+    ELSE
+      multiply(
+        group_power(base, exponent - 1),
+        base)
+    ENDIF
+  MEASURE exponent
+
+  has_exact_order(
+      G: finite_set[Element],
+      element: Element,
+      order: nat): bool =
+    G(element)
+      AND order > 0
+      AND group_power(element, order) = one
+      AND (FORALL (exponent: nat):
+        exponent > 0 AND exponent < order IMPLIES
+          group_power(element, exponent) /= one)
+
+  elements_of_order(
+      G: finite_set[Element],
+      order: nat): finite_set[Element] =
+    intersection(
+      G,
+      {element: Element | has_exact_order(G, element, order)})
+
+  nat_divides(divisor, value: nat): bool =
+    EXISTS (quotient: nat):
+      value = divisor * quotient
+
+  prime_nat(value: nat): bool =
+    value >= 2
+      AND (FORALL (divisor: posnat):
+        nat_divides(divisor, value)
+          IMPLIES divisor = 1 OR divisor = value)
+
+  putnam_2007_a5: bool =
+    FORALL (G: finite_set[Element]), (p, n: nat):
+      (group_laws(G)
+        AND prime_nat(p)
+        AND n = card(elements_of_order(G, p)))
+      IMPLIES
+        n = 0 OR nat_divides(p, n + 1)
+END putnam_2007_a5

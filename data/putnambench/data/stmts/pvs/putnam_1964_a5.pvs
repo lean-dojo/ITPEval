@@ -1,0 +1,52 @@
+% Statement-only formalization of PutnamBench artifact putnam_1964_a5:
+% a universal constant bounds the series of indices divided by positive
+% sequence prefix sums by the convergent reciprocal series. This file
+% contains no proof.
+
+putnam_1964_a5: THEORY
+BEGIN
+  real_sequence: TYPE = [nat -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN 0 ELSE numerator / denominator ENDIF
+
+  partial_sum(values: real_sequence, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      partial_sum(values, count - 1) + values(count - 1)
+    ENDIF
+  MEASURE count
+
+  series_sums_to(values: real_sequence, total: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (count: nat):
+          cutoff <= count IMPLIES
+            abs(partial_sum(values, count) - total) < epsilon_value
+
+  reciprocal_terms(a: real_sequence): real_sequence =
+    LAMBDA (index: nat): safe_div(1, a(index))
+
+  weighted_prefix_terms(a: real_sequence): real_sequence =
+    LAMBDA (index: nat):
+      safe_div(
+        (index + 1) :: real,
+        partial_sum(a, index + 1))
+
+  admissible(a: real_sequence): bool =
+    (FORALL (index: nat): 0 < a(index))
+      AND EXISTS (reciprocal_total: real):
+        series_sums_to(reciprocal_terms(a), reciprocal_total)
+
+  putnam_1964_a5: bool =
+    EXISTS (k: real):
+      FORALL (a: real_sequence):
+        admissible(a) IMPLIES
+          EXISTS (weighted_total, reciprocal_total: real):
+            series_sums_to(
+              weighted_prefix_terms(a), weighted_total)
+              AND series_sums_to(
+                reciprocal_terms(a), reciprocal_total)
+              AND weighted_total <= k * reciprocal_total
+END putnam_1964_a5

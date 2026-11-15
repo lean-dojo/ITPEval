@@ -1,0 +1,127 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/imp/imp_ConcreteInterpreter_interp_exprqtvc: the verification
+% condition for concrete evaluation of integer literals, variables, and
+% subtraction expressions, including unbound-variable propagation. This file
+% contains no proof.
+
+imp_ConcreteInterpreter_interp_exprqtvc[
+  program_var: TYPE+,
+  map_value: TYPE+
+]: THEORY
+BEGIN
+
+  int_option: DATATYPE
+  BEGIN
+    None: None?
+    Some(option_value: int): Some?
+  END int_option
+
+  expr: DATATYPE
+  BEGIN
+    Elit(literal_value: int): Elit?
+    Evar(variable_value: program_var): Evar?
+    Esub(left_expression, right_expression: expr): Esub?
+  END expr
+
+  expr_behaviour: DATATYPE
+  BEGIN
+    Enormal(normal_value: int): Enormal?
+    Eunbound_var: Eunbound_var?
+  END expr_behaviour
+
+  model1: [map_value -> [program_var -> int_option]]
+
+  get(environment: map_value, variable: program_var): int_option =
+    model1(environment)(variable)
+
+  eval_expr(
+      environment: [program_var -> int_option],
+      expression: expr,
+      result: expr_behaviour): INDUCTIVE bool =
+    (EXISTS (n: int):
+      expression = Elit(n)
+        AND result = Enormal(n))
+      OR
+    (EXISTS (x: program_var), (n: int):
+      expression = Evar(x)
+        AND environment(x) = Some(n)
+        AND result = Enormal(n))
+      OR
+    (EXISTS (x: program_var):
+      expression = Evar(x)
+        AND environment(x) = None
+        AND result = Eunbound_var)
+      OR
+    (EXISTS (e1, e2: expr), (n1, n2: int):
+      expression = Esub(e1, e2)
+        AND result = Enormal(n1 - n2)
+        AND eval_expr(environment, e1, Enormal(n1))
+        AND eval_expr(environment, e2, Enormal(n2)))
+      OR
+    (EXISTS (e1, e2: expr):
+      expression = Esub(e1, e2)
+        AND result = Eunbound_var
+        AND eval_expr(environment, e1, Eunbound_var))
+      OR
+    (EXISTS (e1, e2: expr), (n1: int):
+      expression = Esub(e1, e2)
+        AND result = Eunbound_var
+        AND eval_expr(environment, e1, Enormal(n1))
+        AND eval_expr(environment, e2, Eunbound_var))
+
+  sub_component_matches(
+      expression, component: expr): bool =
+    CASES expression OF
+      Elit(n):
+        FALSE,
+      Evar(x):
+        FALSE,
+      Esub(first, second):
+        first = component OR second = component
+    ENDCASES
+
+  interp_expr_vc: bool =
+    FORALL (e: expr), (env1: map_value):
+      CASES e OF
+        Elit(n):
+          eval_expr(model1(env1), e, Enormal(n)),
+        Evar(x):
+          (FORALL (result: int):
+            (CASES get(env1, x) OF
+              None:
+                FALSE,
+              Some(value):
+                result = value
+            ENDCASES)
+              IMPLIES
+                eval_expr(model1(env1), e, Enormal(result)))
+            AND
+          (get(env1, x) = None
+            IMPLIES
+              eval_expr(model1(env1), e, Eunbound_var)),
+        Esub(e1, e2):
+          sub_component_matches(e, e2)
+            AND
+          (FORALL (o1: int):
+            eval_expr(model1(env1), e2, Enormal(o1))
+              IMPLIES
+                sub_component_matches(e, e1)
+                  AND
+                (FORALL (o2: int):
+                  eval_expr(model1(env1), e1, Enormal(o2))
+                    IMPLIES
+                      eval_expr(
+                        model1(env1),
+                        e,
+                        Enormal(o2 - o1)))
+                  AND
+                (eval_expr(model1(env1), e1, Eunbound_var)
+                  IMPLIES
+                    eval_expr(model1(env1), e, Eunbound_var)))
+            AND
+          (eval_expr(model1(env1), e2, Eunbound_var)
+            IMPLIES
+              eval_expr(model1(env1), e, Eunbound_var))
+      ENDCASES
+
+END imp_ConcreteInterpreter_interp_exprqtvc

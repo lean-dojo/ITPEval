@@ -1,0 +1,107 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/defunctionalization_Defunctionalization_continue_2qtvc: the verification
+% condition for structural decrease and semantic preservation when applying a
+% defunctionalized arithmetic continuation. This file contains no proof.
+
+defunctionalization_Defunctionalization_continue_2qtvc: THEORY
+BEGIN
+
+  expr: DATATYPE
+  BEGIN
+    Cte(constant_value: int): Cte?
+    Sub(left_expression, right_expression: expr): Sub?
+  END expr
+
+  cont: DATATYPE
+  BEGIN
+    A1(pending_expression: expr, next_continuation: cont): A1?
+    A2(saved_value: int, next_continuation: cont): A2?
+    I: I?
+  END cont
+
+  eval_0(expression: expr): RECURSIVE int =
+    CASES expression OF
+      Cte(value):
+        value,
+      Sub(left, right):
+        eval_0(left) - eval_0(right)
+    ENDCASES
+  MEASURE expression BY <<
+
+  size_e(expression: expr): RECURSIVE int =
+    CASES expression OF
+      Cte(value):
+        1,
+      Sub(left, right):
+        3 + size_e(left) + size_e(right)
+    ENDCASES
+  MEASURE expression BY <<
+
+  size_c(continuation: cont): RECURSIVE int =
+    CASES continuation OF
+      A1(expression, next):
+        2 + size_e(expression) + size_c(next),
+      A2(value, next):
+        1 + size_c(next),
+      I:
+        0
+    ENDCASES
+  MEASURE continuation BY <<
+
+  eval_cont_closed(relation: [cont, int, int -> bool]): bool =
+    (FORALL
+        (value: int),
+        (next: cont),
+        (expression: expr),
+        (result: int):
+      relation(A2(value, next), eval_0(expression), result)
+        IMPLIES relation(A1(expression, next), value, result))
+      AND
+    (FORALL
+        (next: cont),
+        (saved, value, result: int):
+      relation(next, saved - value, result)
+        IMPLIES relation(A2(saved, next), value, result))
+      AND
+    (FORALL (value: int):
+      relation(I, value, value))
+
+  eval_cont(continuation: cont, value, result: int): bool =
+    FORALL (relation: [cont, int, int -> bool]):
+      eval_cont_closed(relation)
+        IMPLIES relation(continuation, value, result)
+
+  decrease_obligation(continuation: cont, value: int): bool =
+    CASES continuation OF
+      A1(expression, next):
+        0 <= size_c(continuation)
+          AND size_c(A2(value, next)) + size_e(expression)
+                < size_c(continuation),
+      A2(saved, next):
+        0 <= size_c(continuation)
+          AND size_c(next) < size_c(continuation),
+      I:
+        TRUE
+    ENDCASES
+
+  continuation_premise(
+      continuation: cont,
+      value, result: int): bool =
+    CASES continuation OF
+      A1(expression, next):
+        eval_cont(A2(value, next), eval_0(expression), result),
+      A2(saved, next):
+        eval_cont(next, saved - value, result),
+      I:
+        result = value
+    ENDCASES
+
+  continue_2_vc: bool =
+    FORALL (continuation: cont), (value: int):
+      decrease_obligation(continuation, value)
+        AND
+      (FORALL (result: int):
+        continuation_premise(continuation, value, result)
+          IMPLIES eval_cont(continuation, value, result))
+
+END defunctionalization_Defunctionalization_continue_2qtvc

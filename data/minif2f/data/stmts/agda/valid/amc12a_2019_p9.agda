@@ -1,0 +1,128 @@
+-- Statement-only formalization of miniF2F valid problem amc12a_2019_p9: the reduced
+-- numerator plus denominator of the 2019th term of a rational recurrence. This file
+-- contains no proof.
+
+module amc12a-2019-p9 where
+
+open import Agda.Builtin.Equality using (_≡_)
+open import Agda.Builtin.Int using (Int; pos; negsuc)
+open import Agda.Builtin.Nat using (Nat; zero; suc; _+_; _*_)
+
+infix 4 _≈q_
+infixl 6 _+z_ _-z_ _+q_ _-q_
+infixl 7 _*z_ _*q_ _÷q_
+
+difference : Nat → Nat → Int
+difference zero zero = pos zero
+difference (suc m) zero = pos (suc m)
+difference zero (suc n) = negsuc n
+difference (suc m) (suc n) = difference m n
+
+negative : Nat → Int
+negative zero = pos zero
+negative (suc n) = negsuc n
+
+negateInt : Int → Int
+negateInt (pos zero) = pos zero
+negateInt (pos (suc n)) = negsuc n
+negateInt (negsuc n) = pos (suc n)
+
+_+z_ : Int → Int → Int
+pos m +z pos n = pos (m + n)
+pos m +z negsuc n = difference m (suc n)
+negsuc m +z pos n = difference n (suc m)
+negsuc m +z negsuc n = negsuc (suc (m + n))
+
+_-z_ : Int → Int → Int
+x -z y = x +z negateInt y
+
+_*z_ : Int → Int → Int
+pos m *z pos n = pos (m * n)
+pos m *z negsuc n = negative (m * suc n)
+negsuc m *z pos n = negative (suc m * n)
+negsuc m *z negsuc n = pos (suc m * suc n)
+
+record Coprime (a : Int) (b : Nat) : Set where
+  constructor bezout
+  field
+    left-coefficient right-coefficient : Int
+    combination :
+      (left-coefficient *z a) +z
+      (right-coefficient *z pos b) ≡ pos 1
+
+record Rat : Set where
+  constructor fraction
+  field
+    numerator : Int
+    denominator-minus-one : Nat
+    reduced :
+      Coprime numerator (suc denominator-minus-one)
+
+denominator : Rat → Nat
+denominator q = suc (Rat.denominator-minus-one q)
+
+record RawRat : Set where
+  constructor ratio
+  field
+    raw-numerator : Int
+    raw-denominator : Nat
+
+toRaw : Rat → RawRat
+toRaw q =
+  ratio
+    (Rat.numerator q)
+    (denominator q)
+
+natural : Nat → RawRat
+natural n = ratio (pos n) (suc zero)
+
+_+q_ : RawRat → RawRat → RawRat
+x +q y =
+  ratio
+    ((RawRat.raw-numerator x *z pos (RawRat.raw-denominator y)) +z
+     (RawRat.raw-numerator y *z pos (RawRat.raw-denominator x)))
+    (RawRat.raw-denominator x * RawRat.raw-denominator y)
+
+negateRaw : RawRat → RawRat
+negateRaw (ratio numerator denominator) =
+  ratio (negateInt numerator) denominator
+
+_-q_ : RawRat → RawRat → RawRat
+x -q y = x +q negateRaw y
+
+_*q_ : RawRat → RawRat → RawRat
+x *q y =
+  ratio
+    (RawRat.raw-numerator x *z RawRat.raw-numerator y)
+    (RawRat.raw-denominator x * RawRat.raw-denominator y)
+
+reciprocal : RawRat → RawRat
+reciprocal (ratio (pos zero) d) =
+  ratio (pos zero) (suc zero)
+reciprocal (ratio (pos (suc n)) d) =
+  ratio (pos d) (suc n)
+reciprocal (ratio (negsuc n) d) =
+  ratio (negative d) (suc n)
+
+_÷q_ : RawRat → RawRat → RawRat
+x ÷q y = x *q reciprocal y
+
+_≈q_ : RawRat → RawRat → Set
+x ≈q y =
+  (RawRat.raw-numerator x *z pos (RawRat.raw-denominator y)) ≡
+  (RawRat.raw-numerator y *z pos (RawRat.raw-denominator x))
+
+numeratorPlusDenominator : Rat → Int
+numeratorPlusDenominator q =
+  Rat.numerator q +z pos (denominator q)
+
+amc12a-2019-p9 : Set
+amc12a-2019-p9 =
+  (a : Nat → Rat) →
+  toRaw (a 1) ≈q natural 1 →
+  toRaw (a 2) ≈q (natural 3 ÷q natural 7) →
+  ((n : Nat) →
+    toRaw (a (n + 2)) ≈q
+      ((toRaw (a n) *q toRaw (a (n + 1))) ÷q
+       ((natural 2 *q toRaw (a n)) -q toRaw (a (n + 1))))) →
+  numeratorPlusDenominator (a 2019) ≡ pos 8078

@@ -1,0 +1,267 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2023_b3:
+% the expected length of the longest zigzag subsequence of independent
+% uniform [0,1] random variables is (2n+2)/3. This file contains no proof.
+
+putnam_2023_b3: THEORY
+BEGIN
+  sample_space: TYPE+
+
+  event: TYPE = [sample_space -> bool]
+  event_sequence: TYPE = [nat -> event]
+  sigma_algebra: TYPE = [event -> bool]
+  probability_map: TYPE = [event -> real]
+  real_sequence: TYPE = [nat -> real]
+
+  valid_size: TYPE = {n: nat | n >= 2}
+  unit_interval: TYPE = {x: real | 0 <= x AND x <= 1}
+  sample(n: valid_size): TYPE = [below(n) -> unit_interval]
+  random_variable: TYPE = [sample_space -> unit_interval]
+  random_vector(n: valid_size): TYPE = [below(n) -> random_variable]
+  selection(n: valid_size): TYPE = [nat -> below(n)]
+
+  full_event: event =
+    LAMBDA (omega: sample_space): TRUE
+
+  empty_event: event =
+    LAMBDA (omega: sample_space): FALSE
+
+  event_complement(A: event): event =
+    LAMBDA (omega: sample_space): NOT A(omega)
+
+  countable_union(events: event_sequence): event =
+    LAMBDA (omega: sample_space):
+      EXISTS (index: nat): events(index)(omega)
+
+  pairwise_disjoint(events: event_sequence): bool =
+    FORALL (left_index, right_index: nat):
+      left_index /= right_index IMPLIES
+        FORALL (omega: sample_space):
+          NOT (events(left_index)(omega)
+            AND events(right_index)(omega))
+
+  partial_real_sum(
+      values: real_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      partial_real_sum(values, count - 1)
+        + values(count - 1)
+    ENDIF
+  MEASURE count
+
+  converges_to(values: real_sequence, limit_value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(values(index) - limit_value) < epsilon_value
+
+  is_sigma_algebra(Sigma: sigma_algebra): bool =
+    Sigma(full_event)
+      AND (FORALL (A: event):
+        Sigma(A) IMPLIES Sigma(event_complement(A)))
+      AND (FORALL (events: event_sequence):
+        (FORALL (index: nat): Sigma(events(index)))
+          IMPLIES Sigma(countable_union(events)))
+
+  partial_probability_sum(
+      probability: probability_map,
+      events: event_sequence,
+      count: nat): real =
+    partial_real_sum(
+      LAMBDA (index: nat): probability(events(index)),
+      count)
+
+  is_probability_space(
+      probability: probability_map,
+      Sigma: sigma_algebra): bool =
+    is_sigma_algebra(Sigma)
+      AND probability(empty_event) = 0
+      AND probability(full_event) = 1
+      AND (FORALL (A: event):
+        Sigma(A) IMPLIES probability(A) >= 0)
+      AND (FORALL (events: event_sequence):
+        ((FORALL (index: nat): Sigma(events(index)))
+          AND pairwise_disjoint(events))
+        IMPLIES
+          converges_to(
+            LAMBDA (count: nat):
+              partial_probability_sum(
+                probability, events, count),
+            probability(countable_union(events))))
+
+  measurable_unit(
+      Sigma: sigma_algebra,
+      value: random_variable): bool =
+    FORALL (threshold: real):
+      Sigma(
+        LAMBDA (omega: sample_space):
+          value(omega) <= threshold)
+
+  uniform_unit_cdf(threshold: real): real =
+    IF threshold < 0 THEN
+      0
+    ELSIF threshold <= 1 THEN
+      threshold
+    ELSE
+      1
+    ENDIF
+
+  finite_product(
+      values: real_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      1
+    ELSE
+      finite_product(values, count - 1)
+        * values(count - 1)
+    ENDIF
+  MEASURE count
+
+  rectangle_event(
+      n: valid_size,
+      X: random_vector(n),
+      thresholds: [below(n) -> real]): event =
+    LAMBDA (omega: sample_space):
+      FORALL (index: below(n)):
+        X(index)(omega) <= thresholds(index)
+
+  rectangle_cdf_product(
+      n: valid_size,
+      thresholds: [below(n) -> real]): real =
+    finite_product(
+      LAMBDA (index: nat):
+        IF index < n THEN
+          uniform_unit_cdf(thresholds(index))
+        ELSE
+          1
+        ENDIF,
+      n)
+
+  independent_uniform_vector(
+      n: valid_size,
+      probability: probability_map,
+      Sigma: sigma_algebra,
+      X: random_vector(n)): bool =
+    (FORALL (index: below(n)):
+      measurable_unit(Sigma, X(index)))
+      AND
+    (FORALL (thresholds: [below(n) -> real]):
+      probability(rectangle_event(n, X, thresholds))
+        = rectangle_cdf_product(n, thresholds))
+
+  strictly_increasing(
+      n: valid_size,
+      indices: selection(n),
+      length: nat): bool =
+    FORALL (position: nat):
+      position + 1 < length IMPLIES
+        indices(position) < indices(position + 1)
+
+  is_zigzag_subsequence(
+      n: valid_size,
+      x: sample(n),
+      indices: selection(n),
+      length: nat): bool =
+    length = 1
+      OR
+        ((FORALL (position: nat):
+          position + 1 < length IMPLIES
+            x(indices(position + 1))
+              /= x(indices(position)))
+        AND
+        (FORALL (position: nat):
+          position + 2 < length IMPLIES
+            (x(indices(position + 2))
+                < x(indices(position + 1))
+              IFF
+             x(indices(position))
+                < x(indices(position + 1)))))
+
+  admissible_length(
+      n: valid_size,
+      x: sample(n),
+      length: nat): bool =
+    1 <= length
+      AND length <= n
+      AND (EXISTS (indices: selection(n)):
+        strictly_increasing(n, indices, length)
+          AND is_zigzag_subsequence(
+            n, x, indices, length))
+
+  is_longest_length(
+      n: valid_size,
+      x: sample(n),
+      length: nat): bool =
+    admissible_length(n, x, length)
+      AND (FORALL (other_length: nat):
+        admissible_length(n, x, other_length)
+          IMPLIES other_length <= length)
+
+  longest_length_function(
+      n: valid_size,
+      a: [sample(n) -> nat]): bool =
+    FORALL (x: sample(n)):
+      is_longest_length(n, x, a(x))
+
+  sampled_length(
+      n: valid_size,
+      X: random_vector(n),
+      a: [sample(n) -> nat],
+      omega: sample_space): nat =
+    a(LAMBDA (index: below(n)): X(index)(omega))
+
+  length_event(
+      n: valid_size,
+      X: random_vector(n),
+      a: [sample(n) -> nat],
+      length: nat): event =
+    LAMBDA (omega: sample_space):
+      sampled_length(n, X, a, omega) = length
+
+  expected_length_sum(
+      n: valid_size,
+      probability: probability_map,
+      X: random_vector(n),
+      a: [sample(n) -> nat],
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      expected_length_sum(
+        n, probability, X, a, count - 1)
+        + ((count - 1) :: real)
+            * probability(
+                length_event(
+                  n, X, a, count - 1))
+    ENDIF
+  MEASURE count
+
+  expected_longest_length(
+      n: valid_size,
+      probability: probability_map,
+      X: random_vector(n),
+      a: [sample(n) -> nat]): real =
+    expected_length_sum(
+      n, probability, X, a, n + 1)
+
+  putnam_2023_b3_solution(n: valid_size): real =
+    ((2 * n + 2) :: real) / 3
+
+  putnam_2023_b3: bool =
+    FORALL
+        (n: valid_size),
+        (Sigma: sigma_algebra),
+        (probability: probability_map),
+        (X: random_vector(n)),
+        (a: [sample(n) -> nat]):
+      (is_probability_space(probability, Sigma)
+        AND independent_uniform_vector(
+          n, probability, Sigma, X)
+        AND longest_length_function(n, a))
+      IMPLIES
+        expected_longest_length(
+          n, probability, X, a)
+          = putnam_2023_b3_solution(n)
+END putnam_2023_b3

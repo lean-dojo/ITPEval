@@ -1,0 +1,139 @@
+% Statement-only formalization of the thousand-theorems corpus artifact Q193878
+% (thousand-theorems__pvs__Q193878), "Chinese remainder theorem": a finite family
+% of pairwise coprime ideals in a commutative ring yields the canonical ring
+% equivalence from the quotient by their intersection to the product of the
+% individual quotient rings. This file contains no proof.
+
+Q193878_chinese_remainder_theorem[
+  R: TYPE+,
+  Index: TYPE,
+  zero, one: R,
+  neg: [R -> R],
+  add, mul: [R, R -> R]
+]: THEORY
+BEGIN
+  IMPORTING finite_sets[Index]
+
+  ideal: TYPE = [R -> bool]
+  ideal_family: TYPE = [Index -> ideal]
+  product_representative: TYPE = [Index -> R]
+
+  commutative_ring_laws: bool =
+    (FORALL (x, y, z: R):
+      add(add(x, y), z) = add(x, add(y, z)))
+      AND (FORALL (x, y: R):
+        add(x, y) = add(y, x))
+      AND (FORALL (x: R):
+        add(zero, x) = x
+          AND add(x, zero) = x)
+      AND (FORALL (x: R):
+        add(neg(x), x) = zero
+          AND add(x, neg(x)) = zero)
+      AND (FORALL (x, y, z: R):
+        mul(mul(x, y), z) = mul(x, mul(y, z)))
+      AND (FORALL (x, y: R):
+        mul(x, y) = mul(y, x))
+      AND (FORALL (x: R):
+        mul(one, x) = x
+          AND mul(x, one) = x)
+      AND (FORALL (x, y, z: R):
+        mul(x, add(y, z)) =
+          add(mul(x, y), mul(x, z)))
+      AND (FORALL (x, y, z: R):
+        mul(add(x, y), z) =
+          add(mul(x, z), mul(y, z)))
+
+  is_ideal(I: ideal): bool =
+    I(zero)
+      AND (FORALL (x, y: R):
+        I(x) AND I(y) IMPLIES I(add(x, y)))
+      AND (FORALL (x: R):
+        I(x) IMPLIES I(neg(x)))
+      AND (FORALL (a, x: R):
+        I(x) IMPLIES I(mul(a, x)))
+
+  coprime(I, J: ideal): bool =
+    EXISTS (x, y: R):
+      I(x) AND J(y) AND add(x, y) = one
+
+  pairwise_coprime(ideals: ideal_family): bool =
+    FORALL (i, j: Index):
+      i /= j IMPLIES coprime(ideals(i), ideals(j))
+
+  difference(x, y: R): R =
+    add(x, neg(y))
+
+  intersection_quotient_related(
+      ideals: ideal_family,
+      x, y: R): bool =
+    FORALL (i: Index):
+      ideals(i)(difference(x, y))
+
+  product_quotient_related(
+      ideals: ideal_family,
+      values, other: product_representative): bool =
+    FORALL (i: Index):
+      ideals(i)(difference(values(i), other(i)))
+
+  constant_family(x: R): product_representative =
+    LAMBDA (i: Index): x
+
+  pointwise_zero: product_representative =
+    LAMBDA (i: Index): zero
+
+  pointwise_one: product_representative =
+    LAMBDA (i: Index): one
+
+  pointwise_neg(
+      values: product_representative): product_representative =
+    LAMBDA (i: Index): neg(values(i))
+
+  pointwise_add(
+      values, other: product_representative): product_representative =
+    LAMBDA (i: Index): add(values(i), other(i))
+
+  pointwise_mul(
+      values, other: product_representative): product_representative =
+    LAMBDA (i: Index): mul(values(i), other(i))
+
+  canonical_map_is_ring_equivalence(
+      ideals: ideal_family,
+      inverse: [product_representative -> R]): bool =
+    (FORALL (x, y: R):
+      intersection_quotient_related(ideals, x, y)
+        IMPLIES
+          product_quotient_related(
+            ideals, constant_family(x), constant_family(y)))
+      AND (FORALL (values, other: product_representative):
+        product_quotient_related(ideals, values, other)
+          IMPLIES
+            intersection_quotient_related(
+              ideals, inverse(values), inverse(other)))
+      AND (FORALL (x: R):
+        intersection_quotient_related(
+          ideals, inverse(constant_family(x)), x))
+      AND (FORALL (values: product_representative):
+        product_quotient_related(
+          ideals, constant_family(inverse(values)), values))
+      AND constant_family(zero) = pointwise_zero
+      AND constant_family(one) = pointwise_one
+      AND (FORALL (x: R):
+        constant_family(neg(x)) =
+          pointwise_neg(constant_family(x)))
+      AND (FORALL (x, y: R):
+        constant_family(add(x, y)) =
+          pointwise_add(constant_family(x), constant_family(y)))
+      AND (FORALL (x, y: R):
+        constant_family(mul(x, y)) =
+          pointwise_mul(constant_family(x), constant_family(y)))
+
+  chinese_remainder_theorem: bool =
+    (is_finite_type[Index] AND commutative_ring_laws)
+      IMPLIES
+        (FORALL (ideals: ideal_family):
+          ((FORALL (i: Index): is_ideal(ideals(i)))
+            AND pairwise_coprime(ideals))
+          IMPLIES
+            EXISTS (inverse: [product_representative -> R]):
+              canonical_map_is_ring_equivalence(ideals, inverse))
+END Q193878_chinese_remainder_theorem

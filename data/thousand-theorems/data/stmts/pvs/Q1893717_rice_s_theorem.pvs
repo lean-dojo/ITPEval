@@ -1,0 +1,193 @@
+% Statement-only formalization of the Thousand Theorems corpus artifact Q1893717,
+% "Rice's theorem": a computable property of program denotations that contains one
+% partial-recursive natural-number function contains every such function. This file
+% contains no proof.
+
+rice_partial_value_Q1893717: DATATYPE
+BEGIN
+  rice_undefined: rice_undefined?
+  rice_defined(rice_value: nat): rice_defined?
+END rice_partial_value_Q1893717
+
+rice_code_Q1893717: DATATYPE
+BEGIN
+  rice_zero_code: rice_zero_code?
+  rice_succ_code: rice_succ_code?
+  rice_left_code: rice_left_code?
+  rice_right_code: rice_right_code?
+  rice_pair_code(
+    rice_pair_left,
+    rice_pair_right: rice_code_Q1893717): rice_pair_code?
+  rice_comp_code(
+    rice_comp_outer,
+    rice_comp_inner: rice_code_Q1893717): rice_comp_code?
+  rice_prec_code(
+    rice_prec_base,
+    rice_prec_step: rice_code_Q1893717): rice_prec_code?
+  rice_rfind_code(
+    rice_rfind_body: rice_code_Q1893717): rice_rfind_code?
+END rice_code_Q1893717
+
+Q1893717_rice_s_theorem: THEORY
+BEGIN
+  IMPORTING rice_partial_value_Q1893717, rice_code_Q1893717
+
+  code: TYPE = rice_code_Q1893717
+  partial_value: TYPE = rice_partial_value_Q1893717
+  partial_nat_function: TYPE = [nat -> partial_value]
+  function_class: TYPE = [partial_nat_function -> bool]
+  code_property: TYPE = [code -> bool]
+  evaluation_relation: TYPE = [code, nat, nat -> bool]
+
+  nat_pair(left, right: nat): nat =
+    IF left < right THEN
+      right * right + left
+    ELSE
+      left * left + left + right
+    ENDIF
+
+  code_encode(program: code): RECURSIVE nat =
+    CASES program OF
+      rice_zero_code: 0,
+      rice_succ_code: 1,
+      rice_left_code: 2,
+      rice_right_code: 3,
+      rice_pair_code(left_program, right_program):
+        2 * (2 * nat_pair(
+          code_encode(left_program),
+          code_encode(right_program))) + 4,
+      rice_comp_code(outer_program, inner_program):
+        2 * (2 * nat_pair(
+          code_encode(outer_program),
+          code_encode(inner_program)) + 1) + 4,
+      rice_prec_code(base_program, step_program):
+        2 * (2 * nat_pair(
+          code_encode(base_program),
+          code_encode(step_program))) + 1 + 4,
+      rice_rfind_code(body_program):
+        2 * (2 * code_encode(body_program) + 1) + 1 + 4
+    ENDCASES
+  MEASURE program BY <<
+
+  evaluator_closed(candidate: evaluation_relation): bool =
+    (FORALL (input: nat):
+      candidate(rice_zero_code, input, 0))
+    AND
+    (FORALL (input: nat):
+      candidate(rice_succ_code, input, input + 1))
+    AND
+    (FORALL (left, right: nat):
+      candidate(rice_left_code, nat_pair(left, right), left))
+    AND
+    (FORALL (left, right: nat):
+      candidate(rice_right_code, nat_pair(left, right), right))
+    AND
+    (FORALL (left_program, right_program: code),
+            (input, left_value, right_value: nat):
+      (candidate(left_program, input, left_value)
+        AND candidate(right_program, input, right_value))
+      IMPLIES
+        candidate(
+          rice_pair_code(left_program, right_program),
+          input,
+          nat_pair(left_value, right_value)))
+    AND
+    (FORALL (outer_program, inner_program: code),
+            (input, intermediate, output: nat):
+      (candidate(inner_program, input, intermediate)
+        AND candidate(outer_program, intermediate, output))
+      IMPLIES
+        candidate(
+          rice_comp_code(outer_program, inner_program),
+          input,
+          output))
+    AND
+    (FORALL (base_program, step_program: code),
+            (parameter, output: nat):
+      candidate(base_program, parameter, output)
+      IMPLIES
+        candidate(
+          rice_prec_code(base_program, step_program),
+          nat_pair(parameter, 0),
+          output))
+    AND
+    (FORALL (base_program, step_program: code),
+            (parameter, index, previous, output: nat):
+      (candidate(
+          rice_prec_code(base_program, step_program),
+          nat_pair(parameter, index),
+          previous)
+        AND candidate(
+          step_program,
+          nat_pair(parameter, nat_pair(index, previous)),
+          output))
+      IMPLIES
+        candidate(
+          rice_prec_code(base_program, step_program),
+          nat_pair(parameter, index + 1),
+          output))
+    AND
+    (FORALL (body_program: code),
+            (parameter, start, offset: nat):
+      (candidate(
+          body_program,
+          nat_pair(parameter, start + offset),
+          0)
+        AND
+          (FORALL (earlier: nat):
+            earlier < offset IMPLIES
+              EXISTS (nonzero_value: nat):
+                candidate(
+                  body_program,
+                  nat_pair(parameter, start + earlier),
+                  nonzero_value)
+                  AND nonzero_value /= 0))
+      IMPLIES
+        candidate(
+          rice_rfind_code(body_program),
+          nat_pair(parameter, start),
+          start + offset))
+
+  evaluates(program: code, input, output: nat): bool =
+    FORALL (candidate: evaluation_relation):
+      evaluator_closed(candidate)
+      IMPLIES candidate(program, input, output)
+
+  computes(
+    program: code,
+    fn: partial_nat_function): bool =
+    FORALL (input, output: nat):
+      evaluates(program, input, output)
+        IFF fn(input) = rice_defined(output)
+
+  partial_recursive(fn: partial_nat_function): bool =
+    EXISTS (program: code):
+      computes(program, fn)
+
+  code_in_class(program: code, C: function_class): bool =
+    EXISTS (fn: partial_nat_function):
+      computes(program, fn)
+        AND C(fn)
+
+  decides(decider: code, property: code_property): bool =
+    FORALL (source: code), (output: nat):
+      evaluates(decider, code_encode(source), output)
+        IFF
+          ((property(source) AND output = 1)
+            OR ((NOT property(source)) AND output = 0))
+
+  computable_predicate(property: code_property): bool =
+    EXISTS (decider: code):
+      decides(decider, property)
+
+  rice: bool =
+    FORALL (C: function_class),
+           (f, g: partial_nat_function):
+      (computable_predicate(
+          LAMBDA (program: code):
+            code_in_class(program, C))
+        AND partial_recursive(f)
+        AND partial_recursive(g)
+        AND C(f))
+      IMPLIES C(g)
+END Q1893717_rice_s_theorem

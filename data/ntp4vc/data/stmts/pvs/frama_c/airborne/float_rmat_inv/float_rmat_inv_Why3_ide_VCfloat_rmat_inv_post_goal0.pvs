@@ -1,0 +1,138 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% frama_c/airborne/float_rmat_inv/float_rmat_inv_Why3_ide_VCfloat_rmat_inv_post_goal0:
+% the memory-level postcondition that nine sequential stores transpose a real
+% three-by-three matrix. This file contains no proof.
+
+float_rmat_inv_Why3_ide_VCfloat_rmat_inv_post_goal0[
+  region: [int -> int],
+  linked: [[int -> int] -> bool]
+]: THEORY
+BEGIN
+  addr: TYPE = [# base: int, offset: int #]
+  real_memory: TYPE = [addr -> real]
+  allocation_table: TYPE = [int -> int]
+
+  real_rmat: TYPE =
+    [# a00: real, a01: real, a02: real,
+       a10: real, a11: real, a12: real,
+       a20: real, a21: real, a22: real #]
+
+  shift(p: addr, k: int): addr =
+    (# base := base(p), offset := offset(p) + k #)
+
+  store(memory: real_memory, p: addr, value: real): real_memory =
+    memory WITH [(p) := value]
+
+  valid_rw(malloc: allocation_table, p: addr, n: int): bool =
+    0 < n IMPLIES
+      0 < base(p)
+        AND 0 <= offset(p)
+        AND offset(p) + n <= malloc(base(p))
+
+  valid_rd(malloc: allocation_table, p: addr, n: int): bool =
+    0 < n IMPLIES
+      base(p) /= 0
+        AND 0 <= offset(p)
+        AND offset(p) + n <= malloc(base(p))
+
+  separated(p: addr, p_size: int, q: addr, q_size: int): bool =
+    p_size <= 0
+      OR q_size <= 0
+      OR base(p) /= base(q)
+      OR offset(q) + q_size <= offset(p)
+      OR offset(p) + p_size <= offset(q)
+
+  % Every real value is finite in the official Why3 real floating-point model.
+  is_finite32(value: real): bool = TRUE
+
+  p_finite_floatrmat(memory: real_memory, rm: addr): bool =
+    LET start: addr = shift(rm, 0)
+    IN
+      is_finite32(memory(shift(start, 0)))
+        AND is_finite32(memory(shift(start, 1)))
+        AND is_finite32(memory(shift(start, 2)))
+        AND is_finite32(memory(shift(start, 3)))
+        AND is_finite32(memory(shift(start, 4)))
+        AND is_finite32(memory(shift(start, 5)))
+        AND is_finite32(memory(shift(start, 6)))
+        AND is_finite32(memory(shift(start, 7)))
+        AND is_finite32(memory(shift(start, 8)))
+
+  p_rvalid_floatrmat(
+      malloc: allocation_table,
+      memory: real_memory,
+      rm: addr): bool =
+    p_finite_floatrmat(memory, rm)
+      AND valid_rd(malloc, rm, 9)
+
+  rmat_of_floatrmat(memory: real_memory, rm: addr): real_rmat =
+    LET start: addr = shift(rm, 0)
+    IN
+      (# a00 := memory(shift(start, 0)),
+         a01 := memory(shift(start, 1)),
+         a02 := memory(shift(start, 2)),
+         a10 := memory(shift(start, 3)),
+         a11 := memory(shift(start, 4)),
+         a12 := memory(shift(start, 5)),
+         a20 := memory(shift(start, 6)),
+         a21 := memory(shift(start, 7)),
+         a22 := memory(shift(start, 8)) #)
+
+  transpose(matrix: real_rmat): real_rmat =
+    (# a00 := a00(matrix),
+       a01 := a10(matrix),
+       a02 := a20(matrix),
+       a10 := a01(matrix),
+       a11 := a11(matrix),
+       a12 := a21(matrix),
+       a20 := a02(matrix),
+       a21 := a12(matrix),
+       a22 := a22(matrix) #)
+
+  eq_rmat(left, right: real_rmat): bool =
+    a00(right) = a00(left)
+      AND a01(right) = a01(left)
+      AND a02(right) = a02(left)
+      AND a10(right) = a10(left)
+      AND a11(right) = a11(left)
+      AND a12(right) = a12(left)
+      AND a20(right) = a20(left)
+      AND a21(right) = a21(left)
+      AND a22(right) = a22(left)
+
+  goal0: bool =
+    FORALL (a, a_1: addr),
+           (t_1: real_memory),
+           (t: allocation_table):
+      LET a_2: addr = shift(a, 0),
+          a_3: addr = shift(a_1, 0),
+          m: real_memory =
+            store(t_1, shift(a_2, 0), t_1(shift(a_3, 0))),
+          m_1: real_memory =
+            store(m, shift(a_2, 1), m(shift(a_3, 3))),
+          m_2: real_memory =
+            store(m_1, shift(a_2, 2), m_1(shift(a_3, 6))),
+          m_3: real_memory =
+            store(m_2, shift(a_2, 3), m_2(shift(a_3, 1))),
+          m_4: real_memory =
+            store(m_3, shift(a_2, 4), m_3(shift(a_3, 4))),
+          m_5: real_memory =
+            store(m_4, shift(a_2, 5), m_4(shift(a_3, 7))),
+          m_6: real_memory =
+            store(m_5, shift(a_2, 6), m_5(shift(a_3, 2))),
+          m_7: real_memory =
+            store(m_6, shift(a_2, 7), m_6(shift(a_3, 5))),
+          m_8: real_memory =
+            store(m_7, shift(a_2, 8), m_7(shift(a_3, 8)))
+      IN
+        (region(base(a)) <= 0
+          AND region(base(a_1)) <= 0
+          AND linked(t)
+          AND valid_rw(t, a, 9)
+          AND p_rvalid_floatrmat(t, t_1, a_1)
+          AND separated(a, 9, a_1, 9))
+        IMPLIES
+          eq_rmat(
+            transpose(rmat_of_floatrmat(m_8, a_1)),
+            rmat_of_floatrmat(m_8, a))
+END float_rmat_inv_Why3_ide_VCfloat_rmat_inv_post_goal0

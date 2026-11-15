@@ -1,0 +1,408 @@
+:: Statement-only formalization of the NTP4VC corpus artifact
+:: pearl/multiprecision/sub_Sub_wmpn_subqtvc: the verification condition for
+:: unequal-length multiprecision subtraction with borrow propagation, copying
+:: remaining limbs, aliased pointer snapshots, updates, and memory framing.
+:: This file contains no proof.
+
+environ
+  vocabularies TARSKI, XBOOLE_0, SUBSET_1, RELAT_1, FUNCT_1,
+    FUNCT_2, PARTFUN1, ZFMISC_1, NUMBERS, XREAL_0, CARD_1,
+    XXREAL_0, ARYTM_1, ARYTM_3, REAL_1, INT_1, NAT_1,
+    VALUED_0, VALUED_1, ORDINAL1, MCART_1, MARGREL1,
+    XBOOLEAN, NEWTON;
+  notations TARSKI, XBOOLE_0, SUBSET_1, ZFMISC_1, XTUPLE_0,
+    MCART_1, RELAT_1, FUNCT_1, RELSET_1, PARTFUN1, FUNCT_2,
+    ORDINAL1, CARD_1, NUMBERS, XCMPLX_0, XREAL_0, REAL_1,
+    INT_1, NAT_1, NAT_D, NEWTON, XXREAL_0, MARGREL1, XBOOLEAN;
+  constructors FUNCT_1, RELSET_1, PARTFUN1, FUNCT_2, CARD_1,
+    REAL_1, INT_1, XXREAL_0, ZFMISC_1, MCART_1, NAT_1,
+    NAT_D, NEWTON, MARGREL1;
+  registrations XBOOLE_0, SUBSET_1, RELAT_1, FUNCT_1,
+    RELSET_1, FUNCT_2, NUMBERS, CARD_1, XXREAL_0, MEMBERED,
+    VALUED_0, VALUED_1, XCMPLX_0, XREAL_0, ORDINAL1, INT_1,
+    NAT_1, NEWTON, MARGREL1, XBOOLEAN;
+  requirements REAL, NUMERALS, SUBSET, BOOLE, ARITHM;
+  equalities XBOOLEAN;
+
+begin
+
+::$P-
+theorem
+  for P,Z being non empty set,
+      Len being Function of P,NAT,
+      Offset,Minimum,Maximum being Function of P,INT,
+      Writable being Function of P,BOOLEAN,
+      Zone being Function of P,Z,
+      Signed32 being Function of INT,INT,
+      Pelt being Function of [:P,INT:],INT,
+      VSub being Function of [:P,[:INT,INT:]:],INT,
+      Pow being Function of INT,INT,
+      SameData,Snapshot,Submap,Frame,Update,Access,
+        BorrowRange,ZeroFlag,Valueeq,Initial,Final,
+        Borrowinv,Copyinv,Copyafter,Copystep,Copyloop,
+        Copyphase,Borrowincrement,Borrowafter,Borrowstep,
+        Borrowloop,Borrowphase,Initialflag,Initialnext being set,
+      sy,sx being Element of INT,
+      y,x,r being Element of P
+  st
+    (for p,q being Element of P holds
+      [p,q] in SameData iff
+        Len.p = Len.q &
+        for j being Element of INT holds
+          Pelt.[p,j] = Pelt.[q,j]) &
+    (for ny,nx,nr,oy,ox,orr being Element of P holds
+      [ny,[nx,[nr,[oy,[ox,orr]]]]] in Snapshot iff
+        [ny,nr] in SameData &
+        Len.nr = Len.oy &
+        Offset.ny = Offset.oy &
+        Minimum.ny = Minimum.oy &
+        Maximum.ny = Maximum.oy &
+        Writable.ny = Writable.oy &
+        Zone.ny = Zone.oy &
+        [nx,nr] in SameData &
+        Len.nr = Len.ox &
+        Offset.nx = Offset.ox &
+        Minimum.nx = Minimum.ox &
+        Maximum.nx = Maximum.ox &
+        Writable.nx = Writable.ox &
+        Zone.nx = Zone.ox &
+        Len.nr = Len.orr &
+        Offset.nr = Offset.orr &
+        Minimum.nr = Minimum.orr &
+        Maximum.nr = Maximum.orr &
+        Writable.nr = Writable.orr &
+        Zone.nr = Zone.orr) &
+    (for p,q being Element of P,
+         lower,upper being Element of INT holds
+      [p,[q,[lower,upper]]] in Submap iff
+        for j being Element of INT st
+          lower <= j & j < upper
+        holds Pelt.[p,j] = Pelt.[q,j]) &
+    (for current being Element of P,
+         count being Element of INT holds
+      [current,count] in Frame iff
+        for j being Element of INT st
+          j < Offset.current or Offset.current + count <= j
+        holds Pelt.[current,j] = Pelt.[r,j]) &
+    (for newp,old being Element of P,
+         index,value being Element of INT holds
+      [newp,[old,[index,value]]] in Update iff
+        for j being Element of INT holds
+          (j = index implies Pelt.[newp,j] = value) &
+          (j <> index implies Pelt.[newp,j] = Pelt.[old,j])) &
+    (for p being Element of P,
+         index being Element of INT holds
+      [p,index] in Access iff
+        Minimum.p <= index & index < Maximum.p) &
+    (for borrow being Element of INT holds
+      borrow in BorrowRange iff 0 <= borrow & borrow <= 1) &
+    (for word being Element of INT,
+         flag being Element of BOOLEAN holds
+      [word,flag] in ZeroFlag iff
+        (word = 0 implies flag = TRUE) &
+        (flag = TRUE implies word = 0)) &
+    (for current being Element of P,
+         size,ysize,borrow being Element of INT holds
+      [current,[size,[ysize,borrow]]] in Valueeq iff
+        for vc,vx,vy,power being Integer st
+          vc = VSub.[current,
+            [Offset.current,Offset.current+size]] &
+          vx = VSub.[x,[Offset.x,Offset.x+size]] &
+          vy = VSub.[y,[Offset.y,Offset.y+ysize]] &
+          power = Pow.size
+        holds vc - power * borrow = vx - vy) &
+    (for borrow being Element of INT,
+         cy,cx,cr being Element of P holds
+      [borrow,[cy,[cx,cr]]] in Initial iff
+        borrow in BorrowRange &
+        [cr,[Signed32.sy,[Signed32.sy,borrow]]] in Valueeq &
+        [cr,Signed32.sy] in Frame &
+        (Offset.cr = Offset.cx or
+          [cx,[x,[Offset.cx,
+            Offset.cx+Signed32.sy]]] in Submap) &
+        (Offset.cr = Offset.cy or
+          [cy,[y,[Offset.cy,
+            Offset.cy+Signed32.sy]]] in Submap)) &
+    (for borrow being Element of INT,
+         cy,cx,cr being Element of P holds
+      [borrow,[cy,[cx,cr]]] in Final iff
+        [cr,[Signed32.sx,[Signed32.sy,borrow]]] in Valueeq &
+        borrow in BorrowRange &
+        [cr,Signed32.sx] in Frame &
+        (Offset.cr = Offset.cx or
+          [cx,[x,[Offset.cx,
+            Offset.cx+Signed32.sx]]] in Submap) &
+        (Offset.cr = Offset.cy or
+          [cy,[y,[Offset.cy,
+            Offset.cy+Signed32.sy]]] in Submap)) &
+    (for index,borrow being Element of INT,
+         cy,cx,cr being Element of P holds
+      [index,[borrow,[cy,[cx,cr]]]] in Borrowinv iff
+        Signed32.sy <= Signed32.index &
+        Signed32.index <= Signed32.sx &
+        (index = sx or borrow = 1) &
+        [cr,[Signed32.index,
+          [Signed32.sy,borrow]]] in Valueeq &
+        [cr,Signed32.index] in Frame &
+        [cx,cr] in SameData &
+        [cy,cr] in SameData &
+        (Offset.cr = Offset.cx or
+          [cx,[x,[Offset.cx,
+            Offset.cx+Signed32.sx]]] in Submap) &
+        (Offset.cr = Offset.cy or
+          [cy,[y,[Offset.cy,
+            Offset.cy+Signed32.sy]]] in Submap) &
+        borrow in BorrowRange) &
+    (for index,borrow being Element of INT,
+         cy,cx,cr being Element of P holds
+      [index,[borrow,[cy,[cx,cr]]]] in Copyinv iff
+        Signed32.sy <= Signed32.index &
+        Signed32.index <= Signed32.sx &
+        (index = sx or borrow = 0) &
+        [cr,[Signed32.index,
+          [Signed32.sy,borrow]]] in Valueeq &
+        [cr,Signed32.index] in Frame &
+        [cx,cr] in SameData &
+        [cy,cr] in SameData &
+        (Offset.cr = Offset.cx or
+          [cx,[x,[Offset.cx,
+            Offset.cx+Signed32.sx]]] in Submap) &
+        (Offset.cr = Offset.cy or
+          [cy,[y,[Offset.cy,
+            Offset.cy+Signed32.sy]]] in Submap) &
+        borrow in BorrowRange) &
+    (for index,borrow being Element of INT,
+         cy,cx,cr being Element of P holds
+      [index,[borrow,[cy,[cx,cr]]]] in Copyafter iff
+        -(2 |^ 31) <= Signed32.index + 1 &
+        Signed32.index + 1 <= 2147483647 &
+        for next being Element of INT st
+          0 <= next & next < (2 |^ 32) &
+          Signed32.next = Signed32.index + 1
+        holds
+          0 <= Signed32.sx - Signed32.index &
+          Signed32.sx - Signed32.next <
+            Signed32.sx - Signed32.index &
+          [next,[borrow,[cy,[cx,cr]]]] in Copyinv) &
+    (for index,borrow being Element of INT,
+         cy,cx,cr being Element of P holds
+      [index,[borrow,[cy,[cx,cr]]]] in Copystep iff
+        (Signed32.index < Signed32.sx implies
+          [cx,Offset.cx+Signed32.index] in Access &
+          [x,Offset.x+Signed32.index] in Access &
+          [cr,Offset.cr+Signed32.index] in Access &
+          Writable.cr = TRUE &
+          for ny,nx,nr being Element of P st
+            [ny,[nx,[nr,[cy,[cx,cr]]]]] in Snapshot
+          holds
+            (([nr,[cr,
+                [Offset.nr+Signed32.index,
+                 Pelt.[cx,Offset.cx+Signed32.index]]]]
+                 in Update &
+              Pelt.[nr,Offset.nr+Signed32.index] =
+                Pelt.[cx,Offset.cx+Signed32.index])
+             implies
+               [index,[borrow,[ny,[nx,nr]]]]
+                 in Copyafter)) &
+        (not Signed32.index < Signed32.sx implies
+          [borrow,[cy,[cx,cr]]] in Final)) &
+    (for borrow being Element of INT,
+         iy,ix,ir being Element of P holds
+      [borrow,[iy,[ix,ir]]] in Copyloop iff
+        for index being Element of INT st
+          0 <= index & index < (2 |^ 32)
+        holds
+          for cy,cx,cr being Element of P st
+            [cy,[cx,[cr,[iy,[ix,ir]]]]] in Snapshot &
+            [index,[borrow,[cy,[cx,cr]]]] in Copyinv
+          holds
+            [index,[borrow,[cy,[cx,cr]]]] in Copystep) &
+    (for index,borrow being Element of INT,
+         cy,cx,cr being Element of P holds
+      [index,[borrow,[cy,[cx,cr]]]] in Copyphase iff
+        [index,[borrow,[cy,[cx,cr]]]] in Copyinv &
+        [borrow,[cy,[cx,cr]]] in Copyloop) &
+    (for index,borrow,next,oldlimb being Element of INT,
+         cy,cx,cr being Element of P holds
+      [index,[borrow,[cy,[cx,[cr,[next,oldlimb]]]]]]
+        in Borrowincrement iff
+        for flag being Element of BOOLEAN st
+          [oldlimb,flag] in ZeroFlag
+        holds
+          (flag <> TRUE implies
+            [next,[0,[cy,[cx,cr]]]] in Copyphase) &
+          (flag = TRUE implies
+            0 <= Signed32.sx - Signed32.index &
+            Signed32.sx - Signed32.next <
+              Signed32.sx - Signed32.index &
+            [next,[borrow,[cy,[cx,cr]]]] in Borrowinv)) &
+    (for index,borrow,oldlimb being Element of INT,
+         cy,cx,cr being Element of P holds
+      [index,[borrow,[cy,[cx,[cr,oldlimb]]]]]
+        in Borrowafter iff
+        -(2 |^ 31) <= Signed32.index + 1 &
+        Signed32.index + 1 <= 2147483647 &
+        for next being Element of INT st
+          0 <= next & next < (2 |^ 32) &
+          Signed32.next = Signed32.index + 1
+        holds
+          [index,[borrow,
+            [cy,[cx,[cr,[next,oldlimb]]]]]]
+              in Borrowincrement) &
+    (for index,borrow being Element of INT,
+         cy,cx,cr being Element of P holds
+      [index,[borrow,[cy,[cx,cr]]]] in Borrowstep iff
+        (Signed32.index < Signed32.sx implies
+          [cx,Offset.cx+Signed32.index] in Access &
+          [x,Offset.x+Signed32.index] in Access &
+          for result being Element of INT st
+            0 <= result & result < (2 |^ 64) &
+            (for oldlimb being Integer st
+               oldlimb = Pelt.[cx,
+                 Offset.cx+Signed32.index]
+             holds result = (oldlimb - 1) mod (2 |^ 64))
+          holds
+            [cr,Offset.cr+Signed32.index] in Access &
+            Writable.cr = TRUE &
+            for ny,nx,nr being Element of P st
+              [ny,[nx,[nr,[cy,[cx,cr]]]]] in Snapshot
+            holds
+              (([nr,[cr,
+                  [Offset.nr+Signed32.index,result]]]
+                    in Update &
+                Pelt.[nr,Offset.nr+Signed32.index] = result)
+               implies
+                 [index,[borrow,
+                   [ny,[nx,[nr,
+                     Pelt.[cx,
+                       Offset.cx+Signed32.index]]]]]]
+                     in Borrowafter)) &
+        (not Signed32.index < Signed32.sx implies
+          [index,[borrow,[cy,[cx,cr]]]] in Copyphase)) &
+    (for iy,ix,ir being Element of P holds
+      [iy,[ix,ir]] in Borrowloop iff
+        for index,borrow being Element of INT st
+          0 <= index & index < (2 |^ 32) &
+          0 <= borrow & borrow < (2 |^ 64)
+        holds
+          for cy,cx,cr being Element of P st
+            [cy,[cx,[cr,[iy,[ix,ir]]]]] in Snapshot &
+            [index,[borrow,[cy,[cx,cr]]]] in Borrowinv
+          holds
+            [index,[borrow,[cy,[cx,cr]]]] in Borrowstep) &
+    (for borrow being Element of INT,
+         cy,cx,cr being Element of P holds
+      [borrow,[cy,[cx,cr]]] in Borrowphase iff
+        [sy,[borrow,[cy,[cx,cr]]]] in Borrowinv &
+        [cy,[cx,cr]] in Borrowloop) &
+    (for borrow being Element of INT,
+         flag being Element of BOOLEAN,
+         cy,cx,cr being Element of P holds
+      [borrow,[flag,[cy,[cx,cr]]]] in Initialflag iff
+        (flag <> TRUE implies
+          [borrow,[cy,[cx,cr]]] in Borrowphase) &
+        (flag = TRUE implies
+          [sy,[borrow,[cy,[cx,cr]]]] in Copyphase)) &
+    (for borrow being Element of INT,
+         cy,cx,cr being Element of P holds
+      [borrow,[cy,[cx,cr]]] in Initialnext iff
+        for flag being Element of BOOLEAN st
+          [borrow,flag] in ZeroFlag
+        holds
+          [borrow,[flag,[cy,[cx,cr]]]] in Initialflag) &
+    (for w being Integer st 0 <= w & w < (2 |^ 32) holds
+      (w < (2 |^ 31) implies Signed32.w = w) &
+      (not w < (2 |^ 31) implies
+        Signed32.w = w - (2 |^ 32))) &
+    (for p being Element of P, j being Element of INT holds
+      for pj being Integer st pj = Pelt.[p,j] holds
+        0 <= pj & pj < (2 |^ 64) &
+        ((j < 0 or Len.p <= j) implies pj = 0)) &
+    Pow.0 = 1 &
+    (for n being Element of INT st n < 0 holds Pow.n = 1) &
+    (for n being Element of INT st 0 <= n holds
+      Pow.(n+1) = (2 |^ 64) * Pow.n) &
+    (for p being Element of P, n,m being Element of INT holds
+      (n < m implies
+        (for v,pn,vnext being Integer st
+           v = VSub.[p,[n,m]] &
+           pn = Pelt.[p,n] &
+           vnext = VSub.[p,[n+1,m]]
+         holds v = pn + (2 |^ 64) * vnext)) &
+      (not n < m implies VSub.[p,[n,m]] = 0)) &
+    0 <= sy & sy < (2 |^ 32) &
+    0 <= sx & sx < (2 |^ 32) &
+    0 <= Signed32.sy &
+    Signed32.sy <= Signed32.sx &
+    (-(2 |^ 31) <= Signed32.sx &
+     Signed32.sx <= 2147483647 &
+     0 <= Signed32.sx &
+     0 <= Minimum.r &
+     Minimum.r <= Offset.r &
+     Offset.r + Signed32.sx <= Maximum.r &
+     Maximum.r <= Len.r) &
+    (-(2 |^ 31) <= Signed32.sx &
+     Signed32.sx <= 2147483647 &
+     0 <= Signed32.sx &
+     0 <= Minimum.x &
+     Minimum.x <= Offset.x &
+     Offset.x + Signed32.sx <= Maximum.x &
+     Maximum.x <= Len.x) &
+    (-(2 |^ 31) <= Signed32.sy &
+     Signed32.sy <= 2147483647 &
+     0 <= Signed32.sy &
+     0 <= Minimum.y &
+     Minimum.y <= Offset.y &
+     Offset.y + Signed32.sy <= Maximum.y &
+     Maximum.y <= Len.y) &
+    (Offset.r = Offset.x or
+     Offset.r + Signed32.sx <= Offset.x or
+     Offset.x + Signed32.sx <= Offset.r) &
+    (Offset.r = Offset.y or
+     Offset.r + Signed32.sx <= Offset.y or
+     Offset.y + Signed32.sy <= Offset.r) &
+    [r,x] in SameData &
+    [x,y] in SameData &
+    Writable.r = TRUE
+  holds
+    (-(2 |^ 31) <= Signed32.sy &
+     Signed32.sy <= 2147483647 &
+     0 <= Signed32.sy &
+     0 <= Minimum.r &
+     Minimum.r <= Offset.r &
+     Offset.r + Signed32.sy <= Maximum.r &
+     Maximum.r <= Len.r) &
+    (-(2 |^ 31) <= Signed32.sy &
+     Signed32.sy <= 2147483647 &
+     0 <= Signed32.sy &
+     0 <= Minimum.x &
+     Minimum.x <= Offset.x &
+     Offset.x + Signed32.sy <= Maximum.x &
+     Maximum.x <= Len.x) &
+    (-(2 |^ 31) <= Signed32.sy &
+     Signed32.sy <= 2147483647 &
+     0 <= Signed32.sy &
+     0 <= Minimum.y &
+     Minimum.y <= Offset.y &
+     Offset.y + Signed32.sy <= Maximum.y &
+     Maximum.y <= Len.y) &
+    (Offset.r = Offset.x or
+     Offset.r + Signed32.sy <= Offset.x or
+     Offset.x + Signed32.sy <= Offset.r) &
+    (Offset.r = Offset.y or
+     Offset.r + Signed32.sy <= Offset.y or
+     Offset.y + Signed32.sy <= Offset.r) &
+    [r,x] in SameData &
+    [x,y] in SameData &
+    Writable.r = TRUE &
+    for cy,cx,cr being Element of P st
+      [cy,[cx,[cr,[y,[x,r]]]]] in Snapshot
+    holds
+      for borrow being Element of INT st
+        0 <= borrow & borrow < (2 |^ 64) &
+        [borrow,[cy,[cx,cr]]] in Initial
+      holds
+        [borrow,[cy,[cx,cr]]] in Initialnext
+proof
+end;
+::$P+

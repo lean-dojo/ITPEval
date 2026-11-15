@@ -1,0 +1,111 @@
+% Statement-only formalization of PutnamBench artifact putnam_1971_a4:
+% eventual strict positivity of every coefficient in the homogeneous support of
+% (x + y)^n (x^2 - (2 - epsilon)xy + y^2). This file contains no proof.
+
+putnam_1971_a4: THEORY
+BEGIN
+  bivariate_polynomial: TYPE = [nat, nat -> real]
+
+  polynomial_zero: bivariate_polynomial =
+    LAMBDA (i, j: nat): 0
+
+  polynomial_one: bivariate_polynomial =
+    LAMBDA (i, j: nat):
+      IF i = 0 AND j = 0 THEN 1 ELSE 0 ENDIF
+
+  polynomial_x: bivariate_polynomial =
+    LAMBDA (i, j: nat):
+      IF i = 1 AND j = 0 THEN 1 ELSE 0 ENDIF
+
+  polynomial_y: bivariate_polynomial =
+    LAMBDA (i, j: nat):
+      IF i = 0 AND j = 1 THEN 1 ELSE 0 ENDIF
+
+  polynomial_add(
+      left, right: bivariate_polynomial): bivariate_polynomial =
+    LAMBDA (i, j: nat): left(i, j) + right(i, j)
+
+  polynomial_negate(
+      polynomial: bivariate_polynomial): bivariate_polynomial =
+    LAMBDA (i, j: nat): -polynomial(i, j)
+
+  polynomial_scale(
+      scalar: real,
+      polynomial: bivariate_polynomial): bivariate_polynomial =
+    LAMBDA (i, j: nat): scalar * polynomial(i, j)
+
+  convolution_y(
+      left, right: bivariate_polynomial,
+      i, j, a, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET b: nat = count - 1 IN
+        convolution_y(left, right, i, j, a, count - 1)
+          + IF a <= i AND b <= j THEN
+              left(a, b) * right(i - a, j - b)
+            ELSE
+              0
+            ENDIF
+    ENDIF
+  MEASURE count
+
+  convolution_x(
+      left, right: bivariate_polynomial,
+      i, j, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET a: nat = count - 1 IN
+        convolution_x(left, right, i, j, count - 1)
+          + convolution_y(left, right, i, j, a, j + 1)
+    ENDIF
+  MEASURE count
+
+  polynomial_multiply(
+      left, right: bivariate_polynomial): bivariate_polynomial =
+    LAMBDA (i, j: nat):
+      convolution_x(left, right, i, j, i + 1)
+
+  polynomial_power(
+      polynomial: bivariate_polynomial,
+      exponent: nat): RECURSIVE bivariate_polynomial =
+    IF exponent = 0 THEN
+      polynomial_one
+    ELSE
+      polynomial_multiply(
+        polynomial_power(polynomial, exponent - 1),
+        polynomial)
+    ENDIF
+  MEASURE exponent
+
+  x_plus_y: bivariate_polynomial =
+    polynomial_add(polynomial_x, polynomial_y)
+
+  quadratic(delta: real): bivariate_polynomial =
+    polynomial_add(
+      polynomial_add(
+        polynomial_power(polynomial_x, 2),
+        polynomial_negate(
+          polynomial_scale(
+            2 - delta,
+            polynomial_multiply(polynomial_x, polynomial_y)))),
+      polynomial_power(polynomial_y, 2))
+
+  polynomial_family(
+      n: nat,
+      delta: real): bivariate_polynomial =
+    polynomial_multiply(
+      polynomial_power(x_plus_y, n),
+      quadratic(delta))
+
+  putnam_1971_a4: bool =
+    FORALL (epsilon: real):
+      (0 < epsilon AND epsilon < 1)
+        IMPLIES
+          EXISTS (N: nat):
+            FORALL (n, i: nat):
+              n >= N AND i <= n + 2 IMPLIES
+                polynomial_family(
+                  n, epsilon)(i, n + 2 - i) > 0
+END putnam_1971_a4

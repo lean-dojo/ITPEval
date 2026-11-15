@@ -1,0 +1,184 @@
+% Statement-only formalization of the VERINA corpus artifact
+% verina_advanced_80, catalog title "twoSum": fuel-bounded row-major search
+% for the unique pair of array indices whose integer entries sum to a target,
+% with the exact executable implementation and correctness contract. This
+% file contains no proof.
+
+verina_advanced_80: THEORY
+BEGIN
+
+  int_list_length(values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        int_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  nat_list_length(values: list[nat]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        nat_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  int_list_get_bang(
+      index: nat,
+      values: list[int]): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          int_list_get_bang(index - 1, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  nat_list_get_bang(
+      index: nat,
+      values: list[nat]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          nat_list_get_bang(index - 1, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  has_sum_with_head(
+      first: int,
+      later: list[int],
+      target: int): RECURSIVE bool =
+    CASES later OF
+      null:
+        FALSE,
+      cons(second, rest):
+        first + second = target
+          OR has_sum_with_head(first, rest, target)
+    ENDCASES
+  MEASURE later BY <<
+
+  has_matching_pair(
+      values: list[int],
+      target: int): RECURSIVE bool =
+    CASES values OF
+      null:
+        FALSE,
+      cons(first, later):
+        has_sum_with_head(first, later, target)
+          OR has_matching_pair(later, target)
+    ENDCASES
+  MEASURE values BY <<
+
+  matching_count_with_head(
+      first: int,
+      later: list[int],
+      target: int): RECURSIVE nat =
+    CASES later OF
+      null:
+        0,
+      cons(second, rest):
+        (IF first + second = target THEN 1 ELSE 0 ENDIF)
+          + matching_count_with_head(first, rest, target)
+    ENDCASES
+  MEASURE later BY <<
+
+  matching_pair_count(
+      values: list[int],
+      target: int): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(first, later):
+        matching_count_with_head(first, later, target)
+          + matching_pair_count(later, target)
+    ENDCASES
+  MEASURE values BY <<
+
+  % The recursive pair traversals enumerate exactly the source pairs
+  % 0 <= j < i < nums.size, once each (with the earlier index first).
+  twoSum_precond(
+      nums: list[int],
+      target: int): bool =
+    int_list_length(nums) >= 2
+      AND has_matching_pair(nums, target)
+      AND matching_pair_count(nums, target) = 1
+
+  findIndices(
+      nums: list[int],
+      target: int,
+      i, j, fuel: nat): RECURSIVE list[nat] =
+    IF fuel = 0 THEN
+      null[nat]
+    ELSIF i >= int_list_length(nums) THEN
+      null[nat]
+    ELSIF j >= int_list_length(nums) THEN
+      findIndices(
+        nums,
+        target,
+        i + 1,
+        i + 2,
+        fuel - 1)
+    ELSIF int_list_get_bang(i, nums)
+            + int_list_get_bang(j, nums)
+          = target THEN
+      cons(i, cons(j, null[nat]))
+    ELSE
+      findIndices(
+        nums,
+        target,
+        i,
+        j + 1,
+        fuel - 1)
+    ENDIF
+  MEASURE fuel
+
+  % The source precondition proof argument is computationally irrelevant.
+  % This preserves the initial indices, exact fuel, branch order, recursive
+  % transitions, successful two-index array, and empty-array fallbacks.
+  twoSum(
+      nums: list[int],
+      target: int): list[nat] =
+    findIndices(
+      nums,
+      target,
+      0,
+      1,
+      int_list_length(nums) * int_list_length(nums))
+
+  twoSum_postcond(
+      nums: list[int],
+      target: int,
+      result: list[nat]): bool =
+    nat_list_length(result) = 2
+      AND nat_list_get_bang(0, result) < int_list_length(nums)
+      AND nat_list_get_bang(1, result) < int_list_length(nums)
+      AND nat_list_get_bang(0, result) < nat_list_get_bang(1, result)
+      AND int_list_get_bang(
+            nat_list_get_bang(0, result),
+            nums)
+          + int_list_get_bang(
+              nat_list_get_bang(1, result),
+              nums)
+        = target
+
+  twoSum_spec_satisfied: bool =
+    FORALL (nums: list[int], target: int):
+      twoSum_precond(nums, target)
+        IMPLIES
+          twoSum_postcond(
+            nums,
+            target,
+            twoSum(nums, target))
+
+END verina_advanced_80

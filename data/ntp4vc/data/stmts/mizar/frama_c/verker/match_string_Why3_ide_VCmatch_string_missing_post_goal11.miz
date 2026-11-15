@@ -1,0 +1,216 @@
+:: Statement-only formalization of the NTP4VC corpus artifact
+:: frama_c/verker/match_string_Why3_ide_VCmatch_string_missing_post_goal11:
+:: the match-string missing-post verification condition concludes that the
+:: current array index is the sentinel value minus twenty-two under the stated
+:: string equality, framing, memory-validity, integer-range, and prior-index
+:: string-validity and mismatch assumptions. This file contains no proof.
+
+environ
+  vocabularies TARSKI, XBOOLE_0, SUBSET_1, RELAT_1, FUNCT_1,
+    FUNCT_2, PARTFUN1, ZFMISC_1, NUMBERS, XREAL_0, CARD_1,
+    XXREAL_0, ARYTM_1, ARYTM_3, REAL_1, INT_1, NAT_1,
+    VALUED_0, VALUED_1, ORDINAL1, MCART_1;
+  notations TARSKI, XBOOLE_0, SUBSET_1, ZFMISC_1, XTUPLE_0,
+    MCART_1, RELAT_1, FUNCT_1, RELSET_1, PARTFUN1, FUNCT_2,
+    ORDINAL1, CARD_1, NUMBERS, XCMPLX_0, XREAL_0, REAL_1,
+    INT_1, NAT_1, XXREAL_0;
+  constructors FUNCT_1, RELSET_1, PARTFUN1, FUNCT_2, CARD_1,
+    REAL_1, INT_1, XXREAL_0, ZFMISC_1, MCART_1, NAT_1;
+  registrations XBOOLE_0, SUBSET_1, RELAT_1, FUNCT_1, RELSET_1,
+    FUNCT_2, NUMBERS, CARD_1, XXREAL_0, MEMBERED, VALUED_0,
+    VALUED_1, XCMPLX_0, XREAL_0, ORDINAL1, INT_1, NAT_1;
+  requirements REAL, NUMERALS, SUBSET, BOOLE, ARITHM;
+
+begin
+
+::$P-
+theorem
+  for t2 being Function of [:INT,INT:],[:INT,INT:],
+      a1,a,a2,a3 being Element of [:INT,INT:],
+      t1 being Function of [:INT,INT:],INT,
+      t,Region,ToUint8,ToUint64 being Function of INT,INT,
+      Base,Offset being Function of [:INT,INT:],INT,
+      shft being Function of
+        [:[:INT,INT:],INT:],[:INT,INT:],
+      LCmp being Function of [:INT,INT:],INT,
+      LStrlen being Function of
+        [:Funcs([:INT,INT:],INT),[:INT,INT:]:],INT,
+      LStrncmp being Function of
+        [:Funcs([:INT,INT:],INT),
+          [:[:INT,INT:],[:[:INT,INT:],INT:]:]:],INT,
+      LStrcmp being Function of
+        [:Funcs([:INT,INT:],INT),
+          [:[:INT,INT:],[:INT,INT:]:]:],INT,
+      LRealLen being Function of
+        [:Funcs([:INT,INT:],[:INT,INT:]),
+          [:[:INT,INT:],INT:]:],INT,
+      Linked being Subset of Funcs(INT,INT),
+      SConst being Subset of Funcs([:INT,INT:],INT),
+      ValidRW,PValidStr being set,
+      i1,i,x,u64i1,len2 being Integer
+  st
+    (for b,o being Integer holds
+       Base.[b,o] = b & Offset.[b,o] = o) &
+
+    (for p being Element of [:INT,INT:], k being Integer holds
+       shft.[p,k] = [Base.p,Offset.p + k]) &
+
+    (for malloc being Function of INT,INT,
+         p being Element of [:INT,INT:],
+         n being Integer
+     holds
+       [malloc,[p,n]] in ValidRW iff
+       (0 < n implies
+         0 < Base.p &
+         0 <= Offset.p &
+         Offset.p + n <= malloc.(Base.p))) &
+
+    (for z being Integer holds
+       ex w being Integer st
+         w = ToUint8.z & 0 <= w & w < 256) &
+    (for z being Integer st 0 <= z & z < 256 holds
+       ToUint8.z = z) &
+    (for z being Integer holds
+       ToUint8.(ToUint8.z) = ToUint8.z) &
+
+    (for z being Integer holds
+       ex w being Integer st
+         w = ToUint64.z &
+         0 <= w &
+         w < 65536 * 65536 * 65536 * 65536) &
+    (for z being Integer
+       st 0 <= z & z < 65536 * 65536 * 65536 * 65536
+     holds
+       ToUint64.z = z) &
+    (for z being Integer holds
+       ToUint64.(ToUint64.z) = ToUint64.z) &
+
+    (for u,v being Integer holds
+       (u = v implies LCmp.[u,v] = 0) &
+       (u <> v & u < v implies LCmp.[u,v] = -1) &
+       (u <> v & not u < v implies LCmp.[u,v] = 1)) &
+
+    (for mchar being Function of [:INT,INT:],INT,
+         s being Element of [:INT,INT:]
+     holds
+       ex len0,len1,cast being Integer st
+         len0 = LStrlen.[mchar,s] &
+         len1 = LStrlen.[mchar,shft.[s,1]] &
+         cast = ToUint64.(1 + len1) &
+         (mchar.(shft.[s,0]) = 0 implies len0 = 0) &
+         (mchar.(shft.[s,0]) <> 0 implies cast = len0) &
+         0 <= len0 &
+         len0 < 65536 * 65536 * 65536 * 65536) &
+
+    (for mchar being Function of [:INT,INT:],INT,
+         cs,ct being Element of [:INT,INT:],
+         n being Integer
+     holds
+       (n = -1 implies
+          LStrncmp.[mchar,[cs,[ct,n]]] = 0) &
+       (n <> -1 &
+          mchar.(shft.[ct,0]) = mchar.(shft.[cs,0])
+        implies
+          LStrncmp.[mchar,
+            [shft.[cs,1],[shft.[ct,1],n-1]]] =
+          LStrncmp.[mchar,[cs,[ct,n]]]) &
+       (n <> -1 &
+          mchar.(shft.[ct,0]) <> mchar.(shft.[cs,0])
+        implies
+          LCmp.[ToUint8.(mchar.(shft.[cs,0])),
+            ToUint8.(mchar.(shft.[ct,0]))] =
+          LStrncmp.[mchar,[cs,[ct,n]]])) &
+
+    (for mchar being Function of [:INT,INT:],INT,
+         cs,ct being Element of [:INT,INT:]
+     holds
+       LStrcmp.[mchar,[cs,ct]] =
+         LStrncmp.[mchar,[cs,[ct,LStrlen.[mchar,cs]]]]) &
+
+    (for mptr being Function of
+         [:INT,INT:],[:INT,INT:],
+         p being Element of [:INT,INT:],
+         n being Integer
+     holds
+       ex len0,len1,n1,cast being Integer st
+         len0 = LRealLen.[mptr,[p,n]] &
+         n1 = ToUint64.(n-1) &
+         len1 = LRealLen.[mptr,[shft.[p,1],n1]] &
+         cast = ToUint64.(1 + len1) &
+         ((n = 0 or mptr.(shft.[p,0]) = [0,0]) implies
+            len0 = 0) &
+         (n <> 0 & mptr.(shft.[p,0]) <> [0,0] implies
+            cast = len0) &
+         0 <= len0 &
+         len0 < 65536 * 65536 * 65536 * 65536) &
+
+    (for malloc being Function of INT,INT,
+         mchar being Function of [:INT,INT:],INT,
+         s being Element of [:INT,INT:]
+     holds
+       [malloc,[mchar,s]] in PValidStr iff
+       ex j being Integer st
+         mchar.(shft.[s,j]) = 0 &
+         0 <= j &
+         j < 65536 * 65536 * 65536 * 65536 &
+         [malloc,[shft.[s,0],1+j]] in ValidRW &
+         (for k being Integer st k <= j holds
+            ex c being Integer st
+              c = mchar.(shft.[s,k]) &
+              -(128) <= c & c < 128)) &
+
+    a2 = t2.(shft.[a1,i1]) &
+    x = LRealLen.[t2,[a1,i]] &
+    a3 = shft.[a1,0] &
+    u64i1 = ToUint64.i1 &
+    len2 = LStrlen.[t1,a2] &
+
+    a2 <> [0,0] &
+    LStrcmp.[t1,[a2,a]] = 0 &
+    0 <= i1 &
+    u64i1 < i &
+    Region.(Base.a) <= 0 &
+    Region.(Base.a1) <= 0 &
+    x <= i &
+    i1 <= x &
+    i <= 2147483647 &
+    (for p being Element of [:INT,INT:] holds
+       Region.(Base.(t2.p)) <= 0) &
+    t in Linked &
+    t1 in SConst &
+    -(2147483647)-1 <= i1 & i1 < 2147483647+1 &
+    0 <= i & i < 65536 * 65536 * 65536 * 65536 &
+    [t,[t1,a]] in PValidStr &
+    [t,[t1,a2]] in PValidStr &
+    (x = i implies [t,[a3,i]] in ValidRW) &
+    (x < i implies [t,[a3,1+x]] in ValidRW) &
+
+    (for i2 being Integer st 0 <= i2 & i2 < i1 holds
+       [t,[t1,t2.(shft.[a1,i2])]] in PValidStr) &
+
+    (for i2 being Integer st 0 <= i2 & i2 < i1 holds
+       LStrcmp.[t1,[t2.(shft.[a1,i2]),a]] <> 0) &
+
+    (for i2 being Integer st
+       0 <= i2 & i2 < x &
+       0 <= i2 &
+       i2 < 65536 * 65536 * 65536 * 65536
+     holds
+       [t,[t1,t2.(shft.[a1,i2])]] in PValidStr) &
+
+    (for i2 being Integer st
+       0 <= i2 & i2 < x &
+       0 <= i2 &
+       i2 < 65536 * 65536 * 65536 * 65536
+     holds
+       LStrcmp.[t1,[t2.(shft.[a1,i2]),a]] <> 0) &
+
+    (for i2 being Integer holds
+       t1.(shft.[a2,i2]) = t1.(shft.[a,i2]) or
+       i2 < 0 or
+       len2 < i2)
+  holds
+    i1 = -22
+proof
+end;
+::$P+

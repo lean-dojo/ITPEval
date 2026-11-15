@@ -1,0 +1,213 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2024_a5:
+% the offset in [0,8] minimizing the probability that a random chord of the
+% radius-9 circle meets the radius-1 disk is exactly 0. This file contains no proof.
+
+putnam_2024_a5: THEORY
+BEGIN
+  point: TYPE = [# x_coord: real, y_coord: real #]
+  parameter_pair: TYPE =
+    [# first_parameter: real, second_parameter: real #]
+  parameter_event: TYPE = [parameter_pair -> bool]
+  real_sequence: TYPE = [nat -> real]
+
+  rectangle: TYPE =
+    [# lower_first: real, upper_first: real,
+       lower_second: real, upper_second: real #]
+  rectangle_sequence: TYPE = [nat -> rectangle]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  sine_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        sine_partial(x, count - 1)
+          + safe_div(
+              ((-1 :: real) ^ index) * x ^ (2 * index + 1),
+              factorial(2 * index + 1) :: real)
+    ENDIF
+  MEASURE count
+
+  cosine_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        cosine_partial(x, count - 1)
+          + safe_div(
+              ((-1 :: real) ^ index) * x ^ (2 * index),
+              factorial(2 * index) :: real)
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  sine(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat): sine_partial(x, count),
+          value))
+
+  cosine(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat): cosine_partial(x, count),
+          value))
+
+  is_pi(value: real): bool =
+    3 < value AND value < 4 AND cosine(value / 2) = 0
+
+  pi: real =
+    epsilon(
+      LAMBDA (value: real):
+        is_pi(value))
+
+  circle_point(parameter: real): point =
+    (# x_coord :=
+         9 * cosine(2 * pi * parameter),
+       y_coord :=
+         9 * sine(2 * pi * parameter) #)
+
+  disk_center(offset: real): point =
+    (# x_coord := offset, y_coord := 0 #)
+
+  segment_point(P, Q: point, parameter: real): point =
+    (# x_coord :=
+         x_coord(P)
+           + parameter * (x_coord(Q) - x_coord(P)),
+       y_coord :=
+         y_coord(P)
+           + parameter * (y_coord(Q) - y_coord(P)) #)
+
+  squared_distance(P, Q: point): real =
+    (x_coord(P) - x_coord(Q)) ^ 2
+      + (y_coord(P) - y_coord(Q)) ^ 2
+
+  chord_intersects_disk(
+      offset, first, second: real): bool =
+    EXISTS (segment_parameter: real):
+      0 <= segment_parameter
+        AND segment_parameter <= 1
+        AND squared_distance(
+              segment_point(
+                circle_point(first),
+                circle_point(second),
+                segment_parameter),
+              disk_center(offset))
+            <= 1
+
+  intersection_event(offset: real): parameter_event =
+    LAMBDA (parameters: parameter_pair):
+      0 <= first_parameter(parameters)
+        AND first_parameter(parameters) <= 1
+        AND 0 <= second_parameter(parameters)
+        AND second_parameter(parameters) <= 1
+        AND chord_intersects_disk(
+              offset,
+              first_parameter(parameters),
+              second_parameter(parameters))
+
+  in_open_rectangle(
+      parameters: parameter_pair,
+      box: rectangle): bool =
+    lower_first(box) < first_parameter(parameters)
+      AND first_parameter(parameters) < upper_first(box)
+      AND lower_second(box) < second_parameter(parameters)
+      AND second_parameter(parameters) < upper_second(box)
+
+  rectangle_area(box: rectangle): real =
+    IF lower_first(box) < upper_first(box)
+        AND lower_second(box) < upper_second(box)
+    THEN
+      (upper_first(box) - lower_first(box))
+        * (upper_second(box) - lower_second(box))
+    ELSE
+      0
+    ENDIF
+
+  partial_rectangle_area(
+      boxes: rectangle_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      partial_rectangle_area(boxes, count - 1)
+        + rectangle_area(boxes(count - 1))
+    ENDIF
+  MEASURE count
+
+  covers(
+      covered_event: parameter_event,
+      boxes: rectangle_sequence): bool =
+    FORALL (parameters: parameter_pair):
+      covered_event(parameters) IMPLIES
+        EXISTS (index: nat):
+          in_open_rectangle(parameters, boxes(index))
+
+  cover_has_total_area(
+      covered_event: parameter_event,
+      boxes: rectangle_sequence,
+      total: real): bool =
+    covers(covered_event, boxes)
+      AND converges_to(
+        LAMBDA (count: nat):
+          partial_rectangle_area(boxes, count),
+        total)
+
+  has_lebesgue_outer_area(
+      measured_event: parameter_event,
+      area: real): bool =
+    0 <= area
+      AND (FORALL (boxes: rectangle_sequence), (total: real):
+        cover_has_total_area(measured_event, boxes, total)
+          IMPLIES area <= total)
+      AND (FORALL (epsilon_value: posreal):
+        EXISTS (boxes: rectangle_sequence), (total: real):
+          cover_has_total_area(measured_event, boxes, total)
+            AND total < area + epsilon_value)
+
+  probability_of_intersection(offset: real): real =
+    epsilon(
+      LAMBDA (area: real):
+        has_lebesgue_outer_area(
+          intersection_event(offset),
+          area))
+
+  minimizes_probability(offset: real): bool =
+    0 <= offset
+      AND offset <= 8
+      AND (FORALL (other_offset: real):
+        (0 <= other_offset AND other_offset <= 8)
+          IMPLIES
+            probability_of_intersection(offset)
+              <= probability_of_intersection(other_offset))
+
+  putnam_2024_a5_solution(offset: real): bool =
+    offset = 0
+
+  putnam_2024_a5: bool =
+    FORALL (offset: real):
+      minimizes_probability(offset)
+        IFF putnam_2024_a5_solution(offset)
+END putnam_2024_a5

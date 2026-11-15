@@ -1,0 +1,222 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/coincidence_count_CoincidenceCountBag_coincidence_countqtvc: the
+% coincidence-count verification condition for two increasing integer lists,
+% expressed through cardinalities of multiset intersections of suffixes.
+% This file contains no proof.
+
+coincidence_count_CoincidenceCountBag_coincidence_countqtvc: THEORY
+BEGIN
+
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  nth_default(values: list[int], index: nat): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          nth_default(tail, index - 1)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  list_drop(count: nat, values: list[int]): RECURSIVE list[int] =
+    IF count = 0 THEN
+      values
+    ELSE
+      CASES values OF
+        null:
+          null,
+        cons(head, tail):
+          list_drop(count - 1, tail)
+      ENDCASES
+    ENDIF
+  MEASURE count
+
+  contains(value: int, values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        FALSE,
+      cons(head, tail):
+        head = value OR contains(value, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  remove_first(value: int, values: list[int]): RECURSIVE list[int] =
+    CASES values OF
+      null:
+        null,
+      cons(head, tail):
+        IF head = value THEN
+          tail
+        ELSE
+          cons(head, remove_first(value, tail))
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  multiset_intersection_size(
+      left, right: list[int]): RECURSIVE nat =
+    CASES left OF
+      null:
+        0,
+      cons(head, tail):
+        IF contains(head, right) THEN
+          1
+            + multiset_intersection_size(
+                tail, remove_first(head, right))
+        ELSE
+          multiset_intersection_size(tail, right)
+        ENDIF
+    ENDCASES
+  MEASURE left BY <<
+
+  suffix(values: list[int], lower: int): list[int] =
+    list_drop(int_to_nat(lower), values)
+
+  coincidence_count(
+      left, right: list[int],
+      left_lower, right_lower: int): int =
+    (multiset_intersection_size(
+      suffix(left, left_lower),
+      suffix(right, right_lower)) :: int)
+
+  increasing(values: list[int]): bool =
+    FORALL (i, j: int):
+      (0 <= i AND i < j AND j < length(values))
+        IMPLIES
+          nth_default(values, int_to_nat(i))
+            <= nth_default(values, int_to_nat(j))
+
+  coincidence_count_vc: bool =
+    FORALL (a, b: list[int]):
+      (increasing(a) AND increasing(b))
+        IMPLIES
+          (0 <= 0
+            AND 0 <= length(a)
+            AND 0 <= 0
+            AND 0 <= length(b)
+            AND 0 + coincidence_count(a, b, 0, 0)
+                  = coincidence_count(a, b, 0, 0)
+            AND
+              (FORALL (c, j, i: int):
+                ((0 <= i AND i <= length(a))
+                  AND (0 <= j AND j <= length(b))
+                  AND c + coincidence_count(a, b, i, j)
+                        = coincidence_count(a, b, 0, 0))
+                  IMPLIES
+                    (FORALL (o1: bool):
+                      (IF i < length(a) THEN
+                         o1 =
+                           (IF j < length(b) THEN
+                              TRUE
+                            ELSE
+                              FALSE
+                            ENDIF)
+                       ELSE
+                         o1 = FALSE
+                       ENDIF)
+                        IMPLIES
+                          (IF o1 = TRUE THEN
+                             ((0 <= j AND j < length(b))
+                               AND (0 <= i AND i < length(a))
+                               AND
+                                 (IF nth_default(
+                                       a, int_to_nat(i))
+                                      <
+                                      nth_default(
+                                       b, int_to_nat(j))
+                                  THEN
+                                    ((0
+                                        <= length(a) - i
+                                             + length(b) - j
+                                      AND
+                                        length(a) - (i + 1)
+                                          + length(b) - j
+                                          <
+                                        length(a) - i
+                                          + length(b) - j)
+                                      AND
+                                        (0 <= i + 1
+                                          AND i + 1 <= length(a))
+                                      AND
+                                        (0 <= j
+                                          AND j <= length(b))
+                                      AND
+                                        c
+                                          + coincidence_count(
+                                              a, b, i + 1, j)
+                                          =
+                                            coincidence_count(
+                                              a, b, 0, 0))
+                                  ELSE
+                                    ((0 <= j AND j < length(b))
+                                      AND
+                                        (0 <= i
+                                          AND i < length(a))
+                                      AND
+                                        (IF nth_default(
+                                              b, int_to_nat(j))
+                                             <
+                                             nth_default(
+                                              a, int_to_nat(i))
+                                         THEN
+                                           ((0
+                                               <= length(a) - i
+                                                    + length(b) - j
+                                             AND
+                                               length(a) - i
+                                                 + length(b) - (j + 1)
+                                                 <
+                                               length(a) - i
+                                                 + length(b) - j)
+                                             AND
+                                               (0 <= i
+                                                 AND i <= length(a))
+                                             AND
+                                               (0 <= j + 1
+                                                 AND j + 1
+                                                   <= length(b))
+                                             AND
+                                               c
+                                                 + coincidence_count(
+                                                     a, b, i, j + 1)
+                                                 =
+                                                   coincidence_count(
+                                                     a, b, 0, 0))
+                                         ELSE
+                                           ((0
+                                               <= length(a) - i
+                                                    + length(b) - j
+                                             AND
+                                               length(a) - (i + 1)
+                                                 + length(b) - (j + 1)
+                                                 <
+                                               length(a) - i
+                                                 + length(b) - j)
+                                             AND
+                                               (0 <= i + 1
+                                                 AND i + 1
+                                                   <= length(a))
+                                             AND
+                                               (0 <= j + 1
+                                                 AND j + 1
+                                                   <= length(b))
+                                             AND
+                                               c + 1
+                                                 + coincidence_count(
+                                                     a, b,
+                                                     i + 1, j + 1)
+                                                 =
+                                                   coincidence_count(
+                                                     a, b, 0, 0))
+                                         ENDIF))
+                                  ENDIF))
+                           ELSE
+                             c = coincidence_count(a, b, 0, 0)
+                           ENDIF))))
+
+END coincidence_count_CoincidenceCountBag_coincidence_countqtvc

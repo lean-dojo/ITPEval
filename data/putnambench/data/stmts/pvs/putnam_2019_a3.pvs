@@ -1,0 +1,144 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2019_a3:
+% the greatest universal lower bound for the average modulus of the 2019
+% complex roots of a polynomial with real coefficients
+% 1 <= b_0 < ... < b_2019 <= 2019 is 2019^(-1/2019).
+% This file contains no proof.
+
+putnam_2019_a3: THEORY
+BEGIN
+  complex: TYPE = [# real_part: real, imag_part: real #]
+  coefficient_sequence: TYPE = [nat -> real]
+  root_sequence: TYPE = [nat -> complex]
+
+  complex_zero: complex =
+    (# real_part := 0, imag_part := 0 #)
+
+  complex_one: complex =
+    (# real_part := 1, imag_part := 0 #)
+
+  complex_of_real(value: real): complex =
+    (# real_part := value, imag_part := 0 #)
+
+  complex_neg(value: complex): complex =
+    (# real_part := -real_part(value),
+       imag_part := -imag_part(value) #)
+
+  complex_add(left, right: complex): complex =
+    (# real_part := real_part(left) + real_part(right),
+       imag_part := imag_part(left) + imag_part(right) #)
+
+  complex_sub(left, right: complex): complex =
+    complex_add(left, complex_neg(right))
+
+  complex_mul(left, right: complex): complex =
+    (# real_part :=
+         real_part(left) * real_part(right)
+           - imag_part(left) * imag_part(right),
+       imag_part :=
+         real_part(left) * imag_part(right)
+           + imag_part(left) * real_part(right) #)
+
+  complex_scale(scalar: real, value: complex): complex =
+    complex_mul(complex_of_real(scalar), value)
+
+  complex_power(value: complex, exponent: nat): RECURSIVE complex =
+    IF exponent = 0 THEN
+      complex_one
+    ELSE
+      complex_mul(complex_power(value, exponent - 1), value)
+    ENDIF
+  MEASURE exponent
+
+  polynomial_value(
+      coefficients: coefficient_sequence,
+      z: complex,
+      count: nat): RECURSIVE complex =
+    IF count = 0 THEN
+      complex_zero
+    ELSE
+      LET index: nat = count - 1 IN
+        complex_add(
+          polynomial_value(coefficients, z, count - 1),
+          complex_scale(
+            coefficients(index),
+            complex_power(z, index)))
+    ENDIF
+  MEASURE count
+
+  root_product(
+      roots: root_sequence,
+      z: complex,
+      count: nat): RECURSIVE complex =
+    IF count = 0 THEN
+      complex_one
+    ELSE
+      complex_mul(
+        root_product(roots, z, count - 1),
+        complex_sub(z, roots(count - 1)))
+    ENDIF
+  MEASURE count
+
+  has_stated_coefficients(
+      coefficients: coefficient_sequence): bool =
+    1 <= coefficients(0)
+      AND coefficients(2019) <= 2019
+      AND FORALL (index: nat):
+        index < 2019 IMPLIES
+          coefficients(index) < coefficients(index + 1)
+
+  enumerates_roots_with_multiplicity(
+      coefficients: coefficient_sequence,
+      roots: root_sequence): bool =
+    FORALL (z: complex):
+      polynomial_value(coefficients, z, 2020)
+        = complex_scale(
+            coefficients(2019),
+            root_product(roots, z, 2019))
+
+  nonnegative_square_root(value: real): real =
+    epsilon(
+      LAMBDA (root: real):
+        0 <= root AND root * root = value)
+
+  complex_modulus(value: complex): real =
+    nonnegative_square_root(
+      real_part(value) ^ 2 + imag_part(value) ^ 2)
+
+  modulus_sum(
+      roots: root_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      modulus_sum(roots, count - 1)
+        + complex_modulus(roots(count - 1))
+    ENDIF
+  MEASURE count
+
+  average_root_modulus(roots: root_sequence): real =
+    modulus_sum(roots, 2019) / (2019 :: real)
+
+  universal_lower_bound(bound: real): bool =
+    FORALL
+        (coefficients: coefficient_sequence),
+        (roots: root_sequence):
+      (has_stated_coefficients(coefficients)
+        AND enumerates_roots_with_multiplicity(coefficients, roots))
+      IMPLIES
+        bound <= average_root_modulus(roots)
+
+  is_greatest_universal_lower_bound(value: real): bool =
+    universal_lower_bound(value)
+      AND FORALL (bound: real):
+        universal_lower_bound(bound) IMPLIES bound <= value
+
+  putnam_2019_a3_solution: real =
+    epsilon(
+      LAMBDA (value: real):
+        0 < value
+          AND value ^ 2019 = 1 / (2019 :: real))
+
+  putnam_2019_a3: bool =
+    is_greatest_universal_lower_bound(
+      putnam_2019_a3_solution)
+END putnam_2019_a3

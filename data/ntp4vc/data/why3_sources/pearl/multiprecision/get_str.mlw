@@ -1,0 +1,290 @@
+module Get_str
+
+  use int.Int
+  use int.Abs
+  use int.Power
+  use array.Array
+  use map.Map
+  use mach.int.Int32
+  use mach.int.UInt32
+  use mach.c.UChar
+  use import mach.int.UInt64GMP as Limb
+  use mach.c.C
+  use types.Types
+  use types.Int32Eq
+  use types.UInt64Eq
+  use lemmas.Lemmas
+  use powm.Powm
+  use stringlemmas.String_lemmas
+  use logical.Logical
+  use int.ComputerDivision as CD
+  use int.EuclideanDivision
+  use base_info.BaseInfo
+
+  let wmpn_get_str_bits (sp:ptr uchar) (bits:uint32)
+                        (up:ptr limb) (un:int32) (ghost ub:int32)
+      : uint32
+    requires { 1 <= un }
+    requires { valid up un }
+    requires { 1 <= bits <= 8 }
+    requires { valid sp (div (ub + bits - 1) bits) }
+    requires { 0 <= ub }
+    requires { value up un < power 2 ub }
+    requires { (pelts up)[offset up + un - 1] > 0 }
+    requires { 64 * un + 7 <= max_int32 }
+    requires { writable sp }
+    ensures  { in_base (power 2 bits) (pelts sp)
+                       (offset sp) (offset sp + result) }
+    ensures  { svalue (power 2 bits) sp result = value up un }
+    ensures  { 0 < result <= (div (ub + bits - 1) bits) }
+    ensures  { (pelts sp)[offset sp] > 0 }
+    ensures  { forall j. j < offset sp
+               \/ offset sp + (div (ub + bits - 1) bits) <= j ->
+               (pelts sp)[j] = old (pelts sp)[j] }
+    writes   { sp.data.elts }
+  =
+    let um = C.get_ofs up (un - 1) in
+    let sb = wmpn_limb_size_in_base_2 um in
+    let e = 64 * (un-1) + Limb.to_int32 sb + UInt32.to_int32 bits - 1 in
+    let sn = e / UInt32.to_int32 bits in
+    let b = lsl 1 (Limb.of_uint32 bits) in
+    let ref i = 0 in
+    let ref j = sn in
+    let ref shift = 0 in
+    let ghost ref udone : int = 0 in
+    while j > 0 do
+      invariant { 0 <= i <= un }
+      invariant { 0 <= j <= sn }
+      invariant { (sn - j) * bits = udone }
+      invariant { j > 0 -> udone = 64 * i + shift }
+      invariant { 0 <= shift < Limb.length \/ i = un }
+      invariant { in_base b (pelts sp) (offset sp + j) (offset sp + sn) }
+      invariant { (svalue_sub b (pelts sp) (offset sp + j) (offset sp + sn)
+                   = valueb up udone /\ udone <= 64 * un)
+                  \/ (j = 0 /\ svalue b sp sn = value up un) }
+      invariant { forall k. k < offset sp
+                  \/ offset sp + sn <= k ->
+                     (pelts sp)[k] = old (pelts sp)[k] }
+      variant   { j }
+      j <- j - 1;
+      let lu = C.get_ofs up i in
+      let ref digit = lsr_mod lu shift in
+      let ghost low = mod (uint64'int lu) (power 2 (uint64'int shift)) in
+      let ghost oshift = shift in
+      shift <- shift + Limb.of_uint32 bits;
+      if shift >= 64
+      then begin
+        i <- i+1;
+        if i < un
+        then begin
+          shift <- shift - 64;
+          let lu' = get_ofs up i in
+          let ghost odigit = digit in
+          let high = lsl_mod lu' (Limb.of_uint32 bits - shift) in
+          digit <- digit + high; (* TODO logical or *)
+        end
+        else begin
+        end
+      end
+      else begin
+      end;
+      (* TODO mask + logical and *)
+      let sj = digit % b in
+      label Set in
+      C.set_ofs sp j (UChar.of_uint64 sj);
+      udone <- udone + uint32'int bits;
+    done;
+    UInt32.of_int32 sn
+
+  use div.Div
+
+  let wmpn_limb_get_str
+     (sp: ptr uchar) (ghost sz:int32) (ref w:limb)
+     (d1:limb) (di:limb) (shift:limb)
+     (ghost binfo:wmpn_base_info) : uint32
+    requires { 2 <= binfo.b <= 256 }
+    requires { writable sp }
+    requires { d1 >= div radix 2 }
+    requires { 0 <= shift <= 63 }
+    requires { binfo.b * power 2 shift = d1 }
+    requires { reciprocal di d1 }
+    requires { valid sp sz }
+    requires { 0 < sz }
+    requires { w < power binfo.b sz }
+    ensures  { svalue_le binfo.b sp result = old w }
+    ensures  { 0 <= result <= sz }
+    ensures  { result > 0 -> (pelts sp)[offset sp + result - 1] > 0 }
+    ensures  { forall i. i < offset sp \/ offset sp + result <= i ->
+               (pelts sp)[i] = old (pelts sp)[i] }
+    ensures  { in_base binfo.b (pelts sp)
+                       (offset sp) (offset sp + result) }
+  =
+    let ref i = 0 in
+    let ghost ow = pure { w } in
+    let ghost base = binfo.b in
+    while w > 0 do
+      invariant { 0 <= w < radix }
+      invariant { 0 <= i <= sz }
+      invariant { w > 0 -> 0 <= i < sz }
+      invariant { in_base base (pelts sp) (offset sp) (offset sp + i) }
+      invariant { w = 0 -> i > 0 -> (pelts sp)[offset sp + i - 1] > 0 }
+      invariant { ow = svalue_le base sp i + power base i * w }
+      invariant { forall j. j < offset sp \/ offset sp + i <= j ->
+                            (pelts sp)[j] = old (pelts sp)[j] }
+      variant { w }
+      label StartLoop in
+      let h = lsr_mod w (64 - shift) in
+      let l = lsl_mod w shift in
+      let q, r = div2by1_inv h l d1 di in
+      let ghost osp = pure { sp } in
+      let ghost nr = lsr r shift in
+      C.set_ofs sp i (UChar.of_uint64 (lsr r shift));
+      w <- q;
+      i <- i + 1;
+    done;
+    UInt32.of_int32 i
+
+  use util.UtilOld
+
+  let partial wmpn_get_str_other (sp: ptr uchar) (ghost sz:int32)
+                         (base:int32) (info:wmpn_base_info)
+                         (up: ptr limb) (un: int32) : uint32
+    requires { valid up un }
+    requires { 1 <= un }
+    requires { info.b = base }
+    requires { writable up }
+    requires { writable sp }
+    requires { (pelts up)[offset up + un - 1] > 0 }
+    requires { 0 < sz }
+    requires { valid sp sz }
+    requires { value up un < power base (sz-1) }
+    ensures  { 0 <= result < sz }
+    ensures  { svalue base sp result = old value up un }
+    ensures  { in_base base (pelts sp) (offset sp) (offset sp + result) }
+    ensures  { (pelts sp)[offset sp] > 0 }
+    ensures  { forall j. j < offset sp \/ offset sp + sz <= j ->
+               (pelts sp)[j] = old (pelts sp)[j] }
+  =
+    let shift = Limb.of_int32
+                  (Limb.count_leading_zeros (Limb.of_int32 base)) in
+    let d1 = lsl (Limb.of_int32 base) shift in
+    let di = invert_limb d1 in
+    let ghost vu = value up (int32'int un) in
+    let ref sn = 0 in
+    let ref n = un in
+    begin partial
+          ensures { svalue_le base sp sn + power base sn * value up 1 = vu }
+          ensures { in_base base (pelts sp) (offset sp) (offset sp + sn) }
+          ensures { 0 <= sn < sz }
+          ensures { 0 < value up 1 }
+          ensures { forall j. j < offset sp \/ offset sp + sz <= j ->
+                    (pelts sp)[j] = old (pelts sp)[j] }
+    if n > 1
+    then begin
+      let tp = salloc (UInt32.of_int32 n) in
+      let ghost ref loopi : int = 0 in
+      while n > 1 do
+        variant { value up n }
+        invariant { svalue_le base sp sn + power base sn * value up n = vu }
+        invariant { 1 <= n <= un }
+        invariant { un - n <= loopi }
+        invariant { 0 <= sn < sz }
+        (*invariant { power radix n <= power base (sz - 1 - sn) }*)
+        invariant { sn = loopi * info.exp }
+        invariant { in_base base (pelts sp) (offset sp) (offset sp + sn) }
+        invariant { (pelts up)[offset up + n - 1] > 0 }
+        invariant { forall j. j < offset sp \/ offset sp + sz <= j ->
+                    (pelts sp)[j] = old (pelts sp)[j] }
+        label StartLoop in
+        let ghost osn = sn in
+        let ref w = wmpn_divrem_1 tp up n info.bb in
+        label Size in
+        wmpn_copyi up tp n;
+        n <- n - if C.get_ofs up (n-1) = 0 then 1 else 0;
+        let spn = C.incr sp sn in
+        let ghost osp = pure { sp } in
+        let ref sdone = wmpn_limb_get_str spn (UInt32.to_int32 info.exp + 1)
+                                              w d1 di shift info in
+        sn <- sn + UInt32.to_int32 sdone;
+        while sdone < info.exp do
+          variant { info.exp - sdone }
+          invariant { sdone <= info.exp }
+          invariant { sn = osn + sdone }
+          invariant { in_base base (pelts sp) (offset sp)
+                      (offset sp + sn) }
+          invariant { svalue_le base sp sn
+                      + power base (sn - sdone + info.exp) * value up n = vu }
+          invariant { forall j. j < offset sp \/ offset sp + sz <= j ->
+               (pelts sp)[j] = old (pelts sp)[j] }
+          label Loop2 in
+          let ghost osp = pure { sp } in
+          C.set_ofs sp sn 0;
+          sn <- sn + 1;
+          sdone <- sdone + 1;
+        done;
+        loopi <- loopi + 1;
+      done;
+    end
+    end;
+    let ref lu = C.get up in
+    let ghost osp = pure { sp } in
+    let spn = C.incr sp sn in
+    let sdone = wmpn_limb_get_str spn (sz - 1 - sn) lu d1 di shift info in
+    sn <- sn + UInt32.to_int32 sdone;
+    let ghost osp = pure { sp } in
+    let ref i = 0 in
+    while (2 * i + 1 < sn) do
+      variant { sn - i }
+      invariant { 0 <= 2 * i + 1 <= sn + 1 }
+      invariant { forall j. offset sp + i <= j < offset sp + sn - i
+                            -> (pelts sp)[j] = (pelts osp)[j] }
+      invariant { in_base base (pelts sp) (offset sp) (offset sp + sn) }
+      invariant { svalue_sub base (pelts sp) (offset sp) (offset sp + i)
+                  = svalue_le_sub base (pelts osp) (offset sp + sn - i)
+                                                   (offset sp + sn) }
+      invariant { svalue_sub base (pelts sp) (offset sp + sn - i)
+                                             (offset sp + sn)
+                  = svalue_le_sub base (pelts osp) (offset sp) (offset sp + i) }
+      invariant { svalue_le_sub base (pelts sp) (offset sp + i)
+                                                (offset sp + sn - i)
+                  = svalue_le_sub base (pelts osp) (offset sp + i)
+                                                   (offset sp + sn - i) }
+      invariant { i > 0 -> (pelts sp)[offset sp] > 0 }
+      invariant { forall j. j < offset sp \/ offset sp + sz <= j ->
+                  (pelts sp)[j] = old (pelts sp)[j] }
+      let ghost osp' = pure { sp } in
+      let t = C.get_ofs sp i in
+      C.set_ofs sp i (C.get_ofs sp (sn - i - 1));
+      C.set_ofs sp (sn - i - 1) t;
+      i <- i + 1;
+    done;
+    UInt32.of_int32 sn
+
+  let partial wmpn_get_str (sp: ptr uchar) (ghost sz: int32) (base: int32)
+                   (up: ptr limb) (un: int32) : uint32
+    requires { 0 < sz }
+    requires { 0 < un }
+    requires { valid sp sz }
+    requires { valid up un }
+    requires { writable sp }
+    requires { writable up }
+    requires { power radix un <= power base (sz - 1) }
+    requires { (pelts up)[offset up + un - 1] > 0 }
+    requires { 2 <= base <= 256 }
+    requires { 64 * un + 7 <= max_int32 }
+    ensures  { in_base base (pelts sp) (offset sp) (offset sp + result) }
+    ensures  { svalue base sp result = old (value up un) }
+    ensures  { 0 < result < sz }
+    ensures  { (pelts sp)[offset sp] > 0 }
+  =
+    let bits = wmpn_base_power_of_two_p (Limb.of_int32 base) in
+    if (bits <> 0)
+    then begin
+      wmpn_get_str_bits sp bits up un (64 * un);
+    end
+    else begin
+     let info = wmpn_get_base_info (Limb.of_int32 base) in
+     wmpn_get_str_other sp sz base info up un
+    end
+
+end

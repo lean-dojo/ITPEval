@@ -1,0 +1,481 @@
+module Powm
+
+  use array.Array
+  use map.Map
+  use mach.c.C
+  use ref.Ref
+  use mach.int.Int32
+  use mach.int.UInt32GMP
+  use import mach.int.UInt64GMP as Limb
+  use int.Int
+  use int.Power
+  use types.Types
+  use types.Int32Eq
+  use types.UInt64Eq
+  use lemmas.Lemmas
+  use compare.Compare
+  use valuation.Valuation
+  use util.Util
+  use util.UtilOld
+  use add.AddOld
+  use sub.SubOld
+  use mul.Mul
+  use logical.LogicalUtil
+  use div.Div
+  use toom.Toom
+  use int.EuclideanDivision
+
+  predicate redc (ur u n m : int) =
+    mod ur m = mod (power radix n * u) m
+
+  let ghost mod_mul (a b c d m:int) : unit
+    requires { mod a m = mod b m }
+    requires { 0 < m }
+    requires { mod c m = mod d m }
+    ensures  { mod (c * a) m = mod (d * b) m }
+  = ()
+
+  let ghost mod_sum (a b m:int) : unit
+    requires { 0 < m }
+    ensures  { mod (a + b) m = mod (mod a m + mod b m) m }
+  = ()
+
+  let ghost mod_id (a m:int) : unit
+    requires { 0 <= a < m }
+    ensures { mod a m = a }
+  = ()
+
+  let ghost mod_prod (a b c:int) : unit
+    requires { 0 < b }
+    requires { 0 < c }
+    ensures { c * mod a b = mod (a * c) (b * c) }
+  = ()
+
+  let ghost unredc_inv (u1 ur u2 n m invpn : int) : unit
+    requires { redc ur u1 n m }
+    requires { redc ur u2 n m }
+    requires { 0 < m }
+    requires { odd m }
+    requires { mod (invpn * power radix n) m = 1 }
+    ensures  { mod u1 m = mod u2 m }
+  = ()
+
+  let ghost unredc (u1 ur u2 n m : int) : unit
+    requires { redc ur u1 n m }
+    requires { redc ur u2 n m }
+    requires { 0 < m }
+    requires { 0 < n }
+    requires { odd m }
+    ensures  { mod u1 m = mod u2 m }
+  = ()
+
+  let wmpn_redc_1 (rp up mp : t) (n: int32) (invm : limb)
+    requires { n > 0 }
+    requires { valid mp n /\ valid up (2 * n) /\ valid rp n }
+    requires { odd (value mp n) }
+    requires { mod ((value mp n) * invm) radix = radix - 1 }
+    requires { writable up }
+    requires { writable rp }
+    ensures  { redc (value (old up) (2*n)) (value rp n) n (value mp n) }
+    ensures  { forall j. j < offset rp \/ j >= offset rp + n
+                         -> (pelts rp)[j] = (pelts (old rp))[j] }
+    ensures  { value (old up) (2*n) < power radix n * value mp n
+               -> value rp n < 2 * value mp n }
+  =
+    label Start in
+    let ref cy = 0 in
+    let ref u = C.incr up 0 in
+    let ghost vm = value mp (int32'int n) in
+    let ghost ref added : int = 0 in
+    for j = 0 to n-1 do
+      invariant { offset u = offset up + j }
+      invariant { pelts u = pelts up }
+      invariant { u.min = up.min }
+      invariant { u.max = up.max }
+      invariant { plength u = plength up }
+      invariant { writable u }
+      (*invariant { mod (value u n + value up j) (power radix j) = 0 }*)
+      invariant { power radix j * value u (n+n-j) + power radix n * value up j
+                  = value (old up) (n+n) + vm * added }
+      invariant { 0 <= added < power radix j }
+      invariant { mod (power radix j * value u (n + n - j)
+                      + power radix n * value up j) vm =
+                  mod (value (old up) (n+n)) vm }
+      let m = mul_mod (C.get u) invm in
+      let ghost nnj = n + n - j in
+      let ghost m0 = uint64'int (pelts mp)[offset mp] in
+      let ghost u0 = uint64'int (pelts u)[offset u] in
+      label Addmul in
+      let ghost oup = pure { up } in
+      cy <- wmpn_addmul_1 u mp n m;
+      label Carry in
+      C.set u cy;
+      added <- added + uint64'int m * power radix (int32'int j);
+      label Incr in
+      u <- C.incr u 1;
+    done;
+    let u' = C.incr u (-n) in
+    cy <- wmpn_add_n rp u (C.incr u (-n)) n;
+    label Sub in
+    begin
+      ensures { mod (value rp n) vm
+                = old mod (value rp n + power radix n * cy) vm }
+      ensures { forall j. j < offset rp \/ j >= offset rp + n
+                           -> (pelts rp)[j] = (pelts (old rp))[j] }
+      ensures { value (up at Start) (2 * n) < power radix n * vm
+                -> (value rp n < 2 * vm) }
+    if cy <> 0
+    then begin
+      let (ghost b) = wmpn_sub_n_in_place rp mp n in ()
+      end
+    end
+
+  (* TODO table like sqrt1 *)
+  val binvert_limb_table (n:limb) : limb
+    requires { 0 <= n < 128 }
+    ensures { 0 <= result < 256 }
+    ensures { mod (result * (2 * n + 1)) (power 2 8) = 1 }
+
+  let binvert_limb (n:limb) : limb
+    requires { odd n }
+    ensures { mod (result * n) radix = 1 }
+  =
+    let ghost double_prec (n inv:int) (prec:int) : unit
+      requires { 0 <= n /\ 0 <= inv }
+      requires { mod (inv * n) (power 2 prec) = 1 }
+      requires { 0 <= 2 * prec <= Limb.length }
+      ensures  { let inv' = mod (2 * inv - inv * (inv * n)) radix in
+                 mod (inv' * n) (power 2 (2 * prec)) = 1 }
+    = ()
+    in
+    let h = (n/2) % 128 in
+    let ref inv = binvert_limb_table h in
+    label P8 in
+    inv <- sub_mod (mul_mod 2 inv) (mul_mod inv (mul_mod inv n));
+    label P16 in
+    inv <- sub_mod (mul_mod 2 inv) (mul_mod inv (mul_mod inv n));
+    label P32 in
+    inv <- sub_mod (mul_mod 2 inv) (mul_mod inv (mul_mod inv n));
+    inv
+
+  (* TODO rewrite this with array literal once they exist *)
+  let win_size [@extraction:c_static_inline] (eb:int32) : int32
+    ensures { 0 <= result <= 10 }
+    ensures { eb > 0 -> result > 0 }
+  = if eb = 0 then 0
+    else if eb <= 7 then 1
+    else if eb <= 25 then 2
+    else if eb <= 81 then 3
+    else if eb <= 214 then 4
+    else if eb <= 673 then 5
+    else if eb <= 1793 then 6
+    else if eb <= 4609 then 7
+    else if eb <= 11521 then 8
+    else if eb <= 28161 then 9
+    else 10
+
+  let partial redcify [@extraction:c_static_inline]
+              (rp up: t) (un: int32) (mp: t) (n: int32)
+    requires { valid rp n /\ valid up un /\ valid mp n }
+    requires { 1 <= n /\ 1 <= un }
+    requires { un + n < max_int32 }
+    requires { (pelts mp)[offset mp + n - 1] > 0 }
+    requires { writable rp }
+    ensures { value rp n = mod (power radix n * value up un) (value mp n) }
+    ensures { redc (value rp n) (value up un) n (value mp n) }
+  =
+    let tp = salloc (UInt32.of_int32 (un + n)) in
+    let qp = salloc (UInt32.of_int32 (un + 1)) in
+    wmpn_zero tp n;
+    label Copy in
+    wmpn_copyi (C.incr tp n) up un;
+    wmpn_tdiv_qr qp rp 0 tp (un+n) mp n;
+
+  function valueb (p:t) (nbits:int) : int
+  =
+    if nbits < 0 then 0 else
+    let i = div nbits 64 in
+    value p i
+      + power radix i * mod ((pelts p)[offset p + i]) (power 2 (nbits - 64*i))
+
+  let ghost valueb_lower_bound (p:t) (nbits:int) : unit
+    ensures { 0 <= valueb p nbits }
+  = ()
+
+  let ghost valueb_upper_bound (p:t) (nbits:int) : unit
+    requires { 0 <= nbits }
+    ensures { valueb p nbits < power 2 nbits }
+  = ()
+
+  let getbit [@extraction:c_static_inline] (p:t) (ghost pn:int32) (bi:int32) : limb
+    requires { valid p pn }
+    requires { 1 <= bi }
+    requires { pn >= (div (bi + 63) 64) }
+    ensures  { 0 <= result <= 1 }
+    ensures  { result = mod (div (value p pn) (power 2 (bi-1))) 2 }
+    ensures  { valueb p bi = valueb p (bi-1) + power 2 (bi-1) * result }
+  =
+    let i = Int32.(/) (bi - 1) 64 in
+    let mi = Limb.of_int32 (bi - 1) % 64 in
+    let lp = C.get_ofs p i in
+    let ghost p' = C.incr p (i+1) in
+    let lps = lsr_mod lp mi in
+    let ghost lpm = mod (uint64'int lp) (power 2 (uint64'int mi)) in
+    let ghost res = lps % 2 in
+    let ghost dps = div (uint64'int lps) 2 in
+    let ghost d = dps + power 2 (64 - uint64'int mi - 1)
+                  * value p' (int32'int pn - (int32'int i+1)) in
+    lps % 2
+
+  let getbits [@extraction:c_static_inline] (p: t) (ghost pn: int32) (bi:int32)
+                                                           (nbits:int32) : limb
+    requires { 1 <= nbits < 64 }
+    requires { 0 <= bi }
+    requires { 1 <= pn }
+    requires { valid p pn }
+    requires { pn >= (div (bi + 63) 64) }
+    ensures  { nbits <= bi ->
+                 valueb p bi = valueb p (bi - nbits)
+                                    + power 2 (bi - nbits) * result }
+    ensures  { bi < nbits -> valueb p bi = result }
+    ensures  { 0 <= result < power 2 nbits }
+    ensures  { nbits <= bi -> result = mod (div (value p pn) (power 2 (bi - nbits)))
+                                                      (power 2 nbits)  }
+  =
+    if bi < nbits
+    then (C.get p) % (lsl 1 (Limb.of_int32 bi))
+    else
+      let ghost obi = bi in
+      label Start in
+      let ref bi = bi - nbits in
+      let ghost bni = bi in
+      let ref i = bi / 64 in
+      bi <- bi % 64;
+      let pr = get_ofs p i in
+      let ghost p' = C.incr p (i+1) in
+      let ref r = lsr_mod pr (Limb.of_int32 bi) in
+      let ghost prm = mod (uint64'int pr) (power 2 (int32'int bi)) in
+      let nbits_in_r = 64 - bi in
+      if nbits_in_r < nbits
+      then begin
+        let pr' = get_ofs p (i+1) in
+        let prs = lsl_mod_ext pr' (Limb.of_int32 nbits_in_r) in
+        let ghost p'' = C.incr p (i+2) in
+        let ghost prd = div ((power 2 (int32'int nbits_in_r)) * uint64'int pr')
+                            radix in
+        let ghost or = pure { r } in
+        r <- r + prs;
+        let ghost res = pure { mod r (power 2 (int32'int nbits)) } in
+        let ghost drs = pure { div r (power 2 (int32'int nbits)) } in
+        let ghost d = pure { prd + power 2 nbits_in_r
+                                   * value p'' (pn - (i+2)) } in
+        let ghost d' = pure { drs + power 2 (64 - nbits) * d } in ()
+      end
+      else begin
+        let ghost res = pure { mod r (power 2 nbits) } in
+        let ghost drs = pure { div r (power 2 nbits) } in ()
+      end;
+      r % (lsl 1 (Limb.of_int32 nbits))
+
+  let ghost valueb_mod (p:t) (nbits:int) (n:int32) : unit
+    requires { nbits >= 0 }
+    requires { 64 * n >= nbits }
+    ensures  { valueb p nbits = mod (value p n) (power 2 nbits) }
+  = ()
+
+  let ghost valueb_mon (p:t) (pn:int32) (bi1 bi2:int32) : unit
+    requires { 0 <= bi1 <= bi2 }
+    requires { valid p pn }
+    requires { pn >= div (bi2 + 63) 64 }
+    ensures  { valueb p bi1 <= valueb p bi2 }
+  = ()
+
+  let ghost redc_mul (p q a b c n m : int) : unit
+    requires { redc p a n m }
+    requires { redc q b n m }
+    requires { redc (p*q) c n m }
+    requires { odd m }
+    requires { 0 < m /\ 0 < n }
+    ensures  { redc c (a * b) n m }
+  = ()
+
+  let partial wmpn_powm (rp bp : t) (bn : int32) (ep : t) (en : int32) (mp : t)
+                (n : int32) (tp : t) : unit
+    requires { valid rp n /\ valid bp bn /\ valid ep en /\ valid mp n }
+    requires { valid tp (2*n) }
+    requires { writable tp /\ writable rp }
+    requires { odd (value mp n) }
+    requires { value ep en > 1 }
+    requires { en >= 1 }
+    requires { (pelts ep)[offset ep + en - 1] > 0 }
+    requires { (pelts mp)[offset mp + n - 1] > 0 }
+    requires { n >= 1 }
+    requires { bn >= 1 }
+    requires { bn + n < max_int32 }
+    requires { n * 512 <= max_int32 }
+    requires { 64 * en < max_int32 - 64 }
+    ensures  { value rp n
+               = mod (power (value bp bn) (value ep en)) (value mp n) }
+  =
+    let ghost vb = value bp (int32'int bn) in
+    let ghost vm = value mp (int32'int n) in
+    let ghost ve = value ep (int32'int en) in
+    (* SIZEINBASE_2EXP start, move to function? *)
+    let le = C.get_ofs ep (en - 1) in
+    let ref cnt = count_leading_zeros le in
+    let ref ebi = 64 * en - cnt in
+    (* ep has ebi bits *)
+    let windowsize = win_size ebi in
+    let m0 = C.get mp in
+    let im = binvert_limb m0 in
+    let mip = minus_mod im in
+    let pp = salloc
+               (UInt32GMP.lsl (UInt32.of_int32 n)
+                              (UInt32.of_int32 windowsize-1)) in
+    let ref this_pp = C.incr pp 0 in
+    redcify this_pp bp bn mp n;
+    let ghost vp = value pp (int32'int n) in
+    wmpn_mul_n tp this_pp this_pp n 64;
+    wmpn_redc_1 rp tp mp n mip;
+    let ghost ref j = (0:int) in
+    label Window in
+    for i = UInt32GMP.lsl 1 (UInt32.of_int32 windowsize-1) - 1 downto 1 do
+      invariant { j = power 2 (windowsize-1) - 1 - i }
+      invariant { min pp = 0 <= j * n }
+      invariant { windowsize > 1 -> i > 1 ->
+                  j*n + n + n <= power 2 (windowsize-1) * n = max pp }
+      invariant { offset this_pp = j * n }
+      invariant { pelts this_pp = pelts pp }
+      invariant { min this_pp = min pp }
+      invariant { max this_pp = max pp }
+      invariant { plength this_pp = plength pp }
+      invariant { writable this_pp }
+      invariant { plength tp = plength (tp at Window) }
+      invariant { min tp = min (tp at Window) }
+      invariant { max tp = max (tp at Window) }
+      invariant { forall k. 0 <= k <= j ->
+                  redc (value_sub (pelts pp) (k*n) (k*n + n))
+                        (power vb (2*k+1)) n vm }
+      label Mul in
+      let ghost ovp = value this_pp (int32'int n) in
+      wmpn_mul_n tp this_pp rp n 64;
+      this_pp <- C.incr this_pp n;
+      label Redc in
+      wmpn_redc_1 this_pp tp mp n mip;
+      j <- j+1;
+    done;
+    let ref expbits = getbits ep en ebi windowsize in
+    begin ensures { ve = valueb ep ebi + power 2 ebi * expbits }
+          ensures { 0 <= ebi <= old ebi }
+          ensures { expbits < power 2 windowsize }
+      if ebi < windowsize
+      then begin
+        ebi <- 0;
+      end
+      else ebi <- ebi - windowsize
+    end;
+    label Shift in
+    cnt <- count_trailing_zeros expbits;
+    ebi <- ebi + cnt;
+    expbits <- lsr expbits (Limb.of_int32 cnt);
+    let ebh = Limb.to_int32 (lsr_mod expbits 1) in
+    let ppn = C.incr pp (n * ebh) in
+    wmpn_copyi rp ppn n;
+    let ghost ref expdone = uint64'int expbits in
+    let ref this_windowsize = windowsize in
+    label Loop in
+    while (ebi <> 0) do
+      variant { ebi }
+      invariant { 0 <= ebi <= ebi at Loop }
+      invariant { 0 <= expdone }
+      invariant { en >= div (ebi + 63) 64 }
+      invariant { redc (value rp n) (power vb expdone) n vm }
+      invariant { ve = valueb ep ebi + power 2 ebi * expdone }
+      invariant { plength tp = plength (tp at Window) }
+      invariant { min tp = min (tp at Window) }
+      invariant { max tp = max (tp at Window) }
+      label ILoop in
+      while getbit ep en ebi = 0 do
+        variant { ebi }
+        invariant { 1 <= ebi <= ebi at ILoop }
+        invariant { 0 <= expdone }
+        invariant { en >= div (ebi + 63) 64 }
+        invariant { redc (value rp n) (power vb expdone) n vm }
+        invariant { ve = valueb ep ebi + power 2 ebi * expdone }
+        invariant { plength tp = plength (tp at Window) }
+        invariant { min tp = min (tp at Window) }
+        invariant { max tp = max (tp at Window) }
+        let ghost orp = value rp (int32'int n) in
+        wmpn_mul_n tp rp rp n 64;
+        wmpn_redc_1 rp tp mp n mip;
+        expdone <- 2 * expdone;
+        ebi <- ebi - 1;
+        if ebi = 0 then begin
+          break (* TODO GMP uses a goto to break twice *)
+        end
+      done;
+      if ebi = 0 then begin
+        break
+      end;
+      label WindowL in
+      let ghost oebi = ebi in
+      expbits <- getbits ep en ebi windowsize;
+      this_windowsize <- windowsize;
+      begin ensures { 0 <= ebi < old ebi }
+            ensures { ebi + this_windowsize = oebi }
+            ensures { valueb ep (old ebi)
+                      = valueb ep ebi + power 2 ebi * expbits }
+            ensures { 0 < expbits < power 2 this_windowsize }
+            ensures { 0 < this_windowsize <= windowsize }
+      if (ebi < windowsize)
+      then begin
+        this_windowsize <- this_windowsize - (windowsize - ebi);
+        ebi <- 0;
+      end
+      else ebi <- ebi - windowsize
+      end;
+      label ShiftL in
+      cnt <- count_trailing_zeros expbits;
+      this_windowsize <- this_windowsize - cnt;
+      ebi <- ebi + cnt;
+      expbits <- lsr expbits (Limb.of_int32 cnt);
+      label WLoop in
+      while this_windowsize <> 0 do
+        variant { this_windowsize }
+        invariant { 0 <= this_windowsize <= this_windowsize at WLoop }
+        invariant { 0 <= expdone }
+        invariant { redc (value rp n) (power vb expdone) n vm }
+        invariant { ve = valueb ep ebi + power 2 ebi *
+                         (expbits + power 2 this_windowsize * expdone) }
+        invariant { plength tp = plength (tp at Window) }
+        invariant { min tp = min (tp at Window) }
+        invariant { max tp = max (tp at Window) }
+        let ghost orp = value rp (int32'int n) in
+        wmpn_mul_n tp rp rp n 64;
+        wmpn_redc_1 rp tp mp n mip;
+        this_windowsize <- this_windowsize - 1;
+        expdone <- 2 * expdone;
+      done;
+      let ebh = Limb.to_int32 (lsr_mod expbits 1) in
+      let ppn = C.incr pp (n * ebh) in
+      let ghost orp = value rp (int32'int n) in
+      wmpn_mul_n tp rp ppn n 64;
+      wmpn_redc_1 rp tp mp n mip;
+      expdone <- expdone + uint64'int expbits
+    done;
+    wmpn_copyi tp rp n;
+    let ghost otp = pure { tp } in
+    wmpn_zero (C.incr tp n) n;
+    label Reduce in
+    wmpn_redc_1 rp tp mp n mip;
+   begin ensures { mod (value rp n) vm = mod (power vb ve) vm }
+         ensures { value rp n < vm }
+     if (wmpn_cmp rp mp n >= 0)
+      then begin
+        label Sub in
+        let (ghost _b) = wmpn_sub_n_in_place rp mp n in
+        ()
+      end
+    end;
+
+end

@@ -1,0 +1,140 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1986_a4:
+% the number of n-by-n matrices with entries in {-1, 0, 1} whose transversal
+% sums are all equal is 4^n + 2*3^n - 4*2^n + 1. This file contains no proof.
+
+putnam_1986_a4: THEORY
+BEGIN
+  solution: TYPE =
+    [# a1: rat, b1: rat, a2: rat, b2: rat,
+       a3: rat, b3: rat, a4: rat #]
+
+  putnam_1986_a4_solution: solution =
+    (# a1 := 1, b1 := 4, a2 := 2, b2 := 3,
+       a3 := -4, b3 := 2, a4 := 1 #)
+
+  matrix_code_count(n: nat): nat =
+    3 ^ (n * n)
+
+  matrix_digit(code, n, i, j: nat): nat =
+    mod(ndiv(code, 3 ^ (i * n + j)), 3)
+
+  matrix_entry(code, n, i, j: nat): int =
+    IF matrix_digit(code, n, i, j) = 0 THEN
+      -1
+    ELSIF matrix_digit(code, n, i, j) = 1 THEN
+      0
+    ELSE
+      1
+    ENDIF
+
+  quotient_aux(
+      numerator, denominator, fuel: nat): RECURSIVE nat =
+    IF fuel = 0
+        OR denominator = 0
+        OR numerator < denominator THEN
+      0
+    ELSE
+      1
+        + quotient_aux(
+            numerator - denominator,
+            denominator,
+            fuel - 1)
+    ENDIF
+  MEASURE fuel
+
+  remainder_aux(
+      numerator, denominator, fuel: nat): RECURSIVE nat =
+    IF fuel = 0
+        OR denominator = 0
+        OR numerator < denominator THEN
+      numerator
+    ELSE
+      remainder_aux(
+        numerator - denominator,
+        denominator,
+        fuel - 1)
+    ENDIF
+  MEASURE fuel
+
+  safe_ndiv(numerator, denominator: nat): nat =
+    quotient_aux(
+      numerator,
+      denominator,
+      numerator + 1)
+
+  safe_mod(numerator, denominator: nat): nat =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      remainder_aux(
+        numerator,
+        denominator,
+        numerator + 1)
+    ENDIF
+
+  permutation_code_count(n: nat): nat =
+    IF n = 0 THEN 1 ELSE n ^ n ENDIF
+
+  permutation_entry(code, row, n: nat): nat =
+    IF n = 0 THEN
+      0
+    ELSE
+      safe_mod(safe_ndiv(code, n ^ row), n)
+    ENDIF
+
+  permutation_code(code, n: nat): bool =
+    code < permutation_code_count(n)
+      AND (FORALL (row_1, row_2: nat):
+        (row_1 < n
+          AND row_2 < n
+          AND permutation_entry(code, row_1, n)
+            = permutation_entry(code, row_2, n))
+        IMPLIES row_1 = row_2)
+
+  transversal_sum(
+      matrix_code, permutation, n, count: nat): RECURSIVE int =
+    IF count = 0 THEN
+      0
+    ELSE
+      transversal_sum(matrix_code, permutation, n, count - 1)
+        + matrix_entry(
+            matrix_code,
+            n,
+            count - 1,
+            permutation_entry(permutation, count - 1, n))
+    ENDIF
+  MEASURE count
+
+  has_constant_transversal_sum(matrix_code, n: nat): bool =
+    EXISTS (S: int):
+      FORALL (permutation: nat):
+        permutation_code(permutation, n)
+          IMPLIES transversal_sum(matrix_code, permutation, n, n) = S
+
+  qualifying_matrix_count(
+      n, limit: nat): RECURSIVE nat =
+    IF limit = 0 THEN
+      0
+    ELSE
+      qualifying_matrix_count(n, limit - 1)
+        + IF has_constant_transversal_sum(limit - 1, n) THEN
+            1
+          ELSE
+            0
+          ENDIF
+    ENDIF
+  MEASURE limit
+
+  f(n: nat): nat =
+    qualifying_matrix_count(n, matrix_code_count(n))
+
+  putnam_1986_a4: bool =
+    FORALL (n: nat):
+      n > 0 IMPLIES
+        (f(n) :: rat)
+          = LET s: solution = putnam_1986_a4_solution IN
+              a1(s) * b1(s) ^ n
+                + a2(s) * b2(s) ^ n
+                + a3(s) * b3(s) ^ n
+                + a4(s)
+END putnam_1986_a4

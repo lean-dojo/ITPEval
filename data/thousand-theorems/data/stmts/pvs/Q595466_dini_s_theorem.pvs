@@ -1,0 +1,219 @@
+% Statement-only formalization of the Thousand Theorems artifact Q595466,
+% "Dini's theorem": a monotone family of continuous functions from a topological
+% space to a solid-normed lattice ordered additive group that converges pointwise
+% along atTop converges locally uniformly. This file contains no proof.
+
+dini_s_theorem_Q595466[
+  I: TYPE,
+  X: TYPE,
+  G: TYPE+,
+  leI: [I, I -> bool],
+  openX: [[X -> bool] -> bool],
+  zeroG: G,
+  addG: [G, G -> G],
+  negG: [G -> G],
+  normG: [G -> real],
+  leG: [G, G -> bool],
+  supG: [G, G -> G],
+  infG: [G, G -> G]
+]: THEORY
+BEGIN
+  x_set: TYPE = [X -> bool]
+  x_set_family: TYPE = [x_set -> bool]
+  g_set: TYPE = [G -> bool]
+  g_function: TYPE = [X -> G]
+  indexed_functions: TYPE = [I -> g_function]
+  index_property: TYPE = [I -> bool]
+
+  empty_x_set: x_set =
+    LAMBDA (x: X): FALSE
+
+  whole_x_set: x_set =
+    LAMBDA (x: X): TRUE
+
+  x_intersection(U, V: x_set): x_set =
+    LAMBDA (x: X):
+      U(x) AND V(x)
+
+  x_union(F: x_set_family): x_set =
+    LAMBDA (x: X):
+      EXISTS (U: x_set):
+        F(U) AND U(x)
+
+  x_subset(U, V: x_set): bool =
+    FORALL (x: X):
+      U(x) IMPLIES V(x)
+
+  topology_laws: bool =
+    openX(empty_x_set)
+      AND openX(whole_x_set)
+      AND (FORALL (U, V: x_set):
+        openX(U) AND openX(V)
+          IMPLIES openX(x_intersection(U, V)))
+      AND (FORALL (F: x_set_family):
+        (FORALL (U: x_set):
+          F(U) IMPLIES openX(U))
+        IMPLIES openX(x_union(F)))
+
+  neighborhood(T: x_set, x: X): bool =
+    EXISTS (U: x_set):
+      openX(U)
+        AND U(x)
+        AND x_subset(U, T)
+
+  preorder_index_laws: bool =
+    (FORALL (i: I):
+      leI(i, i))
+      AND (FORALL (i, j, k: I):
+        leI(i, j) AND leI(j, k)
+          IMPLIES leI(i, k))
+
+  above_all(i: I, bounds: list[I]): RECURSIVE bool =
+    CASES bounds OF
+      null: TRUE,
+      cons(bound, rest):
+        leI(bound, i) AND above_all(i, rest)
+    ENDCASES
+  MEASURE bounds BY <<
+
+  eventually_at_top(property: index_property): bool =
+    EXISTS (bounds: list[I]):
+      FORALL (i: I):
+        above_all(i, bounds)
+          IMPLIES property(i)
+
+  additive_commutative_group_laws: bool =
+    (FORALL (x, y: G):
+      addG(x, y) = addG(y, x))
+      AND (FORALL (x, y, z: G):
+        addG(addG(x, y), z) =
+          addG(x, addG(y, z)))
+      AND (FORALL (x: G):
+        addG(x, zeroG) = x)
+      AND (FORALL (x: G):
+        addG(x, negG(x)) = zeroG)
+
+  subG(x, y: G): G =
+    addG(x, negG(y))
+
+  norm_laws: bool =
+    (FORALL (x: G):
+      normG(x) >= 0)
+      AND (FORALL (x: G):
+        normG(x) = 0 IFF x = zeroG)
+      AND (FORALL (x: G):
+        normG(negG(x)) = normG(x))
+      AND (FORALL (x, y: G):
+        normG(addG(x, y))
+          <= normG(x) + normG(y))
+
+  partial_order_laws: bool =
+    (FORALL (x: G):
+      leG(x, x))
+      AND (FORALL (x, y, z: G):
+        leG(x, y) AND leG(y, z)
+          IMPLIES leG(x, z))
+      AND (FORALL (x, y: G):
+        leG(x, y) AND leG(y, x)
+          IMPLIES x = y)
+
+  lattice_laws: bool =
+    partial_order_laws
+      AND (FORALL (x, y: G):
+        leG(x, supG(x, y))
+          AND leG(y, supG(x, y)))
+      AND (FORALL (x, y, z: G):
+        leG(x, z) AND leG(y, z)
+          IMPLIES leG(supG(x, y), z))
+      AND (FORALL (x, y: G):
+        leG(infG(x, y), x)
+          AND leG(infG(x, y), y))
+      AND (FORALL (x, y, z: G):
+        leG(z, x) AND leG(z, y)
+          IMPLIES leG(z, infG(x, y)))
+
+  ordered_additive_monoid_laws: bool =
+    FORALL (x, y, z: G):
+      leG(x, y)
+        IMPLIES leG(addG(x, z), addG(y, z))
+
+  absG(x: G): G =
+    supG(x, negG(x))
+
+  solid_norm_law: bool =
+    FORALL (x, y: G):
+      leG(absG(x), absG(y))
+        IMPLIES normG(x) <= normG(y)
+
+  normed_lattice_ordered_group_laws: bool =
+    additive_commutative_group_laws
+      AND norm_laws
+      AND lattice_laws
+      AND ordered_additive_monoid_laws
+      AND solid_norm_law
+
+  g_open(U: g_set): bool =
+    FORALL (x: G):
+      U(x) IMPLIES
+        EXISTS (radius: real):
+          radius > 0
+            AND FORALL (y: G):
+              normG(subG(y, x)) < radius
+                IMPLIES U(y)
+
+  preimage(h: g_function, U: g_set): x_set =
+    LAMBDA (x: X):
+      U(h(x))
+
+  continuous(h: g_function): bool =
+    FORALL (U: g_set):
+      g_open(U) IMPLIES
+        openX(preimage(h, U))
+
+  monotone_family(F: indexed_functions): bool =
+    FORALL (i, j: I):
+      leI(i, j) IMPLIES
+        FORALL (x: X):
+          leG(F(i)(x), F(j)(x))
+
+  pointwise_converges_at_top(
+      F: indexed_functions,
+      f: g_function): bool =
+    FORALL (x: X), (epsilon_value: real):
+      epsilon_value > 0 IMPLIES
+        eventually_at_top(
+          LAMBDA (i: I):
+            normG(subG(F(i)(x), f(x)))
+              < epsilon_value)
+
+  converges_locally_uniformly_at_top(
+      F: indexed_functions,
+      f: g_function): bool =
+    FORALL (epsilon_value: real):
+      epsilon_value > 0 IMPLIES
+        FORALL (x: X):
+          EXISTS (T: x_set):
+            neighborhood(T, x)
+              AND eventually_at_top(
+                LAMBDA (i: I):
+                  FORALL (y: X):
+                    T(y) IMPLIES
+                      normG(subG(F(i)(y), f(y)))
+                        < epsilon_value)
+
+  tendstoLocallyUniformly_of_forall_tendsto: bool =
+    (preorder_index_laws
+      AND topology_laws
+      AND normed_lattice_ordered_group_laws)
+    IMPLIES
+      FORALL
+          (F: indexed_functions),
+          (f: g_function):
+        ((FORALL (i: I):
+            continuous(F(i)))
+          AND monotone_family(F)
+          AND continuous(f)
+          AND pointwise_converges_at_top(F, f))
+        IMPLIES
+          converges_locally_uniformly_at_top(F, f)
+END dini_s_theorem_Q595466

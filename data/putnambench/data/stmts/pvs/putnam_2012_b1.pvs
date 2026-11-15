@@ -1,0 +1,141 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2012_b1:
+% a class of nonnegative-real functions containing exp(x) - 1 and ln(x + 1)
+% and closed under addition, composition, and nonnegative difference is closed
+% under pointwise multiplication. This file contains no proof.
+
+putnam_2012_b1: THEORY
+BEGIN
+  real_sequence: TYPE = [nat -> real]
+  nonnegative_real: TYPE = {x: real | x >= 0}
+  nonnegative_function: TYPE =
+    [nonnegative_real -> nonnegative_real]
+  function_class: TYPE = [nonnegative_function -> bool]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  nat_factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * nat_factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  exponential_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        exponential_partial(x, count - 1)
+          + safe_div(
+              x ^ index,
+              nat_factorial(index) :: real)
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  real_exponential(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat):
+            exponential_partial(x, count),
+          value))
+
+  natural_log(x: real): real =
+    IF x > 0 THEN
+      epsilon(
+        LAMBDA (value: real):
+          real_exponential(value) = x)
+    ELSE
+      0
+    ENDIF
+
+  is_exp_minus_one(f: nonnegative_function): bool =
+    FORALL (x: nonnegative_real):
+      (f(x) :: real) =
+        real_exponential(x :: real) - 1
+
+  is_log_one_plus(f: nonnegative_function): bool =
+    FORALL (x: nonnegative_real):
+      (f(x) :: real) =
+        natural_log((x :: real) + 1)
+
+  pointwise_sum(
+      f, g, result: nonnegative_function): bool =
+    FORALL (x: nonnegative_real):
+      (result(x) :: real) =
+        (f(x) :: real) + (g(x) :: real)
+
+  pointwise_composition(
+      f, g, result: nonnegative_function): bool =
+    FORALL (x: nonnegative_real):
+      result(x) = f(g(x))
+
+  pointwise_difference(
+      f, g, result: nonnegative_function): bool =
+    FORALL (x: nonnegative_real):
+      (result(x) :: real) =
+        (f(x) :: real) - (g(x) :: real)
+
+  pointwise_product(
+      f, g, result: nonnegative_function): bool =
+    FORALL (x: nonnegative_real):
+      (result(x) :: real) =
+        (f(x) :: real) * (g(x) :: real)
+
+  closed_under_sum(S: function_class): bool =
+    FORALL (f, g: nonnegative_function):
+      (S(f) AND S(g)) IMPLIES
+        EXISTS (result: nonnegative_function):
+          S(result) AND pointwise_sum(f, g, result)
+
+  closed_under_composition(S: function_class): bool =
+    FORALL (f, g: nonnegative_function):
+      (S(f) AND S(g)) IMPLIES
+        EXISTS (result: nonnegative_function):
+          S(result) AND pointwise_composition(f, g, result)
+
+  closed_under_nonnegative_difference(
+      S: function_class): bool =
+    FORALL (f, g: nonnegative_function):
+      (S(f)
+        AND S(g)
+        AND (FORALL (x: nonnegative_real):
+          (f(x) :: real) >= (g(x) :: real)))
+      IMPLIES
+        EXISTS (result: nonnegative_function):
+          S(result)
+            AND pointwise_difference(f, g, result)
+
+  closed_under_product(S: function_class): bool =
+    FORALL (f, g: nonnegative_function):
+      (S(f) AND S(g)) IMPLIES
+        EXISTS (result: nonnegative_function):
+          S(result) AND pointwise_product(f, g, result)
+
+  putnam_2012_b1: bool =
+    FORALL
+        (S: function_class),
+        (f1, f2: nonnegative_function):
+      (is_exp_minus_one(f1)
+        AND is_log_one_plus(f2)
+        AND S(f1)
+        AND S(f2)
+        AND closed_under_sum(S)
+        AND closed_under_composition(S)
+        AND closed_under_nonnegative_difference(S))
+      IMPLIES
+        closed_under_product(S)
+END putnam_2012_b1

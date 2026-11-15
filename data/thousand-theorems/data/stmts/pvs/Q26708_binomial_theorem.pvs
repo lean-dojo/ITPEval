@@ -1,0 +1,79 @@
+% Statement-only formalization of the Thousand Theorems artifact Q26708,
+% "Binomial theorem": in every commutative semiring, the nth power of a sum
+% equals the finite binomial expansion. This file contains no proof.
+
+Q26708_binomial_theorem[
+  R: TYPE+,
+  zeroR: R,
+  oneR: R,
+  addR: [R, R -> R],
+  mulR: [R, R -> R]
+]: THEORY
+BEGIN
+  powerR(x: R, n: nat): RECURSIVE R =
+    IF n = 0 THEN
+      oneR
+    ELSE
+      mulR(powerR(x, n - 1), x)
+    ENDIF
+  MEASURE n
+
+  nat_cast(n: nat): RECURSIVE R =
+    IF n = 0 THEN
+      zeroR
+    ELSE
+      addR(nat_cast(n - 1), oneR)
+    ENDIF
+  MEASURE n
+
+  nat_sub(n, m: nat): nat =
+    IF m <= n THEN n - m ELSE 0 ENDIF
+
+  binomial_coefficient(n, k: nat): RECURSIVE nat =
+    IF k = 0 THEN
+      1
+    ELSIF n = 0 THEN
+      0
+    ELSE
+      binomial_coefficient(n - 1, k - 1)
+        + binomial_coefficient(n - 1, k)
+    ENDIF
+  MEASURE n
+
+  binomial_sum(x, y: R, n, count: nat): RECURSIVE R =
+    IF count = 0 THEN
+      zeroR
+    ELSE
+      LET m: nat = count - 1 IN
+        addR(
+          binomial_sum(x, y, n, count - 1),
+          mulR(
+            mulR(powerR(x, m), powerR(y, nat_sub(n, m))),
+            nat_cast(binomial_coefficient(n, m))))
+    ENDIF
+  MEASURE count
+
+  commutative_semiring_laws: bool =
+    (FORALL (a, b, c: R):
+      addR(addR(a, b), c) = addR(a, addR(b, c)))
+      AND (FORALL (a, b: R): addR(a, b) = addR(b, a))
+      AND (FORALL (a: R): addR(a, zeroR) = a)
+      AND (FORALL (a, b, c: R):
+        mulR(mulR(a, b), c) = mulR(a, mulR(b, c)))
+      AND (FORALL (a, b: R): mulR(a, b) = mulR(b, a))
+      AND (FORALL (a: R): mulR(a, oneR) = a)
+      AND (FORALL (a, b, c: R):
+        mulR(a, addR(b, c)) =
+          addR(mulR(a, b), mulR(a, c)))
+      AND (FORALL (a, b, c: R):
+        mulR(addR(a, b), c) =
+          addR(mulR(a, c), mulR(b, c)))
+      AND (FORALL (a: R): mulR(a, zeroR) = zeroR)
+      AND (FORALL (a: R): mulR(zeroR, a) = zeroR)
+
+  binomial_theorem: bool =
+    commutative_semiring_laws IMPLIES
+      (FORALL (x, y: R), (n: nat):
+        powerR(addR(x, y), n) =
+          binomial_sum(x, y, n, n + 1))
+END Q26708_binomial_theorem

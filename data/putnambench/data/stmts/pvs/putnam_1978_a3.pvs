@@ -1,0 +1,133 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1978_a3:
+% among the four improper integrals of x^k divided by the specified degree-six
+% polynomial on the nonnegative real axis, the integral for k = 2 is smallest.
+% This file contains no proof.
+
+putnam_1978_a3: THEORY
+BEGIN
+  real_function: TYPE = [real -> real]
+  real_sequence: TYPE = [nat -> real]
+  positive_real_function: TYPE = [posreal -> real]
+
+  polynomial(x: real): real =
+    2 * (x ^ 6 + 1)
+      + 4 * (x ^ 5 + x)
+      + 3 * (x ^ 4 + x ^ 2)
+      + 5 * x ^ 3
+
+  quotient_or_zero(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  integrand(degree: nat): real_function =
+    LAMBDA (x: real):
+      quotient_or_zero(x ^ degree, polynomial(x))
+
+  valid_tagged_partition(
+      left, right: real,
+      points, tags: real_sequence,
+      count: nat): bool =
+    count > 0
+      AND points(0) = left
+      AND points(count) = right
+      AND FORALL (index: nat):
+        index < count IMPLIES
+          (points(index) < points(index + 1)
+            AND points(index) <= tags(index)
+            AND tags(index) <= points(index + 1))
+
+  mesh_less_than(
+      points: real_sequence,
+      count: nat,
+      bound: real): bool =
+    FORALL (index: nat):
+      index < count IMPLIES
+        points(index + 1) - points(index) < bound
+
+  riemann_sum(
+      f: real_function,
+      points, tags: real_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      riemann_sum(f, points, tags, count - 1)
+        + f(tags(count - 1))
+            * (points(count) - points(count - 1))
+    ENDIF
+  MEASURE count
+
+  has_interval_integral(
+      f: real_function,
+      left, right, integral_value: real): bool =
+    left < right
+      AND FORALL (epsilon_value: posreal):
+        EXISTS (mesh_bound: posreal):
+          FORALL
+              (points, tags: real_sequence),
+              (count: nat):
+            (valid_tagged_partition(
+                left, right, points, tags, count)
+              AND mesh_less_than(points, count, mesh_bound))
+            IMPLIES
+              abs(
+                riemann_sum(f, points, tags, count)
+                  - integral_value)
+                < epsilon_value
+
+  interval_integral(
+      f: real_function,
+      left, right: real): real =
+    IF EXISTS (integral_value: real):
+        has_interval_integral(f, left, right, integral_value)
+    THEN
+      epsilon(
+        LAMBDA (integral_value: real):
+          has_interval_integral(
+            f, left, right, integral_value))
+    ELSE
+      0
+    ENDIF
+
+  converges_at_real_top(
+      values: positive_real_function,
+      limit_value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: posreal):
+        FORALL (radius: posreal):
+          cutoff <= radius IMPLIES
+            abs(values(radius) - limit_value) < epsilon_value
+
+  has_improper_integral(
+      degree: nat,
+      integral_value: real): bool =
+    converges_at_real_top(
+      LAMBDA (radius: posreal):
+        interval_integral(integrand(degree), 0, radius),
+      integral_value)
+
+  improper_integral(degree: nat): real =
+    IF EXISTS (integral_value: real):
+        has_improper_integral(degree, integral_value)
+    THEN
+      epsilon(
+        LAMBDA (integral_value: real):
+          has_improper_integral(degree, integral_value))
+    ELSE
+      0
+    ENDIF
+
+  putnam_1978_a3_solution: nat = 2
+
+  putnam_1978_a3: bool =
+    1 <= putnam_1978_a3_solution
+      AND putnam_1978_a3_solution <= 4
+      AND FORALL (degree: nat):
+        (1 <= degree AND degree <= 4)
+          IMPLIES
+            improper_integral(putnam_1978_a3_solution)
+              <= improper_integral(degree)
+END putnam_1978_a3

@@ -1,0 +1,85 @@
+% Statement-only formalization of the Thousand Theorems corpus artifact Q7208500,
+% "Poisson limit theorem": if n * p(n) converges to r, then the fixed-k binomial
+% mass term converges to exp(-r) * r^k / k!. This file contains no proof.
+
+Q7208500_poisson_limit_theorem: THEORY
+BEGIN
+  real_sequence: TYPE = [nat -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  binomial_coefficient(n, k: nat): RECURSIVE nat =
+    IF k = 0 THEN
+      1
+    ELSIF n = 0 THEN
+      0
+    ELSE
+      binomial_coefficient(n - 1, k - 1)
+        + binomial_coefficient(n - 1, k)
+    ENDIF
+  MEASURE n
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  exponential_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        exponential_partial(x, count - 1)
+          + safe_div(
+              x ^ index,
+              factorial(index) :: real)
+    ENDIF
+  MEASURE count
+
+  real_exponential(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat):
+            exponential_partial(x, count),
+          value))
+
+  poisson_limit_term(
+      p: real_sequence,
+      k, n: nat): real =
+    (binomial_coefficient(n, k) :: real)
+      * p(n) ^ k
+      * (1 - p(n)) ^ (n - k)
+
+  poisson_limit_theorem: bool =
+    FORALL
+        (p: real_sequence),
+        (r: real),
+        (k: nat):
+      converges_to(
+        LAMBDA (n: nat):
+          (n :: real) * p(n),
+        r)
+      IMPLIES
+        converges_to(
+          LAMBDA (n: nat):
+            poisson_limit_term(p, k, n),
+          safe_div(
+            real_exponential(-r) * r ^ k,
+            factorial(k) :: real))
+END Q7208500_poisson_limit_theorem

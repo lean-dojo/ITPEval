@@ -1,0 +1,45 @@
+(*
+  Statement-only formalization of Logipedia corpus artifact
+  nat.axiom_eqb_body_S (catalog title "nat.axiom_eqb_body_S"): for every
+  natural number n, the source equality predicate relates eqb_body at the
+  successor of n to the Boolean function that is false at zero and returns
+  eqb n q at each successor q. This file contains no proof.
+*)
+
+open HolKernel Parse boolLib;
+open arithmeticTheory;
+
+val logipedia_nat_eqb_operator_type =
+  numSyntax.num -->
+  numSyntax.num -->
+  Type.bool;
+
+val _ = new_constant (
+  "logipedia_connectives_equal",
+  Type.alpha --> Type.alpha --> Type.bool);
+
+val _ = new_constant (
+  "logipedia_nat_eqb",
+  logipedia_nat_eqb_operator_type);
+
+val _ = new_constant (
+  "logipedia_nat_eqb_body",
+  logipedia_nat_eqb_operator_type);
+
+val logipedia_nat_match_nat_type_bool_def = new_definition (
+  "logipedia_nat_match_nat_type_bool_def",
+  ``logipedia_nat_match_nat_type_bool
+      (zero_case : bool)
+      (successor_case : num -> bool)
+      (m : num) =
+      if m = 0 then zero_case else successor_case (PRE m)``);
+
+val nat_axiom_eqb_body_S =
+  ``!n : num.
+      logipedia_connectives_equal
+        (logipedia_nat_eqb_body (SUC n))
+        (\m : num.
+           logipedia_nat_match_nat_type_bool
+             F
+             (\q : num. logipedia_nat_eqb n q)
+             m)``;

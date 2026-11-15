@@ -1,0 +1,84 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2007_b4:
+% the number of real-polynomial pairs whose squares sum to X^(2*n) + 1 and
+% whose first polynomial has larger degree. This file contains no proof.
+
+putnam_2007_b4: THEORY
+BEGIN
+  real_polynomial: TYPE = [nat -> real]
+  polynomial_pair: TYPE =
+    [# first_polynomial: real_polynomial,
+       second_polynomial: real_polynomial #]
+
+  IMPORTING finite_sets[polynomial_pair]
+
+  is_polynomial(P: real_polynomial): bool =
+    EXISTS (degree_bound: nat):
+      FORALL (index: nat):
+        index > degree_bound IMPLIES P(index) = 0
+
+  convolution_prefix(
+      P, Q: real_polynomial,
+      coefficient, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET left_index: nat = count - 1 IN
+        convolution_prefix(P, Q, coefficient, count - 1)
+          + IF left_index <= coefficient THEN
+              P(left_index) * Q(coefficient - left_index)
+            ELSE
+              0
+            ENDIF
+    ENDIF
+  MEASURE count
+
+  product_coefficient(
+      P, Q: real_polynomial,
+      coefficient: nat): real =
+    convolution_prefix(P, Q, coefficient, coefficient + 1)
+
+  target_coefficient(n, coefficient: nat): real =
+    IF coefficient = 0 AND coefficient = 2 * n THEN
+      2
+    ELSIF coefficient = 0 OR coefficient = 2 * n THEN
+      1
+    ELSE
+      0
+    ENDIF
+
+  strictly_higher_degree(
+      P, Q: real_polynomial): bool =
+    EXISTS (leading_index: nat):
+      NOT P(leading_index) = 0
+        AND (FORALL (index: nat):
+          index > leading_index IMPLIES P(index) = 0)
+        AND (FORALL (index: nat):
+          index >= leading_index IMPLIES Q(index) = 0)
+
+  qualifying(pair: polynomial_pair, n: nat): bool =
+    is_polynomial(first_polynomial(pair))
+      AND is_polynomial(second_polynomial(pair))
+      AND (FORALL (coefficient: nat):
+        product_coefficient(
+          first_polynomial(pair),
+          first_polynomial(pair),
+          coefficient)
+          + product_coefficient(
+            second_polynomial(pair),
+            second_polynomial(pair),
+            coefficient)
+        = target_coefficient(n, coefficient))
+      AND strictly_higher_degree(
+        first_polynomial(pair), second_polynomial(pair))
+
+  putnam_2007_b4_solution(n: nat): nat =
+    2 ^ (n + 1)
+
+  putnam_2007_b4_statement: bool =
+    FORALL (n: nat):
+      n > 0 IMPLIES
+        EXISTS (solutions: finite_set[polynomial_pair]):
+          card(solutions) = putnam_2007_b4_solution(n)
+            AND (FORALL (pair: polynomial_pair):
+              solutions(pair) IFF qualifying(pair, n))
+END putnam_2007_b4

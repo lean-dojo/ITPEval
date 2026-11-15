@@ -1,0 +1,221 @@
+% Statement-only formalization of the Thousand Theorems artifact Q1038716,
+% "Identity theorem": two functions analytic on a preconnected subset of an
+% arbitrary nontrivially normed field and frequently equal in a punctured
+% neighborhood of a point in the set are equal throughout the set. This file
+% contains no proof.
+
+identity_theorem_Q1038716[
+  K: TYPE+,
+  E: TYPE+,
+  zeroK: K,
+  oneK: K,
+  addK: [K, K -> K],
+  mulK: [K, K -> K],
+  negK: [K -> K],
+  invK: [K -> K],
+  normK: [K -> real],
+  zeroE: E,
+  addE: [E, E -> E],
+  negE: [E -> E],
+  smul: [K, E -> E],
+  normE: [E -> real]
+]: THEORY
+BEGIN
+  point_set: TYPE = [K -> bool]
+  function_type: TYPE = [K -> E]
+  coefficient_sequence: TYPE = [nat -> E]
+
+  subK(x, y: K): K = addK(x, negK(y))
+
+  subE(x, y: E): E = addE(x, negE(y))
+
+  field_laws: bool =
+    (FORALL (x, y: K):
+      addK(x, y) = addK(y, x))
+      AND (FORALL (x, y, z: K):
+        addK(addK(x, y), z) = addK(x, addK(y, z)))
+      AND (FORALL (x: K):
+        addK(x, zeroK) = x)
+      AND (FORALL (x: K):
+        addK(x, negK(x)) = zeroK)
+      AND (FORALL (x, y: K):
+        mulK(x, y) = mulK(y, x))
+      AND (FORALL (x, y, z: K):
+        mulK(mulK(x, y), z) = mulK(x, mulK(y, z)))
+      AND (FORALL (x: K):
+        mulK(x, oneK) = x)
+      AND (FORALL (x, y, z: K):
+        mulK(x, addK(y, z)) =
+          addK(mulK(x, y), mulK(x, z)))
+      AND zeroK /= oneK
+      AND invK(zeroK) = zeroK
+      AND (FORALL (x: K):
+        x /= zeroK IMPLIES mulK(x, invK(x)) = oneK)
+
+  normed_field_laws: bool =
+    field_laws
+      AND (FORALL (x: K):
+        0 <= normK(x))
+      AND (FORALL (x: K):
+        (normK(x) = 0 IFF x = zeroK))
+      AND (FORALL (x: K):
+        normK(negK(x)) = normK(x))
+      AND (FORALL (x, y: K):
+        normK(addK(x, y)) <= normK(x) + normK(y))
+      AND (FORALL (x, y: K):
+        normK(mulK(x, y)) = normK(x) * normK(y))
+      AND (EXISTS (x: K):
+        1 < normK(x))
+
+  additive_normed_group_laws: bool =
+    (FORALL (x, y: E):
+      addE(x, y) = addE(y, x))
+      AND (FORALL (x, y, z: E):
+        addE(addE(x, y), z) = addE(x, addE(y, z)))
+      AND (FORALL (x: E):
+        addE(x, zeroE) = x)
+      AND (FORALL (x: E):
+        addE(x, negE(x)) = zeroE)
+      AND (FORALL (x: E):
+        0 <= normE(x))
+      AND (FORALL (x: E):
+        (normE(x) = 0 IFF x = zeroE))
+      AND (FORALL (x: E):
+        normE(negE(x)) = normE(x))
+      AND (FORALL (x, y: E):
+        normE(addE(x, y)) <= normE(x) + normE(y))
+
+  module_laws: bool =
+    (FORALL (a: K), (x, y: E):
+      smul(a, addE(x, y)) =
+        addE(smul(a, x), smul(a, y)))
+      AND (FORALL (a, b: K), (x: E):
+        smul(addK(a, b), x) =
+          addE(smul(a, x), smul(b, x)))
+      AND (FORALL (a, b: K), (x: E):
+        smul(mulK(a, b), x) = smul(a, smul(b, x)))
+      AND (FORALL (x: E):
+        smul(oneK, x) = x)
+      AND (FORALL (x: E):
+        smul(zeroK, x) = zeroE)
+      AND (FORALL (a: K):
+        smul(a, zeroE) = zeroE)
+
+  normed_space_laws: bool =
+    additive_normed_group_laws
+      AND module_laws
+      AND (FORALL (a: K), (x: E):
+        normE(smul(a, x)) = normK(a) * normE(x))
+
+  scalar_power(x: K, exponent: nat): RECURSIVE K =
+    IF exponent = 0 THEN
+      oneK
+    ELSE
+      mulK(
+        scalar_power(x, exponent - 1),
+        x)
+    ENDIF
+  MEASURE exponent
+
+  power_series_partial_sum(
+      coefficients: coefficient_sequence,
+      delta: K,
+      count: nat): RECURSIVE E =
+    IF count = 0 THEN
+      zeroE
+    ELSE
+      addE(
+        power_series_partial_sum(
+          coefficients, delta, count - 1),
+        smul(
+          scalar_power(delta, count - 1),
+          coefficients(count - 1)))
+    ENDIF
+  MEASURE count
+
+  power_series_converges(
+      coefficients: coefficient_sequence,
+      delta: K,
+      limit: E): bool =
+    FORALL (epsilon: real):
+      0 < epsilon IMPLIES
+        EXISTS (cutoff: nat):
+          FORALL (count: nat):
+            cutoff <= count IMPLIES
+              normE(
+                subE(
+                  power_series_partial_sum(
+                    coefficients, delta, count),
+                  limit))
+                < epsilon
+
+  analytic_at(f: function_type, center: K): bool =
+    EXISTS
+        (coefficients: coefficient_sequence),
+        (radius: real):
+      0 < radius
+        AND FORALL (z: K):
+          normK(subK(z, center)) < radius IMPLIES
+            power_series_converges(
+              coefficients,
+              subK(z, center),
+              f(z))
+
+  analytic_on_neighborhood(
+      f: function_type,
+      U: point_set): bool =
+    FORALL (x: K):
+      U(x) IMPLIES analytic_at(f, x)
+
+  open_point_set(S: point_set): bool =
+    FORALL (x: K):
+      S(x) IMPLIES
+        EXISTS (radius: real):
+          0 < radius
+            AND FORALL (y: K):
+              normK(subK(y, x)) < radius IMPLIES S(y)
+
+  preconnected(U: point_set): bool =
+    FORALL (A, B: point_set):
+      (open_point_set(A)
+        AND open_point_set(B)
+        AND (FORALL (x: K):
+          U(x) IMPLIES (A(x) OR B(x)))
+        AND (EXISTS (x: K):
+          U(x) AND A(x))
+        AND (EXISTS (x: K):
+          U(x) AND B(x)))
+      IMPLIES
+        EXISTS (x: K):
+          U(x) AND A(x) AND B(x)
+
+  frequently_equal_off(
+      f, g: function_type,
+      center: K): bool =
+    FORALL (radius: real):
+      0 < radius IMPLIES
+        EXISTS (z: K):
+          z /= center
+            AND normK(subK(z, center)) < radius
+            AND f(z) = g(z)
+
+  equal_on(
+      f, g: function_type,
+      U: point_set): bool =
+    FORALL (z: K):
+      U(z) IMPLIES f(z) = g(z)
+
+  identity_theorem: bool =
+    (normed_field_laws AND normed_space_laws)
+    IMPLIES
+      FORALL
+          (U: point_set),
+          (f, g: function_type),
+          (z0: K):
+        (analytic_on_neighborhood(f, U)
+          AND analytic_on_neighborhood(g, U)
+          AND preconnected(U)
+          AND U(z0)
+          AND frequently_equal_off(f, g, z0))
+        IMPLIES equal_on(f, g, U)
+END identity_theorem_Q1038716

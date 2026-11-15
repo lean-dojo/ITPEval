@@ -1,0 +1,155 @@
+% Statement-only formalization of the Thousand Theorems artifact Q4695203
+% (thousand-theorems__pvs__Q4695203), "Four functions theorem": the Ahlswede-Daykin inequality
+% for finite families in an arbitrary distributive lattice with values in the stated ordered
+% commutative semiring. This file contains no proof.
+
+Q4695203_four_functions_theorem[
+  A: TYPE,
+  R: TYPE+,
+  leA: [A, A -> bool],
+  meetA: [A, A -> A],
+  joinA: [A, A -> A],
+  zeroR: R,
+  oneR: R,
+  addR: [R, R -> R],
+  mulR: [R, R -> R],
+  leR: [R, R -> bool],
+  finite_sum: [[A -> bool], [A -> R] -> R],
+  meet_image: [[A -> bool], [A -> bool] -> [A -> bool]],
+  join_image: [[A -> bool], [A -> bool] -> [A -> bool]]
+]: THEORY
+BEGIN
+  IMPORTING finite_sets[A]
+
+  setA: TYPE = [A -> bool]
+  functionA: TYPE = [A -> R]
+
+  ltR(x, y: R): bool =
+    leR(x, y) AND x /= y
+
+  partial_order_A_laws: bool =
+    (FORALL (x: A): leA(x, x))
+      AND (FORALL (x, y, z: A):
+        leA(x, y) AND leA(y, z) IMPLIES leA(x, z))
+      AND (FORALL (x, y: A):
+        leA(x, y) AND leA(y, x) IMPLIES x = y)
+
+  distributive_lattice_A_laws: bool =
+    partial_order_A_laws
+      AND (FORALL (x, y: A):
+        leA(meetA(x, y), x) AND leA(meetA(x, y), y))
+      AND (FORALL (x, y, z: A):
+        leA(z, x) AND leA(z, y) IMPLIES leA(z, meetA(x, y)))
+      AND (FORALL (x, y: A):
+        leA(x, joinA(x, y)) AND leA(y, joinA(x, y)))
+      AND (FORALL (x, y, z: A):
+        leA(x, z) AND leA(y, z) IMPLIES leA(joinA(x, y), z))
+      AND (FORALL (x, y, z: A):
+        meetA(x, joinA(y, z)) =
+          joinA(meetA(x, y), meetA(x, z)))
+      AND (FORALL (x, y, z: A):
+        joinA(x, meetA(y, z)) =
+          meetA(joinA(x, y), joinA(x, z)))
+
+  commutative_semiring_R_laws: bool =
+    (FORALL (x, y, z: R):
+      addR(addR(x, y), z) = addR(x, addR(y, z)))
+      AND (FORALL (x, y: R): addR(x, y) = addR(y, x))
+      AND (FORALL (x: R):
+        addR(zeroR, x) = x AND addR(x, zeroR) = x)
+      AND (FORALL (x, y, z: R):
+        mulR(mulR(x, y), z) = mulR(x, mulR(y, z)))
+      AND (FORALL (x, y: R): mulR(x, y) = mulR(y, x))
+      AND (FORALL (x: R):
+        mulR(oneR, x) = x AND mulR(x, oneR) = x)
+      AND (FORALL (x, y, z: R):
+        mulR(x, addR(y, z)) =
+          addR(mulR(x, y), mulR(x, z)))
+      AND (FORALL (x, y, z: R):
+        mulR(addR(x, y), z) =
+          addR(mulR(x, z), mulR(y, z)))
+      AND (FORALL (x: R):
+        mulR(zeroR, x) = zeroR AND mulR(x, zeroR) = zeroR)
+
+  linear_order_R_laws: bool =
+    (FORALL (x: R): leR(x, x))
+      AND (FORALL (x, y, z: R):
+        leR(x, y) AND leR(y, z) IMPLIES leR(x, z))
+      AND (FORALL (x, y: R):
+        leR(x, y) AND leR(y, x) IMPLIES x = y)
+      AND (FORALL (x, y: R): leR(x, y) OR leR(y, x))
+
+  strict_ordered_ring_R_laws: bool =
+    (FORALL (x, y, z: R):
+      leR(y, z) IMPLIES leR(addR(x, y), addR(x, z)))
+      AND (FORALL (x, y, z: R):
+        leR(y, z) IMPLIES leR(addR(y, x), addR(z, x)))
+      AND (FORALL (x, y, z: R):
+        leR(addR(x, y), addR(x, z)) IMPLIES leR(y, z))
+      AND (FORALL (x, y, z: R):
+        leR(addR(y, x), addR(z, x)) IMPLIES leR(y, z))
+      AND leR(zeroR, oneR)
+      AND (EXISTS (x, y: R): x /= y)
+      AND (FORALL (x, y, z: R):
+        ltR(zeroR, x) AND ltR(y, z)
+          IMPLIES ltR(mulR(x, y), mulR(x, z)))
+      AND (FORALL (x, y, z: R):
+        ltR(zeroR, x) AND ltR(y, z)
+          IMPLIES ltR(mulR(y, x), mulR(z, x)))
+
+  exists_add_of_le_R: bool =
+    FORALL (x, y: R):
+      leR(x, y) IMPLIES
+        EXISTS (z: R): y = addR(x, z)
+
+  finite_sum_laws: bool =
+    (FORALL (f: functionA):
+      finite_sum(emptyset[A], f) = zeroR)
+      AND (FORALL (S: setA), (x: A), (f: functionA):
+        is_finite(S) IMPLIES
+          finite_sum(add(x, S), f) =
+            IF S(x) THEN
+              finite_sum(S, f)
+            ELSE
+              addR(finite_sum(S, f), f(x))
+            ENDIF)
+
+  finite_lattice_image_laws: bool =
+    (FORALL (S, T: setA), (x: A):
+      meet_image(S, T)(x) IFF
+        EXISTS (a, b: A):
+          S(a) AND T(b) AND x = meetA(a, b))
+      AND (FORALL (S, T: setA), (x: A):
+        join_image(S, T)(x) IFF
+          EXISTS (a, b: A):
+            S(a) AND T(b) AND x = joinA(a, b))
+
+  source_context: bool =
+    distributive_lattice_A_laws
+      AND commutative_semiring_R_laws
+      AND linear_order_R_laws
+      AND strict_ordered_ring_R_laws
+      AND exists_add_of_le_R
+      AND finite_sum_laws
+      AND finite_lattice_image_laws
+
+  four_functions_theorem: bool =
+    source_context IMPLIES
+      (FORALL (f1, f2, f3, f4: functionA), (S, T: setA):
+        (is_finite(S)
+          AND is_finite(T)
+          AND (FORALL (x: A): leR(zeroR, f1(x)))
+          AND (FORALL (x: A): leR(zeroR, f2(x)))
+          AND (FORALL (x: A): leR(zeroR, f3(x)))
+          AND (FORALL (x: A): leR(zeroR, f4(x)))
+          AND (FORALL (a, b: A):
+            leR(
+              mulR(f1(a), f2(b)),
+              mulR(f3(meetA(a, b)), f4(joinA(a, b))))))
+        IMPLIES
+          leR(
+            mulR(finite_sum(S, f1), finite_sum(T, f2)),
+            mulR(
+              finite_sum(meet_image(S, T), f3),
+              finite_sum(join_image(S, T), f4))))
+END Q4695203_four_functions_theorem

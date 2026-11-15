@@ -1,0 +1,73 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2016_b6:
+% the iterated real series sum over k >= 1 of (-1)^(k-1)/k times the sum over
+% n >= 0 of 1/(k*2^n + 1) converges to 1. This file contains no proof.
+
+putnam_2016_b6: THEORY
+BEGIN
+  real_sequence: TYPE = [nat -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  alternating_sign(index: nat): RECURSIVE real =
+    IF index = 0 THEN
+      1
+    ELSE
+      -alternating_sign(index - 1)
+    ENDIF
+  MEASURE index
+
+  inner_term(k_index, n: nat): real =
+    safe_div(
+      1,
+      ((k_index + 1) :: real) * (2 :: real) ^ n + 1)
+
+  inner_partial_sum(k_index, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      inner_partial_sum(k_index, count - 1)
+        + inner_term(k_index, count - 1)
+    ENDIF
+  MEASURE count
+
+  outer_partial_sum(
+      inner_sums: real_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET k_index: nat = count - 1 IN
+        outer_partial_sum(inner_sums, count - 1)
+          + safe_div(
+              alternating_sign(k_index),
+              (k_index + 1) :: real)
+            * inner_sums(k_index)
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (count: nat):
+          cutoff <= count IMPLIES
+            abs(sequence(count) - value) < epsilon_value
+
+  putnam_2016_b6_solution: real = 1
+
+  putnam_2016_b6: bool =
+    EXISTS (inner_sums: real_sequence):
+      (FORALL (k_index: nat):
+        converges_to(
+          LAMBDA (count: nat):
+            inner_partial_sum(k_index, count),
+          inner_sums(k_index)))
+      AND converges_to(
+        LAMBDA (count: nat):
+          outer_partial_sum(inner_sums, count),
+        putnam_2016_b6_solution)
+END putnam_2016_b6

@@ -1,0 +1,219 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1998_a2:
+% for a first-quadrant arc of the unit circle, the sum of the areas below and
+% to the left of the arc depends only on its central angle (equivalently, its
+% arc length), not on its position. This file contains no proof.
+
+putnam_1998_a2: THEORY
+BEGIN
+  point: TYPE = [# x_coord: real, y_coord: real #]
+  planar_region: TYPE = [point -> bool]
+  real_function: TYPE = [real -> real]
+  real_sequence: TYPE = [nat -> real]
+
+  box: TYPE =
+    [# left: real, right: real, bottom: real, top: real #]
+  box_sequence: TYPE = [nat -> box]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  squared_norm(P: point): real =
+    x_coord(P) ^ 2 + y_coord(P) ^ 2
+
+  first_quadrant_unit_circle(P: point): bool =
+    x_coord(P) > 0
+      AND y_coord(P) > 0
+      AND squared_norm(P) = 1
+
+  is_arc(P, Q: point): bool =
+    first_quadrant_unit_circle(P)
+      AND first_quadrant_unit_circle(Q)
+      AND x_coord(P) > x_coord(Q)
+
+  open_arc(P, Q: point): planar_region =
+    LAMBDA (R: point):
+      first_quadrant_unit_circle(R)
+        AND x_coord(P) > x_coord(R)
+        AND x_coord(R) > x_coord(Q)
+
+  below_arc_region(P, Q: point): planar_region =
+    LAMBDA (S: point):
+      EXISTS (R: point):
+        open_arc(P, Q)(R)
+          AND x_coord(R) = x_coord(S)
+          AND y_coord(R) > y_coord(S)
+          AND y_coord(S) > 0
+
+  left_of_arc_region(P, Q: point): planar_region =
+    LAMBDA (S: point):
+      EXISTS (R: point):
+        open_arc(P, Q)(R)
+          AND y_coord(R) = y_coord(S)
+          AND x_coord(R) > x_coord(S)
+          AND x_coord(S) > 0
+
+  in_open_box(P: point, rectangle: box): bool =
+    left(rectangle) < x_coord(P)
+      AND x_coord(P) < right(rectangle)
+      AND bottom(rectangle) < y_coord(P)
+      AND y_coord(P) < top(rectangle)
+
+  box_area(rectangle: box): real =
+    IF left(rectangle) < right(rectangle)
+        AND bottom(rectangle) < top(rectangle)
+    THEN
+      (right(rectangle) - left(rectangle))
+        * (top(rectangle) - bottom(rectangle))
+    ELSE
+      0
+    ENDIF
+
+  partial_box_area(
+      boxes: box_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      partial_box_area(boxes, count - 1)
+        + box_area(boxes(count - 1))
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  covers(region: planar_region, boxes: box_sequence): bool =
+    FORALL (P: point):
+      region(P) IMPLIES
+        EXISTS (index: nat):
+          in_open_box(P, boxes(index))
+
+  cover_has_total_area(
+      region: planar_region,
+      boxes: box_sequence,
+      total: real): bool =
+    covers(region, boxes)
+      AND converges_to(
+        LAMBDA (count: nat):
+          partial_box_area(boxes, count),
+        total)
+
+  is_lebesgue_outer_area(
+      region: planar_region,
+      area: real): bool =
+    0 <= area
+      AND (FORALL (boxes: box_sequence), (total: real):
+        cover_has_total_area(region, boxes, total)
+          IMPLIES area <= total)
+      AND (FORALL (epsilon_value: posreal):
+        EXISTS (boxes: box_sequence), (total: real):
+          cover_has_total_area(region, boxes, total)
+            AND total < area + epsilon_value)
+
+  lebesgue_area(region: planar_region): real =
+    epsilon(
+      LAMBDA (area: real):
+        is_lebesgue_outer_area(region, area))
+
+  valid_partition(
+      lower, upper: real,
+      points: real_sequence,
+      count: nat): bool =
+    IF lower = upper THEN
+      count = 0 AND points(0) = lower
+    ELSE
+      count > 0
+        AND points(0) = lower
+        AND points(count) = upper
+        AND (FORALL (index: nat):
+          index < count IMPLIES
+            points(index) < points(index + 1))
+    ENDIF
+
+  valid_tags(
+      points, tags: real_sequence,
+      count: nat): bool =
+    FORALL (index: nat):
+      index < count IMPLIES
+        points(index) <= tags(index)
+          AND tags(index) <= points(index + 1)
+
+  mesh_less_than(
+      points: real_sequence,
+      count: nat,
+      bound: real): bool =
+    FORALL (index: nat):
+      index < count IMPLIES
+        points(index + 1) - points(index) < bound
+
+  riemann_sum(
+      f: real_function,
+      points, tags: real_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      riemann_sum(f, points, tags, count - 1)
+        + f(tags(count - 1))
+            * (points(count) - points(count - 1))
+    ENDIF
+  MEASURE count
+
+  has_integral_on_ordered_interval(
+      f: real_function,
+      integral_value, lower, upper: real): bool =
+    lower <= upper
+      AND FORALL (epsilon_value: posreal):
+        EXISTS (mesh_bound: posreal):
+          FORALL
+              (points, tags: real_sequence),
+              (count: nat):
+            (valid_partition(lower, upper, points, count)
+              AND valid_tags(points, tags, count)
+              AND mesh_less_than(points, count, mesh_bound))
+            IMPLIES
+              abs(
+                riemann_sum(f, points, tags, count)
+                  - integral_value)
+                < epsilon_value
+
+  has_oriented_integral(
+      f: real_function,
+      integral_value, lower, upper: real): bool =
+    IF lower <= upper THEN
+      has_integral_on_ordered_interval(
+        f, integral_value, lower, upper)
+    ELSE
+      has_integral_on_ordered_interval(
+        f, -integral_value, upper, lower)
+    ENDIF
+
+  arctangent_integrand(t: real): real =
+    safe_div(1, 1 + t ^ 2)
+
+  arctangent(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        has_oriented_integral(
+          arctangent_integrand, value, 0, x))
+
+  arc_angle(P, Q: point): real =
+    arctangent(safe_div(y_coord(Q), x_coord(Q)))
+      - arctangent(safe_div(y_coord(P), x_coord(P)))
+
+  putnam_1998_a2: bool =
+    EXISTS (f: real_function):
+      FORALL (P, Q: point):
+        is_arc(P, Q) IMPLIES
+          lebesgue_area(below_arc_region(P, Q))
+            + lebesgue_area(left_of_arc_region(P, Q))
+            = f(arc_angle(P, Q))
+END putnam_1998_a2

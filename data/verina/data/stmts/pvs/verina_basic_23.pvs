@@ -1,0 +1,122 @@
+% Statement-only formalization of the VERINA corpus artifact verina_basic_23,
+% catalog title "differenceMinMax": a one-pass scan of a nonempty finite
+% integer array returns its maximum minus its minimum and satisfies the exact
+% min/max fold correctness contract. This file contains no proof.
+
+verina_basic_23: THEORY
+BEGIN
+
+  % Finite PVS lists preserve the exact contents and order of Lean arrays.
+  int_list_length(values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        int_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  % Lean's Array.get! on integer arrays returns zero outside the array. The
+  % executable loop uses this accessor only at indices below the array size.
+  int_list_get_bang(
+      index: nat,
+      values: list[int]): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          int_list_get_bang(index - 1, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  % Lean natural-number subtraction is truncated at zero.
+  nat_subtract(first, second: nat): nat =
+    IF first >= second THEN first - second ELSE 0 ENDIF
+
+  differenceMinMax_precond(a: list[int]): bool =
+    int_list_length(a) > 0
+
+  differenceMinMax_loop_steps(
+      a: list[int],
+      i: nat,
+      min_val, max_val: int,
+      remaining: nat): RECURSIVE int =
+    IF remaining = 0 THEN
+      max_val - min_val
+    ELSE
+      LET x: int = int_list_get_bang(i, a)
+      IN
+        LET new_min: int =
+              IF x < min_val THEN x ELSE min_val ENDIF,
+            new_max: int =
+              IF x > max_val THEN x ELSE max_val ENDIF
+        IN
+          differenceMinMax_loop_steps(
+            a,
+            i + 1,
+            new_min,
+            new_max,
+            remaining - 1)
+    ENDIF
+  MEASURE remaining
+
+  % Starting at index one with the first element as both accumulators is the
+  % exact proof-erased source loop; the precondition proof is irrelevant.
+  differenceMinMax(a: list[int]): int =
+    differenceMinMax_loop_steps(
+      a,
+      1,
+      int_list_get_bang(0, a),
+      int_list_get_bang(0, a),
+      nat_subtract(int_list_length(a), 1))
+
+  int_min_fold_left(
+      values: list[int],
+      accumulator: int): RECURSIVE int =
+    CASES values OF
+      null:
+        accumulator,
+      cons(head, tail):
+        int_min_fold_left(
+          tail,
+          IF head < accumulator THEN head ELSE accumulator ENDIF)
+    ENDCASES
+  MEASURE values BY <<
+
+  int_max_fold_left(
+      values: list[int],
+      accumulator: int): RECURSIVE int =
+    CASES values OF
+      null:
+        accumulator,
+      cons(head, tail):
+        int_max_fold_left(
+          tail,
+          IF head > accumulator THEN head ELSE accumulator ENDIF)
+    ENDCASES
+  MEASURE values BY <<
+
+  differenceMinMax_postcond(
+      a: list[int],
+      result: int): bool =
+    result
+        + int_min_fold_left(
+            a,
+            int_list_get_bang(0, a))
+      = int_max_fold_left(
+          a,
+          int_list_get_bang(0, a))
+
+  differenceMinMax_spec_satisfied: bool =
+    FORALL (a: list[int]):
+      differenceMinMax_precond(a)
+        IMPLIES
+          differenceMinMax_postcond(
+            a,
+            differenceMinMax(a))
+
+END verina_basic_23

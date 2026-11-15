@@ -1,0 +1,191 @@
+% Statement-only formalization of the Thousand Theorems corpus artifact
+% Q656198 (thousand-theorems__pvs__Q656198), "Maschke's theorem": over a
+% field in which the order of a finite group is nonzero, every invariant
+% subspace of a linear group action has an invariant direct complement.
+% This file contains no proof.
+
+Q656198_maschke_s_theorem[
+  K, G, V: TYPE+,
+  zero_K, one_K: K,
+  neg_K, inv_K: [K -> K],
+  add_K, mul_K: [K, K -> K],
+  one_G: G,
+  inv_G: [G -> G],
+  mul_G: [G, G -> G],
+  zero_V: V,
+  neg_V: [V -> V],
+  add_V: [V, V -> V],
+  smul: [K, V -> V],
+  action: [G, V -> V]
+]: THEORY
+BEGIN
+
+  IMPORTING finite_sets[G]
+
+  v_set: TYPE = [V -> bool]
+
+  field_laws: bool =
+    zero_K /= one_K
+      AND
+    (FORALL (a, b: K):
+      add_K(a, b) = add_K(b, a))
+      AND
+    (FORALL (a, b, c: K):
+      add_K(add_K(a, b), c) =
+        add_K(a, add_K(b, c)))
+      AND
+    (FORALL (a: K):
+      add_K(zero_K, a) = a
+        AND add_K(a, zero_K) = a)
+      AND
+    (FORALL (a: K):
+      add_K(neg_K(a), a) = zero_K
+        AND add_K(a, neg_K(a)) = zero_K)
+      AND
+    (FORALL (a, b: K):
+      mul_K(a, b) = mul_K(b, a))
+      AND
+    (FORALL (a, b, c: K):
+      mul_K(mul_K(a, b), c) =
+        mul_K(a, mul_K(b, c)))
+      AND
+    (FORALL (a: K):
+      mul_K(one_K, a) = a
+        AND mul_K(a, one_K) = a)
+      AND
+    (FORALL (a: K):
+      mul_K(zero_K, a) = zero_K
+        AND mul_K(a, zero_K) = zero_K)
+      AND
+    (FORALL (a, b, c: K):
+      mul_K(a, add_K(b, c)) =
+        add_K(mul_K(a, b), mul_K(a, c)))
+      AND
+    (FORALL (a, b, c: K):
+      mul_K(add_K(a, b), c) =
+        add_K(mul_K(a, c), mul_K(b, c)))
+      AND
+    (FORALL (a: K):
+      a /= zero_K IMPLIES
+        mul_K(a, inv_K(a)) = one_K
+          AND mul_K(inv_K(a), a) = one_K)
+
+  group_laws: bool =
+    (FORALL (g, h, j: G):
+      mul_G(mul_G(g, h), j) =
+        mul_G(g, mul_G(h, j)))
+      AND
+    (FORALL (g: G):
+      mul_G(one_G, g) = g
+        AND mul_G(g, one_G) = g)
+      AND
+    (FORALL (g: G):
+      mul_G(inv_G(g), g) = one_G
+        AND mul_G(g, inv_G(g)) = one_G)
+
+  nat_cast(n: nat): RECURSIVE K =
+    IF n = 0 THEN
+      zero_K
+    ELSE
+      add_K(nat_cast(n - 1), one_K)
+    ENDIF
+  MEASURE n
+
+  full_group_carrier(carrier: finite_set[G]): bool =
+    FORALL (g: G): carrier(g)
+
+  finite_group_order_nonzero: bool =
+    EXISTS (carrier: finite_set[G]):
+      full_group_carrier(carrier)
+        AND nat_cast(card(carrier)) /= zero_K
+
+  vector_space_laws: bool =
+    (FORALL (u, v: V):
+      add_V(u, v) = add_V(v, u))
+      AND
+    (FORALL (u, v, w: V):
+      add_V(add_V(u, v), w) =
+        add_V(u, add_V(v, w)))
+      AND
+    (FORALL (v: V):
+      add_V(zero_V, v) = v
+        AND add_V(v, zero_V) = v)
+      AND
+    (FORALL (v: V):
+      add_V(neg_V(v), v) = zero_V
+        AND add_V(v, neg_V(v)) = zero_V)
+      AND
+    (FORALL (a: K), (u, v: V):
+      smul(a, add_V(u, v)) =
+        add_V(smul(a, u), smul(a, v)))
+      AND
+    (FORALL (a, b: K), (v: V):
+      smul(add_K(a, b), v) =
+        add_V(smul(a, v), smul(b, v)))
+      AND
+    (FORALL (a, b: K), (v: V):
+      smul(mul_K(a, b), v) =
+        smul(a, smul(b, v)))
+      AND
+    (FORALL (v: V):
+      smul(one_K, v) = v
+        AND smul(zero_K, v) = zero_V)
+      AND
+    (FORALL (a: K):
+      smul(a, zero_V) = zero_V)
+
+  linear_group_action_laws: bool =
+    (FORALL (v: V):
+      action(one_G, v) = v)
+      AND
+    (FORALL (g, h: G), (v: V):
+      action(mul_G(g, h), v) =
+        action(g, action(h, v)))
+      AND
+    (FORALL (g: G), (u, v: V):
+      action(g, add_V(u, v)) =
+        add_V(action(g, u), action(g, v)))
+      AND
+    (FORALL (g: G), (a: K), (v: V):
+      action(g, smul(a, v)) =
+        smul(a, action(g, v)))
+
+  is_invariant_subspace(S: v_set): bool =
+    S(zero_V)
+      AND
+    (FORALL (u, v: V):
+      S(u) AND S(v) IMPLIES S(add_V(u, v)))
+      AND
+    (FORALL (v: V):
+      S(v) IMPLIES S(neg_V(v)))
+      AND
+    (FORALL (a: K), (v: V):
+      S(v) IMPLIES S(smul(a, v)))
+      AND
+    (FORALL (g: G), (v: V):
+      S(v) IMPLIES S(action(g, v)))
+
+  direct_invariant_complements(P, Q: v_set): bool =
+    is_invariant_subspace(P)
+      AND is_invariant_subspace(Q)
+      AND
+    (FORALL (v: V):
+      P(v) AND Q(v) IMPLIES v = zero_V)
+      AND
+    (FORALL (v: V):
+      EXISTS (p, q: V):
+        P(p) AND Q(q) AND v = add_V(p, q))
+
+  maschke_s_theorem: bool =
+    (field_laws
+      AND group_laws
+      AND finite_group_order_nonzero
+      AND vector_space_laws
+      AND linear_group_action_laws)
+    IMPLIES
+      (FORALL (P: v_set):
+        is_invariant_subspace(P) IMPLIES
+          EXISTS (Q: v_set):
+            direct_invariant_complements(P, Q))
+
+END Q656198_maschke_s_theorem

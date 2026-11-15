@@ -1,0 +1,83 @@
+% Statement-only formalization of the Thousand Theorems corpus artifact Q33481,
+% "Arrow's impossibility theorem": for at least three alternatives, every social
+% welfare function on a finite electorate satisfying Weak Pareto and independence
+% of irrelevant alternatives is dictatorial. This file contains no proof.
+
+Q33481_arrow_s_impossibility_theorem[
+  Alternative: TYPE,
+  Voter: TYPE
+]: THEORY
+BEGIN
+  IMPORTING finite_sets[Alternative]
+
+  preference_relation: TYPE = [Alternative, Alternative -> bool]
+
+  is_preference_order(r: preference_relation): bool =
+    (FORALL (x: Alternative): r(x, x))
+      AND
+    (FORALL (x, y: Alternative): r(x, y) OR r(y, x))
+      AND
+    (FORALL (x, y, z: Alternative):
+      r(x, y) AND r(y, z) IMPLIES r(x, z))
+
+  preference_order: TYPE =
+    {r: preference_relation | is_preference_order(r)}
+
+  profile: TYPE = [Voter -> preference_order]
+  social_welfare_function: TYPE = [profile -> preference_order]
+
+  strictly_prefers(
+      r: preference_order,
+      x, y: Alternative): bool =
+    r(x, y) AND NOT r(y, x)
+
+  same_pairwise_order(
+      r, s: preference_order,
+      x, y: Alternative): bool =
+    (strictly_prefers(r, x, y) IFF strictly_prefers(s, x, y))
+      AND
+    (strictly_prefers(r, y, x) IFF strictly_prefers(s, y, x))
+
+  weak_pareto(
+      f: social_welfare_function,
+      X: finite_set[Alternative]): bool =
+    FORALL (x, y: Alternative), (R: profile):
+      (member(x, X)
+        AND member(y, X)
+        AND
+          (FORALL (i: Voter):
+            strictly_prefers(R(i), x, y)))
+      IMPLIES strictly_prefers(f(R), x, y)
+
+  independence_of_irrelevant_alternatives(
+      f: social_welfare_function,
+      X: finite_set[Alternative]): bool =
+    FORALL (R, S: profile), (x, y: Alternative):
+      (member(x, X)
+        AND member(y, X)
+        AND
+          (FORALL (i: Voter):
+            same_pairwise_order(R(i), S(i), x, y)))
+      IMPLIES same_pairwise_order(f(R), f(S), x, y)
+
+  is_dictatorship(
+      f: social_welfare_function,
+      X: finite_set[Alternative]): bool =
+    EXISTS (i: Voter):
+      FORALL (x, y: Alternative), (R: profile):
+        (member(x, X)
+          AND member(y, X)
+          AND strictly_prefers(R(i), x, y))
+        IMPLIES strictly_prefers(f(R), x, y)
+
+  arrow: bool =
+    is_finite_type[Voter]
+      IMPLIES
+        FORALL
+            (f: social_welfare_function),
+            (X: finite_set[Alternative]):
+          (weak_pareto(f, X)
+            AND independence_of_irrelevant_alternatives(f, X)
+            AND 3 <= card(X))
+          IMPLIES is_dictatorship(f, X)
+END Q33481_arrow_s_impossibility_theorem

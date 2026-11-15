@@ -1,0 +1,434 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/multiprecision/add_1_Add_1_wmpn_add_1_in_placeqtvc: the verification
+% condition for in-place addition of one 64-bit limb, including carry
+% propagation, pointer updates, loop invariants, and final numeric value.
+% This file contains no proof.
+
+add_1_Add_1_wmpn_add_1_in_placeqtvc[zone: TYPE+]: THEORY
+BEGIN
+
+  IMPORTING
+    bv[32], bv[64],
+    bv_nat[32], bv_nat[64]
+
+  word32: TYPE = bvec[32]
+  word64: TYPE = bvec[64]
+
+  ptr: TYPE =
+    [# data_length: nat,
+       cells: [int -> word64],
+       pointer_offset: int,
+       pointer_min: int,
+       pointer_max: int,
+       is_writable: bool,
+       pointer_zone: zone #]
+
+  radix: int = 18446744073709551616
+
+  unsigned64(value: word64): int =
+    bv2nat[64](value)
+
+  signed32(value: word32): int =
+    IF value(31) THEN
+      bv2nat[32](value) - 4294967296
+    ELSE
+      bv2nat[32](value)
+    ENDIF
+
+  word32_of(value: below(exp2(32))): word32 =
+    nat2bv[32](value)
+
+  word64_of(value: below(exp2(64))): word64 =
+    nat2bv[64](value)
+
+  zero64: word64 = fill[64](FALSE)
+  one32: word32 = word32_of(1)
+  one64: word64 = word64_of(1)
+
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  nat_power(base: int, exponent: nat): RECURSIVE int =
+    IF exponent = 0 THEN
+      1
+    ELSE
+      base * nat_power(base, exponent - 1)
+    ENDIF
+  MEASURE exponent
+
+  int_power(base, exponent: int): int =
+    nat_power(base, int_to_nat(exponent))
+
+  value_from(
+      values: [int -> word64],
+      start: int,
+      count: nat): RECURSIVE int =
+    IF count = 0 THEN
+      0
+    ELSE
+      unsigned64(values(start))
+        + radix * value_from(values, start + 1, count - 1)
+    ENDIF
+  MEASURE count
+
+  value(p: ptr, size: int): int =
+    value_from(
+      cells(p),
+      pointer_offset(p),
+      int_to_nat(size))
+
+  int32_in_bounds(value1: int): bool =
+    -2147483648 <= value1 AND value1 <= 2147483647
+
+  valid(p: ptr, size: int): bool =
+    int32_in_bounds(size)
+      AND 0 <= size
+      AND 0 <= pointer_min(p)
+      AND pointer_min(p) <= pointer_offset(p)
+      AND pointer_offset(p) + size <= pointer_max(p)
+      AND pointer_max(p) <= (data_length(p) :: int)
+
+  bounds_at(p: ptr, index: int): bool =
+    pointer_min(p) <= index
+      AND index < pointer_max(p)
+
+  same_pointer_shape(left, right: ptr): bool =
+    data_length(left) = data_length(right)
+      AND pointer_offset(left) = pointer_offset(right)
+      AND pointer_min(left) = pointer_min(right)
+      AND pointer_max(left) = pointer_max(right)
+      AND is_writable(left) = is_writable(right)
+      AND pointer_zone(left) = pointer_zone(right)
+
+  update_cells(
+      values: [int -> word64],
+      index: int,
+      replacement: word64): [int -> word64] =
+    values WITH [(index) := replacement]
+
+  outside_unchanged(
+      current, original: ptr,
+      count: int): bool =
+    FORALL (j: int):
+      j < pointer_offset(current)
+        OR pointer_offset(current) + count <= j
+      IMPLIES cells(current)(j) = cells(original)(j)
+
+  loop_invariant(
+      current: ptr,
+      index: word32,
+      carry: word64,
+      original: ptr,
+      size: word32,
+      addend: word64): bool =
+    1 <= signed32(index)
+      AND signed32(index) <= signed32(size)
+      AND 0 <= unsigned64(carry)
+      AND unsigned64(carry) <= 1
+      AND (unsigned64(carry) = 1 OR index = size)
+      AND
+        value(current, signed32(index))
+          + int_power(radix, signed32(index))
+              * unsigned64(carry)
+        =
+        value(original, signed32(index))
+          + unsigned64(addend)
+      AND
+        outside_unchanged(
+          current,
+          original,
+          signed32(index))
+
+  final_state(
+      current, original: ptr,
+      size: word32,
+      addend: word64,
+      carry: int): bool =
+    value(current, signed32(size))
+        + int_power(radix, signed32(size)) * carry
+      =
+      value(original, signed32(size))
+        + unsigned64(addend)
+      AND 0 <= carry
+      AND carry <= 1
+      AND
+        outside_unchanged(
+          current,
+          original,
+          signed32(size))
+
+  zero_test_characterization(
+      result: word64,
+      test: bool): bool =
+    (unsigned64(result) = unsigned64(zero64)
+      IMPLIES test = TRUE)
+      AND
+    (test = TRUE IMPLIES result = zero64)
+
+  next_iteration_or_finish(
+      current, original: ptr,
+      index: word32,
+      carry: word64,
+      next_index: word32,
+      zero_test: bool,
+      size: word32,
+      addend: word64): bool =
+    IF NOT (zero_test = TRUE) THEN
+      final_state(
+        current,
+        original,
+        size,
+        addend,
+        unsigned64(zero64))
+    ELSE
+      0 <= signed32(size) - signed32(index)
+        AND
+          signed32(size) - signed32(next_index)
+            < signed32(size) - signed32(index)
+        AND
+          loop_invariant(
+            current,
+            next_index,
+            carry,
+            original,
+            size,
+            addend)
+    ENDIF
+
+  incremented_index_result(
+      current, original: ptr,
+      index: word32,
+      carry: word64,
+      result: word64,
+      next_index: word32,
+      size: word32,
+      addend: word64): bool =
+    signed32(next_index) = signed32(index) + 1
+      IMPLIES
+        FORALL (zero_test: bool):
+          zero_test_characterization(result, zero_test)
+            IMPLIES
+              next_iteration_or_finish(
+                current,
+                original,
+                index,
+                carry,
+                next_index,
+                zero_test,
+                size,
+                addend)
+
+  updated_inner_pointer_result(
+      updated, current, original: ptr,
+      index: word32,
+      carry, result: word64,
+      size: word32,
+      addend: word64): bool =
+    same_pointer_shape(updated, current)
+      IMPLIES
+        (cells(updated)
+            =
+            update_cells(
+              cells(current),
+              pointer_offset(updated) + signed32(index),
+              result)
+          AND
+          cells(updated)(
+            pointer_offset(updated) + signed32(index))
+            = result)
+        IMPLIES
+          int32_in_bounds(signed32(index) + 1)
+            AND
+              (FORALL (next_index: word32):
+                incremented_index_result(
+                  updated,
+                  original,
+                  index,
+                  carry,
+                  result,
+                  next_index,
+                  size,
+                  addend))
+
+  inner_add_result(
+      current, original: ptr,
+      index: word32,
+      carry, result: word64,
+      size: word32,
+      addend: word64): bool =
+    unsigned64(result)
+        =
+        mod(
+          unsigned64(
+            cells(current)(
+              pointer_offset(current) + signed32(index)))
+            + 1,
+          radix)
+      IMPLIES
+        bounds_at(
+          current,
+          pointer_offset(current) + signed32(index))
+          AND is_writable(current) = TRUE
+          AND
+            (FORALL (updated: ptr):
+              updated_inner_pointer_result(
+                updated,
+                current,
+                original,
+                index,
+                carry,
+                result,
+                size,
+                addend))
+
+  loop_step(
+      current, original: ptr,
+      index: word32,
+      carry: word64,
+      size: word32,
+      addend: word64): bool =
+    IF signed32(index) < signed32(size) THEN
+      bounds_at(
+        current,
+        pointer_offset(current) + signed32(index))
+        AND
+          (FORALL (result: word64):
+            inner_add_result(
+              current,
+              original,
+              index,
+              carry,
+              result,
+              size,
+              addend))
+    ELSE
+      final_state(
+        current,
+        original,
+        size,
+        addend,
+        unsigned64(carry))
+    ENDIF
+
+  all_loop_steps(
+      first_updated, original: ptr,
+      size: word32,
+      addend: word64): bool =
+    FORALL
+        (index: word32),
+        (carry: word64),
+        (current: ptr):
+      same_pointer_shape(current, first_updated)
+        IMPLIES
+          loop_invariant(
+            current,
+            index,
+            carry,
+            original,
+            size,
+            addend)
+        IMPLIES
+          loop_step(
+            current,
+            original,
+            index,
+            carry,
+            size,
+            addend)
+
+  initial_update_result(
+      first_updated, original: ptr,
+      old_limb, result: word64,
+      size: word32,
+      addend: word64): bool =
+    IF unsigned64(result) < unsigned64(old_limb) THEN
+      loop_invariant(
+        first_updated,
+        one32,
+        one64,
+        original,
+        size,
+        addend)
+        AND
+          all_loop_steps(
+            first_updated,
+            original,
+            size,
+            addend)
+    ELSE
+      final_state(
+        first_updated,
+        original,
+        size,
+        addend,
+        0)
+    ENDIF
+
+  first_pointer_update_result(
+      first_updated, original: ptr,
+      old_limb, result: word64,
+      size: word32,
+      addend: word64): bool =
+    same_pointer_shape(first_updated, original)
+      IMPLIES
+        cells(first_updated)
+          =
+          update_cells(
+            cells(original),
+            pointer_offset(first_updated),
+            result)
+      IMPLIES
+        initial_update_result(
+          first_updated,
+          original,
+          old_limb,
+          result,
+          size,
+          addend)
+
+  first_add_result(
+      original: ptr,
+      old_limb, result: word64,
+      size: word32,
+      addend: word64): bool =
+    unsigned64(result)
+        =
+        mod(
+          unsigned64(old_limb) + unsigned64(addend),
+          radix)
+      IMPLIES
+        bounds_at(original, pointer_offset(original))
+          AND is_writable(original) = TRUE
+          AND
+            (FORALL (first_updated: ptr):
+              first_pointer_update_result(
+                first_updated,
+                original,
+                old_limb,
+                result,
+                size,
+                addend))
+
+  wmpn_add_1_in_place_vc: bool =
+    FORALL
+        (original: ptr),
+        (size: word32),
+        (addend: word64):
+      (valid(original, signed32(size))
+        AND 0 < signed32(size)
+        AND is_writable(original) = TRUE)
+      IMPLIES
+        bounds_at(original, pointer_offset(original))
+          AND
+            (LET old_limb: word64 =
+               cells(original)(pointer_offset(original))
+             IN
+               FORALL (result: word64):
+                 first_add_result(
+                   original,
+                   old_limb,
+                   result,
+                   size,
+                   addend))
+
+END add_1_Add_1_wmpn_add_1_in_placeqtvc

@@ -1,0 +1,110 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% frama_c/standard_algorithms/search_n/search_n_Why3_ide_VCsearch_n_has_match_post_match_goal14:
+% a search_n verification condition deriving a constant memory range from
+% unsigned bounds, memory validity, and constant-subrange invariants. This file contains no proof.
+
+search_n_Why3_ide_VCsearch_n_has_match_post_match_goal14: THEORY
+BEGIN
+  addr: TYPE = [# base: int, offset: int #]
+  allocation_table: TYPE = [int -> int]
+  integer_memory: TYPE = [addr -> int]
+  integer_conversion: TYPE = [int -> int]
+
+  shift(p: addr, k: int): addr =
+    (# base := base(p), offset := offset(p) + k #)
+
+  valid_rd(m: allocation_table, p: addr, n: int): bool =
+    0 < n IMPLIES
+      base(p) /= 0
+        AND 0 <= offset(p)
+        AND offset(p) + n <= m(base(p))
+
+  is_uint32(value: int): bool =
+    0 <= value AND value < 4294967296
+
+  is_sint32(value: int): bool =
+    -2147483648 <= value AND value < 2147483648
+
+  uint32_conversion_axioms(to_uint32: integer_conversion): bool =
+    (FORALL (value: int): is_uint32(to_uint32(value)))
+      AND
+    (FORALL (value: int):
+      is_uint32(value) IMPLIES to_uint32(value) = value)
+
+  p_constantrange(
+      memory: integer_memory,
+      a: addr,
+      first, last, value: int): bool =
+    FORALL (j: int):
+      first <= j IMPLIES
+      j < last IMPLIES
+      memory(shift(a, j)) = value
+
+  p_hasconstantsubrange(
+      memory: integer_memory,
+      a: addr,
+      m, n, value: int): bool =
+    EXISTS (j: int):
+      LET last: int = n + j IN
+        0 <= j
+          AND last <= m
+          AND p_constantrange(memory, a, j, last, value)
+
+  goal14: bool =
+    FORALL
+      (region: [int -> int]),
+      (linked: [allocation_table -> bool]),
+      (to_uint32: integer_conversion),
+      (t_1: integer_memory),
+      (a: addr),
+      (i, i_6, i_1, i_2: int),
+      (t: allocation_table),
+      (i_3, i_4, i_5, i_7: int):
+      uint32_conversion_axioms(to_uint32) IMPLIES
+      LET x: int = t_1(shift(a, i - 1)),
+          x_1: int = 1 + i_6,
+          x_2: int = i_1 + i_2,
+          a_1: addr = shift(a, i_6),
+          x_3: int = to_uint32(x_1)
+      IN
+        region(base(a)) <= 0 IMPLIES
+        linked(t) IMPLIES
+        is_uint32(i) IMPLIES
+        is_uint32(i_1) IMPLIES
+        is_uint32(i_2) IMPLIES
+        is_uint32(i_3) IMPLIES
+        is_uint32(i_4) IMPLIES
+        is_uint32(i_5) IMPLIES
+        is_uint32(i_6) IMPLIES
+        is_sint32(i_7) IMPLIES
+        p_hasconstantsubrange(t_1, a, i_4, i_2, i_7) IMPLIES
+        valid_rd(t, shift(a, 0), i_4) IMPLIES
+        is_sint32(x) IMPLIES
+        (IF 0 < i_2 THEN
+           IF i_2 <= i_4 THEN
+             i_5 = i_3
+               AND i_5 = i_4
+               AND i <= x_1
+               AND p_constantrange(t_1, a, i, i_6, i_7)
+               AND NOT p_hasconstantsubrange(t_1, a, i_6, i_2, i_7)
+               AND
+                 (IF i_6 < i_5 THEN
+                    i_1 = i
+                      AND x_2 = x_1
+                      AND t_1(a_1) = i_7
+                      AND i_1 <= x_3
+                      AND i_6 <= 4294967294
+                      AND x_3 <= 4294967295 + i_1
+                      AND valid_rd(t, a_1, 1)
+                  ELSE
+                    i_5 = i_1
+                  ENDIF)
+               AND (0 < i IMPLIES x /= i_7)
+           ELSE
+             i_4 = i_1
+           ENDIF
+         ELSE
+           i_1 = 0
+         ENDIF) IMPLIES
+        p_constantrange(t_1, a, i_1, x_2, i_7)
+END search_n_Why3_ide_VCsearch_n_has_match_post_match_goal14

@@ -1,5 +1,5 @@
 from __future__ import annotations
-from eval.pipeline.config import PROVER_DISPLAY
+from eval.pipeline.config import PROVER_DISPLAY, STATEMENT_TARGET_INSTRUCTIONS
 
 
 def build_prompt(
@@ -21,16 +21,16 @@ def build_prompt(
 
     # Statement mode asks for theorem files with admitted proofs; proof mode asks for full files
     if mode == "stmts":
+        target_instruction = STATEMENT_TARGET_INSTRUCTIONS[tgt_prover]
         system = (
             f"You are an expert in interactive theorem proving, fluent in {src_name} and {tgt_name}. "
             f"Your task is to translate theorem statements from {src_name} to {tgt_name}. "
-            f"Return only the complete {tgt_name} statement file with the proof left as sorry "
-            f"(or the equivalent admitted placeholder in {tgt_name}), "
-            f"with no explanation or markdown fencing."
+            f"Return only the complete {tgt_name} statement file, "
+            f"with no explanation or markdown fencing. {target_instruction}"
         )
         user = (
             f"Translate the following {src_name} theorem statement of \"{title}\" into {tgt_name}. "
-            f"Do not prove the theorem — leave the proof body as sorry or the equivalent placeholder.\n\n"
+            f"Do not prove the theorem. {target_instruction}\n\n"
             f"=== {src_name} statement ===\n"
             f"{source_content.strip()}\n\n"
             f"=== {tgt_name} statement ==="

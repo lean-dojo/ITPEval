@@ -1,0 +1,322 @@
+:: Statement-only formalization of the NTP4VC corpus artifact
+:: pearl/verifythis_2021_shearsort_ShearSort_sort_rowqtvc: the ShearSort
+:: sort-row verification condition copies one matrix row into a list, sorts
+:: it, optionally reverses it for descending order, writes it back, and
+:: preserves all other rows and the selected row multiplicities. This file
+:: contains no proof.
+
+environ
+  vocabularies TARSKI, XBOOLE_0, SUBSET_1, RELAT_1, FUNCT_1,
+    FUNCT_2, PARTFUN1, ZFMISC_1, NUMBERS, XREAL_0, CARD_1,
+    XXREAL_0, ARYTM_1, ARYTM_3, REAL_1, INT_1, NAT_1,
+    VALUED_0, VALUED_1, ORDINAL1, ORDINAL4, FINSEQ_1,
+    FINSEQ_2, PBOOLE, PRE_POLY, FUNCT_4, FUNCT_7, FINSET_1,
+    MARGREL1, XBOOLEAN, MCART_1;
+  notations TARSKI, XBOOLE_0, SUBSET_1, ZFMISC_1, XTUPLE_0,
+    MCART_1, RELAT_1, FUNCT_1, RELSET_1, PARTFUN1, FUNCT_2,
+    ORDINAL1, CARD_1, NUMBERS, XCMPLX_0, XREAL_0, REAL_1,
+    INT_1, NAT_1, XXREAL_0, FINSEQ_1, FINSEQ_2, PBOOLE,
+    PRE_POLY, FUNCT_4, FUNCT_7, FINSET_1, MARGREL1, XBOOLEAN;
+  constructors RELSET_1, FUNCT_2, REAL_1, NAT_1, XXREAL_0,
+    FINSEQ_1, FINSEQ_2, PRE_POLY, FUNCT_4, FUNCT_7, FINSET_1,
+    MARGREL1;
+  registrations XBOOLE_0, SUBSET_1, RELAT_1, FUNCT_1, RELSET_1,
+    FUNCT_2, NUMBERS, CARD_1, XXREAL_0, MEMBERED, VALUED_0,
+    VALUED_1, XCMPLX_0, XREAL_0, ORDINAL1, INT_1, NAT_1,
+    FINSEQ_1, FINSEQ_2, PBOOLE, PRE_POLY, FINSET_1, MARGREL1,
+    XBOOLEAN, FRAENKEL;
+  requirements REAL, NUMERALS, SUBSET, BOOLE, ARITHM;
+
+begin
+
+::$P-
+theorem
+  for nthElem being Function of [:INT*,INT:],INT,
+      SeqSet being Function of [:INT*,[:INT,INT:]:],INT*,
+      ZeroSeq,RowPrefix,SetFunctional,SeqSorted,SeqPerm,
+      SameExceptRow,CellUpdate,RowPost,ReverseInv,SwapEffect,
+      WriteVC,ReverseVC,AfterSort,ReadVC being set,
+      i,r,c being Integer,
+      ascending being Element of BOOLEAN,
+      e being Function of [:INT,INT:],INT
+  st
+    0 <= r & 0 <= c & 0 <= i & i < r &
+
+    (for s being FinSequence of INT, q being Integer holds
+       (len s = 0 implies nthElem.[s,q] = 0) &
+       (0 < len s & q < 0 implies nthElem.[s,q] = s.1) &
+       (0 <= q & q < len s implies
+          nthElem.[s,q] = s.(q+1)) &
+       (len s <= q implies nthElem.[s,q] = 0)) &
+
+    (for s being FinSequence of INT, q,v being Integer holds
+       len (SeqSet.[s,[q,v]]) = len s &
+       (for k being Integer st 0 <= k & k < len s holds
+          (k = max(q,0) implies
+             nthElem.[SeqSet.[s,[q,v]],k] = v) &
+          (k <> max(q,0) implies
+             nthElem.[SeqSet.[s,[q,v]],k] =
+               nthElem.[s,k]))) &
+
+    (for s being FinSequence of INT, n being Integer holds
+       ([s,n] in ZeroSeq iff
+         len s = n &
+         for q being Integer st 0 <= q & q < n
+         holds nthElem.[s,q] = 0)) &
+
+    (for s being FinSequence of INT,
+         f being Function of [:INT,INT:],INT,
+         row,upto being Integer
+     holds
+       ([s,[f,[row,upto]]] in RowPrefix iff
+         for k being Integer st 0 <= k & k < upto
+         holds nthElem.[s,k] = f.[row,k])) &
+
+    (for t,s being FinSequence of INT, q,v being Integer holds
+       ([t,[s,[q,v]]] in SetFunctional iff
+         for k being Integer holds
+           (k = q implies nthElem.[t,k] = v) &
+           (k <> q implies
+              nthElem.[t,k] = nthElem.[s,k]))) &
+
+    (for s being FinSequence of INT holds
+       (s in SeqSorted iff
+         for j,k being Integer st
+           0 <= j & j <= k & k < len s
+         holds nthElem.[s,j] <= nthElem.[s,k])) &
+
+    (for s,t being FinSequence of INT holds
+       ([s,t] in SeqPerm iff
+         for v being Integer holds
+           card {q where q is Integer :
+             0 <= q & q < len s & nthElem.[s,q] = v} =
+           card {q where q is Integer :
+             0 <= q & q < len s & nthElem.[t,q] = v})) &
+
+    (for f2,f0 being Function of [:INT,INT:],INT,
+         nr,nc,row being Integer
+     holds
+       ([f2,[f0,[nr,[nc,row]]]] in SameExceptRow iff
+         for k,l being Integer st
+           0 <= k & k < nr & 0 <= l & l < nc & k <> row
+         holds f2.[k,l] = f0.[k,l])) &
+
+    (for f2,f1 being Function of [:INT,INT:],INT,
+         row,col,v being Integer
+     holds
+       ([f2,[f1,[row,[col,v]]]] in CellUpdate iff
+         for k,l being Integer holds
+           (k = row & l = col implies f2.[k,l] = v) &
+           (k <> row or l <> col implies
+              f2.[k,l] = f1.[k,l]))) &
+
+    (for f2,f0 being Function of [:INT,INT:],INT,
+         nr,nc,row being Integer,
+         order being Element of BOOLEAN
+     holds
+       ([f2,[f0,[nr,[nc,[row,order]]]]] in RowPost iff
+         [f2,[f0,[nr,[nc,row]]]] in SameExceptRow &
+         (for j,k being Integer st
+            0 <= j & j <= k & k < nc
+          holds
+            (order = TRUE implies f2.[row,j] <= f2.[row,k]) &
+            (order <> TRUE implies f2.[row,k] <= f2.[row,j])) &
+         (for v being Integer holds
+            card {q where q is Integer :
+              0 <= q & q < nc & f2.[row,q] = v} =
+            card {q where q is Integer :
+              0 <= q & q < nc & f0.[row,q] = v}))) &
+
+    (for current,base being FinSequence of INT,
+         u,v being Integer
+     holds
+       ([current,[base,[u,v]]] in ReverseInv iff
+         (0 <= u & u <= v+1 & v+1 <= len current) &
+         u+v = len current-1 &
+         (for q being Integer st u <= q & q <= v
+          holds nthElem.[current,q] = nthElem.[base,q]) &
+         (for q being Integer st
+            (0 <= q & q < u) or
+            (v < q & q < len current)
+          holds
+            nthElem.[current,q] =
+              nthElem.[base,len current-1-q]) &
+         [base,current] in SeqPerm)) &
+
+    (for after,before being FinSequence of INT,
+         u,v being Integer
+     holds
+       ([after,[before,[u,v]]] in SwapEffect iff
+         ((0 <= u & u < len after) &
+          (0 <= v & v < len after)) &
+         (for q being Integer st
+            (0 <= q & q <= len after) &
+            q <> u & q <> v
+          holds nthElem.[after,q] = nthElem.[before,q]) &
+         nthElem.[after,u] = nthElem.[before,v] &
+         nthElem.[after,v] = nthElem.[before,u])) &
+
+    (for a being FinSequence of INT,
+         f being Function of [:INT,INT:],INT,
+         nr,nc,row being Integer,
+         order being Element of BOOLEAN
+     holds
+       ([a,[f,[nr,[nc,[row,order]]]]] in WriteVC iff
+         (0 <= (nc-1)+1 implies
+           [a,[f,[row,0]]] in RowPrefix &
+           (for f1 being Function of [:INT,INT:],INT holds
+              (for j being Integer st
+                 (0 <= j & j <= nc-1) &
+                 [a,[f1,[row,j]]] in RowPrefix &
+                 [f1,[f,[nr,[nc,row]]]] in SameExceptRow
+               holds
+                 (0 <= j & j < len a) &
+                 (0 <= row & row < nr) &
+                 (0 <= j & j < nc) &
+                 (for f2 being Function of [:INT,INT:],INT st
+                    [f2,[f1,[row,[j,nthElem.[a,j]]]]]
+                      in CellUpdate
+                  holds
+                    [a,[f2,[row,j+1]]] in RowPrefix &
+                    [f2,[f,[nr,[nc,row]]]]
+                      in SameExceptRow)) &
+              (([a,[f1,[row,(nc-1)+1]]] in RowPrefix &
+                [f1,[f,[nr,[nc,row]]]] in SameExceptRow)
+               implies
+                 [f1,[f,[nr,[nc,[row,order]]]]]
+                   in RowPost))) &
+         ((nc-1)+1 < 0 implies
+           [f,[f,[nr,[nc,[row,order]]]]] in RowPost))) &
+
+    (for base being FinSequence of INT,
+         f being Function of [:INT,INT:],INT,
+         nr,nc,row being Integer,
+         order being Element of BOOLEAN
+     holds
+       ([base,[f,[nr,[nc,[row,order]]]]] in ReverseVC iff
+         [base,[base,[0,len base-1]]] in ReverseInv &
+         (for v,u being Integer,
+              current being FinSequence of INT st
+            len current = len base &
+            [current,[base,[u,v]]] in ReverseInv
+          holds
+            (u < v implies
+              (0 <= v & v < len current) &
+              (0 <= u & u < len current) &
+              (0 <= v & v < len current) &
+              (len (SeqSet.[current,
+                       [v,nthElem.[current,u]]]) = len current
+               implies
+                 ([SeqSet.[current,[v,nthElem.[current,u]]],
+                    [current,[v,nthElem.[current,u]]]]
+                    in SetFunctional
+                  implies
+                    (0 <= u &
+                     u < len (SeqSet.[current,
+                               [v,nthElem.[current,u]]])) &
+                    (len
+                       (SeqSet.[
+                          SeqSet.[current,
+                            [v,nthElem.[current,u]]],
+                          [u,nthElem.[current,v]]]) =
+                       len (SeqSet.[current,
+                              [v,nthElem.[current,u]]])
+                     implies
+                       ([SeqSet.[
+                           SeqSet.[current,
+                             [v,nthElem.[current,u]]],
+                           [u,nthElem.[current,v]]],
+                         [SeqSet.[current,
+                            [v,nthElem.[current,u]]],
+                          [u,nthElem.[current,v]]]]
+                         in SetFunctional
+                        implies
+                          ([SeqSet.[
+                              SeqSet.[current,
+                                [v,nthElem.[current,u]]],
+                              [u,nthElem.[current,v]]],
+                            [current,[u,v]]]
+                            in SwapEffect &
+                           ([SeqSet.[
+                               SeqSet.[current,
+                                 [v,nthElem.[current,u]]],
+                               [u,nthElem.[current,v]]],
+                             current] in SeqPerm
+                            implies
+                              (0 <= v-u &
+                               v-1-(u+1) < v-u) &
+                              [SeqSet.[
+                                  SeqSet.[current,
+                                    [v,nthElem.[current,u]]],
+                                  [u,nthElem.[current,v]]],
+                                [base,[u+1,v-1]]]
+                                in ReverseInv))))))) &
+            (u >= v implies
+              [current,[f,[nr,[nc,[row,order]]]]]
+                in WriteVC))) &
+
+    (for sorted being FinSequence of INT,
+         f being Function of [:INT,INT:],INT,
+         nr,nc,row being Integer,
+         order being Element of BOOLEAN
+     holds
+       ([sorted,[f,[nr,[nc,[row,order]]]]] in AfterSort iff
+         (order <> TRUE implies
+           [sorted,[f,[nr,[nc,[row,order]]]]] in ReverseVC) &
+         (order = TRUE implies
+           [sorted,[f,[nr,[nc,[row,order]]]]] in WriteVC))) &
+
+    (for a being FinSequence of INT,
+         f being Function of [:INT,INT:],INT,
+         nr,nc,row being Integer,
+         order being Element of BOOLEAN
+     holds
+       ([a,[f,[nr,[nc,[row,order]]]]] in ReadVC iff
+         (0 <= (nc-1)+1 implies
+           [a,[f,[row,0]]] in RowPrefix &
+           (for current being FinSequence of INT st
+              len current = len a
+            holds
+              (for j being Integer st
+                 (0 <= j & j <= nc-1) &
+                 [current,[f,[row,j]]] in RowPrefix
+               holds
+                 (0 <= row & row < nr) &
+                 (0 <= j & j < nc) &
+                 (0 <= j & j < len current) &
+                 (len
+                    (SeqSet.[current,[j,f.[row,j]]]) =
+                    len current
+                  implies
+                    ([SeqSet.[current,[j,f.[row,j]]],
+                       [current,[j,f.[row,j]]]]
+                       in SetFunctional
+                     implies
+                       [SeqSet.[current,[j,f.[row,j]]],
+                         [f,[row,j+1]]] in RowPrefix))) &
+              ([current,[f,[row,(nc-1)+1]]] in RowPrefix
+               implies
+                 for sorted being FinSequence of INT st
+                   len sorted = len current
+                 holds
+                   (sorted in SeqSorted &
+                    [sorted,current] in SeqPerm)
+                   implies
+                     [sorted,[f,[nr,[nc,[row,order]]]]]
+                       in AfterSort))) &
+         ((nc-1)+1 < 0 implies
+           for current being FinSequence of INT st
+             len current = len a
+           holds
+             (current in SeqSorted &
+              [current,a] in SeqPerm)
+             implies
+               [current,[f,[nr,[nc,[row,order]]]]]
+                 in AfterSort))))
+  holds
+    0 <= c &
+    (for a being FinSequence of INT st [a,c] in ZeroSeq holds
+       [a,[e,[r,[c,[i,ascending]]]]] in ReadVC)
+proof
+end;
+::$P+

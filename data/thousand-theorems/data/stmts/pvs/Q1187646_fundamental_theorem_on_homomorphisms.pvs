@@ -1,0 +1,113 @@
+% Statement-only formalization of the thousand-theorems corpus artifact Q1187646
+% (thousand-theorems__pvs__Q1187646), "Fundamental theorem on homomorphisms":
+% the canonical multiplicative isomorphism from the quotient of a group by a
+% homomorphism's kernel to that homomorphism's range.
+% This file contains no proof.
+
+Q1187646_fundamental_theorem_on_homomorphisms[
+  G: TYPE+,
+  H: TYPE+,
+  g_mul: [G, G -> G],
+  g_inv: [G -> G],
+  g_one: G,
+  h_mul: [H, H -> H],
+  h_inv: [H -> H],
+  h_one: H,
+  phi: [G -> H]
+]: THEORY
+BEGIN
+
+  g_set: TYPE = [G -> bool]
+  h_set: TYPE = [H -> bool]
+  canonical_relation: TYPE = [g_set, H -> bool]
+
+  g_group_laws: bool =
+    (FORALL (x, y, z: G):
+      g_mul(g_mul(x, y), z) = g_mul(x, g_mul(y, z)))
+      AND (FORALL (x: G):
+        g_mul(g_one, x) = x
+          AND g_mul(x, g_one) = x)
+      AND (FORALL (x: G):
+        g_mul(g_inv(x), x) = g_one
+          AND g_mul(x, g_inv(x)) = g_one)
+
+  h_group_laws: bool =
+    (FORALL (x, y, z: H):
+      h_mul(h_mul(x, y), z) = h_mul(x, h_mul(y, z)))
+      AND (FORALL (x: H):
+        h_mul(h_one, x) = x
+          AND h_mul(x, h_one) = x)
+      AND (FORALL (x: H):
+        h_mul(h_inv(x), x) = h_one
+          AND h_mul(x, h_inv(x)) = h_one)
+
+  is_homomorphism: bool =
+    phi(g_one) = h_one
+      AND (FORALL (x, y: G):
+        phi(g_mul(x, y)) = h_mul(phi(x), phi(y)))
+
+  kernel: g_set =
+    LAMBDA (x: G): phi(x) = h_one
+
+  range: h_set =
+    LAMBDA (y: H): EXISTS (x: G): y = phi(x)
+
+  left_coset(g: G, subgroup: g_set): g_set =
+    LAMBDA (x: G):
+      EXISTS (a: G):
+        subgroup(a) AND x = g_mul(g, a)
+
+  is_kernel_coset(C: g_set): bool =
+    EXISTS (g: G): C = left_coset(g, kernel)
+
+  quotient_product(C, D, E: g_set): bool =
+    EXISTS (x, y: G):
+      C = left_coset(x, kernel)
+        AND D = left_coset(y, kernel)
+        AND E = left_coset(g_mul(x, y), kernel)
+
+  induced_relation(C: g_set, y: H): bool =
+    EXISTS (x: G):
+      C = left_coset(x, kernel)
+        AND y = phi(x)
+
+  is_bijection_onto_range(relation: canonical_relation): bool =
+    (FORALL (C: g_set), (y: H):
+      relation(C, y) IMPLIES is_kernel_coset(C) AND range(y))
+      AND (FORALL (C: g_set):
+        is_kernel_coset(C) IMPLIES
+          EXISTS (y: H): range(y) AND relation(C, y))
+      AND (FORALL (C: g_set), (y, z: H):
+        is_kernel_coset(C)
+          AND range(y)
+          AND range(z)
+          AND relation(C, y)
+          AND relation(C, z)
+          IMPLIES y = z)
+      AND (FORALL (y: H):
+        range(y) IMPLIES
+          EXISTS (C: g_set):
+            is_kernel_coset(C) AND relation(C, y))
+      AND (FORALL (C, D: g_set), (y: H):
+        is_kernel_coset(C)
+          AND is_kernel_coset(D)
+          AND range(y)
+          AND relation(C, y)
+          AND relation(D, y)
+          IMPLIES C = D)
+
+  preserves_quotient_product(relation: canonical_relation): bool =
+    FORALL (C, D, E: g_set), (x, y, z: H):
+      quotient_product(C, D, E)
+        AND relation(C, x)
+        AND relation(D, y)
+        AND relation(E, z)
+        IMPLIES h_mul(x, y) = z
+
+  quotientKerEquivRange: bool =
+    (g_group_laws AND h_group_laws AND is_homomorphism)
+      IMPLIES
+        (is_bijection_onto_range(induced_relation)
+          AND preserves_quotient_product(induced_relation))
+
+END Q1187646_fundamental_theorem_on_homomorphisms

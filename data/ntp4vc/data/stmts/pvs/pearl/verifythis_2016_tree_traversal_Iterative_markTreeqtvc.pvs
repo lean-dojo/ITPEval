@@ -1,0 +1,701 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/verifythis_2016_tree_traversal_Iterative_markTreeqtvc: the iterative
+% Morris-style binary-tree marking verification condition, including the
+% explicit call-stack invariant, pointer rotations, termination decrease, and
+% final tree-shape and marking properties. This file contains no proof.
+
+verifythis_2016_tree_traversal_Iterative_markTreeqtvc[
+  loc: TYPE+,
+  null_loc: loc
+]: THEORY
+BEGIN
+
+  kind: DATATYPE
+  BEGIN
+    Parent: Parent?
+    Left: Left?
+    Right: Right?
+  END kind
+
+  phase: DATATYPE
+  BEGIN
+    GoLeft: GoLeft?
+    GoRight: GoRight?
+    GoBack: GoBack?
+    Finish: Finish?
+  END phase
+
+  pointer_row: TYPE = [loc -> loc]
+  pointer_memory: TYPE = [kind -> pointer_row]
+  mark_memory: TYPE = [loc -> bool]
+
+  memory: TYPE =
+    [# accessor: pointer_memory,
+       mark: mark_memory #]
+
+  tree: DATATYPE
+  BEGIN
+    Empty: Empty?
+    Node(
+      left_tree: tree,
+      node_location: loc,
+      right_tree: tree): Node?
+  END tree
+
+  tree_option: DATATYPE
+  BEGIN
+    NoCall: NoCall?
+    SomeCall(call_tree: tree): SomeCall?
+  END tree_option
+
+  snap: TYPE =
+    [# pointers: pointer_memory,
+       cursor: loc,
+       parent: loc,
+       marks: mark_memory #]
+
+  frame: TYPE =
+    [# memo0: snap,
+       frame_tree: tree,
+       tleft: tree,
+       pleft: loc,
+       tright: tree,
+       pright: loc,
+       memo1: snap,
+       memo2: snap,
+       memo3: snap,
+       memo4: snap #]
+
+  stack: DATATYPE
+  BEGIN
+    Bottom: Bottom?
+    Running(
+      previous_stack: stack,
+      program_counter: int,
+      running_frame: frame): Running?
+    Done: Done?
+  END stack
+
+  update_marks(
+      old_marks: mark_memory,
+      point: loc,
+      value: bool): mark_memory =
+    old_marks WITH [(point) := value]
+
+  update_pointers(
+      old_pointers: pointer_memory,
+      field: kind,
+      point, value: loc): pointer_memory =
+    old_pointers WITH
+      [(field) := old_pointers(field) WITH [(point) := value]]
+
+  tree_size(t: tree): RECURSIVE int =
+    CASES t OF
+      Empty:
+        0,
+      Node(left, root, right):
+        1 + tree_size(left) + tree_size(right)
+    ENDCASES
+  MEASURE t BY <<
+
+  is_tree(
+      ptrs: pointer_memory,
+      t: tree,
+      current, parent_node: loc): RECURSIVE bool =
+    CASES t OF
+      Empty:
+        current = null_loc,
+      Node(left, root, right):
+        current /= null_loc
+          AND current = root
+          AND ptrs(Parent)(current) = parent_node
+          AND
+            (LET left_child: loc = ptrs(Left)(current),
+                 right_child: loc = ptrs(Right)(current)
+             IN
+               ((left_child = null_loc)
+                  IFF (right_child = null_loc))
+               AND is_tree(ptrs, left, left_child, current)
+               AND is_tree(ptrs, right, right_child, current))
+    ENDCASES
+  MEASURE t BY <<
+
+  in_footprint(node: loc, t: tree): RECURSIVE bool =
+    CASES t OF
+      Empty:
+        FALSE,
+      Node(left, root, right):
+        node = root
+          OR in_footprint(node, left)
+          OR in_footprint(node, right)
+    ENDCASES
+  MEASURE t BY <<
+
+  ext(
+      t: tree,
+      first, second: pointer_memory): bool =
+    FORALL (field: kind), (node: loc):
+      in_footprint(node, t)
+        IMPLIES first(field)(node) = second(field)(node)
+
+  unchanged(first, second: pointer_memory): bool =
+    FORALL (field: kind), (node: loc):
+      first(field)(node) = second(field)(node)
+
+  was_marked(
+      t: tree,
+      old_marks, new_marks: mark_memory): bool =
+    (FORALL (node: loc):
+      in_footprint(node, t)
+        IMPLIES new_marks(node) = TRUE)
+    AND
+      (FORALL (node: loc):
+        NOT in_footprint(node, t)
+          IMPLIES new_marks(node) = old_marks(node))
+
+  next_phase(ph: phase): phase =
+    CASES ph OF
+      GoLeft:
+        GoRight,
+      GoRight:
+        GoBack,
+      GoBack:
+        GoLeft,
+      Finish:
+        Finish
+    ENDCASES
+
+  rotated(
+      first, second: pointer_memory,
+      ph: phase,
+      current: loc): bool =
+    (FORALL (field: kind), (node: loc):
+      node /= current
+        IMPLIES first(field)(node) = second(field)(node))
+    AND (ph /= Finish IMPLIES current /= null_loc)
+    AND
+      CASES ph OF
+        GoLeft:
+          unchanged(first, second),
+        GoRight:
+          second(Left)(current) = first(Right)(current)
+            AND second(Right)(current) = first(Parent)(current)
+            AND second(Parent)(current) = first(Left)(current),
+        GoBack:
+          first(Left)(current) = second(Right)(current)
+            AND first(Right)(current) = second(Parent)(current)
+            AND first(Parent)(current) = second(Left)(current),
+        Finish:
+          current = null_loc
+      ENDCASES
+
+  frame_memo(f: frame, pc: int): snap =
+    IF pc <= 0 THEN
+      memo0(f)
+    ELSIF pc <= 1 THEN
+      memo1(f)
+    ELSIF pc <= 2 THEN
+      memo2(f)
+    ELSIF pc <= 3 THEN
+      memo3(f)
+    ELSE
+      memo4(f)
+    ENDIF
+
+  bloc_rel(
+      initial_pointers: pointer_memory,
+      ph: phase,
+      first, second: snap): bool =
+    parent(second) = cursor(first)
+      AND cursor(second) =
+            pointers(second)(Parent)(parent(second))
+      AND marks(second)(parent(second)) = TRUE
+      AND
+        (FORALL (node: loc):
+          node /= parent(second)
+            IMPLIES marks(second)(node) = marks(first)(node))
+      AND
+        (IF pointers(first)(Left)(cursor(first)) = null_loc
+              AND null_loc =
+                    pointers(first)(Right)(cursor(first))
+         THEN
+           pointers(second) = pointers(first)
+         ELSE
+           rotated(
+             initial_pointers,
+             pointers(second),
+             next_phase(ph),
+             parent(second))
+         ENDIF)
+
+  rec_rel(t: tree, first, second: snap): bool =
+    unchanged(pointers(first), pointers(second))
+      AND cursor(second) = parent(first)
+      AND parent(second) = cursor(first)
+      AND was_marked(t, marks(first), marks(second))
+
+  is_stack(
+      t: tree,
+      stop, current: snap,
+      st: stack,
+      calls: tree_option): RECURSIVE bool =
+    CASES st OF
+      Bottom:
+        stop = current AND calls = SomeCall(t),
+      Running(previous, pc, f):
+        0 <= pc
+          AND pc <= 4
+          AND
+            (LET initial: snap = memo0(f)
+             IN
+               is_stack(
+                 t,
+                 stop,
+                 initial,
+                 previous,
+                 SomeCall(frame_tree(f)))
+               AND cursor(initial) /= null_loc
+               AND
+                 is_tree(
+                   pointers(initial),
+                   frame_tree(f),
+                   cursor(initial),
+                   parent(initial))
+               AND
+                 frame_tree(f) =
+                   Node(tleft(f), cursor(initial), tright(f))
+               AND pleft(f) =
+                     pointers(initial)(Left)(cursor(initial))
+               AND pright(f) =
+                     pointers(initial)(Right)(cursor(initial))
+               AND
+                 (1 <= pc
+                   IMPLIES
+                     bloc_rel(
+                       pointers(initial),
+                       GoLeft,
+                       initial,
+                       memo1(f))
+                     AND pleft(f) /= null_loc
+                     AND pright(f) /= null_loc)
+               AND
+                 (2 <= pc
+                   IMPLIES rec_rel(tleft(f), memo1(f), memo2(f)))
+               AND
+                 (3 <= pc
+                   IMPLIES
+                     bloc_rel(
+                       pointers(initial),
+                       GoRight,
+                       memo2(f),
+                       memo3(f)))
+               AND
+                 (4 <= pc
+                   IMPLIES rec_rel(tright(f), memo3(f), memo4(f)))
+               AND frame_memo(f, pc) = current
+               AND
+                 CASES calls OF
+                   NoCall:
+                     pc /= 1 AND pc /= 3,
+                   SomeCall(called_tree):
+                     IF pc = 1 THEN
+                       called_tree = tleft(f)
+                     ELSE
+                       pc = 3 AND called_tree = tright(f)
+                     ENDIF
+                 ENDCASES),
+      Done:
+        rec_rel(t, stop, current) AND calls = NoCall
+    ENDCASES
+  MEASURE st BY <<
+
+  stack_size(st: stack): RECURSIVE int =
+    CASES st OF
+      Bottom:
+        1,
+      Running(previous, pc, f):
+        stack_size(previous)
+          + (100 - pc)
+          +
+            (IF pc = 0 THEN
+               100 * (tree_size(tleft(f)) + tree_size(tright(f)))
+             ELSIF pc <= 2 THEN
+               100 * tree_size(tright(f))
+             ELSE
+               0
+             ENDIF),
+      Done:
+        0
+    ENDCASES
+  MEASURE st BY <<
+
+  active_bloc(
+      st: stack,
+      current, next: snap): bool =
+    CASES st OF
+      Bottom:
+        FALSE,
+      Running(previous, pc, f):
+        bloc_rel(
+          pointers(memo0(f)),
+          IF pc = 0 THEN
+            GoLeft
+          ELSIF pc = 2 THEN
+            GoRight
+          ELSE
+            GoBack
+          ENDIF,
+          current,
+          next),
+      Done:
+        FALSE
+    ENDCASES
+
+  continuation_case(
+      t: tree,
+      stop: snap,
+      st: stack,
+      current, next: snap): bool =
+    is_stack(t, stop, current, st, NoCall)
+      AND active_bloc(st, current, next)
+
+  descent_obligation(
+      t: tree,
+      stop, next: snap,
+      previous_stack: stack,
+      branch_pointer: loc,
+      next_pointers: pointer_memory,
+      next_cursor, next_parent: loc,
+      next_marks: mark_memory): bool =
+    FORALL (smaller_stack: stack):
+      (is_stack(t, stop, next, smaller_stack, NoCall)
+        AND stack_size(smaller_stack) < stack_size(previous_stack))
+      IMPLIES
+        (0 <= stack_size(previous_stack)
+          AND stack_size(smaller_stack) < stack_size(previous_stack))
+        AND (branch_pointer = null_loc IMPLIES TRUE)
+        AND pointers(next) = next_pointers
+        AND cursor(next) = next_cursor
+        AND parent(next) = next_parent
+        AND marks(next) = next_marks
+        AND is_stack(t, stop, next, smaller_stack, NoCall)
+
+  leaf_branch(
+      t: tree,
+      stop, current: snap,
+      st: stack,
+      updated_memory: memory): bool =
+    cursor(current) /= null_loc
+      AND
+        (FORALL (next: snap):
+          pointers(next) = accessor(updated_memory)
+            AND cursor(next) =
+                  accessor(updated_memory)(Parent)(cursor(current))
+            AND parent(next) = cursor(current)
+            AND marks(next) = mark(updated_memory)
+          IMPLIES
+            continuation_case(t, stop, st, current, next)
+              AND
+                descent_obligation(
+                  t,
+                  stop,
+                  next,
+                  st,
+                  accessor(updated_memory)(Parent)(cursor(current)),
+                  accessor(updated_memory),
+                  accessor(updated_memory)(Parent)(cursor(current)),
+                  cursor(current),
+                  mark(updated_memory)))
+
+  nonleaf_branch(
+      t: tree,
+      stop, current: snap,
+      st: stack,
+      marked_memory: memory): bool =
+    cursor(current) /= null_loc
+      AND cursor(current) /= null_loc
+      AND
+        (LET left_field: kind = Left
+         IN
+           cursor(current) /= null_loc
+             AND
+               (FORALL (left_updated: memory):
+                 mark(left_updated) = mark(marked_memory)
+                   IMPLIES
+                     accessor(left_updated) =
+                       update_pointers(
+                         accessor(marked_memory),
+                         left_field,
+                         cursor(current),
+                         accessor(marked_memory)(Right)(cursor(current)))
+                   IMPLIES
+                     cursor(current) /= null_loc
+                       AND
+                         (LET right_field: kind = Right
+                          IN
+                            cursor(current) /= null_loc
+                              AND
+                                (FORALL (right_updated: memory):
+                                  mark(right_updated) = mark(left_updated)
+                                    IMPLIES
+                                      accessor(right_updated) =
+                                        update_pointers(
+                                          accessor(left_updated),
+                                          right_field,
+                                          cursor(current),
+                                          accessor(left_updated)(Parent)
+                                            (cursor(current)))
+                                    IMPLIES
+                                      (LET parent_field: kind = Parent
+                                       IN
+                                         cursor(current) /= null_loc
+                                           AND
+                                             (FORALL
+                                                (fully_updated: memory):
+                                               mark(fully_updated) =
+                                                 mark(right_updated)
+                                                 IMPLIES
+                                                   accessor(fully_updated) =
+                                                     update_pointers(
+                                                       accessor(
+                                                         right_updated),
+                                                       parent_field,
+                                                       cursor(current),
+                                                       accessor(
+                                                         marked_memory)
+                                                         (Left)
+                                                         (cursor(current)))
+                                                 IMPLIES
+                                                   (FORALL (next: snap):
+                                                     pointers(next) =
+                                                       accessor(
+                                                         fully_updated)
+                                                       AND cursor(next) =
+                                                         accessor(
+                                                           marked_memory)
+                                                           (Left)
+                                                           (cursor(current))
+                                                       AND parent(next) =
+                                                         cursor(current)
+                                                       AND marks(next) =
+                                                         mark(fully_updated)
+                                                     IMPLIES
+                                                       continuation_case(
+                                                         t,
+                                                         stop,
+                                                         st,
+                                                         current,
+                                                         next)
+                                                       AND
+                                                         descent_obligation(
+                                                           t,
+                                                           stop,
+                                                           next,
+                                                           st,
+                                                           accessor(
+                                                             marked_memory)
+                                                             (Left)
+                                                             (cursor(current)),
+                                                           accessor(
+                                                             fully_updated),
+                                                           accessor(
+                                                             marked_memory)
+                                                             (Left)
+                                                             (cursor(current)),
+                                                           cursor(current),
+                                                           mark(
+                                                             fully_updated)))))))))
+
+  body_branch(
+      t: tree,
+      stop, current: snap,
+      st: stack,
+      old_memory: memory): bool =
+    cursor(current) /= null_loc
+      AND
+        (FORALL (marked_memory: memory):
+          accessor(marked_memory) = accessor(old_memory)
+            IMPLIES
+              mark(marked_memory) =
+                update_marks(mark(old_memory), cursor(current), TRUE)
+            IMPLIES
+              cursor(current) /= null_loc
+                AND
+                  (LET left_child: loc =
+                         accessor(marked_memory)(Left)(cursor(current))
+                   IN
+                     (left_child = null_loc
+                       IMPLIES cursor(current) /= null_loc)
+                     AND
+                       (FORALL (both_children_null: bool):
+                         (IF left_child = null_loc THEN
+                            both_children_null =
+                              (IF accessor(marked_memory)(Right)
+                                    (cursor(current)) = null_loc
+                               THEN TRUE
+                               ELSE FALSE
+                               ENDIF)
+                          ELSE
+                            both_children_null = FALSE
+                          ENDIF)
+                         IMPLIES
+                           (IF both_children_null = TRUE THEN
+                              leaf_branch(
+                                t,
+                                stop,
+                                current,
+                                st,
+                                marked_memory)
+                            ELSE
+                              nonleaf_branch(
+                                t,
+                                stop,
+                                current,
+                                st,
+                                marked_memory)
+                            ENDIF))))
+
+  final_branch(
+      initial_memory, current_memory: memory,
+      t: tree,
+      root: loc,
+      stop: snap): bool =
+    (ext(t, pointers(stop), accessor(current_memory))
+      AND is_tree(pointers(stop), t, root, null_loc))
+    AND
+      (is_tree(accessor(current_memory), t, root, null_loc)
+        IMPLIES
+          is_tree(accessor(current_memory), t, root, null_loc)
+            AND unchanged(
+                  accessor(initial_memory),
+                  accessor(current_memory))
+            AND was_marked(
+                  t,
+                  mark(initial_memory),
+                  mark(current_memory)))
+
+  exit_branch(
+      initial_memory, current_memory: memory,
+      t: tree,
+      root: loc,
+      stop: snap,
+      st: stack): bool =
+    Done?(st)
+      AND
+        (Done?(st)
+          IMPLIES
+            final_branch(
+              initial_memory,
+              current_memory,
+              t,
+              root,
+              stop))
+
+  guard_result(
+      entered: bool,
+      current: snap): bool =
+    FORALL (result: bool):
+      (IF entered = TRUE THEN
+         result =
+           (IF cursor(current) = null_loc THEN TRUE ELSE FALSE ENDIF)
+       ELSE
+         result = FALSE
+       ENDIF)
+      IMPLIES
+        ((result = TRUE) IFF (cursor(current) = null_loc))
+
+  loop_iteration_obligation(
+      initial_memory: memory,
+      t: tree,
+      root: loc,
+      stop: snap,
+      entered: bool,
+      st: stack,
+      current: snap,
+      current_memory: memory): bool =
+    ((cursor(current) = null_loc IMPLIES entered = TRUE)
+      AND pointers(current) = accessor(current_memory)
+      AND marks(current) = mark(current_memory)
+      AND is_stack(t, stop, current, st, NoCall))
+    IMPLIES
+      guard_result(entered, current)
+        AND
+          (IF cursor(current) /= null_loc THEN
+             body_branch(t, stop, current, st, current_memory)
+           ELSE
+             exit_branch(
+               initial_memory,
+               current_memory,
+               t,
+               root,
+               stop,
+               st)
+           ENDIF)
+
+  stack_obligation(
+      initial_memory: memory,
+      t: tree,
+      root: loc,
+      stop: snap): bool =
+    FORALL (st: stack):
+      (is_stack(t, stop, stop, st, NoCall)
+        AND stack_size(st) <= stack_size(Bottom) + 100 * tree_size(t))
+      IMPLIES
+        (root /= null_loc
+          AND pointers(stop) = accessor(initial_memory)
+          AND cursor(stop) = root
+          AND parent(stop) = null_loc
+          AND marks(stop) = mark(initial_memory)
+          AND is_stack(t, stop, stop, st, NoCall))
+        AND
+          (FORALL
+             (entered: bool),
+             (st1: stack),
+             (current: snap),
+             (current_memory: memory):
+             loop_iteration_obligation(
+               initial_memory,
+               t,
+               root,
+               stop,
+               entered,
+               st1,
+               current,
+               current_memory))
+
+  initial_obligation(
+      initial_memory: memory,
+      t: tree,
+      root: loc,
+      stop: snap): bool =
+    (pointers(stop) = accessor(initial_memory)
+      AND cursor(stop) = root
+      AND parent(stop) = null_loc
+      AND marks(stop) = mark(initial_memory))
+    IMPLIES
+      (is_stack(t, stop, stop, Bottom, SomeCall(t))
+        AND is_tree(
+              pointers(stop),
+              t,
+              cursor(stop),
+              parent(stop))
+        AND cursor(stop) /= null_loc)
+      AND stack_obligation(initial_memory, t, root, stop)
+
+  markTree_vc: bool =
+    FORALL
+      (initial_memory: memory),
+      (t: tree),
+      (root: loc):
+      is_tree(accessor(initial_memory), t, root, null_loc)
+        IMPLIES
+          root /= null_loc
+            IMPLIES
+              (FORALL (stop: snap):
+                initial_obligation(
+                  initial_memory,
+                  t,
+                  root,
+                  stop))
+
+END verifythis_2016_tree_traversal_Iterative_markTreeqtvc

@@ -1,0 +1,34 @@
+From Stdlib Require Import Strings.String.
+From Stdlib Require Import String Ascii.
+From Stdlib Require Arith.
+From stdpp Require Import base.
+From stdpp Require Import fin_maps.
+From stdpp Require Import gmap.
+From stdpp Require Import base gmultiset.
+From Stdlib Require Classical.
+From Stdlib Require Import ZArith.
+From stdpp.bitvector Require Import definitions tactics.
+From Stdlib Require Import Sorting.Sorted.
+From Stdlib Require Import Reals.Rbasic_fun.
+From Stdlib Require Import Reals.Abstract.ConstructiveAbs.
+From Stdlib Require Import Reals.Rdefinitions.
+From stdpp Require Import list_relations.
+From stdpp Require Import list_numbers.
+From stdpp Require Import functions.
+From Stdlib Require Import ClassicalEpsilon.
+From stdpp Require Import base decidable.
+From Stdlib Require Import ZArith.Zeuclid.
+From Stdlib Require Import ZArith.Znumtheory.
+From stdpp Require Import propset.
+From Stdlib Require Import Reals.
+Require Import Why3.Base.
+Require Import Why3.why3.Ref.Ref.
+Require Import Why3.map.Const.
+Require Import Why3.map.MapExt.
+Require Import verifythis_2016_tree_traversal_vcg.verifythis_2016_tree_traversal.Memory.
+Require Import verifythis_2016_tree_traversal_vcg.verifythis_2016_tree_traversal.TreeShape.
+Require Import Why3.bintree.Tree.
+Require Import Why3.bintree.Size.
+Open Scope Z_scope.
+Theorem markTree'vc (memo : memory) (t : tree loc) (root : loc) (fact0 : is_tree (accessor memo) t root null) (fact1 : ¬ root = null) : let o1 : loc := null in (∀(entered : bool) (x : loc) (memo1 : memory) (mem0 : kind -> loc -> loc) (ph : phase), rotated mem0 (accessor memo1) ph x ∧ (ph = Finish -> entered = true) -> (∀(o2 : bool), (if decide (entered = true) then o2 = (if decide (x = null) then true else false) else o2 = false) -> (if decide (o2 = true) then ph = Finish else ¬ x = null ∧ (∀(memo2 : memory), accessor memo2 = accessor memo1 -> mark memo2 = fun_updt (mark memo1) x true -> ¬ x = null ∧ (let o3 : loc := accessor memo2 Left x in (o3 = null -> ¬ x = null) ∧ (∀(o4 : bool), (if decide (o3 = null) then o4 = (if decide (accessor memo2 Right x = null) then true else false) else o4 = false) -> (if decide (o4 = true) then ¬ x = null ∧ ¬ ph = Finish ∧ mark memo2 x = true ∧ (∀(l : loc), ¬ l = x -> mark memo2 l = mark memo1 l) ∧ (if decide (accessor memo1 Left x = null ∧ null = accessor memo1 Right x) then accessor memo2 = accessor memo1 else rotated mem0 (accessor memo2) (next_phase ph) x) else ¬ x = null ∧ ¬ x = null ∧ (let o5 : kind := Left in ¬ x = null ∧ (∀(memo3 : memory), mark memo3 = mark memo2 -> accessor memo3 = fun_updt (accessor memo2) o5 (fun_updt (accessor memo2 o5) x (accessor memo2 Right x)) -> ¬ x = null ∧ (let o6 : kind := Right in ¬ x = null ∧ (∀(memo4 : memory), mark memo4 = mark memo3 -> accessor memo4 = fun_updt (accessor memo3) o6 (fun_updt (accessor memo3 o6) x (accessor memo3 Parent x)) -> (let o7 : kind := Parent in ¬ x = null ∧ (∀(memo5 : memory), mark memo5 = mark memo4 -> accessor memo5 = fun_updt (accessor memo4) o7 (fun_updt (accessor memo4 o7) x (accessor memo2 Left x)) -> accessor memo2 Left x = accessor memo5 Parent x ∧ ¬ ph = Finish ∧ mark memo5 x = true ∧ (∀(l : loc), ¬ l = x -> mark memo5 l = mark memo1 l) ∧ (if decide (accessor memo1 Left x = null ∧ null = accessor memo1 Right x) then accessor memo5 = accessor memo1 else rotated mem0 (accessor memo5) (next_phase ph) x)))))))))))))) ∧ (∀(z : loc) (x : loc) (memo1 : memory) (t1 : tree loc), ¬ x = null ∧ is_tree (accessor memo1) t1 x z -> (let mem0 : kind -> loc -> loc := accessor memo1 in ¬ x = null ∧ (let x_lf : loc := accessor memo1 Left x in ¬ x = null ∧ (let x_rg : loc := accessor memo1 Right x in (match t1 with | Empty => False | Node l _ r => True end) ∧ (∀(lf : tree loc) (rg : tree loc), (match t1 with | Empty => False | Node l _ r => lf = l ∧ rg = r end) -> is_tree mem0 (Node lf x rg) x z ∧ (¬ x ∈ footprint lf ∧ ¬ x ∈ footprint rg -> (let o2 : phase := GoLeft in rotated mem0 (accessor memo1) o2 x ∧ (∀(memo2 : memory), mark memo2 x = true ∧ (∀(l : loc), ¬ l = x -> mark memo2 l = mark memo1 l) ∧ (if decide (accessor memo1 Left x = null ∧ null = accessor memo1 Right x) then accessor memo2 = accessor memo1 else rotated mem0 (accessor memo2) (next_phase o2) x) -> (∀(result : bool), (if decide (x_lf = null) then result = (if decide (x_rg = null) then true else false) else result = false) -> (result = true) = (x_lf = null ∧ x_rg = null) ∧ (result = true -> lf = (Empty : tree loc) ∧ rg = (Empty : tree loc))) ∧ ((x_lf = null ∧ x_rg = null -> lf = (Empty : tree loc) ∧ rg = (Empty : tree loc)) -> (if decide (¬ (x_lf = null ∧ x_rg = null)) then (ext (footprint lf) mem0 (accessor memo2) ∧ is_tree mem0 lf x_lf x) ∧ (is_tree (accessor memo2) lf x_lf x -> ((match t1 with | Empty => False | Node f _ f1 => f = lf ∨ f1 = lf end) ∧ ¬ accessor memo2 Parent x = null ∧ is_tree (accessor memo2) lf (accessor memo2 Parent x) x) ∧ (∀(memo3 : memory), unchanged (accessor memo2) (accessor memo3) ∧ was_marked lf (mark memo2) (mark memo3) -> (let o3 : phase := GoRight in rotated mem0 (accessor memo3) o3 x ∧ (∀(memo4 : memory), mark memo4 x = true ∧ (∀(l : loc), ¬ l = x -> mark memo4 l = mark memo3 l) ∧ (if decide (accessor memo3 Left x = null ∧ null = accessor memo3 Right x) then accessor memo4 = accessor memo3 else rotated mem0 (accessor memo4) (next_phase o3) x) -> (ext (footprint rg) mem0 (accessor memo4) ∧ is_tree mem0 rg x_rg x) ∧ (is_tree (accessor memo4) rg x_rg x -> ((match t1 with | Empty => False | Node f _ f1 => f = rg ∨ f1 = rg end) ∧ ¬ accessor memo4 Parent x = null ∧ is_tree (accessor memo4) rg (accessor memo4 Parent x) x) ∧ (∀(memo5 : memory), unchanged (accessor memo4) (accessor memo5) ∧ was_marked rg (mark memo4) (mark memo5) -> (let o4 : phase := GoBack in rotated mem0 (accessor memo5) o4 x ∧ (∀(memo6 : memory), mark memo6 x = true ∧ (∀(l : loc), ¬ l = x -> mark memo6 l = mark memo5 l) ∧ (if decide (accessor memo5 Left x = null ∧ null = accessor memo5 Right x) then accessor memo6 = accessor memo5 else rotated mem0 (accessor memo6) (next_phase o4) x) -> unchanged (accessor memo1) (accessor memo6) ∧ accessor memo6 Parent x = z ∧ was_marked t1 (mark memo1) (mark memo6))))))))) else unchanged (accessor memo1) (accessor memo2) ∧ accessor memo2 Parent x = z ∧ was_marked t1 (mark memo1) (mark memo2))))))))))) ∧ (let mem0 : kind -> loc -> loc := accessor memo in (¬ root = null ∧ is_tree (accessor memo) t root o1) ∧ (∀(memo1 : memory), unchanged (accessor memo) (accessor memo1) ∧ was_marked t (mark memo) (mark memo1) -> rotated mem0 (accessor memo1) Finish o1 ∧ (∀(x : loc), rotated mem0 (accessor memo1) Finish x -> rotated mem0 (accessor memo1) Finish x ∧ (let o2 : loc := null in (ext (footprint t) mem0 (accessor memo1) ∧ is_tree mem0 t root o2) ∧ (is_tree (accessor memo1) t root o2 -> is_tree (accessor memo1) t root null ∧ unchanged (accessor memo) (accessor memo1) ∧ was_marked t (mark memo) (mark memo1)))))).
+Admitted.

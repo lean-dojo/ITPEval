@@ -1,0 +1,176 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/skew_heaps_SkewHeaps_mergeqtvc: the skew-heap merge verification
+% condition for recursive termination, heap order, preservation of element
+% occurrences, and total tree size. This file contains no proof.
+
+skew_heaps_SkewHeaps_mergeqtvc[
+  elt: TYPE+
+]: THEORY
+BEGIN
+
+  tree: DATATYPE
+  BEGIN
+    Empty: Empty?
+    Node(
+      left_subtree: tree,
+      root_element: elt,
+      right_subtree: tree): Node?
+  END tree
+
+  preorder_laws(leq: [elt, elt -> bool]): bool =
+    (FORALL (x: elt): leq(x, x))
+      AND
+    (FORALL (x, y, z: elt):
+      (leq(x, y) AND leq(y, z)) IMPLIES leq(x, z))
+      AND
+    (FORALL (x, y: elt): leq(x, y) OR leq(y, x))
+
+  tree_size(values: tree): RECURSIVE int =
+    CASES values OF
+      Empty:
+        0,
+      Node(left, root, right):
+        1 + tree_size(left) + tree_size(right)
+    ENDCASES
+  MEASURE values BY <<
+
+  occ(element: elt, values: tree): RECURSIVE int =
+    CASES values OF
+      Empty:
+        0,
+      Node(left, root, right):
+        (IF root = element THEN 1 ELSE 0 ENDIF)
+          + occ(element, left)
+          + occ(element, right)
+    ENDCASES
+  MEASURE values BY <<
+
+  le_root(
+      leq: [elt, elt -> bool],
+      element: elt,
+      values: tree): bool =
+    CASES values OF
+      Empty:
+        TRUE,
+      Node(left, root, right):
+        leq(element, root)
+    ENDCASES
+
+  heap(
+      leq: [elt, elt -> bool],
+      values: tree): RECURSIVE bool =
+    CASES values OF
+      Empty:
+        TRUE,
+      Node(left, root, right):
+        le_root(leq, root, left)
+          AND heap(leq, left)
+          AND le_root(leq, root, right)
+          AND heap(leq, right)
+    ENDCASES
+  MEASURE values BY <<
+
+  merge_initial_obligation(
+      leq: [elt, elt -> bool],
+      t1, t2: tree): bool =
+    CASES t2 OF
+      Empty:
+        CASES t1 OF
+          Empty:
+            TRUE,
+          Node(left1, root1, right1):
+            TRUE
+        ENDCASES,
+      Node(left2, root2, right2):
+        CASES t1 OF
+          Empty:
+            TRUE,
+          Node(left1, root1, right1):
+            IF leq(root1, root2) THEN
+              (0 <= tree_size(t1) + tree_size(t2)
+                AND
+              tree_size(right1) + tree_size(t2)
+                < tree_size(t1) + tree_size(t2))
+                AND heap(leq, right1)
+                AND heap(leq, t2)
+            ELSE
+              (0 <= tree_size(t1) + tree_size(t2)
+                AND
+              tree_size(right2) + tree_size(t1)
+                < tree_size(t1) + tree_size(t2))
+                AND heap(leq, right2)
+                AND heap(leq, t1)
+            ENDIF
+        ENDCASES
+    ENDCASES
+
+  merge_result_antecedent(
+      leq: [elt, elt -> bool],
+      t1, t2, result: tree): bool =
+    CASES t2 OF
+      Empty:
+        CASES t1 OF
+          Empty:
+            result = t2,
+          Node(left1, root1, right1):
+            result = t1
+        ENDCASES,
+      Node(left2, root2, right2):
+        CASES t1 OF
+          Empty:
+            result = t2,
+          Node(left1, root1, right1):
+            IF leq(root1, root2) THEN
+              EXISTS (recursive_result: tree):
+                (heap(leq, recursive_result)
+                  AND
+                (FORALL (element: elt):
+                  occ(element, recursive_result)
+                    = occ(element, right1) + occ(element, t2))
+                  AND
+                tree_size(recursive_result)
+                  = tree_size(right1) + tree_size(t2))
+                AND
+              result = Node(recursive_result, root1, left1)
+            ELSE
+              EXISTS (recursive_result: tree):
+                (heap(leq, recursive_result)
+                  AND
+                (FORALL (element: elt):
+                  occ(element, recursive_result)
+                    = occ(element, right2) + occ(element, t1))
+                  AND
+                tree_size(recursive_result)
+                  = tree_size(right2) + tree_size(t1))
+                AND
+              result = Node(recursive_result, root2, left2)
+            ENDIF
+        ENDCASES
+    ENDCASES
+
+  merge_postcondition(
+      leq: [elt, elt -> bool],
+      t1, t2, result: tree): bool =
+    heap(leq, result)
+      AND
+    (FORALL (element: elt):
+      occ(element, result) = occ(element, t1) + occ(element, t2))
+      AND
+    tree_size(result) = tree_size(t1) + tree_size(t2)
+
+  merge_vc: bool =
+    FORALL
+        (leq: [elt, elt -> bool]),
+        (t1, t2: tree):
+      (preorder_laws(leq)
+        AND heap(leq, t1)
+        AND heap(leq, t2))
+      IMPLIES
+        (merge_initial_obligation(leq, t1, t2)
+          AND
+        (FORALL (result: tree):
+          merge_result_antecedent(leq, t1, t2, result)
+            IMPLIES
+              merge_postcondition(leq, t1, t2, result)))
+
+END skew_heaps_SkewHeaps_mergeqtvc

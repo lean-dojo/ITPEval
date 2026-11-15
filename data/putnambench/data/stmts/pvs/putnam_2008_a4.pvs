@@ -1,0 +1,93 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2008_a4:
+% the recursively defined real function f(x) = x for x <= e and
+% f(x) = x*f(ln x) for x > e has a divergent reciprocal series.
+% This file contains no proof.
+
+putnam_2008_a4: THEORY
+BEGIN
+  real_function: TYPE = [real -> real]
+  real_sequence: TYPE = [nat -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  nat_factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * nat_factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  exponential_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        exponential_partial(x, count - 1)
+          + safe_div(
+              x ^ index,
+              nat_factorial(index) :: real)
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  real_exponential(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat):
+            exponential_partial(x, count),
+          value))
+
+  natural_log(x: real): real =
+    IF x > 0 THEN
+      epsilon(
+        LAMBDA (value: real):
+          real_exponential(value) = x)
+    ELSE
+      0
+    ENDIF
+
+  recurrence_holds(f: real_function): bool =
+    FORALL (x: real):
+      f(x) =
+        IF x <= real_exponential(1) THEN
+          x
+        ELSE
+          x * f(natural_log(x))
+        ENDIF
+
+  partial_sum(f: real_function, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      partial_sum(f, count - 1)
+        + safe_div(1, f(count :: real))
+    ENDIF
+  MEASURE count
+
+  series_converges(f: real_function): bool =
+    EXISTS (total: real):
+      converges_to(
+        LAMBDA (count: nat):
+          partial_sum(f, count),
+        total)
+
+  putnam_2008_a4_solution: bool = FALSE
+
+  putnam_2008_a4: bool =
+    FORALL (f: real_function):
+      recurrence_holds(f) IMPLIES
+        (series_converges(f) IFF putnam_2008_a4_solution)
+END putnam_2008_a4

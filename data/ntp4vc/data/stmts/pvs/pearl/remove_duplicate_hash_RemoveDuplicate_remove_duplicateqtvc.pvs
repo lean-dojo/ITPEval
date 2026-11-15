@@ -1,0 +1,337 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/remove_duplicate_hash_RemoveDuplicate_remove_duplicateqtvc: the
+% verification condition for removing duplicate array elements with a mutable
+% finite set, preserving prefix invariants and the final element set while
+% producing a duplicate-free result. This file contains no proof.
+
+remove_duplicate_hash_RemoveDuplicate_remove_duplicateqtvc[
+  elt, set_value: TYPE+,
+  elt_default: elt,
+  to_fset: [set_value -> finite_set[elt]],
+  choose1: [set_value -> elt]
+]: THEORY
+BEGIN
+
+  IMPORTING finite_sets[elt]
+
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  nth_default(
+      values: list[elt],
+      index: nat): RECURSIVE elt =
+    CASES values OF
+      null:
+        elt_default,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          nth_default(tail, index - 1)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  list_set(
+      values: list[elt],
+      index: nat,
+      value: elt): RECURSIVE list[elt] =
+    CASES values OF
+      null:
+        null,
+      cons(head, tail):
+        IF index = 0 THEN
+          cons(value, tail)
+        ELSE
+          cons(head, list_set(tail, index - 1, value))
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  appears(
+      value: elt,
+      values: list[elt],
+      upper: int): bool =
+    EXISTS (index: int):
+      0 <= index
+        AND index < upper
+        AND nth_default(values, int_to_nat(index)) = value
+
+  nodup(values: list[elt], upper: int): bool =
+    FORALL (index: int):
+      (0 <= index AND index < upper)
+        IMPLIES
+          NOT appears(
+            nth_default(values, int_to_nat(index)),
+            values,
+            index)
+
+  prefix_matches_set(
+      values: list[elt],
+      upper: int,
+      selected_set: set_value): bool =
+    FORALL (value: elt):
+      appears(value, values, upper)
+        IFF to_fset(selected_set)(value)
+
+  set_transition(
+      before, after: set_value,
+      value: elt): bool =
+    to_fset(after) = add(value, to_fset(before))
+      AND
+    (IF to_fset(before)(value) THEN
+       card(to_fset(after)) = card(to_fset(before))
+     ELSE
+       (card(to_fset(after)) :: int)
+         = (card(to_fset(before)) :: int) + 1
+     ENDIF)
+
+  updated_contents_equation(
+      before, after: list[elt],
+      index: int,
+      value: elt): bool =
+    FORALL (position: int):
+      nth_default(after, int_to_nat(position))
+        =
+      IF position = index THEN
+        value
+      ELSE
+        nth_default(before, int_to_nat(position))
+      ENDIF
+
+  result_invariant(
+      source, result: list[elt],
+      source_upper, result_upper: int,
+      current_set, limiting_set: set_value): bool =
+    prefix_matches_set(source, source_upper, current_set)
+      AND
+    (FORALL (value: elt):
+      to_fset(current_set)(value)
+        IFF appears(value, result, result_upper))
+      AND nodup(result, result_upper)
+      AND 0 <= result_upper
+      AND result_upper = (card(to_fset(current_set)) :: int)
+      AND card(to_fset(current_set)) <= length(result)
+      AND subset?(to_fset(current_set), to_fset(limiting_set))
+
+  final_postcondition(
+      source, result: list[elt]): bool =
+    nodup(result, length(result))
+      AND
+    (FORALL (value: elt):
+      appears(value, source, length(source))
+        IFF appears(value, result, length(result)))
+
+  first_loop_step(
+      source: list[elt],
+      index: int,
+      current_set: set_value): bool =
+    (0 <= index AND index < length(source))
+      AND
+    (LET value: elt =
+       nth_default(source, int_to_nat(index))
+     IN
+       FORALL (next_set: set_value):
+         set_transition(current_set, next_set, value)
+           IMPLIES
+             prefix_matches_set(
+               source,
+               index + 1,
+               next_set))
+
+  second_loop_step(
+      source, result: list[elt],
+      source_index, result_index: int,
+      current_set, limiting_set: set_value): bool =
+    (0 <= source_index AND source_index < length(source))
+      AND
+    (IF NOT to_fset(current_set)(
+              nth_default(source, int_to_nat(source_index)))
+     THEN
+       (0 <= source_index AND source_index < length(source))
+         AND
+       (LET value: elt =
+          nth_default(source, int_to_nat(source_index))
+        IN
+          FORALL (next_set: set_value):
+            set_transition(current_set, next_set, value)
+              IMPLIES
+                (0 <= source_index
+                  AND source_index < length(source))
+                  AND
+                (LET updated: list[elt] =
+                   list_set(
+                     result,
+                     int_to_nat(result_index),
+                     value)
+                 IN
+                   (0 <= result_index
+                     AND result_index < length(result))
+                     AND
+                   (length(updated) = length(result)
+                     IMPLIES
+                       updated_contents_equation(
+                         result,
+                         updated,
+                         result_index,
+                         value)
+                     IMPLIES
+                       result_invariant(
+                         source,
+                         updated,
+                         source_index + 1,
+                         result_index + 1,
+                         next_set,
+                         limiting_set))))
+     ELSE
+       result_invariant(
+         source,
+         result,
+         source_index + 1,
+         result_index,
+         current_set,
+         limiting_set)
+     ENDIF)
+
+  second_loop_vc(
+      source, result: list[elt],
+      initial_set, limiting_set: set_value): bool =
+    LET last_index: int = length(source) - 1
+    IN
+      ((0 <= last_index + 1)
+        IMPLIES
+          result_invariant(
+            source,
+            result,
+            0,
+            0,
+            initial_set,
+            limiting_set)
+            AND
+          (FORALL
+              (result_index: int),
+              (current_result: list[elt]),
+              (current_set: set_value):
+            length(current_result) = length(result)
+              IMPLIES
+                ((FORALL (source_index: int):
+                  ((0 <= source_index
+                    AND source_index <= last_index)
+                    AND
+                   result_invariant(
+                     source,
+                     current_result,
+                     source_index,
+                     result_index,
+                     current_set,
+                     limiting_set))
+                    IMPLIES
+                      second_loop_step(
+                        source,
+                        current_result,
+                        source_index,
+                        result_index,
+                        current_set,
+                        limiting_set))
+                  AND
+                (result_invariant(
+                   source,
+                   current_result,
+                   last_index + 1,
+                   result_index,
+                   current_set,
+                   limiting_set)
+                  IMPLIES
+                    final_postcondition(
+                      source,
+                      current_result))))
+        AND
+      ((last_index + 1 < 0)
+        IMPLIES final_postcondition(source, result)))
+
+  result_allocation_vc(
+      source: list[elt],
+      limiting_set: set_value): bool =
+    (0 <= 0 AND 0 < length(source))
+      AND
+    (LET result_length: int =
+       (card(to_fset(limiting_set)) :: int)
+     IN
+       0 <= result_length
+         AND
+       (FORALL (result: list[elt]):
+         ((FORALL (index: int):
+           (0 <= index AND index < result_length)
+             IMPLIES
+               nth_default(result, int_to_nat(index))
+                 = nth_default(source, 0))
+           AND (length(result) :: int) = result_length)
+           IMPLIES
+             (FORALL (initial_set: set_value):
+               to_fset(initial_set) = emptyset[elt]
+                 IMPLIES
+                   second_loop_vc(
+                     source,
+                     result,
+                     initial_set,
+                     limiting_set))))
+
+  remove_duplicate_body(
+      source: list[elt],
+      initial_set: set_value): bool =
+    LET last_index: int = length(source) - 1
+    IN
+      ((0 <= last_index + 1)
+        IMPLIES
+          prefix_matches_set(source, 0, initial_set)
+            AND
+          (FORALL (current_set: set_value):
+            (FORALL (index: int):
+              ((0 <= index AND index <= last_index)
+                AND
+               prefix_matches_set(
+                 source,
+                 index,
+                 current_set))
+                IMPLIES
+                  first_loop_step(
+                    source,
+                    index,
+                    current_set))
+              AND
+            (prefix_matches_set(
+               source,
+               last_index + 1,
+               current_set)
+              IMPLIES
+                result_allocation_vc(
+                  source,
+                  current_set))))
+        AND
+      ((last_index + 1 < 0)
+        IMPLIES
+          result_allocation_vc(
+            source,
+            initial_set))
+
+  set_specification: bool =
+    FORALL (selected_set: set_value):
+      to_fset(selected_set) /= emptyset[elt]
+        IMPLIES
+          to_fset(selected_set)(choose1(selected_set))
+
+  remove_duplicate_vc: bool =
+    set_specification
+      IMPLIES
+        (FORALL
+            (source: list[elt]),
+            (initial_set: set_value):
+          (1 <= length(source)
+            AND to_fset(initial_set) = emptyset[elt]
+            AND (card(to_fset(initial_set)) :: int) = 0)
+            IMPLIES
+              remove_duplicate_body(
+                source,
+                initial_set))
+
+END remove_duplicate_hash_RemoveDuplicate_remove_duplicateqtvc

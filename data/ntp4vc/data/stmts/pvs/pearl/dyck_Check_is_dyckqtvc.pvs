@@ -1,0 +1,92 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/dyck_Check_is_dyckqtvc: the verification condition connecting a unique
+% Dyck-word prefix whose remaining suffix does not begin with a left
+% parenthesis to the Boolean result of the Dyck-word check. This file contains
+% no proof.
+
+dyck_Check_is_dyckqtvc: THEORY
+BEGIN
+
+  paren: DATATYPE
+  BEGIN
+    L: L?
+    R: R?
+  END paren
+
+  dyck_derivation: DATATYPE
+  BEGIN
+    Dyck_nil: Dyck_nil?
+    Dyck_ind(
+      left_derivation,
+      right_derivation: dyck_derivation): Dyck_ind?
+  END dyck_derivation
+
+  generated_word(
+      derivation: dyck_derivation): RECURSIVE list[paren] =
+    CASES derivation OF
+      Dyck_nil:
+        null,
+      Dyck_ind(left_derivation, right_derivation):
+        cons(
+          L,
+          append(
+            generated_word(left_derivation),
+            cons(R, generated_word(right_derivation))))
+    ENDCASES
+  MEASURE derivation BY <<
+
+  dyck(word: list[paren]): bool =
+    EXISTS (derivation: dyck_derivation):
+      generated_word(derivation) = word
+
+  fall(prefix, suffix: list[paren]): bool =
+    dyck(prefix)
+      AND
+    CASES suffix OF
+      null:
+        TRUE,
+      cons(head, tail):
+        head /= L
+    ENDCASES
+
+  unique_fall_split(
+      source_word,
+      prefix,
+      suffix: list[paren]): bool =
+    source_word = append(prefix, suffix)
+      AND fall(prefix, suffix)
+      AND
+    (FORALL (other_prefix, other_suffix: list[paren]):
+      (source_word = append(other_prefix, other_suffix)
+        AND fall(other_prefix, other_suffix))
+        IMPLIES
+          other_prefix = prefix AND other_suffix = suffix)
+
+  no_fall_split(source_word: list[paren]): bool =
+    FORALL (prefix, suffix: list[paren]):
+      source_word = append(prefix, suffix)
+        IMPLIES NOT fall(prefix, suffix)
+
+  result_for_suffix(
+      suffix: list[paren],
+      result: bool): bool =
+    CASES suffix OF
+      null:
+        result = TRUE,
+      cons(head, tail):
+        result = FALSE
+    ENDCASES
+
+  is_dyck_vc: bool =
+    FORALL (word, selected_prefix: list[paren]):
+      (FORALL (suffix: list[paren]):
+        unique_fall_split(word, selected_prefix, suffix)
+          IMPLIES
+            (FORALL (result: bool):
+              result_for_suffix(suffix, result)
+                IMPLIES
+                  ((result = TRUE) <=> dyck(word))))
+        AND
+      (no_fall_split(word) IMPLIES NOT dyck(word))
+
+END dyck_Check_is_dyckqtvc

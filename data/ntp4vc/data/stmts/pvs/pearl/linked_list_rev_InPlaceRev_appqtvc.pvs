@@ -1,0 +1,178 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/linked_list_rev_InPlaceRev_appqtvc: the linked-list append
+% verification condition for joining disjoint list segments by updating the
+% terminal next pointer. This file contains no proof.
+
+linked_list_rev_InPlaceRev_appqtvc[
+  loc: TYPE+,
+  null_loc: loc,
+  eq_loc: [loc, loc -> bool]
+]: THEORY
+BEGIN
+
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  nth_loc(values: list[loc], index: int): RECURSIVE loc =
+    CASES values OF
+      null:
+        null_loc,
+      cons(head, tail):
+        IF int_to_nat(index) = 0 THEN
+          head
+        ELSE
+          nth_loc(tail, int_to_nat(index) - 1)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  eq_loc_specification: bool =
+    FORALL (left, right: loc):
+      (eq_loc(left, right) = TRUE) <=> (left = right)
+
+  disjoint(left, right: list[loc]): bool =
+    FORALL (i1: int):
+      (0 <= i1 AND i1 < length(left))
+        IMPLIES
+          (FORALL (i2: int):
+            (0 <= i2 AND i2 < length(right))
+              IMPLIES
+                nth_loc(left, i1) /= nth_loc(right, i2))
+
+  list_seg(
+      next1: [loc -> loc],
+      p: loc,
+      values: list[loc],
+      q: loc): bool =
+    LET n: int = length(values) IN
+      (FORALL (i: int):
+        (0 <= i AND i < n)
+          IMPLIES nth_loc(values, i) /= null_loc)
+      AND
+      ((p = q AND n = 0)
+        OR
+       (1 <= n
+         AND nth_loc(values, 0) = p
+         AND next1(nth_loc(values, n - 1)) = q
+         AND
+           (FORALL (i: int):
+             (0 <= i AND i < n - 1)
+               IMPLIES
+                 next1(nth_loc(values, i))
+                   = nth_loc(values, i + 1))))
+
+  update_next(
+      next1: [loc -> loc],
+      point, value: loc): [loc -> loc] =
+    next1 WITH [(point) := value]
+
+  tail_matches(values, expected: list[loc]): bool =
+    CASES values OF
+      null:
+        FALSE,
+      cons(ignored, tail):
+        tail = expected
+    ENDCASES
+
+  advance_branch(
+      next1: [loc -> loc],
+      l1: loc,
+      l1M: list[loc],
+      l1pM, pM: list[loc],
+      p: loc): bool =
+    CASES pM OF
+      null:
+        FALSE,
+      cons(head, tail):
+        p /= null_loc
+          AND tail_matches(pM, tail)
+          AND next1(p) /= null_loc
+          AND
+            list_seg(
+              next1,
+              l1,
+              append(l1pM, cons(head, null)),
+              next1(p))
+          AND list_seg(next1, next1(p), tail, null_loc)
+          AND
+            append(append(l1pM, cons(head, null)), tail) = l1M
+          AND disjoint(append(l1pM, cons(head, null)), tail)
+    ENDCASES
+
+  loop_obligation(
+      next1: [loc -> loc],
+      l1: loc,
+      l1M: list[loc],
+      l2: loc,
+      l2M: list[loc],
+      l1pM, pM: list[loc],
+      p: loc): bool =
+    LET o3: loc = null_loc IN
+      p /= null_loc
+        AND
+      (LET o4: loc = next1(p) IN
+         LET o5: bool = eq_loc(o4, o3) IN
+           ((o5 = TRUE) <=> (o4 = o3))
+             IMPLIES
+               (IF NOT (o5 = TRUE) THEN
+                  advance_branch(next1, l1, l1M, l1pM, pM, p)
+                ELSE
+                  p /= null_loc
+                    AND
+                  list_seg(
+                    update_next(next1, p, l2),
+                    l1,
+                    append(l1M, l2M),
+                    null_loc)
+                ENDIF))
+
+  app_vc: bool =
+    FORALL
+      (next1: [loc -> loc]),
+      (l1: loc),
+      (l1M: list[loc]),
+      (l2: loc),
+      (l2M: list[loc]):
+      (eq_loc_specification
+        AND list_seg(next1, l1, l1M, null_loc)
+        AND list_seg(next1, l2, l2M, null_loc)
+        AND disjoint(l1M, l2M))
+      IMPLIES
+        (LET o1: loc = null_loc IN
+           LET o2: bool = eq_loc(l1, o1) IN
+             ((o2 = TRUE) <=> (l1 = o1))
+               IMPLIES
+                 (IF o2 = TRUE THEN
+                    list_seg(
+                      next1,
+                      l2,
+                      append(l1M, l2M),
+                      null_loc)
+                  ELSE
+                    (l1 /= null_loc
+                      AND list_seg(next1, l1, null, l1)
+                      AND list_seg(next1, l1, l1M, null_loc)
+                      AND append(null, l1M) = l1M
+                      AND disjoint(null, l1M))
+                    AND
+                    (FORALL
+                      (l1pM, pM: list[loc]),
+                      (p: loc):
+                      (p /= null_loc
+                        AND list_seg(next1, l1, l1pM, p)
+                        AND list_seg(next1, p, pM, null_loc)
+                        AND append(l1pM, pM) = l1M
+                        AND disjoint(l1pM, pM))
+                      IMPLIES
+                        loop_obligation(
+                          next1,
+                          l1,
+                          l1M,
+                          l2,
+                          l2M,
+                          l1pM,
+                          pM,
+                          p))
+                  ENDIF))
+
+END linked_list_rev_InPlaceRev_appqtvc

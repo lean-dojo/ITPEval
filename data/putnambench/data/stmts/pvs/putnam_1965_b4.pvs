@@ -1,0 +1,133 @@
+% Statement-only formalization of PutnamBench artifact putnam_1965_b4:
+% the ratio of the even- and odd-indexed binomial polynomials satisfies the
+% stated recurrence, and its convergence set and pointwise limit are identified.
+% This file contains no proof.
+
+putnam_1965_b4: THEORY
+BEGIN
+  real_function: TYPE = [real -> real]
+  indexed_real_function: TYPE = [nat -> real_function]
+  real_sequence: TYPE = [nat -> real]
+
+  binomial_coefficient(n, k: nat): RECURSIVE nat =
+    IF k = 0 THEN
+      1
+    ELSIF n = 0 THEN
+      0
+    ELSE
+      binomial_coefficient(n - 1, k - 1)
+        + binomial_coefficient(n - 1, k)
+    ENDIF
+  MEASURE n
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  nat_subtract(n, k: nat): nat =
+    IF k <= n THEN n - k ELSE 0 ENDIF
+
+  even_binomial_sum(
+      n: nat,
+      x: real,
+      term_count: nat): RECURSIVE real =
+    IF term_count = 0 THEN
+      0
+    ELSE
+      LET i: nat = term_count - 1 IN
+        even_binomial_sum(n, x, term_count - 1)
+          + (binomial_coefficient(n, 2 * i) :: real) * x ^ i
+    ENDIF
+  MEASURE term_count
+
+  odd_binomial_sum(
+      n: nat,
+      x: real,
+      term_count: nat): RECURSIVE real =
+    IF term_count = 0 THEN
+      0
+    ELSE
+      LET i: nat = term_count - 1 IN
+        odd_binomial_sum(n, x, term_count - 1)
+          + (binomial_coefficient(n, 2 * i + 1) :: real) * x ^ i
+    ENDIF
+  MEASURE term_count
+
+  even_binomial_polynomial(n: nat, x: real): real =
+    even_binomial_sum(n, x, ndiv(n, 2) + 1)
+
+  odd_binomial_polynomial(n: nat, x: real): real =
+    odd_binomial_sum(n, x, ndiv(nat_subtract(n, 1), 2) + 1)
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  convergent(sequence: real_sequence): bool =
+    EXISTS (value: real): converges_to(sequence, value)
+
+  nonnegative_square_root(value: real): real =
+    IF 0 <= value
+    THEN
+      epsilon(
+        LAMBDA (root: real):
+          0 <= root AND root * root = value)
+    ELSE
+      0
+    ENDIF
+
+  solution_p(h: real_function): real_function =
+    LAMBDA (x: real): h(x) + x
+
+  solution_q(h: real_function): real_function =
+    LAMBDA (x: real): h(x) + 1
+
+  solution_set(x: real): bool =
+    0 <= x
+
+  solution_limit(x: real): real =
+    nonnegative_square_root(x)
+
+  putnam_1965_b4: bool =
+    FORALL
+        (f, u, v: indexed_real_function),
+        (n: nat):
+      ((FORALL (m: nat):
+          m > 0 IMPLIES
+            (FORALL (x: real):
+              u(m)(x) = even_binomial_polynomial(m, x)))
+        AND (FORALL (m: nat):
+          m > 0 IMPLIES
+            (FORALL (x: real):
+              v(m)(x) = odd_binomial_polynomial(m, x)))
+        AND (FORALL (m: nat):
+          m > 0 IMPLIES
+            (FORALL (x: real):
+              f(m)(x) = safe_div(u(m)(x), v(m)(x))))
+        AND n > 0)
+      IMPLIES
+        ((FORALL (x: real):
+            (v(n)(x) /= 0
+              AND v(n + 1)(x) /= 0
+              AND solution_q(f(n))(x) /= 0)
+            IMPLIES
+              f(n + 1)(x)
+                = safe_div(
+                    solution_p(f(n))(x),
+                    solution_q(f(n))(x)))
+          AND (FORALL (x: real):
+            solution_set(x)
+              IFF convergent(
+                LAMBDA (m: nat): f(m)(x)))
+          AND (FORALL (x: real):
+            solution_set(x) IMPLIES
+              converges_to(
+                LAMBDA (m: nat): f(m)(x),
+                solution_limit(x))))
+END putnam_1965_b4

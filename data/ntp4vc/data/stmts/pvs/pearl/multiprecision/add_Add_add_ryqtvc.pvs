@@ -1,0 +1,430 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/multiprecision/add_Add_add_ryqtvc: the verification condition for
+% multiprecision addition into the second operand, including pointer aliasing,
+% carry arithmetic, memory framing, and preservation of pointer metadata.
+% This file contains no proof.
+
+add_Add_add_ryqtvc[zone: TYPE+]: THEORY
+BEGIN
+
+  IMPORTING
+    bv[32], bv[64],
+    bv_nat[32], bv_nat[64]
+
+  word32: TYPE = bvec[32]
+  word64: TYPE = bvec[64]
+
+  ptr: TYPE =
+    [# data_length: nat,
+       cells: [int -> word64],
+       pointer_offset: int,
+       pointer_min: int,
+       pointer_max: int,
+       is_writable: bool,
+       pointer_zone: zone #]
+
+  alias_mem: TYPE =
+    [# mem_zr: zone,
+       mem_zx: zone,
+       mem_zy: zone,
+       mem_mr: word32,
+       mem_mx: word32,
+       mem_my: word32,
+       mem_lr: word32,
+       mem_lx: word32,
+       mem_ly: word32,
+       mem_ok: bool #]
+
+  radix: int = 18446744073709551616
+
+  unsigned64(value1: word64): int =
+    bv2nat[64](value1)
+
+  signed32(value1: word32): int =
+    IF value1(31) THEN
+      bv2nat[32](value1) - 4294967296
+    ELSE
+      bv2nat[32](value1)
+    ENDIF
+
+  int_to_nat(value1: int): nat =
+    IF value1 < 0 THEN 0 ELSE value1 ENDIF
+
+  plength(p: ptr): int =
+    data_length(p)
+
+  pelts(p: ptr, index: int): word64 =
+    cells(p)(index)
+
+  nat_power(base: int, exponent: nat): RECURSIVE int =
+    IF exponent = 0 THEN
+      1
+    ELSE
+      base * nat_power(base, exponent - 1)
+    ENDIF
+  MEASURE exponent
+
+  int_power(base, exponent: int): int =
+    nat_power(base, int_to_nat(exponent))
+
+  value_from(
+      p: ptr,
+      start: int,
+      count: nat): RECURSIVE int =
+    IF count = 0 THEN
+      0
+    ELSE
+      unsigned64(pelts(p, start))
+        + radix * value_from(p, start + 1, count - 1)
+    ENDIF
+  MEASURE count
+
+  value(p: ptr, count: int): int =
+    value_from(
+      p,
+      pointer_offset(p),
+      int_to_nat(count))
+
+  int32_in_bounds(value1: int): bool =
+    -2147483648 <= value1 AND value1 <= 2147483647
+
+  valid(p: ptr, count: int): bool =
+    int32_in_bounds(count)
+      AND 0 <= count
+      AND 0 <= pointer_min(p)
+      AND pointer_min(p) <= pointer_offset(p)
+      AND pointer_offset(p) + count <= pointer_max(p)
+      AND pointer_max(p) <= plength(p)
+
+  same_pelts(left, right: ptr): bool =
+    FORALL (index: int):
+      pelts(left, index) = pelts(right, index)
+
+  same_pointer_view(left, right: ptr): bool =
+    pointer_offset(left) = pointer_offset(right)
+      AND is_writable(left) = is_writable(right)
+      AND pointer_zone(left) = pointer_zone(right)
+
+  same_pointer_view_with_min(left, right: ptr): bool =
+    pointer_offset(left) = pointer_offset(right)
+      AND pointer_min(left) = pointer_min(right)
+      AND is_writable(left) = is_writable(right)
+      AND pointer_zone(left) = pointer_zone(right)
+
+  same_pointer_metadata(left, right: ptr): bool =
+    pointer_offset(left) = pointer_offset(right)
+      AND pointer_min(left) = pointer_min(right)
+      AND pointer_max(left) = pointer_max(right)
+      AND is_writable(left) = is_writable(right)
+      AND pointer_zone(left) = pointer_zone(right)
+
+  same_data(left, right: ptr): bool =
+    data_length(left) = data_length(right)
+      AND cells(left) = cells(right)
+
+  identical(left, right: ptr): bool =
+    same_data(left, right)
+      AND pointer_offset(left) = pointer_offset(right)
+      AND pointer_min(left) = pointer_min(right)
+      AND pointer_max(left) = pointer_max(right)
+      AND pointer_zone(left) = pointer_zone(right)
+
+  map_eq_sub(
+      left, right: ptr,
+      lower, upper: int): bool =
+    FORALL (index: int):
+      lower <= index AND index < upper
+        IMPLIES
+          pelts(left, index) = pelts(right, index)
+
+  map_eq_sub_shift(
+      left, right: ptr,
+      left_start, right_start, count: int): bool =
+    FORALL (index: int):
+      0 <= index AND index < count
+        IMPLIES
+          pelts(left, left_start + index)
+            = pelts(right, right_start + index)
+
+  separated(
+      left, right: ptr,
+      count: int): bool =
+    (0 <= pointer_offset(left)
+      AND pointer_offset(left) + count <= pointer_offset(right))
+      OR
+    (0 <= pointer_offset(right)
+      AND pointer_offset(right) + count <= pointer_offset(left))
+
+  disjoint_or_equal(
+      left, right: ptr,
+      left_count, right_count: int): bool =
+    pointer_offset(left) = pointer_offset(right)
+      OR pointer_offset(left) + left_count <= pointer_offset(right)
+      OR pointer_offset(right) + right_count <= pointer_offset(left)
+
+  frame(
+      new, old: ptr,
+      count: int): bool =
+    FORALL (index: int):
+      index < pointer_offset(new)
+        OR pointer_offset(new) + count <= index
+      IMPLIES
+        pelts(new, index) = pelts(old, index)
+
+  carry_in_bounds(result: word64): bool =
+    0 <= unsigned64(result)
+      AND unsigned64(result) <= 1
+
+  opened_state(
+      nr, ny, nx: ptr,
+      m: alias_mem,
+      y1, x1, y, x: ptr,
+      sx: word32): bool =
+    is_writable(nr) = TRUE
+      AND
+        (value(ny, signed32(sx)) = value(y, signed32(sx))
+          AND value(nx, signed32(sx)) = value(x, signed32(sx)))
+      AND
+        (valid(ny, signed32(sx))
+          AND valid(nx, signed32(sx)))
+      AND identical(nr, ny)
+      AND separated(ny, nx, signed32(sx))
+      AND
+        (mem_zx(m) = pointer_zone(y1)
+          AND mem_zy(m) = pointer_zone(x1))
+      AND
+        (signed32(mem_mx(m)) = pointer_max(y)
+          AND signed32(mem_my(m)) = pointer_max(x))
+      AND
+        (mem_lx(m) = sx
+          AND mem_ly(m) = sx)
+      AND mem_ok(m) = TRUE
+      AND
+        map_eq_sub_shift(
+          ny, y1,
+          pointer_offset(ny), pointer_offset(y1),
+          signed32(sx))
+      AND
+        map_eq_sub_shift(
+          nx, x1,
+          pointer_offset(nx), pointer_offset(x1),
+          signed32(sx))
+      AND
+        (same_pelts(y1, y)
+          AND same_pelts(x1, x))
+      AND
+        (plength(y1) = plength(y)
+          AND plength(x1) = plength(x))
+      AND
+        (pointer_min(y1) = pointer_min(y)
+          AND pointer_min(x1) = pointer_min(x))
+      AND same_data(nr, ny)
+      AND same_data(ny, nx)
+
+  opened_preconditions(
+      nr, ny, nx: ptr,
+      sy, sx: word32): bool =
+    (0 <= signed32(sy)
+      AND signed32(sy) <= signed32(sx))
+      AND
+        (valid(nr, signed32(sx))
+          AND valid(nx, signed32(sx))
+          AND valid(ny, signed32(sy)))
+      AND disjoint_or_equal(nr, nx, signed32(sx), signed32(sx))
+      AND disjoint_or_equal(nr, ny, signed32(sx), signed32(sy))
+      AND
+        (same_data(nr, nx)
+          AND same_data(nx, ny))
+      AND is_writable(nr) = TRUE
+
+  linked_to_shared_data(
+      current, shared, original: ptr): bool =
+    same_data(current, shared)
+      AND data_length(shared) = data_length(original)
+      AND same_pointer_metadata(current, original)
+
+  linked_result_pointer(
+      current, original: ptr): bool =
+    data_length(current) = data_length(original)
+      AND same_pointer_metadata(current, original)
+
+  wmpn_result_condition(
+      result: word64,
+      nr1, nx1, ny1, nr, nx, ny: ptr,
+      sy, sx: word32): bool =
+    value(nr1, signed32(sx))
+        + int_power(radix, signed32(sx)) * unsigned64(result)
+      =
+    value(nx, signed32(sx)) + value(ny, signed32(sy))
+      AND carry_in_bounds(result)
+      AND frame(nr1, nr, signed32(sx))
+      AND
+        (pointer_offset(nr1) = pointer_offset(nx1)
+          OR
+            map_eq_sub(
+              nx1, nx,
+              pointer_offset(nx1),
+              pointer_offset(nx1) + signed32(sx)))
+      AND
+        (pointer_offset(nr1) = pointer_offset(ny1)
+          OR
+            map_eq_sub(
+              ny1, ny,
+              pointer_offset(ny1),
+              pointer_offset(ny1) + signed32(sy)))
+
+  close_ready(
+      nr1, ny1, nx1, y1, x1: ptr,
+      m: alias_mem,
+      sx: word32): bool =
+    (is_writable(y1) = TRUE
+      AND is_writable(nr1) = TRUE)
+      AND mem_ok(m) = TRUE
+      AND
+        (0 <= signed32(sx)
+          AND signed32(sx) <= signed32(sx))
+      AND identical(nr1, ny1)
+      AND separated(ny1, nx1, signed32(sx))
+      AND
+        (mem_zx(m) = pointer_zone(y1)
+          AND mem_zy(m) = pointer_zone(x1))
+      AND mem_lx(m) = sx
+      AND mem_ly(m) = sx
+
+  same_alias_fields(left, right: alias_mem): bool =
+    mem_zr(left) = mem_zr(right)
+      AND mem_zx(left) = mem_zx(right)
+      AND mem_zy(left) = mem_zy(right)
+      AND mem_mr(left) = mem_mr(right)
+      AND mem_mx(left) = mem_mx(right)
+      AND mem_my(left) = mem_my(right)
+      AND mem_lr(left) = mem_lr(right)
+      AND mem_lx(left) = mem_lx(right)
+      AND mem_ly(left) = mem_ly(right)
+
+  close_state_antecedent(
+      m1: alias_mem,
+      nx1, ny1, nx2, ny2, y2, x2, y1, x1: ptr,
+      sx: word32): bool =
+    (pointer_max(y2) = signed32(mem_mx(m1))
+      AND pointer_max(x2) = signed32(mem_my(m1)))
+      AND
+        map_eq_sub_shift(
+          ny1, y2,
+          pointer_offset(ny2), pointer_offset(y2),
+          signed32(sx))
+      AND
+        map_eq_sub_shift(
+          nx1, x2,
+          pointer_offset(nx2), pointer_offset(x2),
+          signed32(sx))
+      AND frame(y2, y1, signed32(sx))
+      AND frame(x2, x1, signed32(sx))
+      AND
+        (plength(y2) = plength(y1)
+          AND plength(x2) = plength(x1))
+      AND pointer_min(y2) = pointer_min(y1)
+      AND pointer_min(x2) = pointer_min(x1)
+
+  final_postcondition(
+      result: word64,
+      y2, x2, y, x: ptr,
+      sy, sx: word32): bool =
+    value(y2, signed32(sx))
+        + int_power(radix, signed32(sx)) * unsigned64(result)
+      =
+    value(x, signed32(sx)) + value(y, signed32(sy))
+      AND carry_in_bounds(result)
+      AND frame(y2, y, signed32(sx))
+      AND same_pelts(x2, x)
+      AND value(x2, signed32(sx)) = value(x, signed32(sx))
+      AND
+        (pointer_min(x2) = pointer_min(x)
+          AND pointer_max(x2) = pointer_max(x)
+          AND plength(x2) = plength(x))
+      AND pointer_min(y2) = pointer_min(y)
+      AND pointer_max(y2) = pointer_max(y)
+      AND plength(y2) = plength(y)
+
+  add_ry_vc: bool =
+    FORALL
+        (sy, sx: word32),
+        (x, y: ptr):
+      0 <= signed32(sy)
+        IMPLIES
+          signed32(sy) <= signed32(sx)
+        IMPLIES
+          valid(x, signed32(sx))
+        IMPLIES
+          valid(y, signed32(sx))
+        IMPLIES
+          is_writable(y) = TRUE
+        IMPLIES
+          valid(y, signed32(sx))
+            AND valid(x, signed32(sx))
+            AND 0 <= signed32(sx)
+            AND signed32(sx) <= signed32(sx)
+            AND is_writable(y) = TRUE
+            AND
+              (FORALL (y1, x1: ptr):
+                same_pointer_view(y1, y)
+                  IMPLIES
+                    same_pointer_view(x1, x)
+                  IMPLIES
+                    (FORALL
+                        (nr, ny, nx: ptr),
+                        (m: alias_mem):
+                      opened_state(
+                        nr, ny, nx, m,
+                        y1, x1, y, x, sx)
+                        IMPLIES
+                          opened_preconditions(
+                            nr, ny, nx, sy, sx)
+                            AND
+                              (FORALL (nx1, ny1, nr1: ptr):
+                                linked_to_shared_data(nx1, nr1, nx)
+                                  IMPLIES
+                                    linked_to_shared_data(ny1, nr1, ny)
+                                  IMPLIES
+                                    linked_result_pointer(nr1, nr)
+                                  IMPLIES
+                                    (FORALL (result: word64):
+                                      wmpn_result_condition(
+                                        result,
+                                        nr1, nx1, ny1,
+                                        nr, nx, ny,
+                                        sy, sx)
+                                        IMPLIES
+                                          close_ready(
+                                            nr1, ny1, nx1,
+                                            y1, x1, m, sx)
+                                            AND
+                                              (FORALL
+                                                  (m1: alias_mem),
+                                                  (nx2, ny2, y2, x2: ptr):
+                                                same_alias_fields(m1, m)
+                                                  IMPLIES
+                                                    same_pointer_view(nx2, nx1)
+                                                  IMPLIES
+                                                    same_pointer_view(ny2, ny1)
+                                                  IMPLIES
+                                                    same_pointer_view_with_min(
+                                                      y2, y1)
+                                                  IMPLIES
+                                                    same_pointer_view_with_min(
+                                                      x2, x1)
+                                                  IMPLIES
+                                                    close_state_antecedent(
+                                                      m1,
+                                                      nx1, ny1,
+                                                      nx2, ny2,
+                                                      y2, x2,
+                                                      y1, x1,
+                                                      sx)
+                                                  IMPLIES
+                                                    final_postcondition(
+                                                      result,
+                                                      y2, x2, y, x,
+                                                      sy, sx))))))
+
+END add_Add_add_ryqtvc

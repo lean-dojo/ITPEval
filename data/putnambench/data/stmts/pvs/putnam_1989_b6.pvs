@@ -1,0 +1,276 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1989_b6:
+% the expected right-endpoint Riemann sum for uniformly distributed ordered
+% points in (0,1) is integration against a bounded degree-n polynomial
+% independent of the continuous function. This file contains no proof.
+
+putnam_1989_b6[n: posnat]: THEORY
+BEGIN
+  point: TYPE = [below(n) -> real]
+  point_function: TYPE = [point -> real]
+  real_function: TYPE = [real -> real]
+  real_sequence: TYPE = [nat -> real]
+  polynomial: TYPE = [nat -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  quotient_aux(
+      numerator, denominator, fuel: nat): RECURSIVE nat =
+    IF fuel = 0
+        OR denominator = 0
+        OR numerator < denominator THEN
+      0
+    ELSE
+      1
+        + quotient_aux(
+            numerator - denominator,
+            denominator,
+            fuel - 1)
+    ENDIF
+  MEASURE fuel
+
+  remainder_aux(
+      numerator, denominator, fuel: nat): RECURSIVE nat =
+    IF fuel = 0
+        OR denominator = 0
+        OR numerator < denominator THEN
+      numerator
+    ELSE
+      remainder_aux(
+        numerator - denominator,
+        denominator,
+        fuel - 1)
+    ENDIF
+  MEASURE fuel
+
+  safe_ndiv(numerator, denominator: nat): nat =
+    quotient_aux(
+      numerator,
+      denominator,
+      numerator + 1)
+
+  safe_mod(numerator, denominator: nat): nat =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      remainder_aux(
+        numerator,
+        denominator,
+        numerator + 1)
+    ENDIF
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  continuous_on_unit_interval(f: real_function): bool =
+    FORALL (x: real):
+      (0 <= x AND x <= 1) IMPLIES
+        FORALL (epsilon_value: posreal):
+          EXISTS (delta: posreal):
+            FORALL (y: real):
+              (0 <= y
+                AND y <= 1
+                AND abs(y - x) < delta)
+              IMPLIES
+                abs(f(y) - f(x)) < epsilon_value
+
+  ordered_simplex(x: point): bool =
+    (FORALL (index: below(n)):
+      0 < x(index) AND x(index) < 1)
+      AND (FORALL (left, right: below(n)):
+        left < right IMPLIES x(left) < x(right))
+
+  extended_coordinate(x: point, index: nat): real =
+    IF index = 0 THEN
+      0
+    ELSIF index = n + 1 THEN
+      1
+    ELSIF index <= n THEN
+      x(index - 1)
+    ELSE
+      0
+    ENDIF
+
+  right_endpoint_sum(
+      f: real_function,
+      x: point,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      right_endpoint_sum(f, x, count - 1)
+        + (extended_coordinate(x, count)
+            - extended_coordinate(x, count - 1))
+          * f(extended_coordinate(x, count))
+    ENDIF
+  MEASURE count
+
+  grid_coordinate(
+      code: nat,
+      index: below(n),
+      mesh: nat): real =
+    IF mesh = 0 THEN
+      0
+    ELSE
+      ((safe_mod(
+          safe_ndiv(code, mesh ^ index), mesh) + 1) :: real)
+        / (mesh :: real)
+    ENDIF
+
+  grid_point(code, mesh: nat): point =
+    LAMBDA (index: below(n)):
+      grid_coordinate(code, index, mesh)
+
+  finite_simplex_grid_sum(
+      function_value: point_function,
+      mesh, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET sample: point = grid_point(count - 1, mesh) IN
+        finite_simplex_grid_sum(
+          function_value, mesh, count - 1)
+          + IF ordered_simplex(sample) THEN
+              function_value(sample)
+            ELSE
+              0
+            ENDIF
+    ENDIF
+  MEASURE count
+
+  simplex_grid_integral(
+      function_value: point_function,
+      mesh: nat): real =
+    IF mesh = 0 THEN
+      0
+    ELSE
+      safe_div(
+        finite_simplex_grid_sum(
+          function_value, mesh, mesh ^ n),
+        (mesh ^ n) :: real)
+    ENDIF
+
+  has_simplex_integral(
+      function_value: point_function,
+      integral_value: real): bool =
+    converges_to(
+      LAMBDA (mesh: nat):
+        simplex_grid_integral(function_value, mesh),
+      integral_value)
+
+  simplex_integral(function_value: point_function): real =
+    IF EXISTS (integral_value: real):
+        has_simplex_integral(function_value, integral_value)
+    THEN
+      epsilon(
+        LAMBDA (integral_value: real):
+          has_simplex_integral(
+            function_value, integral_value))
+    ELSE
+      0
+    ENDIF
+
+  finite_unit_grid_sum(
+      function_value: real_function,
+      mesh, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      finite_unit_grid_sum(
+        function_value, mesh, count - 1)
+        + function_value(
+            safe_div(count :: real, mesh :: real))
+    ENDIF
+  MEASURE count
+
+  unit_grid_integral(
+      function_value: real_function,
+      mesh: nat): real =
+    IF mesh = 0 THEN
+      0
+    ELSE
+      safe_div(
+        finite_unit_grid_sum(
+          function_value, mesh, mesh),
+        mesh :: real)
+    ENDIF
+
+  has_unit_interval_integral(
+      function_value: real_function,
+      integral_value: real): bool =
+    converges_to(
+      LAMBDA (mesh: nat):
+        unit_grid_integral(function_value, mesh),
+      integral_value)
+
+  unit_interval_integral(function_value: real_function): real =
+    IF EXISTS (integral_value: real):
+        has_unit_interval_integral(
+          function_value, integral_value)
+    THEN
+      epsilon(
+        LAMBDA (integral_value: real):
+          has_unit_interval_integral(
+            function_value, integral_value))
+    ELSE
+      0
+    ENDIF
+
+  polynomial_partial_value(
+      coefficients: polynomial,
+      x: real,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET degree: nat = count - 1 IN
+        polynomial_partial_value(
+          coefficients, x, count - 1)
+          + coefficients(degree) * x ^ degree
+    ENDIF
+  MEASURE count
+
+  has_exact_degree(
+      coefficients: polynomial,
+      degree: nat): bool =
+    coefficients(degree) /= 0
+      AND FORALL (index: nat):
+        degree < index IMPLIES coefficients(index) = 0
+
+  polynomial_value(
+      coefficients: polynomial,
+      x: real,
+      degree: nat): real =
+    polynomial_partial_value(coefficients, x, degree + 1)
+
+  expected_right_endpoint_sum(f: real_function): real =
+    safe_div(
+      simplex_integral(
+        LAMBDA (x: point):
+          right_endpoint_sum(f, x, n + 1)),
+      simplex_integral(
+        LAMBDA (x: point): 1))
+
+  putnam_1989_b6: bool =
+    EXISTS (P: polynomial):
+      has_exact_degree(P, n)
+        AND (FORALL (t: real):
+          (0 <= t AND t <= 1) IMPLIES
+            (0 <= polynomial_value(P, t, n)
+              AND polynomial_value(P, t, n) <= 1))
+        AND (FORALL (f: real_function):
+          (continuous_on_unit_interval(f) AND f(1) = 0)
+          IMPLIES
+            expected_right_endpoint_sum(f)
+              = unit_interval_integral(
+                  LAMBDA (t: real):
+                    f(t) * polynomial_value(P, t, n)))
+END putnam_1989_b6

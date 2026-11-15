@@ -1,0 +1,70 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/there_and_back_again_Palindrome_palindromeqtvc: the top-level
+% palindrome verification condition over reflected integer indices, normal
+% recursive returns, and exceptional mismatch witnesses. This file contains
+% no proof.
+
+there_and_back_again_Palindrome_palindromeqtvc[
+    Element: TYPE+]: THEORY
+BEGIN
+
+  element_option: DATATYPE
+  BEGIN
+    NoElement: NoElement?
+    SomeElement(option_value: Element): SomeElement?
+  END element_option
+
+  nth_option(
+      values: list[Element],
+      index: int): RECURSIVE element_option =
+    IF index < 0 THEN
+      NoElement
+    ELSE
+      CASES values OF
+        null:
+          NoElement,
+        cons(head, tail):
+          IF index = 0 THEN
+            SomeElement(head)
+          ELSE
+            nth_option(tail, index - 1)
+          ENDIF
+      ENDCASES
+    ENDIF
+  MEASURE values BY <<
+
+  pal(values: list[Element], n: int): bool =
+    FORALL (index: int):
+      (0 <= index AND index < n)
+        IMPLIES
+          nth_option(values, index)
+            = nth_option(values, n - 1 - index)
+
+  equality_specification(
+      equal: [Element, Element -> bool]): bool =
+    FORALL (left, right: Element):
+      equal(left, right) IFF left = right
+
+  palindrome_vc: bool =
+    FORALL
+        (equal: [Element, Element -> bool]),
+        (x: list[Element]):
+      equality_specification(equal)
+        IMPLIES
+          (length(x) <= length(x))
+            AND
+          (FORALL (suffix: list[Element]):
+            ((EXISTS (prefix: list[Element]):
+                length(prefix) = length(x)
+                  AND x = append(prefix, suffix))
+              AND pal(x, length(x)))
+              IMPLIES pal(x, length(x)))
+            AND
+          ((EXISTS (index: int):
+              (0 <= index AND index < length(x))
+                AND
+              nth_option(x, index)
+                /= nth_option(x, length(x) - 1 - index))
+            IMPLIES NOT pal(x, length(x)))
+
+END there_and_back_again_Palindrome_palindromeqtvc

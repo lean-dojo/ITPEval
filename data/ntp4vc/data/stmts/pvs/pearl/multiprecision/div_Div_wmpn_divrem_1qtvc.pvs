@@ -1,0 +1,714 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/multiprecision/div_Div_wmpn_divrem_1qtvc: the verification condition
+% for one-limb multiprecision division, including divisor normalization,
+% reciprocal-based quotient steps, loop invariants, pointer updates, and the
+% final quotient-remainder relation. This file contains no proof.
+
+div_Div_wmpn_divrem_1qtvc[zone: TYPE+]: THEORY
+BEGIN
+
+  IMPORTING
+    bv[32], bv[64],
+    bv_nat[32], bv_nat[64]
+
+  word32: TYPE = bvec[32]
+  word64: TYPE = bvec[64]
+
+  ptr: TYPE =
+    [# data_length: nat,
+       cells: [int -> word64],
+       pointer_offset: int,
+       pointer_min: int,
+       pointer_max: int,
+       is_writable: bool,
+       pointer_zone: zone #]
+
+  radix: int = 18446744073709551616
+  half_radix: int = 9223372036854775808
+  max_word64: int = 18446744073709551615
+
+  unsigned64(value1: word64): int =
+    bv2nat[64](value1)
+
+  signed32(value1: word32): int =
+    IF value1(31) THEN
+      bv2nat[32](value1) - 4294967296
+    ELSE
+      bv2nat[32](value1)
+    ENDIF
+
+  int_to_nat(value1: int): nat =
+    IF value1 < 0 THEN 0 ELSE value1 ENDIF
+
+  nat_power(base: int, exponent: nat): RECURSIVE int =
+    IF exponent = 0 THEN
+      1
+    ELSE
+      base * nat_power(base, exponent - 1)
+    ENDIF
+  MEASURE exponent
+
+  int_power(base, exponent: int): int =
+    nat_power(base, int_to_nat(exponent))
+
+  value_from(
+      values: [int -> word64],
+      start: int,
+      count: nat): RECURSIVE int =
+    IF count = 0 THEN
+      0
+    ELSE
+      unsigned64(values(start))
+        + radix * value_from(values, start + 1, count - 1)
+    ENDIF
+  MEASURE count
+
+  value_sub(
+      values: [int -> word64],
+      lower, upper: int): int =
+    value_from(values, lower, int_to_nat(upper - lower))
+
+  value(p: ptr, count: int): int =
+    value_sub(
+      cells(p),
+      pointer_offset(p),
+      pointer_offset(p) + count)
+
+  int32_in_bounds(value1: int): bool =
+    -2147483648 <= value1 AND value1 <= 2147483647
+
+  uint64_in_bounds(value1: int): bool =
+    0 <= value1 AND value1 <= max_word64
+
+  valid(p: ptr, count: int): bool =
+    int32_in_bounds(count)
+      AND 0 <= count
+      AND 0 <= pointer_min(p)
+      AND pointer_min(p) <= pointer_offset(p)
+      AND pointer_offset(p) + count <= pointer_max(p)
+      AND pointer_max(p) <= data_length(p)
+
+  same_shape(left, right: ptr): bool =
+    data_length(left) = data_length(right)
+      AND pointer_offset(left) = pointer_offset(right)
+      AND pointer_min(left) = pointer_min(right)
+      AND pointer_max(left) = pointer_max(right)
+      AND is_writable(left) = is_writable(right)
+      AND pointer_zone(left) = pointer_zone(right)
+
+  access(p: ptr, index: int): bool =
+    pointer_min(p) <= index AND index < pointer_max(p)
+
+  update_cells(
+      values: [int -> word64],
+      index: int,
+      replacement: word64): [int -> word64] =
+    values WITH [(index) := replacement]
+
+  single_update(
+      newer, older: ptr,
+      index: int,
+      replacement: word64): bool =
+    cells(newer) = update_cells(cells(older), index, replacement)
+      AND cells(newer)(index) = replacement
+
+  euclidean_div_positive(
+      numerator, denominator: int): int =
+    IF denominator <= 0 THEN
+      0
+    ELSE
+      floor((numerator :: real) / (denominator :: real))
+    ENDIF
+
+  reciprocal(v, d: word64): bool =
+    unsigned64(v)
+      =
+    euclidean_div_positive(
+      radix * radix - 1,
+      unsigned64(d))
+      - radix
+
+  clz_premise(y: word64, clz: word32): bool =
+    int_power(2, signed32(clz)) * unsigned64(y) <= max_word64
+      AND max_word64
+        < 2 * int_power(2, signed32(clz)) * unsigned64(y)
+      AND 0 <= signed32(clz)
+      AND signed32(clz) < 64
+
+  final_result(
+      x, q1: ptr,
+      sz: word32,
+      y, result: word64): bool =
+    value(x, signed32(sz))
+      =
+    value(q1, signed32(sz)) * unsigned64(y)
+      + unsigned64(result)
+      AND unsigned64(result) < unsigned64(y)
+
+  normalized_next_invariant(
+      x, q2: ptr,
+      sz, msb, current_index, next_index: word32,
+      ry, remainder: word64,
+      mult: int): bool =
+    signed32(next_index) < signed32(current_index)
+      AND -1 <= signed32(next_index)
+      AND signed32(next_index) <= signed32(msb)
+      AND unsigned64(remainder) < unsigned64(ry)
+      AND
+        mult
+          * value_sub(
+              cells(x),
+              pointer_offset(x) + signed32(next_index) + 1,
+              pointer_offset(x) + signed32(sz))
+          =
+        value_sub(
+          cells(q2),
+          pointer_offset(q2) + signed32(next_index) + 1,
+          pointer_offset(q2) + signed32(sz))
+          * unsigned64(ry)
+          + unsigned64(remainder)
+      AND unsigned64(remainder) <= radix - mult
+      AND mod(unsigned64(remainder), mult) = 0
+
+  normalized_updated_state(
+      x, q1: ptr,
+      sz, msb, i: word32,
+      ry, remainder, quotient: word64,
+      mult: int): bool =
+    FORALL (q2: ptr):
+      same_shape(q2, q1)
+        IMPLIES
+          single_update(
+            q2, q1,
+            pointer_offset(q2) + signed32(i),
+            quotient)
+        IMPLIES
+          int32_in_bounds(signed32(i) - 1)
+            AND
+              (FORALL (next_index: word32):
+                signed32(next_index) = signed32(i) - 1
+                  IMPLIES
+                    normalized_next_invariant(
+                      x, q2, sz, msb, i, next_index,
+                      ry, remainder, mult))
+
+  normalized_write_step(
+      x, q1: ptr,
+      sz, msb, i: word32,
+      ry, remainder, quotient: word64,
+      mult: int): bool =
+    (pointer_offset(q1) + 1 + signed32(i)
+        <= pointer_offset(q1) + signed32(sz))
+      AND
+        (pointer_offset(q1) + signed32(i)
+            < pointer_offset(q1) + 1 + signed32(i)
+          OR
+            pointer_offset(q1) + signed32(sz)
+              <= pointer_offset(q1) + signed32(i))
+      AND
+        (value_sub(
+           cells(q1),
+           pointer_offset(q1) + 1 + signed32(i),
+           pointer_offset(q1) + signed32(sz))
+           =
+         value_sub(
+           update_cells(
+             cells(q1),
+             pointer_offset(q1) + signed32(i),
+             quotient),
+           pointer_offset(q1) + 1 + signed32(i),
+           pointer_offset(q1) + signed32(sz))
+          IMPLIES
+            access(
+              q1,
+              pointer_offset(q1) + signed32(i))
+              AND is_writable(q1) = TRUE
+              AND
+                normalized_updated_state(
+                  x, q1, sz, msb, i,
+                  ry, remainder, quotient, mult))
+
+  normalized_division_step(
+      x, q1: ptr,
+      sz, msb, i: word32,
+      ry, r, l, o3, quotient, remainder: word64,
+      mult: int): bool =
+    unsigned64(quotient) * unsigned64(ry)
+        + unsigned64(remainder)
+      =
+    unsigned64(l) + radix * unsigned64(o3)
+      AND 0 <= unsigned64(remainder)
+      AND unsigned64(remainder) < unsigned64(ry)
+      IMPLIES
+        NOT (mult = 0)
+          AND
+            normalized_write_step(
+              x, q1, sz, msb, i,
+              ry, remainder, quotient, mult)
+
+  normalized_sum_step(
+      x, q1: ptr,
+      sz, msb, i: word32,
+      ry, v, r, l, h, o3: word64,
+      mult: int): bool =
+    unsigned64(o3) = unsigned64(r) + unsigned64(h)
+      IMPLIES
+        half_radix <= unsigned64(ry)
+          AND unsigned64(o3) < unsigned64(ry)
+          AND reciprocal(v, ry)
+          AND
+            (FORALL (quotient, remainder: word64):
+              normalized_division_step(
+                x, q1, sz, msb, i,
+                ry, r, l, o3, quotient, remainder, mult))
+
+  normalized_split_step(
+      x, q1: ptr,
+      sz, msb, clz, i: word32,
+      ry, v, r, o2, l, h: word64,
+      mult: int): bool =
+    unsigned64(l) + radix * unsigned64(h)
+      =
+    int_power(2, unsigned64(o2))
+      * unsigned64(
+          cells(x)(pointer_offset(x) + signed32(i)))
+      AND mod(
+            unsigned64(l),
+            int_power(2, unsigned64(o2))) = 0
+      AND unsigned64(l)
+        <= radix - int_power(2, unsigned64(o2))
+      AND unsigned64(h) < int_power(2, unsigned64(o2))
+      IMPLIES
+        uint64_in_bounds(unsigned64(r) + unsigned64(h))
+          AND
+            (FORALL (o3: word64):
+              normalized_sum_step(
+                x, q1, sz, msb, i,
+                ry, v, r, l, h, o3, mult))
+
+  normalized_shift_step(
+      x, q1: ptr,
+      sz, msb, clz, i: word32,
+      ry, v, r, o2: word64,
+      mult: int): bool =
+    unsigned64(o2) = signed32(clz)
+      IMPLIES
+        0 < unsigned64(o2)
+          AND unsigned64(o2) < 64
+          AND
+            (FORALL (l, h: word64):
+              normalized_split_step(
+                x, q1, sz, msb, clz, i,
+                ry, v, r, o2, l, h, mult))
+
+  normalized_positive_index(
+      x, q1: ptr,
+      sz, msb, clz, i: word32,
+      ry, v, r: word64,
+      mult: int): bool =
+    access(x, pointer_offset(x) + signed32(i))
+      AND 0 <= signed32(clz)
+      AND
+        (FORALL (o2: word64):
+          normalized_shift_step(
+            x, q1, sz, msb, clz, i,
+            ry, v, r, o2, mult))
+
+  normalized_result_step(
+      x, q1: ptr,
+      sz, clz: word32,
+      y, r, o3, result: word64): bool =
+    unsigned64(r)
+      =
+    int_power(2, unsigned64(o3)) * unsigned64(result)
+      IMPLIES final_result(x, q1, sz, y, result)
+
+  normalized_rescale_step(
+      x, q1: ptr,
+      sz, clz: word32,
+      y, r, o2, res: word64): bool =
+    unsigned64(r)
+      =
+    int_power(2, unsigned64(o2)) * unsigned64(res)
+      IMPLIES
+        0 <= signed32(clz)
+          AND
+            (FORALL (o3: word64):
+              unsigned64(o3) = signed32(clz)
+                IMPLIES
+                  0 <= unsigned64(o3)
+                    AND unsigned64(o3) < 64
+                    AND mod(
+                          unsigned64(r),
+                          int_power(2, unsigned64(o3))) = 0
+                    AND
+                      (FORALL (result: word64):
+                        normalized_result_step(
+                          x, q1, sz, clz,
+                          y, r, o3, result)))
+
+  normalized_nonpositive_index(
+      x, q1: ptr,
+      sz, clz: word32,
+      y, r: word64): bool =
+    0 <= signed32(clz)
+      AND
+        (FORALL (o2: word64):
+          unsigned64(o2) = signed32(clz)
+            IMPLIES
+              0 <= unsigned64(o2)
+                AND unsigned64(o2) < 64
+                AND mod(
+                      unsigned64(r),
+                      int_power(2, unsigned64(o2))) = 0
+                AND
+                  (FORALL (res: word64):
+                    normalized_rescale_step(
+                      x, q1, sz, clz,
+                      y, r, o2, res)))
+
+  normalized_iteration(
+      x, q1: ptr,
+      sz, msb, clz, i: word32,
+      y, ry, v, r: word64,
+      mult: int): bool =
+    IF 0 <= signed32(i) THEN
+      normalized_positive_index(
+        x, q1, sz, msb, clz, i,
+        ry, v, r, mult)
+    ELSE
+      normalized_nonpositive_index(
+        x, q1, sz, clz, y, r)
+    ENDIF
+
+  normalized_loop_invariant(
+      x, q1: ptr,
+      sz, msb, i: word32,
+      ry, r: word64,
+      mult: int): bool =
+    -1 <= signed32(i)
+      AND signed32(i) <= signed32(msb)
+      AND unsigned64(r) < unsigned64(ry)
+      AND
+        mult
+          * value_sub(
+              cells(x),
+              pointer_offset(x) + signed32(i) + 1,
+              pointer_offset(x) + signed32(sz))
+          =
+        value_sub(
+          cells(q1),
+          pointer_offset(q1) + signed32(i) + 1,
+          pointer_offset(q1) + signed32(sz))
+          * unsigned64(ry)
+          + unsigned64(r)
+      AND unsigned64(r) <= radix - mult
+      AND mod(unsigned64(r), mult) = 0
+
+  normalized_loop(
+      x, q: ptr,
+      sz, msb, clz: word32,
+      y, ry, v: word64,
+      mult: int): bool =
+    FORALL (r: word64), (i: word32), (q1: ptr):
+      same_shape(q1, q)
+        IMPLIES
+          normalized_loop_invariant(
+            x, q1, sz, msb, i, ry, r, mult)
+        IMPLIES
+          normalized_iteration(
+            x, q1, sz, msb, clz, i,
+            y, ry, v, r, mult)
+
+  normalized_reciprocal_setup(
+      x, q: ptr,
+      sz, msb, clz: word32,
+      y, ry, v: word64,
+      mult: int): bool =
+    reciprocal(v, ry)
+      IMPLIES
+        -1 <= signed32(msb)
+          AND signed32(msb) <= signed32(msb)
+          AND 0 < unsigned64(ry)
+          AND
+            mult
+              * value_sub(
+                  cells(x),
+                  pointer_offset(x) + signed32(msb) + 1,
+                  pointer_offset(x) + signed32(sz))
+              =
+            value_sub(
+              cells(q),
+              pointer_offset(q) + signed32(msb) + 1,
+              pointer_offset(q) + signed32(sz))
+              * unsigned64(ry)
+              + 0
+          AND 0 <= radix - mult
+          AND mod(0, mult) = 0
+          AND
+            normalized_loop(
+              x, q, sz, msb, clz,
+              y, ry, v, mult)
+
+  normalized_shifted_divisor(
+      x, q: ptr,
+      sz, msb, clz: word32,
+      y, o1, ry: word64,
+      mult: int): bool =
+    unsigned64(ry)
+      =
+    int_power(2, unsigned64(o1)) * unsigned64(y)
+      IMPLIES
+        half_radix <= unsigned64(ry)
+          AND
+            (FORALL (v: word64):
+              normalized_reciprocal_setup(
+                x, q, sz, msb, clz,
+                y, ry, v, mult))
+
+  normalized_shift_count(
+      x, q: ptr,
+      sz, msb, clz: word32,
+      y, o1: word64,
+      mult: int): bool =
+    unsigned64(o1) = signed32(clz)
+      IMPLIES
+        0 <= unsigned64(o1)
+          AND unsigned64(o1) < 64
+          AND int_power(2, unsigned64(o1)) * unsigned64(y)
+            <= max_word64
+          AND
+            (FORALL (ry: word64):
+              normalized_shifted_divisor(
+                x, q, sz, msb, clz,
+                y, o1, ry, mult))
+
+  normalized_branch(
+      x, q: ptr,
+      sz, msb, clz: word32,
+      y: word64): bool =
+    LET mult: int = int_power(2, signed32(clz)) IN
+      0 <= signed32(clz)
+        AND
+          (FORALL (o1: word64):
+            normalized_shift_count(
+              x, q, sz, msb, clz,
+              y, o1, mult))
+
+  unnormalized_updated_state(
+      x, q1: ptr,
+      sz, msb, i: word32,
+      y, remainder, quotient: word64): bool =
+    FORALL (q2: ptr):
+      same_shape(q2, q1)
+        IMPLIES
+          single_update(
+            q2, q1,
+            pointer_offset(q2) + signed32(i),
+            quotient)
+        IMPLIES
+          int32_in_bounds(signed32(i) - 1)
+            AND
+              (FORALL (next_index: word32):
+                signed32(next_index) = signed32(i) - 1
+                  IMPLIES
+                    signed32(next_index) < signed32(i)
+                      AND -1 <= signed32(next_index)
+                      AND signed32(next_index) <= signed32(msb)
+                      AND unsigned64(remainder) < unsigned64(y)
+                      AND
+                        value_sub(
+                          cells(x),
+                          pointer_offset(x)
+                            + signed32(next_index) + 1,
+                          pointer_offset(x) + signed32(sz))
+                          =
+                        value_sub(
+                          cells(q2),
+                          pointer_offset(q2)
+                            + signed32(next_index) + 1,
+                          pointer_offset(q2) + signed32(sz))
+                          * unsigned64(y)
+                          + unsigned64(remainder))
+
+  unnormalized_write_step(
+      x, q1: ptr,
+      sz, msb, i: word32,
+      y, remainder, quotient: word64): bool =
+    (pointer_offset(q1) + 1 + signed32(i)
+        <= pointer_offset(q1) + signed32(sz))
+      AND
+        (pointer_offset(q1) + signed32(i)
+            < pointer_offset(q1) + 1 + signed32(i)
+          OR
+            pointer_offset(q1) + signed32(sz)
+              <= pointer_offset(q1) + signed32(i))
+      AND
+        (value_sub(
+           cells(q1),
+           pointer_offset(q1) + 1 + signed32(i),
+           pointer_offset(q1) + signed32(sz))
+           =
+         value_sub(
+           update_cells(
+             cells(q1),
+             pointer_offset(q1) + signed32(i),
+             quotient),
+           pointer_offset(q1) + 1 + signed32(i),
+           pointer_offset(q1) + signed32(sz))
+          IMPLIES
+            access(
+              q1,
+              pointer_offset(q1) + signed32(i))
+              AND is_writable(q1) = TRUE
+              AND
+                unnormalized_updated_state(
+                  x, q1, sz, msb, i,
+                  y, remainder, quotient))
+
+  unnormalized_division_step(
+      x, q1: ptr,
+      sz, msb, i: word32,
+      y, r, quotient, remainder: word64): bool =
+    unsigned64(quotient) * unsigned64(y)
+        + unsigned64(remainder)
+      =
+    unsigned64(
+      cells(x)(pointer_offset(x) + signed32(i)))
+      + radix * unsigned64(r)
+      AND 0 <= unsigned64(remainder)
+      AND unsigned64(remainder) < unsigned64(y)
+      IMPLIES
+        unnormalized_write_step(
+          x, q1, sz, msb, i,
+          y, remainder, quotient)
+
+  unnormalized_positive_index(
+      x, q1: ptr,
+      sz, msb, i: word32,
+      y, v, r: word64): bool =
+    access(x, pointer_offset(x) + signed32(i))
+      AND half_radix <= unsigned64(y)
+      AND unsigned64(r) < unsigned64(y)
+      AND reciprocal(v, y)
+      AND
+        (FORALL (quotient, remainder: word64):
+          unnormalized_division_step(
+            x, q1, sz, msb, i,
+            y, r, quotient, remainder))
+
+  unnormalized_iteration(
+      x, q1: ptr,
+      sz, msb, i: word32,
+      y, v, r: word64): bool =
+    IF 0 <= signed32(i) THEN
+      unnormalized_positive_index(
+        x, q1, sz, msb, i,
+        y, v, r)
+    ELSE
+      final_result(x, q1, sz, y, r)
+    ENDIF
+
+  unnormalized_loop_invariant(
+      x, q1: ptr,
+      sz, msb, i: word32,
+      y, r: word64): bool =
+    -1 <= signed32(i)
+      AND signed32(i) <= signed32(msb)
+      AND unsigned64(r) < unsigned64(y)
+      AND
+        value_sub(
+          cells(x),
+          pointer_offset(x) + signed32(i) + 1,
+          pointer_offset(x) + signed32(sz))
+          =
+        value_sub(
+          cells(q1),
+          pointer_offset(q1) + signed32(i) + 1,
+          pointer_offset(q1) + signed32(sz))
+          * unsigned64(y)
+          + unsigned64(r)
+
+  unnormalized_loop(
+      x, q: ptr,
+      sz, msb: word32,
+      y, v: word64): bool =
+    FORALL (r: word64), (i: word32), (q1: ptr):
+      same_shape(q1, q)
+        IMPLIES
+          unnormalized_loop_invariant(
+            x, q1, sz, msb, i, y, r)
+        IMPLIES
+          unnormalized_iteration(
+            x, q1, sz, msb, i,
+            y, v, r)
+
+  unnormalized_reciprocal_setup(
+      x, q: ptr,
+      sz, msb: word32,
+      y, v: word64): bool =
+    reciprocal(v, y)
+      IMPLIES
+        -1 <= signed32(msb)
+          AND signed32(msb) <= signed32(msb)
+          AND 0 < unsigned64(y)
+          AND
+            value_sub(
+              cells(x),
+              pointer_offset(x) + signed32(msb) + 1,
+              pointer_offset(x) + signed32(sz))
+              =
+            value_sub(
+              cells(q),
+              pointer_offset(q) + signed32(msb) + 1,
+              pointer_offset(q) + signed32(sz))
+              * unsigned64(y)
+              + 0
+          AND unnormalized_loop(x, q, sz, msb, y, v)
+
+  unnormalized_branch(
+      x, q: ptr,
+      sz, msb: word32,
+      y: word64): bool =
+    half_radix <= unsigned64(y)
+      AND
+        (FORALL (v: word64):
+          unnormalized_reciprocal_setup(
+            x, q, sz, msb, y, v))
+
+  division_branch(
+      x, q: ptr,
+      sz, msb, clz: word32,
+      y: word64): bool =
+    IF 0 < signed32(clz) THEN
+      normalized_branch(x, q, sz, msb, clz, y)
+    ELSE
+      unnormalized_branch(x, q, sz, msb, y)
+    ENDIF
+
+  wmpn_divrem_1_vc: bool =
+    FORALL (x: ptr), (sz: word32), (q: ptr), (y: word64):
+      valid(x, signed32(sz))
+        IMPLIES
+          valid(q, signed32(sz))
+        IMPLIES
+          is_writable(q) = TRUE
+        IMPLIES
+          0 < signed32(sz)
+        IMPLIES
+          0 < unsigned64(y)
+        IMPLIES
+          int32_in_bounds(signed32(sz) - 1)
+            AND
+              (FORALL (msb: word32):
+                signed32(msb) = signed32(sz) - 1
+                  IMPLIES
+                    0 < unsigned64(y)
+                      AND
+                        (FORALL (clz: word32):
+                          clz_premise(y, clz)
+                            IMPLIES
+                              division_branch(
+                                x, q, sz, msb, clz, y)))
+
+END div_Div_wmpn_divrem_1qtvc

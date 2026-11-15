@@ -1,0 +1,147 @@
+% Statement-only formalization of the VERINA corpus artifact verina_basic_35,
+% catalog title "MoveZeroesToEnd": a deterministic integer-array transformation
+% stably moves all zero entries after all nonzero entries and satisfies the
+% source permutation and zero-boundary contract. This file contains no proof.
+
+verina_basic_35: THEORY
+BEGIN
+
+  MoveZeroesToEnd_precond(
+      arr: list[int]): bool =
+    TRUE
+
+  int_list_filter_nonzero(
+      values: list[int]): RECURSIVE list[int] =
+    CASES values OF
+      null:
+        null[int],
+      cons(head, tail):
+        IF head /= 0 THEN
+          cons(head, int_list_filter_nonzero(tail))
+        ELSE
+          int_list_filter_nonzero(tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  int_list_filter_zero(
+      values: list[int]): RECURSIVE list[int] =
+    CASES values OF
+      null:
+        null[int],
+      cons(head, tail):
+        IF head = 0 THEN
+          cons(head, int_list_filter_zero(tail))
+        ELSE
+          int_list_filter_zero(tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  int_list_append(
+      first, second: list[int]): RECURSIVE list[int] =
+    CASES first OF
+      null:
+        second,
+      cons(head, tail):
+        cons(head, int_list_append(tail, second))
+    ENDCASES
+  MEASURE first BY <<
+
+  % Finite PVS lists preserve exactly the contents and order of Lean arrays.
+  % The source precondition proof argument is computationally irrelevant.
+  MoveZeroesToEnd(
+      arr: list[int]): list[int] =
+    int_list_append(
+      int_list_filter_nonzero(arr),
+      int_list_filter_zero(arr))
+
+  % Lean List.idxOf returns the first matching index, or the list length when
+  % the requested value does not occur.
+  int_list_index_of(
+      value: int,
+      values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF head = value THEN
+          0
+        ELSE
+          1 + int_list_index_of(value, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  int_list_take(
+      count: nat,
+      values: list[int]): RECURSIVE list[int] =
+    CASES values OF
+      null:
+        null[int],
+      cons(head, tail):
+        IF count = 0 THEN
+          null[int]
+        ELSE
+          cons(head, int_list_take(count - 1, tail))
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  int_list_drop(
+      count: nat,
+      values: list[int]): RECURSIVE list[int] =
+    CASES values OF
+      null:
+        null[int],
+      cons(head, tail):
+        IF count = 0 THEN
+          values
+        ELSE
+          int_list_drop(count - 1, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  int_list_count(
+      value: int,
+      values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        (IF head = value THEN 1 ELSE 0 ENDIF)
+          + int_list_count(value, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  % For finite integer lists, equality of every value's multiplicity is
+  % equivalent to Lean's List.isPerm relation.
+  int_lists_are_permutations(
+      first, second: list[int]): bool =
+    FORALL (value: int):
+      int_list_count(value, first)
+        = int_list_count(value, second)
+
+  MoveZeroesToEnd_postcond(
+      arr, result: list[int]): bool =
+    LET firstResZeroIdx: nat =
+      int_list_index_of(0, result)
+    IN
+      int_lists_are_permutations(result, arr)
+        AND
+          int_list_take(firstResZeroIdx, result)
+            = int_list_filter_nonzero(arr)
+        AND
+          int_list_drop(firstResZeroIdx, result)
+            = int_list_filter_zero(arr)
+
+  MoveZeroesToEnd_spec_satisfied: bool =
+    FORALL (arr: list[int]):
+      MoveZeroesToEnd_precond(arr)
+        IMPLIES
+          MoveZeroesToEnd_postcond(
+            arr,
+            MoveZeroesToEnd(arr))
+
+END verina_basic_35

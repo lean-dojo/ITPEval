@@ -1,0 +1,323 @@
+% Statement-only formalization of the Thousand Theorems corpus artifact Q3527166,
+% "Steinhaus theorem": in a locally compact topological group, the quotient of
+% a measurable positive-measure set by itself is a neighborhood of the identity
+% for an inner-regular Haar measure. This file contains no proof.
+
+steinhaus_theorem_Q3527166[
+  G: TYPE+,
+  one: G,
+  mul: [G, G -> G],
+  inv: [G -> G],
+  open_sets: [[G -> bool] -> bool],
+  measurable_sets: [[G -> bool] -> bool]
+]: THEORY
+
+BEGIN
+
+  point_set: TYPE = [G -> bool]
+  set_family: TYPE = [point_set -> bool]
+  set_sequence: TYPE = [nat -> point_set]
+
+  empty_set: point_set = LAMBDA (x: G): FALSE
+  full_set: point_set = LAMBDA (x: G): TRUE
+
+  subset_of(A, B: point_set): bool =
+    FORALL (x: G): A(x) IMPLIES B(x)
+
+  disjoint(A, B: point_set): bool =
+    FORALL (x: G): NOT (A(x) AND B(x))
+
+  intersection(A, B: point_set): point_set =
+    LAMBDA (x: G): A(x) AND B(x)
+
+  complement(A: point_set): point_set =
+    LAMBDA (x: G): NOT A(x)
+
+  union_of_family(F: set_family): point_set =
+    LAMBDA (x: G): EXISTS (A: point_set): F(A) AND A(x)
+
+  union_of_sequence(S: set_sequence): point_set =
+    LAMBDA (x: G): EXISTS (n: nat): S(n)(x)
+
+  pairwise_disjoint(S: set_sequence): bool =
+    FORALL (i, j: nat): i /= j IMPLIES disjoint(S(i), S(j))
+
+  group_laws: bool =
+    (FORALL (x, y, z: G):
+      mul(mul(x, y), z) = mul(x, mul(y, z)))
+    AND
+    (FORALL (x: G):
+      mul(one, x) = x AND mul(x, one) = x)
+    AND
+    (FORALL (x: G):
+      mul(inv(x), x) = one AND mul(x, inv(x)) = one)
+
+  topology_laws: bool =
+    open_sets(empty_set)
+    AND open_sets(full_set)
+    AND
+    (FORALL (F: set_family):
+      (FORALL (A: point_set): F(A) IMPLIES open_sets(A))
+      IMPLIES open_sets(union_of_family(F)))
+    AND
+    (FORALL (A, B: point_set):
+      open_sets(A) AND open_sets(B)
+      IMPLIES open_sets(intersection(A, B)))
+
+  multiplication_continuous: bool =
+    FORALL (x, y: G), (U: point_set):
+      open_sets(U) AND U(mul(x, y))
+      IMPLIES
+        EXISTS (V, W: point_set):
+          open_sets(V) AND open_sets(W)
+          AND V(x) AND W(y)
+          AND
+          (FORALL (a, b: G):
+            V(a) AND W(b) IMPLIES U(mul(a, b)))
+
+  inversion_continuous: bool =
+    FORALL (x: G), (U: point_set):
+      open_sets(U) AND U(inv(x))
+      IMPLIES
+        EXISTS (V: point_set):
+          open_sets(V) AND V(x)
+          AND (FORALL (a: G): V(a) IMPLIES U(inv(a)))
+
+  neighborhood(S: point_set, x: G): bool =
+    EXISTS (U: point_set):
+      open_sets(U) AND U(x) AND subset_of(U, S)
+
+  open_cover(C: set_family, K: point_set): bool =
+    (FORALL (U: point_set): C(U) IMPLIES open_sets(U))
+    AND
+    (FORALL (x: G):
+      K(x) IMPLIES EXISTS (U: point_set): C(U) AND U(x))
+
+  has_finite_subcover(C: set_family, K: point_set): bool =
+    EXISTS (n: nat), (chosen: [below(n) -> point_set]):
+      (FORALL (i: below(n)): C(chosen(i)))
+      AND
+      (FORALL (x: G):
+        K(x) IMPLIES EXISTS (i: below(n)): chosen(i)(x))
+
+  compact(K: point_set): bool =
+    FORALL (C: set_family):
+      open_cover(C, K) IMPLIES has_finite_subcover(C, K)
+
+  locally_compact_space: bool =
+    FORALL (x: G), (N: point_set):
+      neighborhood(N, x)
+      IMPLIES
+        EXISTS (K: point_set):
+          neighborhood(K, x) AND subset_of(K, N) AND compact(K)
+
+  sigma_algebra: TYPE = [point_set -> bool]
+
+  is_sigma_algebra(Sigma: sigma_algebra): bool =
+    Sigma(empty_set)
+    AND Sigma(full_set)
+    AND
+    (FORALL (A: point_set):
+      Sigma(A) IMPLIES Sigma(complement(A)))
+    AND
+    (FORALL (S: set_sequence):
+      (FORALL (n: nat): Sigma(S(n)))
+      IMPLIES Sigma(union_of_sequence(S)))
+
+  borel_space: bool =
+    is_sigma_algebra(measurable_sets)
+    AND
+    (FORALL (U: point_set):
+      open_sets(U) IMPLIES measurable_sets(U))
+    AND
+    (FORALL (Sigma: sigma_algebra):
+      is_sigma_algebra(Sigma)
+      AND
+      (FORALL (U: point_set): open_sets(U) IMPLIES Sigma(U))
+      IMPLIES
+      (FORALL (A: point_set): measurable_sets(A) IMPLIES Sigma(A)))
+
+  measure_value: TYPE =
+    [# infinite_flag: bool, finite_part: real #]
+
+  canonical_value(v: measure_value): bool =
+    IF infinite_flag(v)
+    THEN finite_part(v) = 0
+    ELSE finite_part(v) >= 0
+    ENDIF
+
+  mv_zero: measure_value =
+    (# infinite_flag := FALSE, finite_part := 0 #)
+
+  mv_infinity: measure_value =
+    (# infinite_flag := TRUE, finite_part := 0 #)
+
+  mv_finite(r: nonneg_real): measure_value =
+    (# infinite_flag := FALSE, finite_part := r #)
+
+  mv_le(a, b: measure_value): bool =
+    canonical_value(a) AND canonical_value(b)
+    AND
+    (infinite_flag(b)
+     OR
+     (NOT infinite_flag(a)
+      AND NOT infinite_flag(b)
+      AND finite_part(a) <= finite_part(b)))
+
+  mv_lt(a, b: measure_value): bool =
+    canonical_value(a) AND canonical_value(b)
+    AND
+    ((NOT infinite_flag(a) AND infinite_flag(b))
+     OR
+     (NOT infinite_flag(a)
+      AND NOT infinite_flag(b)
+      AND finite_part(a) < finite_part(b)))
+
+  mv_positive(a: measure_value): bool =
+    mv_lt(mv_zero, a)
+
+  mv_is_finite(a: measure_value): bool =
+    canonical_value(a) AND NOT infinite_flag(a)
+
+  mv_add(a, b: measure_value): measure_value =
+    IF infinite_flag(a) OR infinite_flag(b)
+    THEN mv_infinity
+    ELSE
+      (# infinite_flag := FALSE,
+         finite_part := finite_part(a) + finite_part(b) #)
+    ENDIF
+
+  finite_real_sum(a: [nat -> nonneg_real], n: nat): RECURSIVE nonneg_real =
+    IF n = 0
+    THEN 0
+    ELSE finite_real_sum(a, n - 1) + a(n - 1)
+    ENDIF
+    MEASURE n
+
+  converges_to_real(a: [nat -> nonneg_real], r: nonneg_real): bool =
+    FORALL (epsilon: posreal):
+      EXISTS (N: nat):
+        FORALL (n: nat):
+          n >= N IMPLIES abs(finite_real_sum(a, n) - r) < epsilon
+
+  unbounded_above(a: [nat -> nonneg_real]): bool =
+    FORALL (r: nonneg_real):
+      EXISTS (n: nat): finite_real_sum(a, n) > r
+
+  extended_nonnegative_sum(
+    a: [nat -> measure_value],
+    total: measure_value
+  ): bool =
+    (FORALL (n: nat): canonical_value(a(n)))
+    AND canonical_value(total)
+    AND
+    ((infinite_flag(total)
+      AND
+      ((EXISTS (n: nat): infinite_flag(a(n)))
+       OR
+       ((FORALL (n: nat): NOT infinite_flag(a(n)))
+        AND unbounded_above(
+          LAMBDA (n: nat):
+            finite_part(a(n))))))
+     OR
+     (NOT infinite_flag(total)
+      AND
+      (FORALL (n: nat): NOT infinite_flag(a(n)))
+      AND
+      converges_to_real(
+        LAMBDA (n: nat): finite_part(a(n)),
+        finite_part(total))))
+
+  measure_map: TYPE = [point_set -> measure_value]
+
+  outer_measure_laws(M: measure_map): bool =
+    (FORALL (A: point_set): canonical_value(M(A)))
+    AND M(empty_set) = mv_zero
+    AND
+    (FORALL (A, B: point_set):
+      subset_of(A, B) IMPLIES mv_le(M(A), M(B)))
+    AND
+    (FORALL (S: set_sequence):
+      EXISTS (total: measure_value):
+        extended_nonnegative_sum(
+          LAMBDA (n: nat): M(S(n)),
+          total)
+        AND mv_le(M(union_of_sequence(S)), total))
+
+  caratheodory_measurable(M: measure_map, E: point_set): bool =
+    FORALL (A: point_set):
+      M(A) = mv_add(
+        M(intersection(A, E)),
+        M(intersection(A, complement(E))))
+
+  canonical_outer_extension(M: measure_map): bool =
+    FORALL (A: point_set), (lower_bound: measure_value):
+      canonical_value(lower_bound)
+      AND
+      (FORALL (B: point_set):
+        measurable_sets(B) AND subset_of(A, B)
+        IMPLIES mv_le(lower_bound, M(B)))
+      IMPLIES mv_le(lower_bound, M(A))
+
+  is_measure(M: measure_map): bool =
+    outer_measure_laws(M)
+    AND canonical_outer_extension(M)
+    AND
+    (FORALL (E: point_set):
+      measurable_sets(E) IMPLIES caratheodory_measurable(M, E))
+
+  left_translate_preimage(g: G, A: point_set): point_set =
+    LAMBDA (x: G): A(mul(g, x))
+
+  finite_on_compacts(M: measure_map): bool =
+    FORALL (K: point_set):
+      compact(K) IMPLIES mv_is_finite(M(K))
+
+  left_invariant(M: measure_map): bool =
+    FORALL (g: G), (A: point_set):
+      M(left_translate_preimage(g, A)) = M(A)
+
+  positive_on_nonempty_open_sets(M: measure_map): bool =
+    FORALL (U: point_set):
+      open_sets(U) AND (EXISTS (x: G): U(x))
+      IMPLIES mv_positive(M(U))
+
+  is_haar_measure(M: measure_map): bool =
+    finite_on_compacts(M)
+    AND left_invariant(M)
+    AND positive_on_nonempty_open_sets(M)
+
+  inner_regular(M: measure_map): bool =
+    FORALL (U: point_set):
+      measurable_sets(U)
+      IMPLIES
+        FORALL (r: measure_value):
+          mv_lt(r, M(U))
+          IMPLIES
+            EXISTS (K: point_set):
+              subset_of(K, U)
+              AND compact(K)
+              AND mv_lt(r, M(K))
+
+  quotient_set(E: point_set): point_set =
+    LAMBDA (g: G):
+      EXISTS (x, y: G):
+        E(x) AND E(y) AND g = mul(x, inv(y))
+
+  steinhaus_theorem: bool =
+    group_laws
+    AND topology_laws
+    AND multiplication_continuous
+    AND inversion_continuous
+    AND locally_compact_space
+    AND borel_space
+    IMPLIES
+      FORALL (M: measure_map), (E: point_set):
+        is_measure(M)
+        AND is_haar_measure(M)
+        AND inner_regular(M)
+        AND measurable_sets(E)
+        AND mv_positive(M(E))
+        IMPLIES neighborhood(quotient_set(E), one)
+
+END steinhaus_theorem_Q3527166

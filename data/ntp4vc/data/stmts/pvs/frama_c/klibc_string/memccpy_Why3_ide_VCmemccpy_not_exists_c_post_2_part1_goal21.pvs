@@ -1,0 +1,117 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% frama_c/klibc_string/memccpy_Why3_ide_VCmemccpy_not_exists_c_post_2_part1_goal21:
+% the memccpy postcondition equating corresponding source and destination bytes
+% after havocing the destination interval and updating one byte. This file contains no proof.
+
+memccpy_Why3_ide_VCmemccpy_not_exists_c_post_2_part1_goal21: THEORY
+BEGIN
+  addr: TYPE = [# base: int, offset: int #]
+  integer_memory: TYPE = [addr -> int]
+  allocation_table: TYPE = [int -> int]
+  address_relation: TYPE = [addr, addr -> bool]
+  integer_conversion: TYPE = [int -> int]
+
+  shift(p: addr, k: int): addr =
+    (# base := base(p), offset := offset(p) + k #)
+
+  separated(p: addr, p_size: int, q: addr, q_size: int): bool =
+    p_size <= 0
+      OR q_size <= 0
+      OR base(p) /= base(q)
+      OR offset(q) + q_size <= offset(p)
+      OR offset(p) + p_size <= offset(q)
+
+  havoc(
+      original, outside: integer_memory,
+      start: addr,
+      size: int): integer_memory =
+    LAMBDA (q: addr):
+      IF separated(q, 1, start, size) THEN
+        outside(q)
+      ELSE
+        original(q)
+      ENDIF
+
+  valid_rw(malloc: allocation_table, p: addr, size: int): bool =
+    0 < size IMPLIES
+      0 < base(p)
+        AND 0 <= offset(p)
+        AND offset(p) + size <= malloc(base(p))
+
+  is_uint32(value: int): bool =
+    0 <= value AND value < 4294967296
+
+  is_sint32(value: int): bool =
+    -2147483648 <= value AND value < 2147483648
+
+  address_order_axiom(addr_le: address_relation): bool =
+    FORALL (p, q: addr):
+      base(p) = base(q) IMPLIES
+        (addr_le(p, q) IFF offset(p) <= offset(q))
+
+  sint8_conversion_axiom(to_sint8: integer_conversion): bool =
+    FORALL (value: int):
+      -128 <= value AND value < 128 IMPLIES
+        to_sint8(value) = value
+
+  goal21: bool =
+    FORALL
+      (region: [int -> int]),
+      (linked: [allocation_table -> bool]),
+      (sconst: [integer_memory -> bool]),
+      (addr_le: address_relation),
+      (to_sint8: integer_conversion),
+      (a_1: addr),
+      (i_1, i: int),
+      (t_1, t_2: integer_memory),
+      (a: addr),
+      (i_3, i_2: int),
+      (t: allocation_table):
+      address_order_axiom(addr_le) IMPLIES
+      sint8_conversion_axiom(to_sint8) IMPLIES
+      LET a_2: addr = shift(a_1, 0),
+          x: int = i_1 - i,
+          a_3: integer_memory = havoc(t_1, t_2, a_2, x),
+          a_4: addr = shift(a, x),
+          a_5: int = a_3(a_4),
+          a_6: addr = shift(a, 0),
+          a_7: addr = shift(a_1, x),
+          a_8: integer_memory = a_3 WITH [(a_7) := a_5]
+      IN
+        i /= 0 IMPLIES
+        a_5 = to_sint8(i_3) IMPLIES
+        0 < i_1 IMPLIES
+        0 <= i IMPLIES
+        i <= i_1 IMPLIES
+        0 <= i_2 IMPLIES
+        i_2 < i_1 IMPLIES
+        region(base(a)) <= 0 IMPLIES
+        region(base(a_1)) <= 0 IMPLIES
+        -128 <= i_3 IMPLIES
+        i_3 <= 127 IMPLIES
+        linked(t) IMPLIES
+        sconst(t_2) IMPLIES
+        is_uint32(i) IMPLIES
+        is_uint32(i_1) IMPLIES
+        is_sint32(i_3) IMPLIES
+        valid_rw(t, a_6, i_1) IMPLIES
+        valid_rw(t, a_2, i_1) IMPLIES
+        separated(a_6, i_1, a_2, i_1) IMPLIES
+        addr_le(a, a_4) IMPLIES
+        addr_le(a_1, a_7) IMPLIES
+        addr_le(a_4, shift(a, i_1)) IMPLIES
+        addr_le(a_7, shift(a_1, i_1)) IMPLIES
+        (FORALL (i_4: int):
+          0 <= i_4 IMPLIES
+          i_4 + i < i_1 IMPLIES
+          a_3(shift(a_1, i_4)) = a_3(shift(a, i_4))) IMPLIES
+        (FORALL (i_4: int):
+          0 <= i_4 IMPLIES
+          i_4 < i_1 IMPLIES
+          a_5 /= t_2(shift(a, i_4))) IMPLIES
+        (FORALL (i_4: int):
+          0 <= i_4 IMPLIES
+          i_4 + i < i_1 IMPLIES
+          a_5 /= a_3(shift(a_1, i_4))) IMPLIES
+        a_8(shift(a_1, i_2)) = a_8(shift(a, i_2))
+END memccpy_Why3_ide_VCmemccpy_not_exists_c_post_2_part1_goal21

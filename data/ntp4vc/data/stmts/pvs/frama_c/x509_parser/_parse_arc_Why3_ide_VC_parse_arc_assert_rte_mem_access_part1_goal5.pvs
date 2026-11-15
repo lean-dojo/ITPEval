@@ -1,0 +1,87 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% frama_c/x509_parser/_parse_arc_Why3_ide_VC_parse_arc_assert_rte_mem_access_part1_goal5:
+% an X.509 arc-parsing verification condition concluding read validity at a
+% bounded offset under allocation, integer-range, bit, and region assumptions.
+% This file contains no proof.
+
+parse_arc_Why3_ide_VC_parse_arc_assert_rte_mem_access_part1_goal5: THEORY
+BEGIN
+  addr: TYPE = [# base: int, offset: int #]
+  allocation_table: TYPE = [int -> int]
+  integer_memory: TYPE = [addr -> int]
+
+  shift(p: addr, k: int): addr =
+    (# base := base(p), offset := offset(p) + k #)
+
+  valid_rw(malloc: allocation_table, p: addr, size: int): bool =
+    0 < size IMPLIES
+      0 < base(p)
+        AND 0 <= offset(p)
+        AND offset(p) + size <= malloc(base(p))
+
+  valid_rd(malloc: allocation_table, p: addr, size: int): bool =
+    0 < size IMPLIES
+      base(p) /= 0
+        AND 0 <= offset(p)
+        AND offset(p) + size <= malloc(base(p))
+
+  is_uint16(value: int): bool =
+    0 <= value AND value < 65536
+
+  is_uint32(value: int): bool =
+    0 <= value AND value < 4294967296
+
+  to_uint32(value: int): int =
+    mod(value, 4294967296)
+
+  lsl(value, amount: int): int =
+    IF 0 <= amount THEN
+      value * floor(2 ^ amount)
+    ELSE
+      0
+    ENDIF
+
+  bit_test(value, index: int): bool =
+    0 <= index
+      AND mod(floor((value :: real) / (2 ^ index)), 2) = 1
+
+  goal5: bool =
+    FORALL
+      (region: [int -> int]),
+      (linked: [allocation_table -> bool]),
+      (a_1, a, a_2: addr),
+      (i_1, i, i_2: int),
+      (t: allocation_table),
+      (t_1: integer_memory):
+      LET x: int = base(a_1),
+          x_1: int = base(a),
+          x_2: int = base(a_2)
+      IN
+        i_1 /= 0 IMPLIES
+        a_2 /= a IMPLIES
+        (# base := 0, offset := 0 #) /= a_1 IMPLIES
+        x /= x_1 IMPLIES
+        x_2 /= x IMPLIES
+        0 <= i IMPLIES
+        0 <= i_1 IMPLIES
+        region(x_1) <= 0 IMPLIES
+        region(x) <= 0 IMPLIES
+        region(x_2) <= 0 IMPLIES
+        i_2 < lsl(1, to_uint32(7 * i)) IMPLIES
+        i <= 3 IMPLIES
+        i <= 4 IMPLIES
+        5 <= i_1 IMPLIES
+        lsl(i_2, 7) <= 4294967295 IMPLIES
+        linked(t) IMPLIES
+        is_uint16(i) IMPLIES
+        is_uint16(i_1) IMPLIES
+        is_uint32(i_2) IMPLIES
+        valid_rw(t, a, 1) IMPLIES
+        valid_rw(t, a_2, 1) IMPLIES
+        (0 < i_1 IMPLIES valid_rd(t, shift(a_1, 0), i_1)) IMPLIES
+        (FORALL (i_3: int):
+          0 <= i_3 IMPLIES
+          i_3 < i IMPLIES
+          bit_test(t_1(shift(a_1, i_3)), 7)) IMPLIES
+        valid_rd(t, shift(a_1, i), 1)
+END parse_arc_Why3_ide_VC_parse_arc_assert_rte_mem_access_part1_goal5

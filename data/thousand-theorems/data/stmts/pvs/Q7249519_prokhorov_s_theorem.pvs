@@ -1,0 +1,448 @@
+% Statement-only formalization of the Thousand Theorems corpus artifact Q7249519,
+% "Prokhorov's theorem": finite Borel measures with uniformly bounded mass and
+% vanishing bounds outside a sequence of compact sets form a compact set in the
+% weak topology, under normality or monotonicity. This file contains no proof.
+
+Q7249519_prokhorov_s_theorem[E: TYPE]: THEORY
+BEGIN
+  point_set: TYPE = [E -> bool]
+  point_set_family: TYPE = [point_set -> bool]
+  point_set_sequence: TYPE = [nat -> point_set]
+  topology: TYPE = [point_set -> bool]
+  sigma_algebra: TYPE = [point_set -> bool]
+
+  nonnegative_real: TYPE = {value: real | 0 <= value}
+  nonnegative_sequence: TYPE = [nat -> nonnegative_real]
+  real_sequence: TYPE = [nat -> real]
+  real_function: TYPE = [E -> real]
+  real_function_sequence: TYPE = [nat -> real_function]
+  real_set: TYPE = [real -> bool]
+  real_set_sequence: TYPE = [nat -> real_set]
+
+  measure_map: TYPE = [point_set -> nonnegative_real]
+  measure_set: TYPE = [measure_map -> bool]
+  measure_set_family: TYPE = [measure_set -> bool]
+  measure_set_sequence: TYPE = [nat -> measure_set]
+
+  empty_set: point_set =
+    LAMBDA (x: E): FALSE
+
+  full_set: point_set =
+    LAMBDA (x: E): TRUE
+
+  point_subset(A, B: point_set): bool =
+    FORALL (x: E):
+      A(x) IMPLIES B(x)
+
+  point_disjoint(A, B: point_set): bool =
+    FORALL (x: E):
+      NOT (A(x) AND B(x))
+
+  point_intersection(A, B: point_set): point_set =
+    LAMBDA (x: E):
+      A(x) AND B(x)
+
+  point_complement(A: point_set): point_set =
+    LAMBDA (x: E):
+      NOT A(x)
+
+  point_union(F: point_set_family): point_set =
+    LAMBDA (x: E):
+      EXISTS (A: point_set):
+        F(A) AND A(x)
+
+  countable_union(sets: point_set_sequence): point_set =
+    LAMBDA (x: E):
+      EXISTS (index: nat):
+        sets(index)(x)
+
+  topology_laws(open_sets: topology): bool =
+    open_sets(empty_set)
+      AND open_sets(full_set)
+      AND (FORALL (A, B: point_set):
+        open_sets(A) AND open_sets(B)
+          IMPLIES open_sets(point_intersection(A, B)))
+      AND (FORALL (F: point_set_family):
+        (FORALL (A: point_set):
+          F(A) IMPLIES open_sets(A))
+        IMPLIES open_sets(point_union(F)))
+
+  closed_set(open_sets: topology, A: point_set): bool =
+    open_sets(point_complement(A))
+
+  hausdorff_space(open_sets: topology): bool =
+    FORALL (x, y: E):
+      x /= y IMPLIES
+        EXISTS (U, V: point_set):
+          open_sets(U)
+            AND open_sets(V)
+            AND U(x)
+            AND V(y)
+            AND point_disjoint(U, V)
+
+  normal_space(open_sets: topology): bool =
+    FORALL (A, B: point_set):
+      closed_set(open_sets, A)
+        AND closed_set(open_sets, B)
+        AND point_disjoint(A, B)
+      IMPLIES
+        EXISTS (U, V: point_set):
+          open_sets(U)
+            AND open_sets(V)
+            AND point_subset(A, U)
+            AND point_subset(B, V)
+            AND point_disjoint(U, V)
+
+  point_open_cover(
+      open_sets: topology,
+      cover: point_set_family,
+      A: point_set): bool =
+    (FORALL (U: point_set):
+      cover(U) IMPLIES open_sets(U))
+      AND (FORALL (x: E):
+        A(x) IMPLIES
+          EXISTS (U: point_set):
+            cover(U) AND U(x))
+
+  point_finite_subcover(
+      cover: point_set_family,
+      A: point_set): bool =
+    EXISTS
+        (count: nat),
+        (chosen: point_set_sequence):
+      (FORALL (index: nat):
+        index < count IMPLIES cover(chosen(index)))
+        AND (FORALL (x: E):
+          A(x) IMPLIES
+            EXISTS (index: nat):
+              index < count AND chosen(index)(x))
+
+  compact_set(open_sets: topology, A: point_set): bool =
+    FORALL (cover: point_set_family):
+      point_open_cover(open_sets, cover, A)
+        IMPLIES point_finite_subcover(cover, A)
+
+  monotone_sets(K: point_set_sequence): bool =
+    FORALL (left_index, right_index: nat):
+      left_index <= right_index IMPLIES
+        point_subset(K(left_index), K(right_index))
+
+  is_sigma_algebra(Sigma: sigma_algebra): bool =
+    Sigma(full_set)
+      AND (FORALL (A: point_set):
+        Sigma(A) IMPLIES Sigma(point_complement(A)))
+      AND (FORALL (sets: point_set_sequence):
+        (FORALL (index: nat):
+          Sigma(sets(index)))
+        IMPLIES Sigma(countable_union(sets)))
+
+  generated_borel_sigma(
+      open_sets: topology,
+      Sigma: sigma_algebra): bool =
+    is_sigma_algebra(Sigma)
+      AND (FORALL (U: point_set):
+        open_sets(U) IMPLIES Sigma(U))
+      AND (FORALL (Other: sigma_algebra):
+        (is_sigma_algebra(Other)
+          AND (FORALL (U: point_set):
+            open_sets(U) IMPLIES Other(U)))
+        IMPLIES
+          FORALL (A: point_set):
+            Sigma(A) IMPLIES Other(A))
+
+  pairwise_disjoint(sets: point_set_sequence): bool =
+    FORALL (left_index, right_index: nat):
+      left_index /= right_index IMPLIES
+        point_disjoint(sets(left_index), sets(right_index))
+
+  pairwise_disjoint_below(
+      sets: point_set_sequence,
+      count: nat): bool =
+    FORALL (left_index, right_index: nat):
+      left_index < count
+        AND right_index < count
+        AND left_index /= right_index
+      IMPLIES point_disjoint(
+        sets(left_index), sets(right_index))
+
+  finite_real_sum(
+      values: real_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      finite_real_sum(values, count - 1)
+        + values(count - 1)
+    ENDIF
+  MEASURE count
+
+  converges_to_real(
+      values: real_sequence,
+      limit: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(values(index) - limit) < epsilon_value
+
+  partial_measure_sum(
+      M: measure_map,
+      sets: point_set_sequence,
+      count: nat): real =
+    finite_real_sum(
+      LAMBDA (index: nat):
+        M(sets(index)),
+      count)
+
+  is_finite_measure(
+      M: measure_map,
+      Sigma: sigma_algebra): bool =
+    is_sigma_algebra(Sigma)
+      AND M(empty_set) = 0
+      AND (FORALL (A: point_set):
+        NOT Sigma(A) IMPLIES M(A) = 0)
+      AND (FORALL (sets: point_set_sequence):
+        ((FORALL (index: nat):
+            Sigma(sets(index)))
+          AND pairwise_disjoint(sets))
+        IMPLIES
+          converges_to_real(
+            LAMBDA (count: nat):
+              partial_measure_sum(M, sets, count),
+            M(countable_union(sets))))
+
+  tends_to_zero(u: nonnegative_sequence): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            u(index) < epsilon_value
+
+  real_open(A: real_set): bool =
+    FORALL (value: real):
+      A(value) IMPLIES
+        EXISTS (radius: posreal):
+          FORALL (other: real):
+            abs(other - value) < radius IMPLIES A(other)
+
+  preimage_real(f: real_function, A: real_set): point_set =
+    LAMBDA (x: E):
+      A(f(x))
+
+  continuous_real_function(
+      open_sets: topology,
+      f: real_function): bool =
+    FORALL (A: real_set):
+      real_open(A) IMPLIES
+        open_sets(preimage_real(f, A))
+
+  bounded_real_function(f: real_function): bool =
+    EXISTS (bound: real):
+      0 <= bound
+        AND FORALL (x: E):
+          abs(f(x)) <= bound
+
+  bounded_continuous_function(
+      open_sets: topology,
+      f: real_function): bool =
+    bounded_real_function(f)
+      AND continuous_real_function(open_sets, f)
+
+  finite_simple_value(
+      coefficients: nonnegative_sequence,
+      pieces: point_set_sequence,
+      count: nat,
+      x: E): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      finite_simple_value(
+        coefficients, pieces, count - 1, x)
+        + IF pieces(count - 1)(x) THEN
+            coefficients(count - 1)
+          ELSE
+            0
+          ENDIF
+    ENDIF
+  MEASURE count
+
+  measurable_simple_minorant(
+      Sigma: sigma_algebra,
+      function_value: real_function,
+      coefficients: nonnegative_sequence,
+      pieces: point_set_sequence,
+      count: nat): bool =
+    pairwise_disjoint_below(pieces, count)
+      AND (FORALL (index: nat):
+        index < count IMPLIES Sigma(pieces(index)))
+      AND (FORALL (x: E):
+        0 <= function_value(x)
+          AND finite_simple_value(
+            coefficients, pieces, count, x)
+            <= function_value(x))
+
+  finite_simple_integral(
+      M: measure_map,
+      coefficients: nonnegative_sequence,
+      pieces: point_set_sequence,
+      count: nat): real =
+    finite_real_sum(
+      LAMBDA (index: nat):
+        coefficients(index) * M(pieces(index)),
+      count)
+
+  nonnegative_integral_upper_bound(
+      M: measure_map,
+      Sigma: sigma_algebra,
+      function_value: real_function,
+      upper: real): bool =
+    FORALL
+        (coefficients: nonnegative_sequence),
+        (pieces: point_set_sequence),
+        (count: nat):
+      measurable_simple_minorant(
+        Sigma, function_value, coefficients, pieces, count)
+      IMPLIES
+        finite_simple_integral(
+          M, coefficients, pieces, count) <= upper
+
+  has_nonnegative_integral(
+      M: measure_map,
+      Sigma: sigma_algebra,
+      function_value: real_function,
+      value: real): bool =
+    0 <= value
+      AND nonnegative_integral_upper_bound(
+        M, Sigma, function_value, value)
+      AND (FORALL (upper: real):
+        nonnegative_integral_upper_bound(
+          M, Sigma, function_value, upper)
+        IMPLIES value <= upper)
+
+  nonnegative_integral(
+      M: measure_map,
+      Sigma: sigma_algebra,
+      function_value: real_function): real =
+    epsilon(
+      LAMBDA (value: real):
+        has_nonnegative_integral(
+          M, Sigma, function_value, value))
+
+  positive_part(f: real_function): real_function =
+    LAMBDA (x: E):
+      IF 0 <= f(x) THEN f(x) ELSE 0 ENDIF
+
+  negative_part(f: real_function): real_function =
+    LAMBDA (x: E):
+      IF f(x) <= 0 THEN -f(x) ELSE 0 ENDIF
+
+  lebesgue_integral(
+      M: measure_map,
+      Sigma: sigma_algebra,
+      f: real_function): real =
+    nonnegative_integral(M, Sigma, positive_part(f))
+      - nonnegative_integral(M, Sigma, negative_part(f))
+
+  measure_carrier(Sigma: sigma_algebra): measure_set =
+    LAMBDA (M: measure_map):
+      is_finite_measure(M, Sigma)
+
+  measure_subset(A, B: measure_set): bool =
+    FORALL (M: measure_map):
+      A(M) IMPLIES B(M)
+
+  weakly_open_measure_set(
+      open_sets: topology,
+      Sigma: sigma_algebra,
+      U: measure_set): bool =
+    measure_subset(U, measure_carrier(Sigma))
+      AND FORALL (M: measure_map):
+        U(M) IMPLIES
+          EXISTS
+              (count: nat),
+              (functions: real_function_sequence),
+              (targets: real_set_sequence):
+            (FORALL (index: nat):
+              index < count IMPLIES
+                bounded_continuous_function(
+                  open_sets, functions(index))
+                  AND real_open(targets(index))
+                  AND targets(index)(
+                    lebesgue_integral(
+                      M, Sigma, functions(index))))
+              AND (FORALL (N: measure_map):
+                is_finite_measure(N, Sigma)
+                  AND (FORALL (index: nat):
+                    index < count IMPLIES
+                      targets(index)(
+                        lebesgue_integral(
+                          N, Sigma, functions(index))))
+                IMPLIES U(N))
+
+  measure_open_cover(
+      open_sets: topology,
+      Sigma: sigma_algebra,
+      cover: measure_set_family,
+      A: measure_set): bool =
+    (FORALL (U: measure_set):
+      cover(U) IMPLIES
+        weakly_open_measure_set(open_sets, Sigma, U))
+      AND (FORALL (M: measure_map):
+        A(M) IMPLIES
+          EXISTS (U: measure_set):
+            cover(U) AND U(M))
+
+  measure_finite_subcover(
+      cover: measure_set_family,
+      A: measure_set): bool =
+    EXISTS
+        (count: nat),
+        (chosen: measure_set_sequence):
+      (FORALL (index: nat):
+        index < count IMPLIES cover(chosen(index)))
+        AND (FORALL (M: measure_map):
+          A(M) IMPLIES
+            EXISTS (index: nat):
+              index < count AND chosen(index)(M))
+
+  weakly_compact_measure_set(
+      open_sets: topology,
+      Sigma: sigma_algebra,
+      A: measure_set): bool =
+    measure_subset(A, measure_carrier(Sigma))
+      AND FORALL (cover: measure_set_family):
+        measure_open_cover(
+          open_sets, Sigma, cover, A)
+        IMPLIES measure_finite_subcover(cover, A)
+
+  bounded_tight_measure_set(
+      Sigma: sigma_algebra,
+      C: nonnegative_real,
+      u: nonnegative_sequence,
+      K: point_set_sequence): measure_set =
+    LAMBDA (M: measure_map):
+      is_finite_measure(M, Sigma)
+        AND M(full_set) <= C
+        AND (FORALL (index: nat):
+          M(point_complement(K(index))) <= u(index))
+
+  prokhorov_s_theorem: bool =
+    FORALL
+        (open_sets: topology),
+        (Sigma: sigma_algebra),
+        (C: nonnegative_real),
+        (u: nonnegative_sequence),
+        (K: point_set_sequence):
+      (topology_laws(open_sets)
+        AND hausdorff_space(open_sets)
+        AND generated_borel_sigma(open_sets, Sigma)
+        AND tends_to_zero(u)
+        AND (FORALL (index: nat):
+          compact_set(open_sets, K(index)))
+        AND (normal_space(open_sets) OR monotone_sets(K)))
+      IMPLIES
+        weakly_compact_measure_set(
+          open_sets,
+          Sigma,
+          bounded_tight_measure_set(Sigma, C, u, K))
+END Q7249519_prokhorov_s_theorem

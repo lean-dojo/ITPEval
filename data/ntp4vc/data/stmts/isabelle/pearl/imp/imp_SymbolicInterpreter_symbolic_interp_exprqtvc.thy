@@ -1,0 +1,14 @@
+theory imp_SymbolicInterpreter_symbolic_interp_exprqtvc
+  imports "NTP4Verif.NTP4Verif" "../../lib/isabelle/imp_Syntax" "../../lib/isabelle/imp_ConcreteSemantics" "../../lib/isabelle/imp_Svar" "../../lib/isabelle/imp_Constraint" "../../lib/isabelle/imp_SymState" "../../lib/isabelle/imp_FreshSvar" "../../lib/isabelle/imp_SymStateSet"
+begin
+consts compose :: "(svar \<Rightarrow> int) \<Rightarrow> t \<Rightarrow> program_var \<Rightarrow> int option"
+axiomatization where compose'def:   "compose rho sigma x = (case get sigma x of Some v \<Rightarrow> Some (rho v) | None \<Rightarrow> None)"
+  for rho :: "svar \<Rightarrow> int"
+  and sigma :: "t"
+  and x :: "program_var"
+theorem symbolic_interp_expr'vc:
+  fixes e :: "expr"
+  fixes s :: "sym_state"
+  shows "case e of Elit n \<Rightarrow> (let result :: symbolic_expr = Slit n in eval_expr (compose (rho s) (sigma s)) e (Enormal (interp_symbolic_expr (rho s) result)) \<and> (\<forall>(v :: svar). v |\<in>| vars_in_symbolic_expr result \<longrightarrow> (\<exists>(x :: program_var). get (sigma s) x = Some v))) | Evar x \<Rightarrow> (\<forall>(o1 :: svar). get (sigma s) x = Some o1 \<longrightarrow> (let result :: symbolic_expr = Svar o1 in eval_expr (compose (rho s) (sigma s)) e (Enormal (interp_symbolic_expr (rho s) result)) \<and> (\<forall>(v :: svar). v |\<in>| vars_in_symbolic_expr result \<longrightarrow> (\<exists>(x1 :: program_var). get (sigma s) x1 = Some v)))) \<and> (get (sigma s) x = None \<longrightarrow> eval_expr (compose (rho s) (sigma s)) e Eunbound_var) | Esub e1 e2 \<Rightarrow> (case e of Elit _ \<Rightarrow> False | Evar _ \<Rightarrow> False | Esub f f1 \<Rightarrow> f = e2 \<or> f1 = e2) \<and> (\<forall>(o1 :: symbolic_expr). eval_expr (compose (rho s) (sigma s)) e2 (Enormal (interp_symbolic_expr (rho s) o1)) \<and> (\<forall>(v :: svar). v |\<in>| vars_in_symbolic_expr o1 \<longrightarrow> (\<exists>(x :: program_var). get (sigma s) x = Some v)) \<longrightarrow> (case e of Elit _ \<Rightarrow> False | Evar _ \<Rightarrow> False | Esub f f1 \<Rightarrow> f = e1 \<or> f1 = e1) \<and> (\<forall>(o2 :: symbolic_expr). eval_expr (compose (rho s) (sigma s)) e1 (Enormal (interp_symbolic_expr (rho s) o2)) \<and> (\<forall>(v :: svar). v |\<in>| vars_in_symbolic_expr o2 \<longrightarrow> (\<exists>(x :: program_var). get (sigma s) x = Some v)) \<longrightarrow> (let result :: symbolic_expr = Ssub o2 o1 in eval_expr (compose (rho s) (sigma s)) e (Enormal (interp_symbolic_expr (rho s) result)) \<and> (\<forall>(v :: svar). v |\<in>| vars_in_symbolic_expr result \<longrightarrow> (\<exists>(x :: program_var). get (sigma s) x = Some v)))) \<and> (eval_expr (compose (rho s) (sigma s)) e1 Eunbound_var \<longrightarrow> eval_expr (compose (rho s) (sigma s)) e Eunbound_var)) \<and> (eval_expr (compose (rho s) (sigma s)) e2 Eunbound_var \<longrightarrow> eval_expr (compose (rho s) (sigma s)) e Eunbound_var)"
+  sorry
+end

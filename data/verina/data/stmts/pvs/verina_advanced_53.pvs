@@ -1,0 +1,197 @@
+% Statement-only formalization of the VERINA corpus artifact
+% verina_advanced_53, catalog title "minimumRightShifts": the executable search
+% returns the least right rotation that makes a duplicate-free integer list
+% nondecreasing, or -1 when no such rotation exists. This file contains no proof.
+
+verina_advanced_53: THEORY
+BEGIN
+
+  int_list_length(values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        int_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  int_member(
+      sought: int,
+      values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        FALSE,
+      cons(head, tail):
+        head = sought OR int_member(sought, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  no_duplicates(values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        NOT int_member(head, tail)
+          AND no_duplicates(tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  minimumRightShifts_precond(nums: list[int]): bool =
+    no_duplicates(nums)
+
+  % This is the source program's local adjacent-pair sortedness test.
+  minimumRightShifts_isSortedAux(
+      values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        CASES tail OF
+          null:
+            TRUE,
+          cons(next, rest):
+            head <= next
+              AND minimumRightShifts_isSortedAux(tail)
+        ENDCASES
+    ENDCASES
+  MEASURE values BY <<
+
+  reverse_int_list_acc(
+      values, accumulator: list[int]):
+        RECURSIVE list[int] =
+    CASES values OF
+      null:
+        accumulator,
+      cons(head, tail):
+        reverse_int_list_acc(
+          tail,
+          cons(head, accumulator))
+    ENDCASES
+  MEASURE values BY <<
+
+  reverse_int_list(values: list[int]): list[int] =
+    reverse_int_list_acc(values, null)
+
+  % This follows the source reverse/match/reverse implementation exactly.
+  minimumRightShifts_rightShiftOnce(
+      values: list[int]): list[int] =
+    CASES reverse_int_list(values) OF
+      null:
+        null,
+      cons(last, reversed_initial):
+        cons(
+          last,
+          reverse_int_list(reversed_initial))
+    ENDCASES
+
+  % The remaining counter is exactly n - shifts_count from the Lean
+  % termination measure, so zero corresponds to the source count >= n branch.
+  minimumRightShifts_checkShifts(
+      shifts_count, remaining: nat,
+      current_list: list[int]): RECURSIVE int =
+    IF remaining = 0 THEN
+      -1
+    ELSIF minimumRightShifts_isSortedAux(current_list) THEN
+      (shifts_count :: int)
+    ELSE
+      minimumRightShifts_checkShifts(
+        shifts_count + 1,
+        remaining - 1,
+        minimumRightShifts_rightShiftOnce(current_list))
+    ENDIF
+  MEASURE remaining
+
+  % The source precondition proof argument is computationally irrelevant.
+  minimumRightShifts(nums: list[int]): int =
+    LET n: nat = int_list_length(nums)
+    IN
+      IF n <= 1 THEN
+        0
+      ELSIF minimumRightShifts_isSortedAux(nums) THEN
+        0
+      ELSE
+        minimumRightShifts_checkShifts(
+          1,
+          n - 1,
+          minimumRightShifts_rightShiftOnce(nums))
+      ENDIF
+
+  % Repeated one-step rotation is extensionally the source List.rotateRight.
+  rotate_right_int_list(
+      count: nat,
+      values: list[int]): RECURSIVE list[int] =
+    IF count = 0 THEN
+      values
+    ELSE
+      rotate_right_int_list(
+        count - 1,
+        minimumRightShifts_rightShiftOnce(values))
+    ENDIF
+  MEASURE count
+
+  all_at_least(
+      lower: int,
+      values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        lower <= head
+          AND all_at_least(lower, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  % This is the source postcondition's List.Pairwise (fun x y => x <= y).
+  pairwise_nondecreasing(
+      values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        all_at_least(head, tail)
+          AND pairwise_nondecreasing(tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  all_smaller_rotations_unsorted(
+      bound: nat,
+      nums: list[int]): bool =
+    FORALL (shift: nat):
+      shift < bound IMPLIES
+        NOT pairwise_nondecreasing(
+          rotate_right_int_list(shift, nums))
+
+  minimumRightShifts_postcond(
+      nums: list[int],
+      result: int): bool =
+    LET n: nat = int_list_length(nums)
+    IN
+      IF n <= 1 THEN
+        result = 0
+      ELSE
+        (result >= 0
+          AND
+          (EXISTS (shift_count: nat):
+            result = (shift_count :: int)
+              AND shift_count < n
+              AND pairwise_nondecreasing(
+                    rotate_right_int_list(
+                      shift_count,
+                      nums))
+              AND all_smaller_rotations_unsorted(
+                    shift_count,
+                    nums)))
+        OR
+        (result = -1
+          AND all_smaller_rotations_unsorted(n, nums))
+      ENDIF
+
+  minimumRightShifts_spec_satisfied: bool =
+    FORALL (nums: list[int]):
+      minimumRightShifts_precond(nums)
+        IMPLIES
+          minimumRightShifts_postcond(
+            nums,
+            minimumRightShifts(nums))
+
+END verina_advanced_53

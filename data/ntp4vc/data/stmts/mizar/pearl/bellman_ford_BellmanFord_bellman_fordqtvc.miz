@@ -1,0 +1,292 @@
+:: Statement-only formalization of the NTP4VC corpus artifact
+:: pearl/bellman_ford_BellmanFord_bellman_fordqtvc: the Bellman-Ford
+:: verification condition preserves path-distance invariants while scanning
+:: finite edges, detects a negative cycle, or establishes shortest paths.
+:: This file contains no proof.
+
+environ
+  vocabularies TARSKI, XBOOLE_0, SUBSET_1, RELAT_1, FUNCT_1,
+    FUNCT_2, PARTFUN1, ZFMISC_1, NUMBERS, XREAL_0, CARD_1,
+    XXREAL_0, ARYTM_1, ARYTM_3, REAL_1, INT_1, NAT_1,
+    VALUED_0, VALUED_1, ORDINAL1, ORDINAL4, FINSEQ_1, FINSEQ_2,
+    FINSET_1, MCART_1;
+  notations TARSKI, XBOOLE_0, SUBSET_1, ZFMISC_1, XTUPLE_0,
+    MCART_1, RELAT_1, FUNCT_1, RELSET_1, PARTFUN1, FUNCT_2,
+    ORDINAL1, CARD_1, NUMBERS, XCMPLX_0, XREAL_0, REAL_1,
+    INT_1, NAT_1, XXREAL_0, FINSEQ_1, FINSEQ_2, FINSET_1;
+  constructors FUNCT_1, RELSET_1, PARTFUN1, FUNCT_2, CARD_1,
+    REAL_1, INT_1, XXREAL_0, ZFMISC_1, MCART_1, NAT_1,
+    FINSEQ_1, FINSEQ_2, FINSET_1;
+  registrations XBOOLE_0, SUBSET_1, RELAT_1, FUNCT_1, RELSET_1,
+    FUNCT_2, NUMBERS, CARD_1, XXREAL_0, MEMBERED, VALUED_0,
+    VALUED_1, XCMPLX_0, XREAL_0, ORDINAL1, INT_1, NAT_1,
+    FINSEQ_1, FINSEQ_2, FINSET_1;
+  requirements REAL, NUMERALS, SUBSET, BOOLE, ARITHM;
+
+begin
+
+::$P-
+theorem
+  for V,S,T being non empty set,
+      vertices being finite Subset of V,
+      edges being finite Subset of [:V,V:],
+      source being Element of V,
+      weight being Function of [:V,V:],INT,
+      Path being Subset of [:V,[:V*,V:]:],
+      pathWeight being Function of [:V*,V:],INT,
+      infinity being set,
+      Ext being non empty set,
+      extAdd being Function of [:Ext,Ext:],Ext,
+      ExtLt,ExtLe being Relation of Ext,Ext,
+      cont being Function of T,Funcs(V,Ext),
+      create being Function of Ext,T,
+      update being Function of [:T,[:V,Ext:]:],T,
+      toFset being Function of S,(bool [:V,V:]),
+      fcard being Function of (bool [:V,V:]),NAT,
+      pick being Function of S,[:V,V:],
+      NegativeCycle being Subset of V,
+      Inv1 being Subset of [:T,[:INT,(bool [:V,V:]):]:],
+      Inv2 being Subset of [:T,(bool [:V,V:]):],
+      Final being Subset of T,
+      m being Element of T,
+      o1 being Integer
+  st
+    not infinity in INT &
+    Ext = INT \/ {infinity} &
+    (for a,b being Element of Ext holds
+      (a in INT & b in INT implies
+        ex x,y being Integer st
+          a = x & b = y & extAdd.[a,b] = x + y) &
+      (a = infinity or b = infinity implies
+        extAdd.[a,b] = infinity)) &
+    (for a,b being Element of Ext holds
+      ([a,b] in ExtLt iff
+        (ex x,y being Integer st
+          a = x & b = y & x < y) or
+        (a in INT & b = infinity)) &
+      ([a,b] in ExtLe iff
+        (ex x,y being Integer st
+          a = x & b = y & x <= y) or
+        (a in INT & b = infinity) or
+        (a = infinity & b = infinity))) &
+    source in vertices &
+    (for u,v being Element of V st [u,v] in edges holds
+      u in vertices & v in vertices) &
+    (for x,z being Element of V,
+         l being FinSequence of V
+     holds
+       ([x,[l,z]] in Path iff
+        (l = <*>V & x = z) or
+        ex y being Element of V,
+           l1 being FinSequence of V st
+          l = <*x*> ^ l1 &
+          [x,y] in edges &
+          [y,[l1,z]] in Path)) &
+    (for z being Element of V holds
+      pathWeight.[<*>V,z] = 0) &
+    (for x,z being Element of V holds
+      pathWeight.[<*x*>,z] = weight.[x,z]) &
+    (for x,y,z being Element of V,
+         l being FinSequence of V
+     holds
+       ex w,p being Integer st
+         w = weight.[x,y] &
+         p = pathWeight.[<*y*> ^ l,z] &
+         pathWeight.[<*x*> ^ (<*y*> ^ l),z] = w + p) &
+    (for a being Element of Ext,
+         q being Element of V
+     holds
+       (cont.(create.a)).q = a) &
+    (for t0 being Element of T,
+         q,k being Element of V,
+         a being Element of Ext
+     holds
+       (q = k implies
+         (cont.(update.[t0,[k,a]])).q = a) &
+       (q <> k implies
+         (cont.(update.[t0,[k,a]])).q =
+           (cont.t0).q)) &
+    (for es being Element of S holds
+      toFset.es is finite &
+      fcard.(toFset.es) = card(toFset.es)) &
+    (for es being Element of S st toFset.es <> {} holds
+      pick.es in toFset.es) &
+    (for v being Element of V holds
+      (v in NegativeCycle iff
+        v in vertices &
+        (ex l being FinSequence of V st
+          [source,[l,v]] in Path) &
+        (ex l being FinSequence of V st
+          [v,[l,v]] in Path &
+          ex p being Integer st
+            p = pathWeight.[l,v] & p < 0))) &
+    (for t0 being Element of T,
+         pass being Integer,
+         via being Subset of [:V,V:]
+     holds
+       ([t0,[pass,via]] in Inv1 iff
+        for v being Element of V st v in vertices holds
+          (ex n being Integer st
+             (cont.t0).v = n &
+             (ex l being FinSequence of V st
+               [source,[l,v]] in Path &
+               pathWeight.[l,v] = n) &
+             (for l being FinSequence of V st
+               [source,[l,v]] in Path & len l < pass
+              holds
+                ex p being Integer st
+                  p = pathWeight.[l,v] & n <= p) &
+             (for u being Element of V,
+                  l being FinSequence of V st
+              [source,[l,u]] in Path & len l < pass &
+               [u,v] in via
+              holds
+                ex p,w being Integer st
+                  p = pathWeight.[l,u] &
+                  w = weight.[u,v] &
+                  n <= p + w)) or
+          ((cont.t0).v = infinity &
+             (for l being FinSequence of V st
+               [source,[l,v]] in Path
+              holds pass <= len l) &
+             (for u being Element of V st [u,v] in via
+              holds
+                for lu being FinSequence of V st
+                  [source,[lu,u]] in Path
+                holds pass <= len lu)))) &
+    (for t0 being Element of T,
+         via being Subset of [:V,V:]
+     holds
+       ([t0,via] in Inv2 iff
+        for u,v being Element of V st [u,v] in via holds
+          [(cont.t0).v,
+            extAdd.[(cont.t0).u,weight.[u,v]]]
+            in ExtLe)) &
+    (for t0 being Element of T holds
+      (t0 in Final iff
+        for v being Element of V st v in vertices holds
+          (ex n being Integer st
+             (cont.t0).v = n &
+             (ex l being FinSequence of V st
+               [source,[l,v]] in Path &
+               pathWeight.[l,v] = n) &
+             (for l being FinSequence of V st
+               [source,[l,v]] in Path
+              holds
+                ex p being Integer st
+                  p = pathWeight.[l,v] & n <= p)) or
+          ((cont.t0).v = infinity &
+             (for l being FinSequence of V holds
+               not [source,[l,v]] in Path)))) &
+    m = update.[create.infinity,[source,0]] &
+    o1 = card vertices - 1
+  holds
+    (1 <= o1 + 1 implies
+      [m,[1,{}]] in Inv1 &
+      (for m1 being Element of T holds
+        (for i being Integer st
+          (1 <= i & i <= o1) & [m1,[i,{}]] in Inv1
+         holds
+          for es being Element of S st toFset.es = edges holds
+            toFset.es c= edges &
+            [m1,[i,edges \ toFset.es]] in Inv1 &
+            (for es1 being Element of S,
+                 m2 being Element of T st
+               toFset.es1 c= edges &
+               [m2,[i,edges \ toFset.es1]] in Inv1
+             holds
+               (toFset.es1 <> {} implies
+                 toFset.es1 <> {} &
+                 (for es2 being Element of S st
+                    pick.es1 in toFset.es1 &
+                    toFset.es2 =
+                      toFset.es1 \ {pick.es1}
+                  holds
+                    for u,v being Element of V st
+                      pick.es1 = [u,v]
+                    holds
+                      (1 <= i & [u,v] in edges &
+                        not [u,v] in edges \ toFset.es1) &
+                      [m2,[i,edges \ toFset.es1]] in Inv1 &
+                      (for m3 being Element of T st
+                        [m3,[i,
+                          (edges \ toFset.es1) \/ {[u,v]}]]
+                          in Inv1
+                       holds
+                         0 <= fcard.(toFset.es1) &
+                         fcard.(toFset.es2) <
+                           fcard.(toFset.es1) &
+                         toFset.es2 c= edges &
+                         [m3,[i,edges \ toFset.es2]]
+                           in Inv1))) &
+               (toFset.es1 = {} implies
+                 [m2,[i + 1,{}]] in Inv1))) &
+        ([m1,[o1 + 1,{}]] in Inv1 implies
+          for es being Element of S st toFset.es = edges holds
+            toFset.es c= edges &
+            [m1,edges \ toFset.es] in Inv2 &
+            (for es1 being Element of S st
+               toFset.es1 c= edges &
+               [m1,edges \ toFset.es1] in Inv2
+             holds
+               (toFset.es1 <> {} implies
+                 toFset.es1 <> {} &
+                 (for es2 being Element of S st
+                    pick.es1 in toFset.es1 &
+                    toFset.es2 =
+                      toFset.es1 \ {pick.es1}
+                  holds
+                    for u,v being Element of V st
+                      pick.es1 = [u,v]
+                    holds
+                      ([(extAdd.[(cont.m1).u,
+                          weight.[u,v]]),
+                         (cont.m1).v] in ExtLt
+                       implies
+                         ex v1 being Element of V st
+                           v1 in NegativeCycle) &
+                      (not [(extAdd.[(cont.m1).u,
+                          weight.[u,v]]),
+                         (cont.m1).v] in ExtLt
+                       implies
+                         0 <= fcard.(toFset.es1) &
+                         fcard.(toFset.es2) <
+                           fcard.(toFset.es1) &
+                         toFset.es2 c= edges &
+                         [m1,edges \ toFset.es2] in Inv2))) &
+               (toFset.es1 = {} implies m1 in Final))))) &
+    (o1 + 1 < 1 implies
+      for es being Element of S st toFset.es = edges holds
+        toFset.es c= edges &
+        [m,edges \ toFset.es] in Inv2 &
+        (for es1 being Element of S st
+           toFset.es1 c= edges &
+           [m,edges \ toFset.es1] in Inv2
+         holds
+           (toFset.es1 <> {} implies
+             toFset.es1 <> {} &
+             (for es2 being Element of S st
+                pick.es1 in toFset.es1 &
+                toFset.es2 = toFset.es1 \ {pick.es1}
+              holds
+                for u,v being Element of V st
+                  pick.es1 = [u,v]
+                holds
+                  ([(extAdd.[(cont.m).u,
+                      weight.[u,v]]),
+                     (cont.m).v] in ExtLt
+                   implies
+                     ex v1 being Element of V st
+                       v1 in NegativeCycle) &
+                  (not [(extAdd.[(cont.m).u,
+                      weight.[u,v]]),
+                     (cont.m).v] in ExtLt
+                   implies
+                     0 <= fcard.(toFset.es1) &
+                     fcard.(toFset.es2) < fcard.(toFset.es1) &
+                     toFset.es2 c= edges &
+                     [m,edges \ toFset.es2] in Inv2))) &
+           (toFset.es1 = {} implies m in Final)))
+proof
+end;
+::$P+

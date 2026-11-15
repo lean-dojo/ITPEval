@@ -1,0 +1,325 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/verifythis_2021_dll_to_bst_Top_dll_to_bstqtvc: the final verification
+% condition for converting a well-formed doubly linked list into a balanced
+% binary search tree while preserving its cells, size, and height bound.
+% This file contains no proof.
+
+verifythis_2021_dll_to_bst_Top_dll_to_bstqtvc[
+  loc: TYPE+,
+  loc_default: loc,
+  null_loc: loc,
+  map_container: TYPE+
+]: THEORY
+BEGIN
+
+  IMPORTING finite_sets[loc]
+
+  loc_map: TYPE =
+    [# map_domain: finite_set[loc],
+       map_contents: [loc -> loc] #]
+
+  index_tree: DATATYPE
+  BEGIN
+    Empty: Empty?
+    Node(
+      left_subtree: index_tree,
+      node_index: int,
+      right_subtree: index_tree): Node?
+  END index_tree
+
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  nth_loc_nat(
+      values: list[loc],
+      index: nat): RECURSIVE loc =
+    CASES values OF
+      null:
+        loc_default,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          nth_loc_nat(tail, index - 1)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  nth_loc(values: list[loc], index: int): loc =
+    nth_loc_nat(values, int_to_nat(index))
+
+  int_max(left, right: int): int =
+    IF left <= right THEN right ELSE left ENDIF
+
+  tree_size(value: index_tree): RECURSIVE int =
+    CASES value OF
+      Empty:
+        0,
+      Node(left, index, right):
+        1 + tree_size(left) + tree_size(right)
+    ENDCASES
+  MEASURE value BY <<
+
+  tree_height(value: index_tree): RECURSIVE int =
+    CASES value OF
+      Empty:
+        0,
+      Node(left, index, right):
+        1 + int_max(tree_height(left), tree_height(right))
+    ENDCASES
+  MEASURE value BY <<
+
+  nat_power(base: int, exponent: nat): RECURSIVE int =
+    IF exponent = 0 THEN
+      1
+    ELSE
+      base * nat_power(base, exponent - 1)
+    ENDIF
+  MEASURE exponent
+
+  int_power(base, exponent: int): int =
+    nat_power(base, int_to_nat(exponent))
+
+  valid(
+      prev_map, next_map: loc_map,
+      values: list[loc]): bool =
+    FORALL (i: int):
+      (0 <= i AND i < length(values))
+        IMPLIES
+          nth_loc(values, i) /= null_loc
+            AND map_domain(prev_map)(nth_loc(values, i))
+            AND map_domain(next_map)(nth_loc(values, i))
+            AND
+              (FORALL (j: int):
+                (i < j AND j < length(values))
+                  IMPLIES
+                    nth_loc(values, i) /= nth_loc(values, j))
+
+  dll(
+      prev_map, next_map: loc_map,
+      values: list[loc],
+      head: loc,
+      lo, hi: int): bool =
+    valid(prev_map, next_map, values)
+      AND (0 <= lo AND lo <= hi AND hi <= length(values))
+      AND
+        head =
+          (IF lo = length(values) THEN
+             null_loc
+           ELSE
+             nth_loc(values, lo)
+           ENDIF)
+      AND
+        (FORALL (i: int):
+          (lo <= i AND i < hi - 1)
+            IMPLIES
+              map_contents(next_map)(nth_loc(values, i))
+                = nth_loc(values, i + 1))
+      AND
+        (FORALL (i: int):
+          (lo < i AND i < hi)
+            IMPLIES
+              map_contents(prev_map)(nth_loc(values, i))
+                = nth_loc(values, i - 1))
+      AND
+        (lo < hi
+          IMPLIES
+            map_contents(next_map)(nth_loc(values, hi - 1))
+              =
+                (IF hi = length(values) THEN
+                   null_loc
+                 ELSE
+                   nth_loc(values, hi)
+                 ENDIF))
+      AND
+        (lo < hi
+          IMPLIES
+            map_contents(prev_map)(nth_loc(values, lo))
+              =
+                (IF lo = 0 THEN
+                   null_loc
+                 ELSE
+                   nth_loc(values, lo - 1)
+                 ENDIF))
+
+  tree_relation(
+      prev_map, next_map: loc_map,
+      values: list[loc],
+      root: loc,
+      value: index_tree,
+      lo, hi: int): RECURSIVE bool =
+    valid(prev_map, next_map, values)
+      AND (0 <= lo AND lo <= hi AND hi <= length(values))
+      AND
+        CASES value OF
+          Empty:
+            root = null_loc AND lo = hi,
+          Node(left, index, right):
+            (lo <= index AND index < hi)
+              AND root = nth_loc(values, index)
+              AND
+                tree_relation(
+                  prev_map,
+                  next_map,
+                  values,
+                  map_contents(prev_map)(root),
+                  left,
+                  lo,
+                  index)
+              AND
+                tree_relation(
+                  prev_map,
+                  next_map,
+                  values,
+                  map_contents(next_map)(root),
+                  right,
+                  index + 1,
+                  hi)
+        ENDCASES
+  MEASURE value BY <<
+
+  inorder(
+      values: list[loc],
+      value: index_tree): RECURSIVE list[loc] =
+    CASES value OF
+      Empty:
+        null,
+      Node(left, index, right):
+        append(
+          inorder(values, left),
+          cons(
+            nth_loc(values, index),
+            inorder(values, right)))
+    ENDCASES
+  MEASURE value BY <<
+
+  height_bound(value: index_tree, count: int): bool =
+    LET h: int = tree_height(value)
+    IN
+      int_power(2, h - 1) <= count
+        AND count < int_power(2, h)
+
+  recursive_call_postconditions(
+      to_fmap: [map_container -> loc_map],
+      original_prev, original_next: map_container,
+      values: list[loc],
+      n: int,
+      next1, prev1: map_container,
+      root: loc,
+      value: index_tree): bool =
+    tree_relation(
+      to_fmap(prev1),
+      to_fmap(next1),
+      values,
+      root,
+      value,
+      0,
+      0 + n)
+      AND map_domain(to_fmap(prev1)) = map_domain(to_fmap(original_prev))
+      AND map_domain(to_fmap(next1)) = map_domain(to_fmap(original_next))
+      AND
+        (FORALL (i: int):
+          (0 <= i AND i < 0)
+            IMPLIES
+              map_contents(to_fmap(prev1))(nth_loc(values, i))
+                =
+              map_contents(to_fmap(original_prev))(nth_loc(values, i)))
+      AND
+        (FORALL (i: int):
+          (0 + n <= i AND i < length(values))
+            IMPLIES
+              map_contents(to_fmap(prev1))(nth_loc(values, i))
+                =
+              map_contents(to_fmap(original_prev))(nth_loc(values, i)))
+      AND
+        (FORALL (i: int):
+          (0 <= i AND i < 0)
+            IMPLIES
+              map_contents(to_fmap(next1))(nth_loc(values, i))
+                =
+              map_contents(to_fmap(original_next))(nth_loc(values, i)))
+      AND
+        (FORALL (i: int):
+          (0 + n <= i AND i < length(values))
+            IMPLIES
+              map_contents(to_fmap(next1))(nth_loc(values, i))
+                =
+              map_contents(to_fmap(original_next))(nth_loc(values, i)))
+      AND (0 < n IMPLIES height_bound(value, n))
+
+  final_postconditions(
+      to_fmap: [map_container -> loc_map],
+      values: list[loc],
+      prev1, next1: map_container,
+      root: loc,
+      value: index_tree): bool =
+    tree_relation(
+      to_fmap(prev1),
+      to_fmap(next1),
+      values,
+      root,
+      value,
+      0,
+      length(values))
+      AND tree_size(value) = length(values)
+      AND inorder(values, value) = values
+      AND
+        (0 < length(values)
+          IMPLIES height_bound(value, length(values)))
+
+  dll_to_bst_vc: bool =
+    FORALL
+      (to_fmap: [map_container -> loc_map]),
+      (prev_table, next_table: map_container),
+      (values: list[loc]),
+      (head: loc):
+      dll(
+        to_fmap(prev_table),
+        to_fmap(next_table),
+        values,
+        head,
+        0,
+        length(values))
+        IMPLIES
+          dll(
+            to_fmap(prev_table),
+            to_fmap(next_table),
+            values,
+            head,
+            0,
+            length(values))
+          AND
+            (LET n: int = length(values) - 0
+             IN
+               dll(
+                 to_fmap(prev_table),
+                 to_fmap(next_table),
+                 values,
+                 head,
+                 0,
+                 0 + n)
+               AND
+                 (FORALL
+                   (next1, prev1: map_container),
+                   (root: loc),
+                   (value: index_tree):
+                   recursive_call_postconditions(
+                     to_fmap,
+                     prev_table,
+                     next_table,
+                     values,
+                     n,
+                     next1,
+                     prev1,
+                     root,
+                     value)
+                     IMPLIES
+                       final_postconditions(
+                         to_fmap,
+                         values,
+                         prev1,
+                         next1,
+                         root,
+                         value)))
+
+END verifythis_2021_dll_to_bst_Top_dll_to_bstqtvc

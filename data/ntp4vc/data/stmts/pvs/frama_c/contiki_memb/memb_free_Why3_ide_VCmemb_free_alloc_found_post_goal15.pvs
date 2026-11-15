@@ -1,0 +1,174 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% frama_c/contiki_memb/memb_free_Why3_ide_VCmemb_free_alloc_found_post_goal15:
+% a Contiki memb-free verification condition stating that clearing the
+% allocated status slot makes the given block no longer allocated.
+% This file contains no proof.
+
+memb_free_Why3_ide_VCmemb_free_alloc_found_post_goal15: THEORY
+BEGIN
+  addr: TYPE = [# base: int, offset: int #]
+  pointer_memory: TYPE = [addr -> addr]
+  integer_memory: TYPE = [addr -> int]
+  allocation_table: TYPE = [int -> int]
+
+  shift(p: addr, k: int): addr =
+    (# base := base(p), offset := offset(p) + k #)
+
+  valid_rw(m: allocation_table, p: addr, n: int): bool =
+    n > 0 IMPLIES
+      base(p) > 0 AND
+      offset(p) >= 0 AND
+      offset(p) + n <= m(base(p))
+
+  valid_rd(m: allocation_table, p: addr, n: int): bool =
+    n > 0 IMPLIES
+      base(p) /= 0 AND
+      offset(p) >= 0 AND
+      offset(p) + n <= m(base(p))
+
+  separated(p: addr, a: int, q: addr, b: int): bool =
+    a <= 0 OR
+    b <= 0 OR
+    base(p) /= base(q) OR
+    offset(q) + b <= offset(p) OR
+    offset(p) + a <= offset(q)
+
+  framed(
+      region: [int -> int],
+      m: pointer_memory): bool =
+    FORALL (p: addr): region(base(m(p))) <= 0
+
+  is_sint32(x: int): bool =
+    -2147483648 <= x AND x < 2147483648
+
+  is_uint16(x: int): bool =
+    0 <= x AND x < 65536
+
+  p_valid_memb(
+      malloc_0: allocation_table,
+      mptr_0: pointer_memory,
+      mint_0: integer_memory,
+      m: addr): bool =
+    LET x: int = mint_0(shift(m, 0)) IN
+    LET x_1: int = mint_0(shift(m, 1)) IN
+    LET x_2: int = x_1 * x IN
+    LET a: addr = mptr_0(shift(m, 2)) IN
+    LET a_1: addr = mptr_0(shift(m, 3)) IN
+    LET a_2: addr = shift(a, 0) IN
+    LET a_3: addr = shift(a_1, 0) IN
+      x > 0 AND
+      x_2 <= 2147483647 AND
+      valid_rw(malloc_0, m, 4) AND
+      valid_rw(malloc_0, a, 1) AND
+      valid_rw(malloc_0, a_1, 1) AND
+      valid_rw(malloc_0, a_2, x_1) AND
+      valid_rw(malloc_0, a_3, x_2) AND
+      separated(a_2, x_1, a_3, x_2)
+
+  trunc_div(n, d: int): int =
+    IF d = 0 THEN
+      0
+    ELSIF n * d >= 0 THEN
+      floor((n :: real) / (d :: real))
+    ELSE
+      -floor(-((n :: real) / (d :: real)))
+    ENDIF
+
+  l__memb_index(
+      mptr_0: pointer_memory,
+      mint_0: integer_memory,
+      m: addr,
+      ptr_0: addr): int =
+    trunc_div(
+      offset(ptr_0) - offset(mptr_0(shift(m, 3))),
+      mint_0(shift(m, 0)))
+
+  l__memb_ptr(
+      mptr_0: pointer_memory,
+      mint_0: integer_memory,
+      m: addr,
+      index_0: int): addr =
+    shift(
+      mptr_0(shift(m, 3)),
+      index_0 * mint_0(shift(m, 0)))
+
+  p__memb_has(
+      mptr_0: pointer_memory,
+      mint_0: integer_memory,
+      m: addr,
+      ptr_0: addr): bool =
+    EXISTS (j: int):
+      l__memb_ptr(mptr_0, mint_0, m, j) = ptr_0 AND
+      0 <= j AND
+      j < mint_0(shift(m, 1))
+
+  p__memb_allocated(
+      mptr_0: pointer_memory,
+      mchar_0: integer_memory,
+      mint_0: integer_memory,
+      m: addr,
+      ptr_0: addr): bool =
+    mchar_0(
+      shift(
+        mptr_0(shift(m, 2)),
+        l__memb_index(mptr_0, mint_0, m, ptr_0))) /= 0
+    AND p__memb_has(mptr_0, mint_0, m, ptr_0)
+
+  goal15: bool =
+    FORALL
+      (region: [int -> int]),
+      (linked: [allocation_table -> bool]),
+      (sconst: [integer_memory -> bool]),
+      (a_1: addr),
+      (t_2: integer_memory),
+      (t_5: pointer_memory),
+      (i_1, i: int),
+      (a: addr),
+      (t: allocation_table),
+      (t_4: integer_memory),
+      (t_1: allocation_table),
+      (t_3: integer_memory):
+      LET a_2: addr = shift(a_1, 1) IN
+      LET x: int = t_2(a_2) IN
+      LET a_3: addr = shift(a_1, 3) IN
+      LET a_4: addr = shift(a_1, 2) IN
+      LET a_5: addr = shift(t_5(a_4), i_1) IN
+        l__memb_index(
+          t_5,
+          t_2,
+          a_1,
+          l__memb_ptr(t_5, t_2, a_1, i)) = i IMPLIES
+        0 <= i IMPLIES
+        i <= x IMPLIES
+        region(base(a)) <= 0 IMPLIES
+        region(base(a_1)) <= 0 IMPLIES
+        framed(region, t_5) IMPLIES
+        linked(t) IMPLIES
+        sconst(t_4) IMPLIES
+        is_sint32(i) IMPLIES
+        is_sint32(i_1) IMPLIES
+        is_uint16(x) IMPLIES
+        p_valid_memb(t, t_5, t_2, a_1) IMPLIES
+        p__memb_has(t_5, t_2, a_1, a) IMPLIES
+        valid_rd(t, a_3, 1) IMPLIES
+        valid_rd(t, a_2, 1) IMPLIES
+        p__memb_allocated(t_5, t_4, t_2, a_1, a) IMPLIES
+        (IF i < x THEN
+           i_1 = i AND
+           t_1 = t AND
+           l__memb_ptr(t_5, t_2, a_1, i_1) = a AND
+           (t_4 WITH [(a_5) := 0]) = t_3 AND
+           valid_rd(t_1, a_4, 1) AND
+           valid_rd(t_1, a_5, 1) AND
+           valid_rw(t_1, a_5, 1)
+         ELSE
+           t_4 = t_3
+         ENDIF) IMPLIES
+        (FORALL (i_2: int):
+          0 <= i_2 IMPLIES
+          i_2 < i IMPLIES
+          shift(
+            t_5(a_3),
+            i_2 * t_2(shift(a_1, 0))) /= a) IMPLIES
+        NOT p__memb_allocated(t_5, t_3, t_2, a_1, a)
+END memb_free_Why3_ide_VCmemb_free_alloc_found_post_goal15

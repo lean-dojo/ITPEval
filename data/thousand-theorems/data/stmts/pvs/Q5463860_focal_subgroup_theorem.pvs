@@ -1,0 +1,123 @@
+% Statement-only formalization of the Thousand Theorems corpus artifact Q5463860,
+% "Focal subgroup theorem": in an arbitrary group, the intersection of the
+% commutator subgroup with a finite-index Sylow p-subgroup is its focal subgroup.
+% This file contains no proof.
+
+Q5463860_focal_subgroup_theorem[
+  G: TYPE+,
+  mul: [G, G -> G],
+  inv: [G -> G],
+  one: G,
+  p: nat,
+  P: [G -> bool]
+]: THEORY
+BEGIN
+
+  element_set: TYPE = [G -> bool]
+
+  IMPORTING finite_sets[element_set]
+
+  group_laws: bool =
+    (FORALL (x, y, z: G):
+      mul(mul(x, y), z) = mul(x, mul(y, z)))
+      AND (FORALL (x: G):
+        mul(one, x) = x
+          AND mul(x, one) = x)
+      AND (FORALL (x: G):
+        mul(inv(x), x) = one
+          AND mul(x, inv(x)) = one)
+
+  subset_of(A, B: element_set): bool =
+    FORALL (x: G):
+      A(x) IMPLIES B(x)
+
+  is_subgroup(H: element_set): bool =
+    H(one)
+      AND (FORALL (x, y: G):
+        H(x) AND H(y) IMPLIES H(mul(x, y)))
+      AND (FORALL (x: G):
+        H(x) IMPLIES H(inv(x)))
+
+  generated_subgroup(S: element_set): element_set =
+    LAMBDA (g: G):
+      FORALL (H: element_set):
+        is_subgroup(H)
+          AND subset_of(S, H)
+          IMPLIES H(g)
+
+  group_power(x: G, exponent: nat): RECURSIVE G =
+    IF exponent = 0 THEN
+      one
+    ELSE
+      mul(group_power(x, exponent - 1), x)
+    ENDIF
+  MEASURE exponent
+
+  nat_divides(divisor, value: nat): bool =
+    EXISTS (factor: nat):
+      value = divisor * factor
+
+  prime_nat(value: nat): bool =
+    value >= 2
+      AND (FORALL (divisor: nat):
+        nat_divides(divisor, value)
+          IMPLIES divisor = 1 OR divisor = value)
+
+  is_p_subgroup(prime: nat, H: element_set): bool =
+    is_subgroup(H)
+      AND (FORALL (x: G):
+        H(x) IMPLIES
+          EXISTS (exponent: nat):
+            group_power(x, prime ^ exponent) = one)
+
+  is_sylow_p_subgroup(prime: nat, H: element_set): bool =
+    is_p_subgroup(prime, H)
+      AND (FORALL (K: element_set):
+        is_p_subgroup(prime, K)
+          AND subset_of(H, K)
+          IMPLIES K = H)
+
+  left_coset(g: G, H: element_set): element_set =
+    LAMBDA (x: G):
+      EXISTS (h: G):
+        H(h) AND x = mul(g, h)
+
+  finite_index(H: element_set): bool =
+    EXISTS (cosets: finite_set[element_set]):
+      FORALL (C: element_set):
+        cosets(C) IFF
+          EXISTS (g: G):
+            C = left_coset(g, H)
+
+  commutator_element(x, u: G): G =
+    mul(mul(mul(x, u), inv(x)), inv(u))
+
+  commutator_generators: element_set =
+    LAMBDA (g: G):
+      EXISTS (x, u: G):
+        commutator_element(x, u) = g
+
+  commutator_subgroup: element_set =
+    generated_subgroup(commutator_generators)
+
+  focal_generators(H: element_set): element_set =
+    LAMBDA (g: G):
+      H(g)
+        AND (EXISTS (x, u: G):
+          H(x)
+            AND g = commutator_element(x, u))
+
+  focal_subgroup(H: element_set): element_set =
+    generated_subgroup(focal_generators(H))
+
+  commutator_inf_eq_focalSubgroup: bool =
+    (group_laws
+      AND prime_nat(p)
+      AND is_sylow_p_subgroup(p, P)
+      AND finite_index(P))
+    IMPLIES
+      (FORALL (g: G):
+        (commutator_subgroup(g) AND P(g))
+          IFF focal_subgroup(P)(g))
+
+END Q5463860_focal_subgroup_theorem

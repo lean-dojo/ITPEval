@@ -1,0 +1,406 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/hillel_challenge_FulcrumNoOverflow_fulcrumqtvc: the fulcrum-search
+% verification condition for 32-bit array indices, exact integer partial
+% sums, minimum prefix/suffix imbalance, and overflow bounds. This file
+% contains no proof.
+
+hillel_challenge_FulcrumNoOverflow_fulcrumqtvc[
+  big: TYPE+,
+  array32: TYPE+,
+  q: [big -> bvec[32]],
+  r: [big -> bvec[32]],
+  v: [big -> int],
+  big_zero: big,
+  array32_elts: [array32, int -> bvec[32]],
+  array32_length: [array32 -> bvec[32]],
+  interval_sum: [array32, int, int -> int]
+]: THEORY
+BEGIN
+
+  IMPORTING bv[32], bv_nat[32]
+
+  word32: TYPE = bvec[32]
+
+  signed32(value: word32): int =
+    IF value(31) THEN
+      bv2nat[32](value) - 4294967296
+    ELSE
+      bv2nat[32](value)
+    ENDIF
+
+  zero32: word32 = fill[32](FALSE)
+
+  int32_in_bounds(value: int): bool =
+    -2147483648 <= value AND value <= 2147483647
+
+  big_invariant(value: big): bool =
+    -2147483648 <= signed32(q(value))
+      AND signed32(q(value)) <= 2147483647
+      AND 0 <= signed32(r(value))
+      AND signed32(r(value)) <= 2147483647
+      AND
+        v(value)
+          = signed32(q(value)) * 2147483648
+              + signed32(r(value))
+
+  sum_definition: bool =
+    FORALL (a: array32), (lower, upper: int):
+      interval_sum(a, lower, upper)
+        =
+      (IF upper <= lower THEN
+         0
+       ELSE
+         interval_sum(a, lower, upper - 1)
+           + signed32(array32_elts(a, upper - 1))
+       ENDIF)
+
+  background_assumptions: bool =
+    (FORALL (value: big): big_invariant(value))
+      AND
+    (FORALL (left, right: big):
+      (q(left) = q(right)
+        AND r(left) = r(right)
+        AND v(left) = v(right))
+      IMPLIES left = right)
+      AND q(big_zero) = zero32
+      AND r(big_zero) = zero32
+      AND v(big_zero) = 0
+      AND sum_definition
+
+  difference(a: array32, index: int): int =
+    abs(
+      interval_sum(a, 0, index)
+        - interval_sum(a, index, signed32(array32_length(a))))
+
+  wide_in_bounds(value: int): bool =
+    -2147483648 * 2147483648 <= value
+      AND value <= 2147483648 * 2147483648 - 1
+
+  index_valid(a: array32, index: word32): bool =
+    0 <= signed32(index)
+      AND signed32(index) < signed32(array32_length(a))
+
+  prefix_step(
+      a: array32,
+      last_index: word32,
+      right_before: big): bool =
+    FORALL (index: word32):
+      LET integer_index: int = signed32(index)
+      IN
+        ((0 <= integer_index
+          AND integer_index <= signed32(last_index))
+          AND 55 < 89
+          AND
+            v(right_before)
+              = interval_sum(a, 0, integer_index))
+        IMPLIES
+          index_valid(a, index)
+            AND
+          LET element: word32 =
+            array32_elts(a, signed32(index))
+          IN
+            wide_in_bounds(
+              v(right_before) + signed32(element))
+              AND
+            (FORALL (right_after: big):
+              v(right_after)
+                = v(right_before) + signed32(element)
+              IMPLIES
+                55 < 89
+                  AND
+                v(right_after)
+                  = interval_sum(a, 0, integer_index + 1))
+
+  updated_best_state(
+      a: array32,
+      n: word32,
+      integer_index: int,
+      left_after, right_after, best_after: big,
+      next_best_index: word32): bool =
+    55 < 89
+      AND
+    v(left_after) = interval_sum(a, 0, integer_index + 1)
+      AND
+    v(right_after)
+      = interval_sum(a, integer_index + 1, signed32(n))
+      AND
+    (0 <= signed32(next_best_index)
+      AND signed32(next_best_index) <= integer_index + 1)
+      AND
+    v(best_after) = difference(a, signed32(next_best_index))
+      AND
+    (FORALL (j: int):
+      (0 <= j AND j <= integer_index + 1)
+      IMPLIES v(best_after) <= difference(a, j))
+
+  unchanged_best_state(
+      a: array32,
+      n: word32,
+      integer_index: int,
+      left_after, right_after, best_before: big,
+      best_index: word32): bool =
+    55 < 89
+      AND
+    v(left_after) = interval_sum(a, 0, integer_index + 1)
+      AND
+    v(right_after)
+      = interval_sum(a, integer_index + 1, signed32(n))
+      AND
+    (0 <= signed32(best_index)
+      AND signed32(best_index) <= integer_index + 1)
+      AND
+    v(best_before) = difference(a, signed32(best_index))
+      AND
+    (FORALL (j: int):
+      (0 <= j AND j <= integer_index + 1)
+      IMPLIES v(best_before) <= difference(a, j))
+
+  best_loop_step(
+      a: array32,
+      n: word32,
+      last_index: word32,
+      best_before: big,
+      best_index: word32,
+      left_before, right_before: big): bool =
+    FORALL (index: word32):
+      LET integer_index: int = signed32(index)
+      IN
+        ((0 <= integer_index
+          AND integer_index <= signed32(last_index))
+          AND 55 < 89
+          AND
+            v(left_before)
+              = interval_sum(a, 0, integer_index)
+          AND
+            v(right_before)
+              = interval_sum(a, integer_index, signed32(n))
+          AND
+            (0 <= signed32(best_index)
+              AND signed32(best_index) <= integer_index)
+          AND
+            v(best_before)
+              = difference(a, signed32(best_index))
+          AND
+            (FORALL (j: int):
+              (0 <= j AND j <= integer_index)
+              IMPLIES v(best_before) <= difference(a, j)))
+        IMPLIES
+          index_valid(a, index)
+            AND
+          LET left_element: word32 =
+            array32_elts(a, signed32(index))
+          IN
+            wide_in_bounds(
+              v(left_before) + signed32(left_element))
+              AND
+            (FORALL (left_after: big):
+              v(left_after)
+                = v(left_before) + signed32(left_element)
+              IMPLIES
+                index_valid(a, index)
+                  AND
+                LET right_element: word32 =
+                  array32_elts(a, signed32(index))
+                IN
+                  wide_in_bounds(
+                    v(right_before) - signed32(right_element))
+                    AND
+                  (FORALL (right_after: big):
+                    v(right_after)
+                      = v(right_before) - signed32(right_element)
+                    IMPLIES
+                      wide_in_bounds(
+                        abs(v(left_after) - v(right_after)))
+                        AND
+                      (FORALL (current_difference: big):
+                        v(current_difference)
+                          = abs(v(left_after) - v(right_after))
+                        IMPLIES
+                          (0 <= v(current_difference)
+                            AND 0 <= v(best_before))
+                            AND
+                          (IF
+                             v(current_difference) < v(best_before)
+                           THEN
+                             (FORALL (best_after: big):
+                               int32_in_bounds(
+                                 signed32(index) + 1)
+                                 AND
+                               (FORALL (next_best_index: word32):
+                                 signed32(next_best_index)
+                                   = signed32(index) + 1
+                                 IMPLIES
+                                   big_invariant(current_difference)
+                                     AND
+                                   ((v(current_difference)
+                                       = v(best_after)
+                                     AND r(current_difference)
+                                       = r(best_after)
+                                     AND q(current_difference)
+                                       = q(best_after))
+                                    IMPLIES
+                                      updated_best_state(
+                                        a,
+                                        n,
+                                        integer_index,
+                                        left_after,
+                                        right_after,
+                                        best_after,
+                                        next_best_index))))
+                           ELSE
+                             unchanged_best_state(
+                               a,
+                               n,
+                               integer_index,
+                               left_after,
+                               right_after,
+                               best_before,
+                               best_index)
+                           ENDIF))))
+
+  best_loop_exit(
+      a: array32,
+      n: word32,
+      last_index: word32,
+      best_before: big,
+      best_index: word32,
+      left_before, right_before: big): bool =
+    (55 < 89
+      AND
+        v(left_before)
+          = interval_sum(a, 0, signed32(last_index) + 1)
+      AND
+        v(right_before)
+          = interval_sum(
+              a, signed32(last_index) + 1, signed32(n))
+      AND
+        (0 <= signed32(best_index)
+          AND signed32(best_index) <= signed32(last_index) + 1)
+      AND
+        v(best_before) = difference(a, signed32(best_index))
+      AND
+        (FORALL (j: int):
+          (0 <= j AND j <= signed32(last_index) + 1)
+          IMPLIES v(best_before) <= difference(a, j)))
+    IMPLIES
+      (0 <= signed32(best_index)
+        AND signed32(best_index)
+              <= signed32(array32_length(a)))
+        AND
+      (FORALL (index: int):
+        (0 <= index
+          AND index <= signed32(array32_length(a)))
+        IMPLIES
+          difference(a, signed32(best_index))
+            <= difference(a, index))
+
+  initial_best_state(
+      a: array32,
+      n: word32,
+      left_zero, right_total, initial_best: big): bool =
+    55 < 89
+      AND v(left_zero) = interval_sum(a, 0, 0)
+      AND v(right_total) = interval_sum(a, 0, signed32(n))
+      AND 0 <= 0
+      AND v(initial_best) = difference(a, 0)
+      AND
+    (FORALL (j: int):
+      (0 <= j AND j <= 0)
+      IMPLIES v(initial_best) <= difference(a, j))
+
+  negative_best_fallback(a: array32): bool =
+    (0 <= 0 AND 0 <= signed32(array32_length(a)))
+      AND
+    (FORALL (index: int):
+      (0 <= index
+        AND index <= signed32(array32_length(a)))
+      IMPLIES difference(a, 0) <= difference(a, index))
+
+  best_search(
+      a: array32,
+      n: word32,
+      right_total: big): bool =
+    LET left_zero: big = big_zero
+    IN
+      wide_in_bounds(abs(v(left_zero) - v(right_total)))
+        AND
+      (FORALL (initial_best: big):
+        v(initial_best)
+          = abs(v(left_zero) - v(right_total))
+        IMPLIES
+          int32_in_bounds(signed32(n) - 1)
+            AND
+          (FORALL (last_index: word32):
+            signed32(last_index) = signed32(n) - 1
+            IMPLIES
+              ((0 <= signed32(last_index) + 1)
+               IMPLIES
+                 initial_best_state(
+                   a, n, left_zero, right_total, initial_best)
+                   AND
+                 (FORALL
+                   (best_before: big),
+                   (best_index: word32),
+                   (left_before, right_before: big):
+                     best_loop_step(
+                       a,
+                       n,
+                       last_index,
+                       best_before,
+                       best_index,
+                       left_before,
+                       right_before)
+                       AND
+                     best_loop_exit(
+                       a,
+                       n,
+                       last_index,
+                       best_before,
+                       best_index,
+                       left_before,
+                       right_before))
+                AND
+              (signed32(last_index) + 1 < 0
+               IMPLIES negative_best_fallback(a)))))
+
+  prefix_search(
+      a: array32,
+      n: word32,
+      initial_right: big,
+      last_index: word32): bool =
+    (55 < 89
+      AND v(initial_right) = interval_sum(a, 0, 0))
+      AND
+    (FORALL (right_total: big):
+      prefix_step(a, last_index, right_total)
+        AND
+      ((55 < 89
+        AND
+          v(right_total)
+            = interval_sum(a, 0, signed32(last_index) + 1))
+       IMPLIES best_search(a, n, right_total)))
+
+  fulcrum_body(a: array32): bool =
+    LET n: word32 = array32_length(a),
+        initial_right: big = big_zero
+    IN
+      int32_in_bounds(signed32(n) - 1)
+        AND
+      (FORALL (last_index: word32):
+        signed32(last_index) = signed32(n) - 1
+        IMPLIES
+          ((0 <= signed32(last_index) + 1)
+           IMPLIES
+             prefix_search(a, n, initial_right, last_index))
+            AND
+          (signed32(last_index) + 1 < 0
+           IMPLIES best_search(a, n, initial_right)))
+
+  fulcrumqtvc: bool =
+    background_assumptions
+      IMPLIES
+    (FORALL (a: array32):
+      signed32(array32_length(a)) < 2147483647
+      IMPLIES fulcrum_body(a))
+
+END hillel_challenge_FulcrumNoOverflow_fulcrumqtvc

@@ -1,0 +1,208 @@
+% Statement-only formalization of the Thousand Theorems artifact Q1632433,
+% "Helly's theorem": a finite family of convex sets in a finite-dimensional
+% module over a linearly ordered field, with at least dimension plus one members,
+% has nonempty total intersection if every dimension-plus-one subfamily does.
+% This file contains no proof.
+
+Q1632433_helly_s_theorem[
+  I: TYPE,
+  K: TYPE+,
+  E: TYPE+,
+  zeroK, oneK: K,
+  negK, invK: [K -> K],
+  addK, mulK: [K, K -> K],
+  leK: [K, K -> bool],
+  zeroE: E,
+  negE: [E -> E],
+  addE: [E, E -> E],
+  smul: [K, E -> E]
+]: THEORY
+BEGIN
+  point_set: TYPE = [E -> bool]
+  set_family: TYPE = [I -> point_set]
+  basis_sequence: TYPE = [nat -> E]
+  coordinate_sequence: TYPE = [nat -> K]
+  vector_sequence: TYPE = [nat -> E]
+
+  IMPORTING finite_sets[I]
+
+  additive_group_laws_K: bool =
+    (FORALL (x, y: K):
+      addK(x, y) = addK(y, x))
+      AND
+    (FORALL (x, y, z: K):
+      addK(addK(x, y), z) = addK(x, addK(y, z)))
+      AND
+    (FORALL (x: K):
+      addK(x, zeroK) = x
+        AND addK(x, negK(x)) = zeroK)
+
+  field_multiplication_laws: bool =
+    zeroK /= oneK
+      AND invK(zeroK) = zeroK
+      AND
+    (FORALL (x, y: K):
+      mulK(x, y) = mulK(y, x))
+      AND
+    (FORALL (x, y, z: K):
+      mulK(mulK(x, y), z) = mulK(x, mulK(y, z)))
+      AND
+    (FORALL (x: K):
+      mulK(x, oneK) = x)
+      AND
+    (FORALL (x, y, z: K):
+      mulK(x, addK(y, z)) =
+        addK(mulK(x, y), mulK(x, z)))
+      AND
+    (FORALL (x: K):
+      x /= zeroK IMPLIES mulK(x, invK(x)) = oneK)
+
+  linear_order_laws: bool =
+    (FORALL (x: K):
+      leK(x, x))
+      AND
+    (FORALL (x, y, z: K):
+      leK(x, y) AND leK(y, z) IMPLIES leK(x, z))
+      AND
+    (FORALL (x, y: K):
+      leK(x, y) AND leK(y, x) IMPLIES x = y)
+      AND
+    (FORALL (x, y: K):
+      leK(x, y) OR leK(y, x))
+
+  strictly_ordered_ring_laws: bool =
+    leK(zeroK, oneK)
+      AND
+    (FORALL (x, y, z: K):
+      leK(x, y) IMPLIES
+        leK(addK(x, z), addK(y, z)))
+      AND
+    (FORALL (x, y: K):
+      leK(zeroK, x) AND leK(zeroK, y)
+        IMPLIES leK(zeroK, mulK(x, y)))
+
+  linearly_ordered_field_laws: bool =
+    additive_group_laws_K
+      AND field_multiplication_laws
+      AND linear_order_laws
+      AND strictly_ordered_ring_laws
+
+  additive_commutative_group_laws_E: bool =
+    (FORALL (x, y: E):
+      addE(x, y) = addE(y, x))
+      AND
+    (FORALL (x, y, z: E):
+      addE(addE(x, y), z) = addE(x, addE(y, z)))
+      AND
+    (FORALL (x: E):
+      addE(x, zeroE) = x
+        AND addE(x, negE(x)) = zeroE)
+
+  module_laws: bool =
+    additive_commutative_group_laws_E
+      AND
+    (FORALL (a: K), (x, y: E):
+      smul(a, addE(x, y)) =
+        addE(smul(a, x), smul(a, y)))
+      AND
+    (FORALL (a, b: K), (x: E):
+      smul(addK(a, b), x) =
+        addE(smul(a, x), smul(b, x)))
+      AND
+    (FORALL (a, b: K), (x: E):
+      smul(mulK(a, b), x) =
+        smul(a, smul(b, x)))
+      AND
+    (FORALL (x: E):
+      smul(oneK, x) = x)
+
+  vector_sum_below(
+      count: nat,
+      values: vector_sequence,
+      total: E): bool =
+    EXISTS (partial_sums: [upto(count) -> E]):
+      partial_sums(0) = zeroE
+        AND
+      (FORALL (n: below(count)):
+        partial_sums(n + 1) =
+          addE(partial_sums(n), values(n)))
+        AND total = partial_sums(count)
+
+  basis_of_finrank(
+      dimension: nat,
+      basis: basis_sequence): bool =
+    FORALL (x: E):
+      EXISTS (coordinates: coordinate_sequence):
+        vector_sum_below(
+          dimension,
+          (LAMBDA (n: nat):
+            smul(coordinates(n), basis(n))),
+          x)
+          AND
+        (FORALL (other: coordinate_sequence):
+          vector_sum_below(
+            dimension,
+            (LAMBDA (n: nat):
+              smul(other(n), basis(n))),
+            x)
+          IMPLIES
+            (FORALL (n: nat):
+              n < dimension IMPLIES
+                other(n) = coordinates(n)))
+
+  is_finrank(dimension: nat): bool =
+    EXISTS (basis: basis_sequence):
+      basis_of_finrank(dimension, basis)
+
+  convex(A: point_set): bool =
+    FORALL (x, y: E), (a, b: K):
+      A(x)
+        AND A(y)
+        AND leK(zeroK, a)
+        AND leK(zeroK, b)
+        AND addK(a, b) = oneK
+      IMPLIES
+        A(addE(smul(a, x), smul(b, y)))
+
+  finite_subset(
+      smaller, larger: finite_set[I]): bool =
+    FORALL (i: I):
+      member(i, smaller) IMPLIES member(i, larger)
+
+  family_intersection_nonempty(
+      F: set_family,
+      indices: finite_set[I]): bool =
+    EXISTS (x: E):
+      FORALL (i: I):
+        member(i, indices) IMPLIES F(i)(x)
+
+  convex_on(
+      F: set_family,
+      indices: finite_set[I]): bool =
+    FORALL (i: I):
+      member(i, indices) IMPLIES convex(F(i))
+
+  critical_subfamilies_intersect(
+      F: set_family,
+      indices: finite_set[I],
+      dimension: nat): bool =
+    FORALL (subfamily: finite_set[I]):
+      (finite_subset(subfamily, indices)
+        AND card(subfamily) = dimension + 1)
+      IMPLIES family_intersection_nonempty(F, subfamily)
+
+  helly_theorem: bool =
+    (linearly_ordered_field_laws AND module_laws)
+    IMPLIES
+      FORALL
+          (F: set_family),
+          (indices: finite_set[I]):
+        (convex_on(F, indices)
+          AND
+        (EXISTS (dimension: nat):
+          is_finrank(dimension)
+            AND dimension + 1 <= card(indices)
+            AND critical_subfamilies_intersect(
+              F, indices, dimension)))
+        IMPLIES family_intersection_nonempty(F, indices)
+END Q1632433_helly_s_theorem

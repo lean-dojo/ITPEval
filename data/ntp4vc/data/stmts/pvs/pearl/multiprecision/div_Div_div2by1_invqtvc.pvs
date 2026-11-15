@@ -1,0 +1,194 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/multiprecision/div_Div_div2by1_invqtvc: the verification condition
+% for reciprocal-based division of a two-limb unsigned integer by a
+% normalized 64-bit divisor, including carry reconstruction and both
+% quotient-remainder correction branches. This file contains no proof.
+
+div_Div_div2by1_invqtvc: THEORY
+BEGIN
+
+  IMPORTING
+    bv[64],
+    bv_nat[64]
+
+  word64: TYPE = bvec[64]
+
+  radix: int = 18446744073709551616
+
+  half_radix: int = 9223372036854775808
+
+  max_word64: int = 18446744073709551615
+
+  unsigned64(value: word64): int =
+    bv2nat[64](value)
+
+  euclidean_div_positive(
+      numerator, denominator: int): int =
+    IF denominator <= 0 THEN
+      0
+    ELSE
+      floor((numerator :: real) / (denominator :: real))
+    ENDIF
+
+  reciprocal(v, d: word64): bool =
+    unsigned64(v)
+      =
+    euclidean_div_positive(
+      radix * radix - 1,
+      unsigned64(d))
+      - radix
+
+  uint64_in_bounds(value: int): bool =
+    0 <= value
+      AND value <= max_word64
+
+  division_result(
+      quotient, remainder, d, ul, uh: word64): bool =
+    unsigned64(quotient) * unsigned64(d)
+        + unsigned64(remainder)
+      =
+    unsigned64(ul) + radix * unsigned64(uh)
+      AND 0 <= unsigned64(remainder)
+      AND unsigned64(remainder) < unsigned64(d)
+
+  div2by1_inv_vc: bool =
+    FORALL
+        (d, uh, v, l, h, ul: word64):
+      half_radix <= unsigned64(d)
+        IMPLIES
+          unsigned64(uh) < unsigned64(d)
+        IMPLIES
+          reciprocal(v, d)
+        IMPLIES
+          unsigned64(l) + radix * unsigned64(h)
+            = unsigned64(v) * unsigned64(uh)
+        IMPLIES
+          0 <= 0
+            AND 0 <= 1
+            AND
+              (FORALL (sl, c: word64):
+                unsigned64(sl) + radix * unsigned64(c)
+                    = unsigned64(l) + unsigned64(ul) + 0
+                  AND 0 <= unsigned64(c)
+                  AND unsigned64(c) <= 1
+                IMPLIES
+                  (0 <= unsigned64(c)
+                    AND unsigned64(c) <= 1)
+                  AND
+                    (FORALL (sh, c_prime: word64):
+                      unsigned64(sh) + radix * unsigned64(c_prime)
+                          =
+                        unsigned64(uh)
+                          + unsigned64(h)
+                          + unsigned64(c)
+                        AND 0 <= unsigned64(c_prime)
+                        AND unsigned64(c_prime) <= 1
+                      IMPLIES
+                        (FORALL (o1: word64):
+                          unsigned64(o1)
+                              =
+                            mod(unsigned64(sh) + 1, radix)
+                          IMPLIES
+                            (FORALL (p: word64):
+                              unsigned64(p)
+                                  =
+                                mod(
+                                  unsigned64(o1) * unsigned64(d),
+                                  radix)
+                              IMPLIES
+                                (FORALL (o2: word64):
+                                  unsigned64(o2)
+                                      =
+                                    mod(
+                                      unsigned64(ul) - unsigned64(p),
+                                      radix)
+                                  IMPLIES
+                                    IF unsigned64(sl) < unsigned64(o2)
+                                    THEN
+                                      (FORALL (o3: word64):
+                                        unsigned64(o3)
+                                            =
+                                          mod(unsigned64(o1) - 1, radix)
+                                        IMPLIES
+                                          (FORALL (o4: word64):
+                                            unsigned64(o4)
+                                                =
+                                              mod(
+                                                unsigned64(o2)
+                                                  + unsigned64(d),
+                                                radix)
+                                            IMPLIES
+                                              IF unsigned64(d)
+                                                   <= unsigned64(o4)
+                                              THEN
+                                                uint64_in_bounds(
+                                                  unsigned64(o3) + 1)
+                                                  AND
+                                                    (FORALL (o5: word64):
+                                                      unsigned64(o5)
+                                                          =
+                                                        unsigned64(o3) + 1
+                                                      IMPLIES
+                                                        uint64_in_bounds(
+                                                          unsigned64(o4)
+                                                            - unsigned64(d))
+                                                          AND
+                                                            (FORALL
+                                                                (o6: word64):
+                                                              unsigned64(o6)
+                                                                  =
+                                                                unsigned64(o4)
+                                                                  - unsigned64(d)
+                                                              IMPLIES
+                                                                division_result(
+                                                                  o5,
+                                                                  o6,
+                                                                  d,
+                                                                  ul,
+                                                                  uh)))
+                                              ELSE
+                                                division_result(
+                                                  o3,
+                                                  o4,
+                                                  d,
+                                                  ul,
+                                                  uh)
+                                              ENDIF))
+                                    ELSE
+                                      IF unsigned64(d) <= unsigned64(o2)
+                                      THEN
+                                        uint64_in_bounds(
+                                          unsigned64(o1) + 1)
+                                          AND
+                                            (FORALL (o3: word64):
+                                              unsigned64(o3)
+                                                  =
+                                                unsigned64(o1) + 1
+                                              IMPLIES
+                                                uint64_in_bounds(
+                                                  unsigned64(o2)
+                                                    - unsigned64(d))
+                                                  AND
+                                                    (FORALL (o4: word64):
+                                                      unsigned64(o4)
+                                                          =
+                                                        unsigned64(o2)
+                                                          - unsigned64(d)
+                                                      IMPLIES
+                                                        division_result(
+                                                          o3,
+                                                          o4,
+                                                          d,
+                                                          ul,
+                                                          uh)))
+                                      ELSE
+                                        division_result(
+                                          o1,
+                                          o2,
+                                          d,
+                                          ul,
+                                          uh)
+                                      ENDIF
+                                    ENDIF)))))
+
+END div_Div_div2by1_invqtvc

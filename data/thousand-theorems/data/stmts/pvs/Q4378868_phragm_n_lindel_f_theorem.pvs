@@ -1,0 +1,277 @@
+% Statement-only formalization of the Thousand Theorems corpus artifact Q4378868
+% (thousand-theorems__pvs__Q4378868), "Phragmén–Lindelöf theorem": a
+% complex-differentiable function with sufficiently slow double-exponential
+% growth on a horizontal strip satisfies its boundary norm bound throughout
+% the closed strip. This file contains no proof.
+
+Q4378868_phragmen_lindelof_theorem[
+  E: TYPE+,
+  zeroE: E,
+  addE: [E, E -> E],
+  negE: [E -> E],
+  cscaleE: [real, real, E -> E],
+  normE: [E -> real],
+  expR: [real -> real],
+  pi_value: real
+]: THEORY
+BEGIN
+  complex: TYPE = [# real_part: real, imag_part: real #]
+  complex_function: TYPE = [complex -> E]
+  real_sequence: TYPE = [nat -> real]
+
+  safe_real_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  complex_add(x, y: complex): complex =
+    (# real_part := real_part(x) + real_part(y),
+       imag_part := imag_part(x) + imag_part(y) #)
+
+  complex_neg(x: complex): complex =
+    (# real_part := -real_part(x),
+       imag_part := -imag_part(x) #)
+
+  complex_sub(x, y: complex): complex =
+    complex_add(x, complex_neg(y))
+
+  complex_mul(x, y: complex): complex =
+    (# real_part :=
+         real_part(x) * real_part(y)
+           - imag_part(x) * imag_part(y),
+       imag_part :=
+         real_part(x) * imag_part(y)
+           + imag_part(x) * real_part(y) #)
+
+  complex_squared_norm(z: complex): real =
+    real_part(z) ^ 2 + imag_part(z) ^ 2
+
+  complex_squared_distance(x, y: complex): real =
+    complex_squared_norm(complex_sub(x, y))
+
+  subE(x, y: E): E =
+    addE(x, negE(y))
+
+  complex_normed_vector_space: bool =
+    (FORALL (x, y: E):
+      addE(x, y) = addE(y, x))
+      AND (FORALL (x, y, z: E):
+        addE(addE(x, y), z) = addE(x, addE(y, z)))
+      AND (FORALL (x: E):
+        addE(x, zeroE) = x)
+      AND (FORALL (x: E):
+        addE(x, negE(x)) = zeroE)
+      AND (FORALL (a: complex), (x, y: E):
+        cscaleE(
+          real_part(a), imag_part(a), addE(x, y))
+          =
+        addE(
+          cscaleE(real_part(a), imag_part(a), x),
+          cscaleE(real_part(a), imag_part(a), y)))
+      AND (FORALL (a, b: complex), (x: E):
+        cscaleE(
+          real_part(complex_add(a, b)),
+          imag_part(complex_add(a, b)),
+          x)
+          =
+        addE(
+          cscaleE(real_part(a), imag_part(a), x),
+          cscaleE(real_part(b), imag_part(b), x)))
+      AND (FORALL (a, b: complex), (x: E):
+        cscaleE(
+          real_part(complex_mul(a, b)),
+          imag_part(complex_mul(a, b)),
+          x)
+          =
+        cscaleE(
+          real_part(a),
+          imag_part(a),
+          cscaleE(real_part(b), imag_part(b), x)))
+      AND (FORALL (x: E):
+        cscaleE(1, 0, x) = x)
+      AND (FORALL (x: E):
+        normE(x) >= 0)
+      AND (FORALL (x: E):
+        normE(x) = 0 IFF x = zeroE)
+      AND (FORALL (a: complex), (x: E):
+        normE(
+          cscaleE(real_part(a), imag_part(a), x)) ^ 2
+          =
+        complex_squared_norm(a) * normE(x) ^ 2)
+      AND (FORALL (x, y: E):
+        normE(addE(x, y)) <= normE(x) + normE(y))
+
+  nat_factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * nat_factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  exponential_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        exponential_partial(x, count - 1)
+          + x ^ index / (nat_factorial(index) :: real)
+    ENDIF
+  MEASURE count
+
+  alternating_sign(index: nat): RECURSIVE real =
+    IF index = 0 THEN
+      1
+    ELSE
+      -alternating_sign(index - 1)
+    ENDIF
+  MEASURE index
+
+  leibniz_partial_sum(count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        leibniz_partial_sum(count - 1)
+          + alternating_sign(index) / ((2 * index + 1) :: real)
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  exponential_characterization: bool =
+    FORALL (x: real):
+      converges_to(
+        LAMBDA (count: nat): exponential_partial(x, count),
+        expR(x))
+
+  pi_characterization: bool =
+    converges_to(
+      LAMBDA (count: nat): 4 * leibniz_partial_sum(count),
+      pi_value)
+
+  standard_real_analysis: bool =
+    exponential_characterization AND pi_characterization
+
+  in_open_horizontal_strip(
+      z: complex,
+      lower, upper: real): bool =
+    lower < imag_part(z) AND imag_part(z) < upper
+
+  in_closed_horizontal_strip(
+      z: complex,
+      lower, upper: real): bool =
+    lower < upper
+      AND lower <= imag_part(z)
+      AND imag_part(z) <= upper
+
+  continuous_on_strip_closure(
+      f: complex_function,
+      lower, upper: real): bool =
+    FORALL (x: complex):
+      in_closed_horizontal_strip(x, lower, upper)
+        IMPLIES
+          FORALL (epsilon_value: posreal):
+            EXISTS (delta: posreal):
+              FORALL (y: complex):
+                (in_closed_horizontal_strip(y, lower, upper)
+                  AND complex_squared_distance(y, x) < delta ^ 2)
+                IMPLIES
+                  normE(subE(f(y), f(x))) < epsilon_value
+
+  derivative_error(
+      f: complex_function,
+      derivative: E,
+      x, y: complex): E =
+    subE(
+      subE(f(y), f(x)),
+      cscaleE(
+        real_part(complex_sub(y, x)),
+        imag_part(complex_sub(y, x)),
+        derivative))
+
+  has_complex_derivative_within_open_strip_at(
+      f: complex_function,
+      derivative: E,
+      lower, upper: real,
+      x: complex): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (delta: posreal):
+        FORALL (y: complex):
+          (NOT (y = x)
+            AND in_open_horizontal_strip(y, lower, upper)
+            AND complex_squared_distance(y, x) < delta ^ 2)
+          IMPLIES
+            normE(derivative_error(f, derivative, x, y)) ^ 2
+              <= epsilon_value ^ 2
+                * complex_squared_distance(y, x)
+
+  differentiable_on_open_horizontal_strip(
+      f: complex_function,
+      lower, upper: real): bool =
+    FORALL (x: complex):
+      in_open_horizontal_strip(x, lower, upper)
+        IMPLIES
+          EXISTS (derivative: E):
+            has_complex_derivative_within_open_strip_at(
+              f, derivative, lower, upper, x)
+
+  diff_cont_on_closure(
+      f: complex_function,
+      lower, upper: real): bool =
+    differentiable_on_open_horizontal_strip(f, lower, upper)
+      AND continuous_on_strip_closure(f, lower, upper)
+
+  has_horizontal_strip_growth(
+      f: complex_function,
+      lower, upper: real): bool =
+    EXISTS (c: real):
+      c < safe_real_div(pi_value, upper - lower)
+        AND EXISTS (B: real):
+          EXISTS
+              (multiplier: posreal),
+              (threshold: real):
+            FORALL (w: complex):
+              (threshold <= abs(real_part(w))
+                AND in_open_horizontal_strip(w, lower, upper))
+              IMPLIES
+                normE(f(w))
+                  <= multiplier
+                    * expR(
+                        B * expR(
+                          c * abs(real_part(w))))
+
+  bounded_on_lower_boundary(
+      f: complex_function,
+      lower, bound: real): bool =
+    FORALL (w: complex):
+      imag_part(w) = lower IMPLIES normE(f(w)) <= bound
+
+  bounded_on_upper_boundary(
+      f: complex_function,
+      upper, bound: real): bool =
+    FORALL (w: complex):
+      imag_part(w) = upper IMPLIES normE(f(w)) <= bound
+
+  phragmen_lindelof_horizontal_strip: bool =
+    (standard_real_analysis AND complex_normed_vector_space)
+      IMPLIES
+        FORALL
+            (lower, upper, bound: real),
+            (f: complex_function),
+            (z: complex):
+          (diff_cont_on_closure(f, lower, upper)
+            AND has_horizontal_strip_growth(f, lower, upper)
+            AND bounded_on_lower_boundary(f, lower, bound)
+            AND bounded_on_upper_boundary(f, upper, bound)
+            AND lower <= imag_part(z)
+            AND imag_part(z) <= upper)
+          IMPLIES normE(f(z)) <= bound
+END Q4378868_phragmen_lindelof_theorem

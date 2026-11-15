@@ -1,0 +1,261 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% frama_c/standard_algorithms/pop_heap/pop_heap_Why3_ide_VCpop_heap_post_reorder_goal3:
+% the pop_heap postcondition that the specified heap-memory updates preserve
+% all signed-32-bit value counts in the active array prefix, under the source
+% range, validity, heap, upper-bound, and maximum-child assumptions. This file
+% contains no proof.
+
+pop_heap_Why3_ide_VCpop_heap_post_reorder_goal3: THEORY
+BEGIN
+  addr: TYPE = [# base: int, offset: int #]
+  integer_memory: TYPE = [addr -> int]
+  allocation_table: TYPE = [int -> int]
+  occurrence_counter: TYPE =
+    [integer_memory, addr, int, int, int -> int]
+
+  shift(p: addr, k: int): addr =
+    (# base := base(p), offset := offset(p) + k #)
+
+  separated(p: addr, p_size: int, q: addr, q_size: int): bool =
+    p_size <= 0
+      OR q_size <= 0
+      OR base(p) /= base(q)
+      OR offset(q) + q_size <= offset(p)
+      OR offset(p) + p_size <= offset(q)
+
+  havoc(
+      original, outside: integer_memory,
+      start: addr,
+      size: int): integer_memory =
+    LAMBDA (q: addr):
+      IF separated(q, 1, start, size) THEN
+        outside(q)
+      ELSE
+        original(q)
+      ENDIF
+
+  valid_rw(m: allocation_table, p: addr, n: int): bool =
+    0 < n IMPLIES
+      0 < base(p)
+        AND 0 <= offset(p)
+        AND offset(p) + n <= m(base(p))
+
+  valid_rd(m: allocation_table, p: addr, n: int): bool =
+    0 < n IMPLIES
+      base(p) /= 0
+        AND 0 <= offset(p)
+        AND offset(p) + n <= m(base(p))
+
+  is_uint32(x: int): bool =
+    0 <= x AND x < 4294967296
+
+  is_sint32(x: int): bool =
+    -2147483648 <= x AND x < 2147483648
+
+  to_uint32(x: int): int =
+    mod(x, 4294967296)
+
+  trunc_div(n, d: int): int =
+    IF d = 0 THEN
+      0
+    ELSIF n * d >= 0 THEN
+      floor((n :: real) / (d :: real))
+    ELSE
+      -floor(-((n :: real) / (d :: real)))
+    ENDIF
+
+  heap_parent(i: int): int =
+    trunc_div(i - 1, 2)
+
+  heap_left(i: int): int =
+    1 + 2 * i
+
+  heap_right(i: int): int =
+    2 + 2 * i
+
+  p_unchanged(
+      mint_0, mint_1: integer_memory,
+      a: addr,
+      m, n: int): bool =
+    FORALL (j: int):
+      m <= j IMPLIES
+      j < n IMPLIES
+      mint_1(shift(a, j)) = mint_0(shift(a, j))
+
+  p_upperbound(
+      memory: integer_memory,
+      a: addr,
+      lower, upper, value: int): bool =
+    FORALL (j: int):
+      lower <= j IMPLIES
+      j < upper IMPLIES
+      memory(shift(a, j)) <= value
+
+  p_isheap(
+      memory: integer_memory,
+      a: addr,
+      n: int): bool =
+    FORALL (j: int):
+      0 < j IMPLIES
+      j < n IMPLIES
+      memory(shift(a, j)) <=
+        memory(shift(a, heap_parent(j)))
+
+  p_heapmaximumchild(
+      memory: integer_memory,
+      a: addr,
+      n, parent, child: int): bool =
+    LET left: int = heap_left(parent),
+        child_value: int = memory(shift(a, child)),
+        right: int = heap_right(parent)
+    IN
+      0 <= parent
+        AND 2 + parent <= n
+        AND (parent <= 2147483646 IMPLIES
+          heap_parent(child) = parent)
+        AND (2 + left <= n IMPLIES
+          memory(shift(a, left)) <= child_value)
+        AND (2 + right <= n IMPLIES
+          memory(shift(a, right)) <= child_value)
+
+  count_axioms(l_count: occurrence_counter): bool =
+    (FORALL
+      (n, m, v: int),
+      (mint_0: integer_memory),
+      (a: addr):
+        n <= m IMPLIES
+        is_sint32(v) IMPLIES
+        l_count(mint_0, a, m, n, v) = 0)
+    AND
+    (FORALL
+      (n: int),
+      (mint_0: integer_memory),
+      (a: addr),
+      (v, m: int):
+        mint_0(shift(a, n - 1)) = v IMPLIES
+        m < n IMPLIES
+        is_sint32(v) IMPLIES
+        1 + l_count(mint_0, a, m, n - 1, v) =
+          l_count(mint_0, a, m, n, v))
+    AND
+    (FORALL
+      (n: int),
+      (mint_0: integer_memory),
+      (a: addr),
+      (v, m: int):
+        mint_0(shift(a, n - 1)) /= v IMPLIES
+        m < n IMPLIES
+        is_sint32(v) IMPLIES
+        l_count(mint_0, a, m, n - 1, v) =
+          l_count(mint_0, a, m, n, v))
+    AND
+    (FORALL
+      (v: int),
+      (mint_0, mint_1: integer_memory),
+      (a: addr),
+      (m, n: int):
+        is_sint32(v) IMPLIES
+        p_unchanged(mint_0, mint_1, a, m, n) IMPLIES
+        l_count(mint_1, a, m, n, v) =
+          l_count(mint_0, a, m, n, v))
+
+  p_multisetunchanged(
+      l_count: occurrence_counter,
+      mint_0, mint_1: integer_memory,
+      a: addr,
+      first, last: int): bool =
+    FORALL (value: int):
+      is_sint32(value) IMPLIES
+      l_count(mint_1, a, first, last, value) =
+        l_count(mint_0, a, first, last, value)
+
+  goal3: bool =
+    FORALL
+      (a: addr),
+      (t_4: integer_memory),
+      (i, i_1: int),
+      (t_3: integer_memory),
+      (i_3: int),
+      (t: allocation_table),
+      (i_2: int),
+      (t_5: integer_memory),
+      (p, p_1: bool),
+      (t_1: allocation_table),
+      (t_2: integer_memory),
+      (region: [int -> int]),
+      (linked: [allocation_table -> bool]),
+      (l_count: occurrence_counter):
+      count_axioms(l_count) IMPLIES
+      LET a_1: addr = shift(a, 0),
+          x: int = t_4(a_1),
+          x_1: int = i - 1,
+          a_2: addr = shift(a, x_1),
+          a_3: addr = shift(a, to_uint32(x_1)),
+          a_4: addr = shift(a, i_1),
+          x_2: int = t_3(a_2),
+          a_5: addr = shift(a, i_3),
+          t_3_at_a_4: integer_memory =
+            t_3 WITH [(a_4) := x_2],
+          updated_memory: integer_memory =
+            t_3_at_a_4 WITH [(a_2) := x]
+      IN
+        0 < i IMPLIES
+        region(base(a)) <= 0 IMPLIES
+        linked(t) IMPLIES
+        is_uint32(i) IMPLIES
+        is_uint32(i_1) IMPLIES
+        is_uint32(i_2) IMPLIES
+        is_uint32(i_3) IMPLIES
+        p_isheap(t_4, a, i) IMPLIES
+        is_sint32(x) IMPLIES
+        valid_rw(t, a_1, i) IMPLIES
+        is_sint32(t_5(a_2)) IMPLIES
+        (IF 2 <= i THEN
+          valid_rd(t, a_1, 1)
+            AND valid_rd(t, a_3, 1)
+            AND
+              (IF t_4(a_2) < x THEN
+                p = FALSE
+                  AND p_1 = FALSE
+                  AND t_1 = t
+                  AND havoc(t_2, t_4, a_1, x_1) = t_3
+                  AND updated_memory = t_5
+                  AND 0 < i_2
+                  AND 0 <= i_1
+                  AND i_1 < i_3
+                  AND x_2 <
+                    t_3(shift(a, heap_parent(i_1)))
+                  AND 2 + i_1 <= i
+                  AND p_isheap(t_3, a, i)
+                  AND p_heapmaximumchild(
+                    t_3, a, i, i_1, i_3)
+                  AND p_heapmaximumchild(
+                    t_4, a, i, 0, i_2)
+                  AND valid_rw(t_1, a_1, i)
+                  AND valid_rw(t_1, a_4, 1)
+                  AND p_upperbound(t_3, a, 0, i, x)
+                  AND valid_rd(t_1, a_3, 1)
+                  AND valid_rw(t_1, a_3, 1)
+                  AND (2 + i_2 <= i IMPLIES
+                    heap_parent(i_2) = 0)
+                  AND (2 + i_3 <= i IMPLIES
+                    heap_parent(i_3) = i_1)
+                  AND (i <= 1 + i_3
+                    OR (t_3(a_5) <= x_2
+                      AND valid_rd(t_1, a_5, 1)))
+                  AND (FORALL (value: int):
+                    is_sint32(value) IMPLIES
+                    l_count(t_4, a, 0, i, value)
+                      + (IF t_3(a_4) = value THEN 1 ELSE 0 ENDIF)
+                    =
+                    l_count(t_3, a, 0, i, value)
+                      + (IF x = value THEN 1 ELSE 0 ENDIF))
+              ELSE
+                t_5 = t_4
+              ENDIF)
+        ELSE
+          t_5 = t_4
+        ENDIF) IMPLIES
+        p_multisetunchanged(
+          l_count, t_5, t_4, a, 0, i)
+END pop_heap_Why3_ide_VCpop_heap_post_reorder_goal3

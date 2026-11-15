@@ -1,0 +1,802 @@
+% Statement-only formalization of the Thousand Theorems corpus artifact Q643826,
+% "Slutsky's theorem": a continuous function of a distributionally convergent
+% random variable and a random variable converging in measure to a constant
+% converges in distribution to the corresponding transformed limit.
+% This file contains no proof.
+
+slutsky_s_theorem_Q643826[
+  Index: TYPE,
+  Source: TYPE,
+  LimitSource: TYPE,
+  E: TYPE,
+  EPrime: TYPE,
+  F: TYPE,
+  source_sigma: [[Source -> bool] -> bool],
+  limit_sigma: [[LimitSource -> bool] -> bool],
+  e_sigma: [[E -> bool] -> bool],
+  ep_sigma: [[EPrime -> bool] -> bool],
+  f_sigma: [[F -> bool] -> bool],
+  source_measure: [[Source -> bool] -> real],
+  limit_measure: [[LimitSource -> bool] -> real],
+  source_integral: [[Source -> real] -> real],
+  limit_integral: [[LimitSource -> real] -> real],
+  e_open: [[E -> bool] -> bool],
+  ep_open: [[EPrime -> bool] -> bool],
+  f_open: [[F -> bool] -> bool],
+  index_filter: [[Index -> bool] -> bool],
+  zeroE: E,
+  addE: [E, E -> E],
+  negE: [E -> E],
+  normE: [E -> real],
+  zeroEP: EPrime,
+  addEP: [EPrime, EPrime -> EPrime],
+  negEP: [EPrime -> EPrime],
+  normEP: [EPrime -> real],
+  X: [Index -> [Source -> E]],
+  Y: [Index -> [Source -> EPrime]],
+  Z: [LimitSource -> E],
+  c: EPrime,
+  g: [E, EPrime -> F]
+]: THEORY
+BEGIN
+  source_event: TYPE = [Source -> bool]
+  source_event_sequence: TYPE = [nat -> source_event]
+  limit_event: TYPE = [LimitSource -> bool]
+  limit_event_sequence: TYPE = [nat -> limit_event]
+  e_event: TYPE = [E -> bool]
+  ep_event: TYPE = [EPrime -> bool]
+  f_event: TYPE = [F -> bool]
+  real_event: TYPE = [real -> bool]
+  real_sequence: TYPE = [nat -> real]
+
+  source_empty: source_event =
+    LAMBDA (omega: Source): FALSE
+
+  source_full: source_event =
+    LAMBDA (omega: Source): TRUE
+
+  source_complement(A: source_event): source_event =
+    LAMBDA (omega: Source): NOT A(omega)
+
+  source_countable_union(events: source_event_sequence): source_event =
+    LAMBDA (omega: Source):
+      EXISTS (index: nat): events(index)(omega)
+
+  source_pairwise_disjoint(events: source_event_sequence): bool =
+    FORALL (left_index, right_index: nat):
+      left_index /= right_index IMPLIES
+        FORALL (omega: Source):
+          NOT (events(left_index)(omega)
+            AND events(right_index)(omega))
+
+  limit_empty: limit_event =
+    LAMBDA (omega: LimitSource): FALSE
+
+  limit_full: limit_event =
+    LAMBDA (omega: LimitSource): TRUE
+
+  limit_complement(A: limit_event): limit_event =
+    LAMBDA (omega: LimitSource): NOT A(omega)
+
+  limit_countable_union(events: limit_event_sequence): limit_event =
+    LAMBDA (omega: LimitSource):
+      EXISTS (index: nat): events(index)(omega)
+
+  limit_pairwise_disjoint(events: limit_event_sequence): bool =
+    FORALL (left_index, right_index: nat):
+      left_index /= right_index IMPLIES
+        FORALL (omega: LimitSource):
+          NOT (events(left_index)(omega)
+            AND events(right_index)(omega))
+
+  finite_sum(values: real_sequence, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      finite_sum(values, count - 1) + values(count - 1)
+    ENDIF
+  MEASURE count
+
+  converges_real_sequence(values: real_sequence, limit: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(values(index) - limit) < epsilon_value
+
+  source_sigma_algebra: bool =
+    source_sigma(source_full)
+      AND (FORALL (A: source_event):
+        source_sigma(A) IMPLIES
+          source_sigma(source_complement(A)))
+      AND (FORALL (events: source_event_sequence):
+        (FORALL (index: nat):
+          source_sigma(events(index)))
+        IMPLIES
+          source_sigma(source_countable_union(events)))
+
+  limit_sigma_algebra: bool =
+    limit_sigma(limit_full)
+      AND (FORALL (A: limit_event):
+        limit_sigma(A) IMPLIES
+          limit_sigma(limit_complement(A)))
+      AND (FORALL (events: limit_event_sequence):
+        (FORALL (index: nat):
+          limit_sigma(events(index)))
+        IMPLIES
+          limit_sigma(limit_countable_union(events)))
+
+  source_measure_laws: bool =
+    source_sigma_algebra
+      AND source_measure(source_empty) = 0
+      AND (FORALL (A: source_event):
+        0 <= source_measure(A))
+      AND (FORALL (A, B: source_event):
+        (FORALL (omega: Source): A(omega) IMPLIES B(omega))
+        IMPLIES source_measure(A) <= source_measure(B))
+      AND (FORALL (events: source_event_sequence):
+        (FORALL (bound: real):
+          (FORALL (count: nat):
+            finite_sum(
+              LAMBDA (index: nat):
+                source_measure(events(index)),
+              count) <= bound)
+          IMPLIES
+            source_measure(source_countable_union(events)) <= bound))
+      AND (FORALL (events: source_event_sequence):
+        ((FORALL (index: nat):
+            source_sigma(events(index)))
+          AND source_pairwise_disjoint(events))
+        IMPLIES
+          converges_real_sequence(
+            LAMBDA (count: nat):
+              finite_sum(
+                LAMBDA (index: nat):
+                  source_measure(events(index)),
+                count),
+            source_measure(source_countable_union(events))))
+
+  limit_measure_laws: bool =
+    limit_sigma_algebra
+      AND limit_measure(limit_empty) = 0
+      AND (FORALL (A: limit_event):
+        0 <= limit_measure(A))
+      AND (FORALL (A, B: limit_event):
+        (FORALL (omega: LimitSource): A(omega) IMPLIES B(omega))
+        IMPLIES limit_measure(A) <= limit_measure(B))
+      AND (FORALL (events: limit_event_sequence):
+        (FORALL (bound: real):
+          (FORALL (count: nat):
+            finite_sum(
+              LAMBDA (index: nat):
+                limit_measure(events(index)),
+              count) <= bound)
+          IMPLIES
+            limit_measure(limit_countable_union(events)) <= bound))
+      AND (FORALL (events: limit_event_sequence):
+        ((FORALL (index: nat):
+            limit_sigma(events(index)))
+          AND limit_pairwise_disjoint(events))
+        IMPLIES
+          converges_real_sequence(
+            LAMBDA (count: nat):
+              finite_sum(
+                LAMBDA (index: nat):
+                  limit_measure(events(index)),
+                count),
+            limit_measure(limit_countable_union(events))))
+
+  source_probability_measure: bool =
+    source_measure_laws
+      AND source_measure(source_full) = 1
+
+  limit_probability_measure: bool =
+    limit_measure_laws
+      AND limit_measure(limit_full) = 1
+
+  e_empty: e_event =
+    LAMBDA (value: E): FALSE
+
+  e_full: e_event =
+    LAMBDA (value: E): TRUE
+
+  e_intersection(A, B: e_event): e_event =
+    LAMBDA (value: E): A(value) AND B(value)
+
+  e_union(family: [e_event -> bool]): e_event =
+    LAMBDA (value: E):
+      EXISTS (A: e_event):
+        family(A) AND A(value)
+
+  ep_empty: ep_event =
+    LAMBDA (value: EPrime): FALSE
+
+  ep_full: ep_event =
+    LAMBDA (value: EPrime): TRUE
+
+  ep_intersection(A, B: ep_event): ep_event =
+    LAMBDA (value: EPrime): A(value) AND B(value)
+
+  ep_union(family: [ep_event -> bool]): ep_event =
+    LAMBDA (value: EPrime):
+      EXISTS (A: ep_event):
+        family(A) AND A(value)
+
+  f_empty: f_event =
+    LAMBDA (value: F): FALSE
+
+  f_full: f_event =
+    LAMBDA (value: F): TRUE
+
+  f_intersection(A, B: f_event): f_event =
+    LAMBDA (value: F): A(value) AND B(value)
+
+  f_union(family: [f_event -> bool]): f_event =
+    LAMBDA (value: F):
+      EXISTS (A: f_event):
+        family(A) AND A(value)
+
+  topology_e: bool =
+    e_open(e_empty)
+      AND e_open(e_full)
+      AND (FORALL (A, B: e_event):
+        e_open(A) AND e_open(B) IMPLIES
+          e_open(e_intersection(A, B)))
+      AND (FORALL (family: [e_event -> bool]):
+        (FORALL (A: e_event):
+          family(A) IMPLIES e_open(A))
+        IMPLIES e_open(e_union(family)))
+
+  topology_ep: bool =
+    ep_open(ep_empty)
+      AND ep_open(ep_full)
+      AND (FORALL (A, B: ep_event):
+        ep_open(A) AND ep_open(B) IMPLIES
+          ep_open(ep_intersection(A, B)))
+      AND (FORALL (family: [ep_event -> bool]):
+        (FORALL (A: ep_event):
+          family(A) IMPLIES ep_open(A))
+        IMPLIES ep_open(ep_union(family)))
+
+  topology_f: bool =
+    f_open(f_empty)
+      AND f_open(f_full)
+      AND (FORALL (A, B: f_event):
+        f_open(A) AND f_open(B) IMPLIES
+          f_open(f_intersection(A, B)))
+      AND (FORALL (family: [f_event -> bool]):
+        (FORALL (A: f_event):
+          family(A) IMPLIES f_open(A))
+        IMPLIES f_open(f_union(family)))
+
+  subE(x, y: E): E =
+    addE(x, negE(y))
+
+  subEP(x, y: EPrime): EPrime =
+    addEP(x, negEP(y))
+
+  seminormed_add_comm_group_e: bool =
+    (FORALL (x, y: E): addE(x, y) = addE(y, x))
+      AND (FORALL (x, y, z: E):
+        addE(addE(x, y), z) = addE(x, addE(y, z)))
+      AND (FORALL (x: E): addE(x, zeroE) = x)
+      AND (FORALL (x: E): addE(x, negE(x)) = zeroE)
+      AND normE(zeroE) = 0
+      AND (FORALL (x: E): 0 <= normE(x))
+      AND (FORALL (x: E): normE(negE(x)) = normE(x))
+      AND (FORALL (x, y: E):
+        normE(addE(x, y)) <= normE(x) + normE(y))
+      AND (FORALL (U: e_event):
+        e_open(U) IFF
+          (FORALL (x: E):
+            U(x) IMPLIES
+              EXISTS (radius: posreal):
+                FORALL (y: E):
+                  normE(subE(y, x)) < radius
+                    IMPLIES U(y)))
+
+  seminormed_add_comm_group_ep: bool =
+    (FORALL (x, y: EPrime): addEP(x, y) = addEP(y, x))
+      AND (FORALL (x, y, z: EPrime):
+        addEP(addEP(x, y), z) = addEP(x, addEP(y, z)))
+      AND (FORALL (x: EPrime): addEP(x, zeroEP) = x)
+      AND (FORALL (x: EPrime): addEP(x, negEP(x)) = zeroEP)
+      AND normEP(zeroEP) = 0
+      AND (FORALL (x: EPrime): 0 <= normEP(x))
+      AND (FORALL (x: EPrime): normEP(negEP(x)) = normEP(x))
+      AND (FORALL (x, y: EPrime):
+        normEP(addEP(x, y)) <= normEP(x) + normEP(y))
+      AND (FORALL (U: ep_event):
+        ep_open(U) IFF
+          (FORALL (x: EPrime):
+            U(x) IMPLIES
+              EXISTS (radius: posreal):
+                FORALL (y: EPrime):
+                  normEP(subEP(y, x)) < radius
+                    IMPLIES U(y)))
+
+  second_countable_e: bool =
+    EXISTS (basis: [nat -> e_event]):
+      (FORALL (index: nat): e_open(basis(index)))
+        AND (FORALL (U: e_event), (x: E):
+          e_open(U) AND U(x) IMPLIES
+            EXISTS (index: nat):
+              basis(index)(x)
+                AND (FORALL (y: E):
+                  basis(index)(y) IMPLIES U(y)))
+
+  second_countable_ep: bool =
+    EXISTS (basis: [nat -> ep_event]):
+      (FORALL (index: nat): ep_open(basis(index)))
+        AND (FORALL (U: ep_event), (x: EPrime):
+          ep_open(U) AND U(x) IMPLIES
+            EXISTS (index: nat):
+              basis(index)(x)
+                AND (FORALL (y: EPrime):
+                  basis(index)(y) IMPLIES U(y)))
+
+  e_complement(A: e_event): e_event =
+    LAMBDA (value: E): NOT A(value)
+
+  e_countable_union(events: [nat -> e_event]): e_event =
+    LAMBDA (value: E):
+      EXISTS (index: nat): events(index)(value)
+
+  ep_complement(A: ep_event): ep_event =
+    LAMBDA (value: EPrime): NOT A(value)
+
+  ep_countable_union(events: [nat -> ep_event]): ep_event =
+    LAMBDA (value: EPrime):
+      EXISTS (index: nat): events(index)(value)
+
+  f_complement(A: f_event): f_event =
+    LAMBDA (value: F): NOT A(value)
+
+  f_countable_union(events: [nat -> f_event]): f_event =
+    LAMBDA (value: F):
+      EXISTS (index: nat): events(index)(value)
+
+  is_e_sigma(candidate: [e_event -> bool]): bool =
+    candidate(e_full)
+      AND (FORALL (A: e_event):
+        candidate(A) IMPLIES candidate(e_complement(A)))
+      AND (FORALL (events: [nat -> e_event]):
+        (FORALL (index: nat): candidate(events(index)))
+        IMPLIES candidate(e_countable_union(events)))
+
+  is_ep_sigma(candidate: [ep_event -> bool]): bool =
+    candidate(ep_full)
+      AND (FORALL (A: ep_event):
+        candidate(A) IMPLIES candidate(ep_complement(A)))
+      AND (FORALL (events: [nat -> ep_event]):
+        (FORALL (index: nat): candidate(events(index)))
+        IMPLIES candidate(ep_countable_union(events)))
+
+  is_f_sigma(candidate: [f_event -> bool]): bool =
+    candidate(f_full)
+      AND (FORALL (A: f_event):
+        candidate(A) IMPLIES candidate(f_complement(A)))
+      AND (FORALL (events: [nat -> f_event]):
+        (FORALL (index: nat): candidate(events(index)))
+        IMPLIES candidate(f_countable_union(events)))
+
+  borel_e: bool =
+    is_e_sigma(e_sigma)
+      AND (FORALL (U: e_event):
+        e_open(U) IMPLIES e_sigma(U))
+      AND (FORALL (candidate: [e_event -> bool]):
+        (is_e_sigma(candidate)
+          AND (FORALL (U: e_event):
+            e_open(U) IMPLIES candidate(U)))
+        IMPLIES
+          (FORALL (A: e_event):
+            e_sigma(A) IMPLIES candidate(A)))
+
+  borel_ep: bool =
+    is_ep_sigma(ep_sigma)
+      AND (FORALL (U: ep_event):
+        ep_open(U) IMPLIES ep_sigma(U))
+      AND (FORALL (candidate: [ep_event -> bool]):
+        (is_ep_sigma(candidate)
+          AND (FORALL (U: ep_event):
+            ep_open(U) IMPLIES candidate(U)))
+        IMPLIES
+          (FORALL (A: ep_event):
+            ep_sigma(A) IMPLIES candidate(A)))
+
+  borel_f: bool =
+    is_f_sigma(f_sigma)
+      AND (FORALL (U: f_event):
+        f_open(U) IMPLIES f_sigma(U))
+      AND (FORALL (candidate: [f_event -> bool]):
+        (is_f_sigma(candidate)
+          AND (FORALL (U: f_event):
+            f_open(U) IMPLIES candidate(U)))
+        IMPLIES
+          (FORALL (A: f_event):
+            f_sigma(A) IMPLIES candidate(A)))
+
+  real_open(A: real_event): bool =
+    FORALL (x: real):
+      A(x) IMPLIES
+        EXISTS (radius: posreal):
+          FORALL (y: real):
+            abs(y - x) < radius IMPLIES A(y)
+
+  real_full: real_event =
+    LAMBDA (x: real): TRUE
+
+  real_complement(A: real_event): real_event =
+    LAMBDA (x: real): NOT A(x)
+
+  real_countable_union(events: [nat -> real_event]): real_event =
+    LAMBDA (x: real):
+      EXISTS (index: nat): events(index)(x)
+
+  is_real_sigma(candidate: [real_event -> bool]): bool =
+    candidate(real_full)
+      AND (FORALL (A: real_event):
+        candidate(A) IMPLIES candidate(real_complement(A)))
+      AND (FORALL (events: [nat -> real_event]):
+        (FORALL (index: nat): candidate(events(index)))
+        IMPLIES candidate(real_countable_union(events)))
+
+  real_borel(A: real_event): bool =
+    FORALL (candidate: [real_event -> bool]):
+      (is_real_sigma(candidate)
+        AND (FORALL (U: real_event):
+          real_open(U) IMPLIES candidate(U)))
+      IMPLIES candidate(A)
+
+  source_preimage_e(h: [Source -> E], A: e_event): source_event =
+    LAMBDA (omega: Source): A(h(omega))
+
+  source_preimage_ep(
+      h: [Source -> EPrime],
+      A: ep_event): source_event =
+    LAMBDA (omega: Source): A(h(omega))
+
+  source_preimage_f(h: [Source -> F], A: f_event): source_event =
+    LAMBDA (omega: Source): A(h(omega))
+
+  source_preimage_real(
+      h: [Source -> real],
+      A: real_event): source_event =
+    LAMBDA (omega: Source): A(h(omega))
+
+  limit_preimage_e(
+      h: [LimitSource -> E],
+      A: e_event): limit_event =
+    LAMBDA (omega: LimitSource): A(h(omega))
+
+  limit_preimage_f(
+      h: [LimitSource -> F],
+      A: f_event): limit_event =
+    LAMBDA (omega: LimitSource): A(h(omega))
+
+  limit_preimage_real(
+      h: [LimitSource -> real],
+      A: real_event): limit_event =
+    LAMBDA (omega: LimitSource): A(h(omega))
+
+  source_measurable_e(h: [Source -> E]): bool =
+    FORALL (A: e_event):
+      e_sigma(A) IMPLIES source_sigma(source_preimage_e(h, A))
+
+  source_measurable_ep(h: [Source -> EPrime]): bool =
+    FORALL (A: ep_event):
+      ep_sigma(A) IMPLIES source_sigma(source_preimage_ep(h, A))
+
+  source_measurable_f(h: [Source -> F]): bool =
+    FORALL (A: f_event):
+      f_sigma(A) IMPLIES source_sigma(source_preimage_f(h, A))
+
+  source_measurable_real(h: [Source -> real]): bool =
+    FORALL (A: real_event):
+      real_borel(A) IMPLIES source_sigma(source_preimage_real(h, A))
+
+  limit_measurable_e(h: [LimitSource -> E]): bool =
+    FORALL (A: e_event):
+      e_sigma(A) IMPLIES limit_sigma(limit_preimage_e(h, A))
+
+  limit_measurable_f(h: [LimitSource -> F]): bool =
+    FORALL (A: f_event):
+      f_sigma(A) IMPLIES limit_sigma(limit_preimage_f(h, A))
+
+  limit_measurable_real(h: [LimitSource -> real]): bool =
+    FORALL (A: real_event):
+      real_borel(A) IMPLIES limit_sigma(limit_preimage_real(h, A))
+
+  source_null(A: source_event): bool =
+    EXISTS (cover: source_event):
+      source_sigma(cover)
+        AND (FORALL (omega: Source):
+          A(omega) IMPLIES cover(omega))
+        AND source_measure(cover) = 0
+
+  limit_null(A: limit_event): bool =
+    EXISTS (cover: limit_event):
+      limit_sigma(cover)
+        AND (FORALL (omega: LimitSource):
+          A(omega) IMPLIES cover(omega))
+        AND limit_measure(cover) = 0
+
+  source_ae(property_value: [Source -> bool]): bool =
+    source_null(
+      LAMBDA (omega: Source): NOT property_value(omega))
+
+  limit_ae(property_value: [LimitSource -> bool]): bool =
+    limit_null(
+      LAMBDA (omega: LimitSource): NOT property_value(omega))
+
+  source_ae_measurable_e(h: [Source -> E]): bool =
+    EXISTS (version: [Source -> E]):
+      source_measurable_e(version)
+        AND source_ae(
+          LAMBDA (omega: Source):
+            h(omega) = version(omega))
+
+  source_ae_measurable_ep(h: [Source -> EPrime]): bool =
+    EXISTS (version: [Source -> EPrime]):
+      source_measurable_ep(version)
+        AND source_ae(
+          LAMBDA (omega: Source):
+            h(omega) = version(omega))
+
+  source_ae_measurable_f(h: [Source -> F]): bool =
+    EXISTS (version: [Source -> F]):
+      source_measurable_f(version)
+        AND source_ae(
+          LAMBDA (omega: Source):
+            h(omega) = version(omega))
+
+  source_ae_measurable_real(h: [Source -> real]): bool =
+    EXISTS (version: [Source -> real]):
+      source_measurable_real(version)
+        AND source_ae(
+          LAMBDA (omega: Source):
+            h(omega) = version(omega))
+
+  limit_ae_measurable_e(h: [LimitSource -> E]): bool =
+    EXISTS (version: [LimitSource -> E]):
+      limit_measurable_e(version)
+        AND limit_ae(
+          LAMBDA (omega: LimitSource):
+            h(omega) = version(omega))
+
+  limit_ae_measurable_f(h: [LimitSource -> F]): bool =
+    EXISTS (version: [LimitSource -> F]):
+      limit_measurable_f(version)
+        AND limit_ae(
+          LAMBDA (omega: LimitSource):
+            h(omega) = version(omega))
+
+  limit_ae_measurable_real(h: [LimitSource -> real]): bool =
+    EXISTS (version: [LimitSource -> real]):
+      limit_measurable_real(version)
+        AND limit_ae(
+          LAMBDA (omega: LimitSource):
+            h(omega) = version(omega))
+
+  bounded_e(h: [E -> real]): bool =
+    EXISTS (bound: nonneg_real):
+      FORALL (x: E): abs(h(x)) <= bound
+
+  bounded_f(h: [F -> real]): bool =
+    EXISTS (bound: nonneg_real):
+      FORALL (x: F): abs(h(x)) <= bound
+
+  continuous_e_real(h: [E -> real]): bool =
+    FORALL (U: real_event):
+      real_open(U) IMPLIES
+        e_open(LAMBDA (x: E): U(h(x)))
+
+  continuous_f_real(h: [F -> real]): bool =
+    FORALL (U: real_event):
+      real_open(U) IMPLIES
+        f_open(LAMBDA (x: F): U(h(x)))
+
+  source_bounded_real(h: [Source -> real]): bool =
+    EXISTS (bound: nonneg_real):
+      FORALL (omega: Source): abs(h(omega)) <= bound
+
+  limit_bounded_real(h: [LimitSource -> real]): bool =
+    EXISTS (bound: nonneg_real):
+      FORALL (omega: LimitSource): abs(h(omega)) <= bound
+
+  source_integral_standard: bool =
+    (FORALL (left, right: [Source -> real]):
+      source_ae(
+        LAMBDA (omega: Source):
+          left(omega) = right(omega))
+      IMPLIES source_integral(left) = source_integral(right))
+      AND (FORALL (A: source_event):
+        source_sigma(A) IMPLIES
+          source_integral(
+            LAMBDA (omega: Source):
+              IF A(omega) THEN 1 ELSE 0 ENDIF)
+            = source_measure(A))
+      AND (FORALL
+          (left, right: [Source -> real]),
+          (a, b: real):
+        (source_ae_measurable_real(left)
+          AND source_ae_measurable_real(right)
+          AND source_bounded_real(left)
+          AND source_bounded_real(right))
+        IMPLIES
+          source_integral(
+            LAMBDA (omega: Source):
+              a * left(omega) + b * right(omega))
+            = a * source_integral(left)
+                + b * source_integral(right))
+      AND (FORALL
+          (h: [Source -> real]),
+          (bound: nonneg_real):
+        (source_ae_measurable_real(h)
+          AND (FORALL (omega: Source):
+            abs(h(omega)) <= bound))
+        IMPLIES abs(source_integral(h)) <= bound)
+
+  limit_integral_standard: bool =
+    (FORALL (left, right: [LimitSource -> real]):
+      limit_ae(
+        LAMBDA (omega: LimitSource):
+          left(omega) = right(omega))
+      IMPLIES limit_integral(left) = limit_integral(right))
+      AND (FORALL (A: limit_event):
+        limit_sigma(A) IMPLIES
+          limit_integral(
+            LAMBDA (omega: LimitSource):
+              IF A(omega) THEN 1 ELSE 0 ENDIF)
+            = limit_measure(A))
+      AND (FORALL
+          (left, right: [LimitSource -> real]),
+          (a, b: real):
+        (limit_ae_measurable_real(left)
+          AND limit_ae_measurable_real(right)
+          AND limit_bounded_real(left)
+          AND limit_bounded_real(right))
+        IMPLIES
+          limit_integral(
+            LAMBDA (omega: LimitSource):
+              a * left(omega) + b * right(omega))
+            = a * limit_integral(left)
+                + b * limit_integral(right))
+      AND (FORALL
+          (h: [LimitSource -> real]),
+          (bound: nonneg_real):
+        (limit_ae_measurable_real(h)
+          AND (FORALL (omega: LimitSource):
+            abs(h(omega)) <= bound))
+        IMPLIES abs(limit_integral(h)) <= bound)
+
+  filter_laws: bool =
+    index_filter(LAMBDA (index: Index): TRUE)
+      AND (FORALL (left, right: [Index -> bool]):
+        index_filter(left) AND index_filter(right)
+        IMPLIES
+          index_filter(
+            LAMBDA (index: Index):
+              left(index) AND right(index)))
+      AND (FORALL (left, right: [Index -> bool]):
+        index_filter(left)
+          AND (FORALL (index: Index):
+            left(index) IMPLIES right(index))
+        IMPLIES index_filter(right))
+
+  countably_generated_filter: bool =
+    EXISTS (basis: [nat -> [Index -> bool]]):
+      FORALL (A: [Index -> bool]):
+        index_filter(A) IFF
+          EXISTS (number: nat):
+            FORALL (index: Index):
+              basis(number)(index) IMPLIES A(index)
+
+  tendsto_real_along_filter(
+      values: [Index -> real],
+      limit: real): bool =
+    FORALL (epsilon_value: posreal):
+      index_filter(
+        LAMBDA (index: Index):
+          abs(values(index) - limit) < epsilon_value)
+
+  tendsto_in_distribution_e: bool =
+    (FORALL (index: Index):
+      source_ae_measurable_e(X(index)))
+      AND limit_ae_measurable_e(Z)
+      AND (FORALL (test: [E -> real]):
+        bounded_e(test)
+          AND continuous_e_real(test)
+        IMPLIES
+          tendsto_real_along_filter(
+            LAMBDA (index: Index):
+              source_integral(
+                LAMBDA (omega: Source):
+                  test(X(index)(omega))),
+            limit_integral(
+              LAMBDA (omega: LimitSource):
+                test(Z(omega)))))
+
+  y_tendsto_in_measure_to_c: bool =
+    FORALL (epsilon_value: posreal):
+      tendsto_real_along_filter(
+        LAMBDA (index: Index):
+          source_measure(
+            LAMBDA (omega: Source):
+              epsilon_value
+                <= normEP(subEP(Y(index)(omega), c))),
+        0)
+
+  y_ae_measurable: bool =
+    FORALL (index: Index):
+      source_ae_measurable_ep(Y(index))
+
+  product_open(A: [E, EPrime -> bool]): bool =
+    FORALL (x: E), (y: EPrime):
+      A(x, y) IMPLIES
+        EXISTS (U: e_event), (V: ep_event):
+          e_open(U)
+            AND ep_open(V)
+            AND U(x)
+            AND V(y)
+            AND (FORALL (u: E), (v: EPrime):
+              U(u) AND V(v) IMPLIES A(u, v))
+
+  continuous_g: bool =
+    FORALL (U: f_event):
+      f_open(U) IMPLIES
+        product_open(
+          LAMBDA (x: E), (y: EPrime):
+            U(g(x, y)))
+
+  transformed_source(index: Index): [Source -> F] =
+    LAMBDA (omega: Source):
+      g(X(index)(omega), Y(index)(omega))
+
+  transformed_limit: [LimitSource -> F] =
+    LAMBDA (omega: LimitSource):
+      g(Z(omega), c)
+
+  transformed_tendsto_in_distribution: bool =
+    (FORALL (index: Index):
+      source_ae_measurable_f(transformed_source(index)))
+      AND limit_ae_measurable_f(transformed_limit)
+      AND (FORALL (test: [F -> real]):
+        bounded_f(test)
+          AND continuous_f_real(test)
+        IMPLIES
+          tendsto_real_along_filter(
+            LAMBDA (index: Index):
+              source_integral(
+                LAMBDA (omega: Source):
+                  test(transformed_source(index)(omega))),
+            limit_integral(
+              LAMBDA (omega: LimitSource):
+                test(transformed_limit(omega)))))
+
+  structural_context: bool =
+    source_probability_measure
+      AND limit_probability_measure
+      AND topology_e
+      AND topology_ep
+      AND topology_f
+      AND seminormed_add_comm_group_e
+      AND seminormed_add_comm_group_ep
+      AND second_countable_e
+      AND second_countable_ep
+      AND borel_e
+      AND borel_ep
+      AND borel_f
+      AND filter_laws
+      AND countably_generated_filter
+      AND source_integral_standard
+      AND limit_integral_standard
+
+  slutsky_s_theorem: bool =
+    structural_context IMPLIES
+      ((continuous_g
+        AND tendsto_in_distribution_e
+        AND y_tendsto_in_measure_to_c
+        AND y_ae_measurable)
+      IMPLIES transformed_tendsto_in_distribution)
+END slutsky_s_theorem_Q643826

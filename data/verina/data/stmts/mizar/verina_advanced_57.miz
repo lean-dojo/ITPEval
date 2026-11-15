@@ -1,0 +1,123 @@
+:: Statement-only formalization of the VERINA corpus artifact
+:: verina_advanced_57, catalog title "nextGreaterElement": the uniqueness
+:: and subset precondition, exact monotonic-stack map construction,
+:: stack-processing and first-match lookup helpers, result-building
+:: implementation, next-greater postcondition, and final correctness
+:: contract. This file contains no proof.
+
+environ
+  vocabularies TARSKI, XBOOLE_0, ZFMISC_1, SUBSET_1, RELAT_1, FUNCT_1,
+    PARTFUN1, FUNCT_2, NUMBERS, NAT_1, INT_1, FINSEQ_1, FINSEQ_2,
+    FINSEQ_5, CARD_1, ARYTM_1, ARYTM_3, ORDINAL1, ORDINAL4,
+    XCMPLX_0, XREAL_0, XXREAL_0, MCART_1, XTUPLE_0;
+  notations TARSKI, XBOOLE_0, ZFMISC_1, SUBSET_1, XTUPLE_0, MCART_1,
+    RELAT_1, FUNCT_1, PARTFUN1, ORDINAL1, CARD_1, NUMBERS,
+    XCMPLX_0, XREAL_0, XXREAL_0, INT_1, RELSET_1, FUNCT_2,
+    NAT_1, NAT_D, FINSEQ_1, FINSEQ_2, FINSEQ_5;
+  constructors RELAT_1, RELSET_1, FUNCT_1, PARTFUN1, FUNCT_2, CARD_1,
+    NUMBERS, NAT_1, NAT_D, INT_1, FINSEQ_1, FINSEQ_2, FINSEQ_5,
+    FINSEQOP, XXREAL_0, XTUPLE_0, MCART_1;
+  registrations XBOOLE_0, SUBSET_1, RELAT_1, RELSET_1, FUNCT_1,
+    PARTFUN1, FUNCT_2, ORDINAL1, CARD_1, NAT_1, INT_1, FINSEQ_1,
+    FINSEQ_2, XCMPLX_0, XREAL_0, XXREAL_0, XTUPLE_0;
+  requirements REAL, NUMERALS, SUBSET, BOOLE, ARITHM;
+
+begin
+
+::$P-
+theorem
+  for nums1,nums2,result being FinSequence of INT st
+    nums1 is one-to-one &
+    nums2 is one-to-one &
+    rng nums1 c= rng nums2 &
+    (ex nextMap being FinSequence of [:INT,INT:],
+        stackStates being FinSequence of NAT*,
+        mapStates being FinSequence of [:INT,INT:]*,
+        resultStates being FinSequence of INT* st
+      len stackStates = len nums2 + 1 &
+      len mapStates = len nums2 + 1 &
+      stackStates/.1 = <*>NAT &
+      mapStates/.1 = <*>[:INT,INT:] &
+      (for k being Nat st k in dom nums2 holds
+        ex oldStack,newStack,remainingStack being FinSequence of NAT,
+           oldMap,newMap,poppedPairs being FinSequence of [:INT,INT:],
+           p being Nat, current being Integer st
+          oldStack = stackStates/.k &
+          oldMap = mapStates/.k &
+          current = nums2/.k &
+          p <= len oldStack &
+          len poppedPairs = p &
+          (for q being Nat st q in dom poppedPairs holds
+            ex position being Nat st
+              position = oldStack/.q &
+              position + 1 in dom nums2 &
+              poppedPairs/.q = [nums2/.(position + 1),current] &
+              nums2/.(position + 1) < current) &
+          (p = len oldStack or
+            ex topPosition being Nat st
+              p + 1 in dom oldStack &
+              topPosition = oldStack/.(p + 1) &
+              topPosition + 1 in dom nums2 &
+              current <= nums2/.(topPosition + 1)) &
+          len remainingStack = len oldStack - p &
+          (for q being Nat st q in dom remainingStack holds
+            remainingStack/.q = oldStack/.(p + q)) &
+          newStack = <*(k - 1)*> ^ remainingStack &
+          newMap = Rev poppedPairs ^ oldMap &
+          stackStates/.(k + 1) = newStack &
+          mapStates/.(k + 1) = newMap) &
+      (ex finalStack being FinSequence of NAT,
+          processedMap,defaultPairs being FinSequence of [:INT,INT:] st
+        finalStack = stackStates/.(len nums2 + 1) &
+        processedMap = mapStates/.(len nums2 + 1) &
+        len defaultPairs = len finalStack &
+        (for q being Nat st q in dom defaultPairs holds
+          ex position being Nat st
+            position = finalStack/.q &
+            position + 1 in dom nums2 &
+            defaultPairs/.q = [nums2/.(position + 1),-1]) &
+        nextMap = Rev defaultPairs ^ processedMap) &
+      len resultStates = len nums1 + 1 &
+      resultStates/.1 = <*>INT &
+      (for k being Nat st k in dom nums1 holds
+        ex accumulator,nextAccumulator being FinSequence of INT,
+           val,resultVal being Integer st
+          accumulator = resultStates/.k &
+          nextAccumulator = resultStates/.(k + 1) &
+          val = nums1/.k &
+          (((not ex q being Nat, w being Integer st
+                q in dom nextMap & nextMap/.q = [val,w]) &
+              resultVal = -1) or
+           (ex q being Nat st
+              q in dom nextMap &
+              nextMap/.q = [val,resultVal] &
+              (for h being Nat, w being Integer st
+                h in dom nextMap & h < q
+              holds nextMap/.h <> [val,w]))) &
+          nextAccumulator = <*resultVal*> ^ accumulator) &
+      result = Rev (resultStates/.(len nums1 + 1)))
+  holds
+    len result = len nums1 &
+    (for k being Nat st k in dom nums1 holds
+      ex val being Integer, j being Nat st
+        val = nums1/.k &
+        j in dom nums2 &
+        nums2/.j = val &
+        (for h being Nat st h in dom nums2 & h < j holds
+          nums2/.h <> val) &
+        (((not ex r being Nat st
+              r in dom nums2 & j < r & val < nums2/.r) &
+            result/.k = -1) or
+         (ex r being Nat st
+            r in dom nums2 &
+            j < r &
+            val < nums2/.r &
+            result/.k = nums2/.r &
+            (for h being Nat st
+              h in dom nums2 & j < h & h < r
+            holds nums2/.h <= val)))) &
+    (for k being Nat st k in dom result holds
+      result/.k = -1 or result/.k in rng nums2)
+proof
+end;
+::$P+

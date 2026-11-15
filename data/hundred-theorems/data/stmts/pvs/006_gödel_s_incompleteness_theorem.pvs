@@ -1,0 +1,591 @@
+% Statement-only formalization of Hundred Theorems artifact 006, "Gödel's
+% Incompleteness Theorem": a weakly consistent theory extending the fixed
+% arithmetic theory NN, with its axiom membership represented in arithmetic,
+% has a closed formula for which neither it nor its negation is provable. This
+% file contains no proof.
+
+lnn_term: DATATYPE
+BEGIN
+  tm_var(variable_index: nat): tm_var?
+  tm_zero: tm_zero?
+  tm_succ(succ_arg: lnn_term): tm_succ?
+  tm_plus(plus_left, plus_right: lnn_term): tm_plus?
+  tm_times(times_left, times_right: lnn_term): tm_times?
+END lnn_term
+
+lnn_formula: DATATYPE
+BEGIN
+  IMPORTING lnn_term
+  fm_equal(equal_left, equal_right: lnn_term): fm_equal?
+  fm_less(less_left, less_right: lnn_term): fm_less?
+  fm_implies(implies_left, implies_right: lnn_formula): fm_implies?
+  fm_not(not_body: lnn_formula): fm_not?
+  fm_forall(forall_variable: nat, forall_body: lnn_formula): fm_forall?
+END lnn_formula
+
+goedel_first_incompleteness_006: THEORY
+BEGIN
+  IMPORTING lnn_term, lnn_formula, list_props[lnn_formula],
+    list_props[nat]
+
+  formula_set: TYPE = [lnn_formula -> bool]
+
+  free_in_term(variable: nat, t: lnn_term): RECURSIVE bool =
+    CASES t OF
+      tm_var(i): variable = i,
+      tm_zero: FALSE,
+      tm_succ(arg): free_in_term(variable, arg),
+      tm_plus(left, right):
+        free_in_term(variable, left)
+          OR free_in_term(variable, right),
+      tm_times(left, right):
+        free_in_term(variable, left)
+          OR free_in_term(variable, right)
+    ENDCASES
+  MEASURE t BY <<
+
+  free_in_formula(variable: nat, f: lnn_formula): RECURSIVE bool =
+    CASES f OF
+      fm_equal(left, right):
+        free_in_term(variable, left)
+          OR free_in_term(variable, right),
+      fm_less(left, right):
+        free_in_term(variable, left)
+          OR free_in_term(variable, right),
+      fm_implies(left, right):
+        free_in_formula(variable, left)
+          OR free_in_formula(variable, right),
+      fm_not(body): free_in_formula(variable, body),
+      fm_forall(binder, body):
+        variable /= binder
+          AND free_in_formula(variable, body)
+    ENDCASES
+  MEASURE f BY <<
+
+  substitute_term(
+      t: lnn_term,
+      variable: nat,
+      replacement: lnn_term): RECURSIVE lnn_term =
+    CASES t OF
+      tm_var(i):
+        IF i = variable THEN replacement ELSE tm_var(i) ENDIF,
+      tm_zero: tm_zero,
+      tm_succ(arg):
+        tm_succ(substitute_term(arg, variable, replacement)),
+      tm_plus(left, right):
+        tm_plus(
+          substitute_term(left, variable, replacement),
+          substitute_term(right, variable, replacement)),
+      tm_times(left, right):
+        tm_times(
+          substitute_term(left, variable, replacement),
+          substitute_term(right, variable, replacement))
+    ENDCASES
+  MEASURE t BY <<
+
+  nat_max(left, right: nat): nat =
+    IF left < right THEN right ELSE left ENDIF
+
+  free_bound_term(
+      t: lnn_term,
+      bound: list[nat]): RECURSIVE nat =
+    CASES t OF
+      tm_var(i):
+        IF member(i, bound) THEN 0 ELSE i + 1 ENDIF,
+      tm_zero: 0,
+      tm_succ(arg): free_bound_term(arg, bound),
+      tm_plus(left, right):
+        nat_max(
+          free_bound_term(left, bound),
+          free_bound_term(right, bound)),
+      tm_times(left, right):
+        nat_max(
+          free_bound_term(left, bound),
+          free_bound_term(right, bound))
+    ENDCASES
+  MEASURE t BY <<
+
+  free_bound_formula(
+      f: lnn_formula,
+      bound: list[nat]): RECURSIVE nat =
+    CASES f OF
+      fm_equal(left, right):
+        nat_max(
+          free_bound_term(left, bound),
+          free_bound_term(right, bound)),
+      fm_less(left, right):
+        nat_max(
+          free_bound_term(left, bound),
+          free_bound_term(right, bound)),
+      fm_implies(left, right):
+        nat_max(
+          free_bound_formula(left, bound),
+          free_bound_formula(right, bound)),
+      fm_not(body): free_bound_formula(body, bound),
+      fm_forall(binder, body):
+        free_bound_formula(body, cons(binder, bound))
+    ENDCASES
+  MEASURE f BY <<
+
+  formula_depth(f: lnn_formula): RECURSIVE nat =
+    CASES f OF
+      fm_equal(left, right): 0,
+      fm_less(left, right): 0,
+      fm_implies(left, right):
+        1 + nat_max(formula_depth(left), formula_depth(right)),
+      fm_not(body): 1 + formula_depth(body),
+      fm_forall(binder, body): 1 + formula_depth(body)
+    ENDCASES
+  MEASURE f BY <<
+
+  fresh_variable(
+      variable: nat,
+      replacement: lnn_term,
+      body: lnn_formula): nat =
+    nat_max(
+      variable + 1,
+      nat_max(
+        free_bound_term(replacement, null),
+        free_bound_formula(body, null)))
+
+  substitute_formula_at(
+      f: lnn_formula,
+      variable: nat,
+      replacement: lnn_term,
+      fuel: nat): RECURSIVE lnn_formula =
+    IF fuel = 0
+    THEN f
+    ELSE
+      CASES f OF
+        fm_equal(left, right):
+          fm_equal(
+            substitute_term(left, variable, replacement),
+            substitute_term(right, variable, replacement)),
+        fm_less(left, right):
+          fm_less(
+            substitute_term(left, variable, replacement),
+            substitute_term(right, variable, replacement)),
+        fm_implies(left, right):
+          fm_implies(
+            substitute_formula_at(
+              left, variable, replacement, fuel - 1),
+            substitute_formula_at(
+              right, variable, replacement, fuel - 1)),
+        fm_not(body):
+          fm_not(
+            substitute_formula_at(
+              body, variable, replacement, fuel - 1)),
+        fm_forall(binder, body):
+          IF binder = variable
+          THEN fm_forall(binder, body)
+          ELSIF free_in_term(binder, replacement)
+          THEN
+            LET fresh =
+                  fresh_variable(variable, replacement, body),
+                renamed =
+                  substitute_formula_at(
+                    body,
+                    binder,
+                    tm_var(fresh),
+                    fuel - 1)
+            IN
+              fm_forall(
+                fresh,
+                substitute_formula_at(
+                  renamed,
+                  variable,
+                  replacement,
+                  fuel - 1))
+          ELSE
+            fm_forall(
+              binder,
+              substitute_formula_at(
+                body, variable, replacement, fuel - 1))
+          ENDIF
+      ENDCASES
+    ENDIF
+  MEASURE fuel
+
+  substitute_formula(
+      f: lnn_formula,
+      variable: nat,
+      replacement: lnn_term): lnn_formula =
+    substitute_formula_at(
+      f, variable, replacement, formula_depth(f) + 1)
+
+  disjoin(left, right: lnn_formula): lnn_formula =
+    fm_implies(fm_not(left), right)
+
+  conjoin(left, right: lnn_formula): lnn_formula =
+    fm_not(disjoin(fm_not(left), fm_not(right)))
+
+  biconditional(left, right: lnn_formula): lnn_formula =
+    conjoin(
+      fm_implies(left, right),
+      fm_implies(right, left))
+
+  existential(variable: nat, f: lnn_formula): lnn_formula =
+    fm_not(fm_forall(variable, fm_not(f)))
+
+  numeral(value: nat): RECURSIVE lnn_term =
+    IF value = 0
+      THEN tm_zero
+      ELSE tm_succ(numeral(value - 1))
+    ENDIF
+  MEASURE value
+
+  sum_to_n(value: nat): RECURSIVE nat =
+    IF value = 0
+      THEN 0
+      ELSE value + sum_to_n(value - 1)
+    ENDIF
+  MEASURE value
+
+  pair_nat(left, right: nat): nat =
+    left + sum_to_n(left + right)
+
+  code_term(t: lnn_term): RECURSIVE nat =
+    CASES t OF
+      tm_var(i): pair_nat(0, i),
+      tm_zero: pair_nat(4, 0),
+      tm_succ(arg):
+        pair_nat(
+          3,
+          1 + pair_nat(code_term(arg), 0)),
+      tm_plus(left, right):
+        pair_nat(
+          1,
+          1 + pair_nat(
+            code_term(left),
+            1 + pair_nat(code_term(right), 0))),
+      tm_times(left, right):
+        pair_nat(
+          2,
+          1 + pair_nat(
+            code_term(left),
+            1 + pair_nat(code_term(right), 0)))
+    ENDCASES
+  MEASURE t BY <<
+
+  code_formula(f: lnn_formula): RECURSIVE nat =
+    CASES f OF
+      fm_equal(left, right):
+        pair_nat(
+          0,
+          pair_nat(code_term(left), code_term(right))),
+      fm_less(left, right):
+        pair_nat(
+          4,
+          1 + pair_nat(
+            code_term(left),
+            1 + pair_nat(code_term(right), 0))),
+      fm_implies(left, right):
+        pair_nat(
+          1,
+          pair_nat(code_formula(left), code_formula(right))),
+      fm_not(body): pair_nat(2, code_formula(body)),
+      fm_forall(variable, body):
+        pair_nat(
+          3,
+          pair_nat(variable, code_formula(body)))
+    ENDCASES
+  MEASURE f BY <<
+
+  reflection(f: lnn_formula): lnn_term =
+    numeral(code_formula(f))
+
+  free_in_hypotheses(
+      variable: nat,
+      hypotheses: list[lnn_formula]): bool =
+    EXISTS (f: lnn_formula):
+      member(f, hypotheses)
+        AND free_in_formula(variable, f)
+
+  logical_axiom(f: lnn_formula): bool =
+    (EXISTS (A, B: lnn_formula):
+      f = fm_implies(A, fm_implies(B, A)))
+    OR
+    (EXISTS (A, B, C: lnn_formula):
+      f =
+        fm_implies(
+          fm_implies(A, fm_implies(B, C)),
+          fm_implies(
+            fm_implies(A, B),
+            fm_implies(A, C))))
+    OR
+    (EXISTS (A, B: lnn_formula):
+      f =
+        fm_implies(
+          fm_implies(fm_not(A), fm_not(B)),
+          fm_implies(B, A)))
+    OR
+    (EXISTS (A: lnn_formula), (variable: nat), (t: lnn_term):
+      f =
+        fm_implies(
+          fm_forall(variable, A),
+          substitute_formula(A, variable, t)))
+    OR
+    (EXISTS (A: lnn_formula), (variable: nat):
+      NOT free_in_formula(variable, A)
+        AND f =
+          fm_implies(A, fm_forall(variable, A)))
+    OR
+    (EXISTS (A, B: lnn_formula), (variable: nat):
+      f =
+        fm_implies(
+          fm_forall(variable, fm_implies(A, B)),
+          fm_implies(
+            fm_forall(variable, A),
+            fm_forall(variable, B))))
+    OR f = fm_equal(tm_var(0), tm_var(0))
+    OR f =
+      fm_implies(
+        fm_equal(tm_var(0), tm_var(1)),
+        fm_equal(tm_var(1), tm_var(0)))
+    OR f =
+      fm_implies(
+        fm_equal(tm_var(0), tm_var(1)),
+        fm_implies(
+          fm_equal(tm_var(1), tm_var(2)),
+          fm_equal(tm_var(0), tm_var(2))))
+    OR f =
+      fm_implies(
+        fm_equal(tm_var(2), tm_var(3)),
+        fm_implies(
+          fm_equal(tm_var(0), tm_var(1)),
+          biconditional(
+            fm_less(tm_var(2), tm_var(0)),
+            fm_less(tm_var(3), tm_var(1)))))
+    OR f =
+      fm_implies(
+        fm_equal(tm_var(2), tm_var(3)),
+        fm_implies(
+          fm_equal(tm_var(0), tm_var(1)),
+          fm_equal(
+            tm_plus(tm_var(2), tm_var(0)),
+            tm_plus(tm_var(3), tm_var(1)))))
+    OR f =
+      fm_implies(
+        fm_equal(tm_var(2), tm_var(3)),
+        fm_implies(
+          fm_equal(tm_var(0), tm_var(1)),
+          fm_equal(
+            tm_times(tm_var(2), tm_var(0)),
+            tm_times(tm_var(3), tm_var(1)))))
+    OR f =
+      fm_implies(
+        fm_equal(tm_var(0), tm_var(1)),
+        fm_equal(
+          tm_succ(tm_var(0)),
+          tm_succ(tm_var(1))))
+    OR f = fm_equal(tm_zero, tm_zero)
+
+  derivation(
+      hypotheses: list[lnn_formula],
+      f: lnn_formula): INDUCTIVE bool =
+    (hypotheses = cons(f, null))
+      OR
+      (hypotheses = null AND logical_axiom(f))
+      OR
+      (EXISTS
+          (left_hypotheses, right_hypotheses:
+            list[lnn_formula]),
+          (A: lnn_formula):
+        hypotheses = append(left_hypotheses, right_hypotheses)
+          AND derivation(
+            left_hypotheses,
+            fm_implies(A, f))
+          AND derivation(right_hypotheses, A))
+      OR
+      (EXISTS (A: lnn_formula), (variable: nat):
+        f = fm_forall(variable, A)
+          AND NOT free_in_hypotheses(variable, hypotheses)
+          AND derivation(hypotheses, A))
+
+  provable: [formula_set, lnn_formula -> bool] =
+    LAMBDA (sys: formula_set), (f: lnn_formula):
+      EXISTS (hypotheses: list[lnn_formula]):
+        derivation(hypotheses, f)
+          AND
+          (FORALL (g: lnn_formula):
+            member(g, hypotheses) IMPLIES sys(g))
+
+  nn1: lnn_formula =
+    fm_forall(
+      0,
+      fm_not(
+        fm_equal(
+          tm_succ(tm_var(0)),
+          tm_zero)))
+
+  nn2: lnn_formula =
+    fm_forall(
+      1,
+      fm_forall(
+        0,
+        fm_implies(
+          fm_equal(
+            tm_succ(tm_var(0)),
+            tm_succ(tm_var(1))),
+          fm_equal(tm_var(0), tm_var(1)))))
+
+  nn3: lnn_formula =
+    fm_forall(
+      0,
+      fm_equal(
+        tm_plus(tm_var(0), tm_zero),
+        tm_var(0)))
+
+  nn4: lnn_formula =
+    fm_forall(
+      1,
+      fm_forall(
+        0,
+        fm_equal(
+          tm_plus(
+            tm_var(0),
+            tm_succ(tm_var(1))),
+          tm_succ(
+            tm_plus(tm_var(0), tm_var(1))))))
+
+  nn5: lnn_formula =
+    fm_forall(
+      0,
+      fm_equal(
+        tm_times(tm_var(0), tm_zero),
+        tm_zero))
+
+  nn6: lnn_formula =
+    fm_forall(
+      1,
+      fm_forall(
+        0,
+        fm_equal(
+          tm_times(
+            tm_var(0),
+            tm_succ(tm_var(1))),
+          tm_plus(
+            tm_times(tm_var(0), tm_var(1)),
+            tm_var(0)))))
+
+  nn7: lnn_formula =
+    fm_forall(
+      0,
+      fm_not(
+        fm_less(tm_var(0), tm_zero)))
+
+  nn8: lnn_formula =
+    fm_forall(
+      1,
+      fm_forall(
+        0,
+        fm_implies(
+          fm_less(
+            tm_var(0),
+            tm_succ(tm_var(1))),
+          disjoin(
+            fm_less(tm_var(0), tm_var(1)),
+            fm_equal(tm_var(0), tm_var(1))))))
+
+  nn9: lnn_formula =
+    fm_forall(
+      1,
+      fm_forall(
+        0,
+        disjoin(
+          fm_less(tm_var(0), tm_var(1)),
+          disjoin(
+            fm_equal(tm_var(0), tm_var(1)),
+            fm_less(tm_var(1), tm_var(0))))))
+
+  nn(f: lnn_formula): bool =
+    f = nn1
+      OR f = nn2
+      OR f = nn3
+      OR f = nn4
+      OR f = nn5
+      OR f = nn6
+      OR f = nn7
+      OR f = nn8
+      OR f = nn9
+
+  extends_nn(sys: formula_set): bool =
+    FORALL (f: lnn_formula):
+      nn(f) IMPLIES sys(f)
+
+  closed_formula(f: lnn_formula): bool =
+    FORALL (variable: nat):
+      NOT free_in_formula(variable, f)
+
+  independent_in(sys: formula_set, f: lnn_formula): bool =
+    NOT provable(sys, f)
+      AND NOT provable(sys, fm_not(f))
+
+  weakly_consistent(sys: formula_set): bool =
+    FORALL (f: lnn_formula), (variable: nat):
+      ((FORALL (x: nat):
+          free_in_formula(x, f) IMPLIES variable = x)
+        AND provable(
+          sys,
+          existential(variable, fm_not(f))))
+      IMPLIES
+        EXISTS (value: nat):
+          NOT provable(
+            sys,
+            substitute_formula(
+              f,
+              variable,
+              numeral(value)))
+
+  rep_has_only_variable(
+      rep_t: lnn_formula,
+      variable: nat): bool =
+    FORALL (x: nat):
+      free_in_formula(x, rep_t) IMPLIES x = variable
+
+  positively_represents_membership(
+      sys: formula_set,
+      rep_t: lnn_formula,
+      variable: nat): bool =
+    FORALL (f: lnn_formula):
+      sys(f)
+      IMPLIES
+        provable(
+          sys,
+          substitute_formula(
+            rep_t,
+            variable,
+            reflection(f)))
+
+  negatively_represents_membership(
+      sys: formula_set,
+      rep_t: lnn_formula,
+      variable: nat): bool =
+    FORALL (f: lnn_formula):
+      NOT sys(f)
+      IMPLIES
+        provable(
+          sys,
+          fm_not(
+            substitute_formula(
+              rep_t,
+              variable,
+              reflection(f))))
+
+  goedel_first_incompleteness: bool =
+    FORALL
+        (sys: formula_set),
+        (rep_t: lnn_formula),
+        (variable: nat):
+      (extends_nn(sys)
+        AND rep_has_only_variable(rep_t, variable)
+        AND positively_represents_membership(
+          sys, rep_t, variable)
+        AND negatively_represents_membership(
+          sys, rep_t, variable)
+        AND weakly_consistent(sys))
+      IMPLIES
+        EXISTS (f: lnn_formula):
+          independent_in(sys, f)
+            AND closed_formula(f)
+END goedel_first_incompleteness_006

@@ -1,0 +1,213 @@
+% Statement-only formalization of the VERINA corpus artifact verina_basic_54
+% (verina__pvs__verina_basic_54), catalog title "CanyonSearch": the specified
+% two-pointer search on two nonempty nondecreasing integer arrays returns an
+% attained minimum cross-array absolute difference. This file contains no proof.
+
+verina_basic_54: THEORY
+BEGIN
+
+  % Finite PVS lists preserve exactly the contents and order of Lean arrays.
+  int_list_length(
+      values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        int_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  % Lean Array.get! on integer arrays returns zero outside the array.
+  int_list_get_bang(
+      index: nat,
+      values: list[int]): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          int_list_get_bang(index - 1, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  % This is Lean Int.natAbs.
+  int_nat_abs(value: int): nat =
+    abs(value)
+
+  int_list_all_at_least(
+      lower: int,
+      values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        lower <= head
+          AND int_list_all_at_least(lower, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  % This is Lean List.Pairwise (fun first later => first <= later).
+  int_list_pairwise_nondecreasing(
+      values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        int_list_all_at_least(head, tail)
+          AND int_list_pairwise_nondecreasing(tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  CanyonSearch_precond(
+      a, b: list[int]): bool =
+    int_list_length(a) > 0
+      AND int_list_length(b) > 0
+      AND int_list_pairwise_nondecreasing(a)
+      AND int_list_pairwise_nondecreasing(b)
+
+  % At every active source step exactly one index increases. Starting with the
+  % sum of the list lengths therefore makes the fuel-zero branch unreachable,
+  % for every call exposed through canyonSearchAux.
+  canyonSearchAux_fuel(
+      a, b: list[int],
+      m, n, d, fuel: nat): RECURSIVE nat =
+    IF m < int_list_length(a)
+         AND n < int_list_length(b) THEN
+      IF fuel = 0 THEN
+        d
+      ELSE
+        LET diff: nat =
+              int_nat_abs(
+                int_list_get_bang(m, a)
+                  - int_list_get_bang(n, b)),
+            new_d: nat =
+              IF diff < d THEN diff ELSE d ENDIF
+        IN
+          IF int_list_get_bang(m, a)
+               <= int_list_get_bang(n, b) THEN
+            canyonSearchAux_fuel(
+              a,
+              b,
+              m + 1,
+              n,
+              new_d,
+              fuel - 1)
+          ELSE
+            canyonSearchAux_fuel(
+              a,
+              b,
+              m,
+              n + 1,
+              new_d,
+              fuel - 1)
+          ENDIF
+      ENDIF
+    ELSE
+      d
+    ENDIF
+  MEASURE fuel
+
+  canyonSearchAux(
+      a, b: list[int],
+      m, n, d: nat): nat =
+    canyonSearchAux_fuel(
+      a,
+      b,
+      m,
+      n,
+      d,
+      int_list_length(a) + int_list_length(b))
+
+  % The source precondition proof argument is computationally irrelevant.
+  CanyonSearch(
+      a, b: list[int]): nat =
+    LET first_a: int = int_list_get_bang(0, a),
+        first_b: int = int_list_get_bang(0, b),
+        init: nat =
+          IF first_a < first_b THEN
+            int_nat_abs(first_b - first_a)
+          ELSE
+            int_nat_abs(first_a - first_b)
+          ENDIF
+    IN
+      canyonSearchAux(a, b, 0, 0, init)
+
+  int_list_any_abs_difference_with(
+      selected: int,
+      result: nat,
+      values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        FALSE,
+      cons(head, tail):
+        result = int_nat_abs(selected - head)
+          OR int_list_any_abs_difference_with(
+               selected,
+               result,
+               tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  int_lists_any_abs_difference(
+      a, b: list[int],
+      result: nat): RECURSIVE bool =
+    CASES a OF
+      null:
+        FALSE,
+      cons(head, tail):
+        int_list_any_abs_difference_with(head, result, b)
+          OR int_lists_any_abs_difference(tail, b, result)
+    ENDCASES
+  MEASURE a BY <<
+
+  int_list_all_abs_differences_at_least(
+      selected: int,
+      result: nat,
+      values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        result <= int_nat_abs(selected - head)
+          AND int_list_all_abs_differences_at_least(
+                selected,
+                result,
+                tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  int_lists_all_abs_differences_at_least(
+      a, b: list[int],
+      result: nat): RECURSIVE bool =
+    CASES a OF
+      null:
+        TRUE,
+      cons(head, tail):
+        int_list_all_abs_differences_at_least(head, result, b)
+          AND int_lists_all_abs_differences_at_least(
+                tail,
+                b,
+                result)
+    ENDCASES
+  MEASURE a BY <<
+
+  % The source proof argument to the postcondition is logically irrelevant.
+  CanyonSearch_postcond(
+      a, b: list[int],
+      result: nat): bool =
+    int_lists_any_abs_difference(a, b, result)
+      AND int_lists_all_abs_differences_at_least(a, b, result)
+
+  CanyonSearch_spec_satisfied: bool =
+    FORALL (a, b: list[int]):
+      CanyonSearch_precond(a, b)
+        IMPLIES
+          CanyonSearch_postcond(
+            a,
+            b,
+            CanyonSearch(a, b))
+
+END verina_basic_54

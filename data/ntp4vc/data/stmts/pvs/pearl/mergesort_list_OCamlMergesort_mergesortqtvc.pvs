@@ -1,0 +1,93 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/mergesort_list_OCamlMergesort_mergesortqtvc: the final OCaml-style
+% list mergesort verification condition, combining recursive-call bounds with
+% sortedness and permutation preservation. This file contains no proof.
+
+mergesort_list_OCamlMergesort_mergesortqtvc[
+  Elt: TYPE+,
+  le: [Elt, Elt -> bool]
+]: THEORY
+BEGIN
+
+  order_laws: bool =
+    (FORALL (x: Elt): le(x, x))
+      AND
+    (FORALL (x, y, z: Elt):
+      (le(x, y) AND le(y, z)) IMPLIES le(x, z))
+      AND
+    (FORALL (x, y: Elt): le(x, y) OR le(y, x))
+
+  sorted(values: list[Elt]): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(first, rest):
+        CASES rest OF
+          null:
+            TRUE,
+          cons(second, tail):
+            le(first, second) AND sorted(rest)
+        ENDCASES
+    ENDCASES
+  MEASURE values BY <<
+
+  occurrence_count(
+      value: Elt,
+      values: list[Elt]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        (IF value = head THEN 1 ELSE 0 ENDIF)
+          + occurrence_count(value, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  list_permutation(
+      left, right: list[Elt]): bool =
+    FORALL (value: Elt):
+      occurrence_count(value, left)
+        = occurrence_count(value, right)
+
+  prefix_specification(
+      prefix1: [int, list[Elt] -> list[Elt]]): bool =
+    (FORALL (values: list[Elt]):
+      prefix1(0, values) = null)
+      AND
+    (FORALL
+        (n: int),
+        (head: Elt),
+        (tail: list[Elt]):
+      0 < n
+        IMPLIES
+          prefix1(n, cons(head, tail))
+            = cons(head, prefix1(n - 1, tail)))
+
+  mergesort_vc: bool =
+    FORALL
+        (prefix1: [int, list[Elt] -> list[Elt]]),
+        (values: list[Elt]):
+      (order_laws AND prefix_specification(prefix1))
+        IMPLIES
+          LET n: int = length(values)
+          IN
+            ((NOT (n < 2))
+              IMPLIES
+                (2 <= n AND n <= length(values)))
+              AND
+            (FORALL (result: list[Elt]):
+              (IF n < 2 THEN
+                 result = values
+               ELSE
+                 sorted(result)
+                   AND
+                 list_permutation(
+                   result,
+                   prefix1(n, values))
+               ENDIF)
+                IMPLIES
+                  sorted(result)
+                    AND
+                  list_permutation(result, values))
+
+END mergesort_list_OCamlMergesort_mergesortqtvc

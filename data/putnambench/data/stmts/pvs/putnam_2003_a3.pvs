@@ -1,0 +1,90 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2003_a3:
+% the minimum over real x of |sin x + cos x + tan x + cot x + sec x + csc x|
+% is 2 * sqrt(2) - 1. This file contains no proof.
+
+putnam_2003_a3: THEORY
+BEGIN
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  nat_factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * nat_factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  converges_to(sequence: [nat -> real], value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  sine_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        sine_partial(x, count - 1)
+          + safe_div(
+              ((-1 :: real) ^ index) * x ^ (2 * index + 1),
+              nat_factorial(2 * index + 1) :: real)
+    ENDIF
+  MEASURE count
+
+  cosine_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        cosine_partial(x, count - 1)
+          + safe_div(
+              ((-1 :: real) ^ index) * x ^ (2 * index),
+              nat_factorial(2 * index) :: real)
+    ENDIF
+  MEASURE count
+
+  sine(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat): sine_partial(x, count),
+          value))
+
+  cosine(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat): cosine_partial(x, count),
+          value))
+
+  tangent(x: real): real =
+    safe_div(sine(x), cosine(x))
+
+  objective(x: real): real =
+    abs(
+      sine(x)
+        + cosine(x)
+        + tangent(x)
+        + safe_div(1, tangent(x))
+        + safe_div(1, cosine(x))
+        + safe_div(1, sine(x)))
+
+  sqrt_value(root, radicand: real): bool =
+    0 <= root AND root * root = radicand
+
+  is_minimum_value(value: real): bool =
+    (EXISTS (x: real): objective(x) = value)
+      AND (FORALL (x: real): value <= objective(x))
+
+  putnam_2003_a3: bool =
+    EXISTS (sqrt_two: real):
+      sqrt_value(sqrt_two, 2)
+        AND is_minimum_value(2 * sqrt_two - 1)
+END putnam_2003_a3

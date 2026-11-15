@@ -1,0 +1,75 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2022_a3:
+% for every prime p greater than 5, the number of infinite nonzero residue
+% sequences satisfying a_n*a_(n+2) = 1+a_(n+1) modulo p is 0 or 2 modulo 5.
+% This file contains no proof.
+
+putnam_2022_a3: THEORY
+BEGIN
+  natural_sequence: TYPE = [nat -> nat]
+  sequence_set: TYPE = [natural_sequence -> bool]
+  sequence_enumeration: TYPE = [nat -> natural_sequence]
+
+  nat_divides(divisor: posnat, value: nat): bool =
+    EXISTS (quotient: nat):
+      value = divisor * quotient
+
+  prime_nat(value: nat): bool =
+    value >= 2
+      AND FORALL (divisor: posnat):
+        nat_divides(divisor, value)
+          IMPLIES divisor = 1 OR divisor = value
+
+  nat_congruent(left, right, modulus: nat): bool =
+    EXISTS (offset: int):
+      (left :: int) - (right :: int) = (modulus :: int) * offset
+
+  qualifying_sequence(
+      values: natural_sequence,
+      p: nat): bool =
+    FORALL (n: nat):
+      (1 <= values(n)
+        AND values(n) < p
+        AND nat_congruent(
+          values(n) * values(n + 2),
+          1 + values(n + 1),
+          p))
+
+  qualifying_sequences(p: nat): sequence_set =
+    LAMBDA (values: natural_sequence):
+      qualifying_sequence(values, p)
+
+  injective_below(
+      enumeration: sequence_enumeration,
+      cardinality: nat): bool =
+    FORALL (i, j: nat):
+      (i < cardinality
+        AND j < cardinality
+        AND enumeration(i) = enumeration(j))
+      IMPLIES i = j
+
+  enumerates_exactly(
+      enumeration: sequence_enumeration,
+      set_value: sequence_set,
+      cardinality: nat): bool =
+    FORALL (values: natural_sequence):
+      set_value(values)
+        IFF
+          EXISTS (position: nat):
+            position < cardinality
+              AND enumeration(position) = values
+
+  has_cardinality(
+      set_value: sequence_set,
+      cardinality: nat): bool =
+    EXISTS (enumeration: sequence_enumeration):
+      injective_below(enumeration, cardinality)
+        AND enumerates_exactly(
+          enumeration, set_value, cardinality)
+
+  putnam_2022_a3: bool =
+    FORALL (p, f: nat):
+      (prime_nat(p)
+        AND p > 5
+        AND has_cardinality(qualifying_sequences(p), f))
+      IMPLIES mod(f, 5) = 0 OR mod(f, 5) = 2
+END putnam_2022_a3

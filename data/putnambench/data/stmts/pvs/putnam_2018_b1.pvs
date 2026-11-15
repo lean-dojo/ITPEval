@@ -1,0 +1,73 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2018_b1:
+% the removable vectors in the 3 by 101 integer grid are exactly those with
+% first coordinate 1 and an even second coordinate. This file contains no proof.
+
+putnam_2018_b1: THEORY
+BEGIN
+  point: TYPE = [# x_coord: int, y_coord: int #]
+  point_set: TYPE = [point -> bool]
+
+  grid_point(p: point): bool =
+    0 <= x_coord(p)
+      AND x_coord(p) <= 2
+      AND 0 <= y_coord(p)
+      AND y_coord(p) <= 100
+
+  grid_point_at(index: nat): point =
+    (# x_coord := (ndiv(index, 101) :: int),
+       y_coord := (mod(index, 101) :: int) #)
+
+  member_count(S: point_set, count: nat): RECURSIVE nat =
+    IF count = 0 THEN
+      0
+    ELSE
+      member_count(S, count - 1)
+        + IF S(grid_point_at(count - 1)) THEN 1 ELSE 0 ENDIF
+    ENDIF
+  MEASURE count
+
+  x_coordinate_sum(S: point_set, count: nat): RECURSIVE int =
+    IF count = 0 THEN
+      0
+    ELSE
+      x_coordinate_sum(S, count - 1)
+        + IF S(grid_point_at(count - 1))
+            THEN x_coord(grid_point_at(count - 1))
+            ELSE 0
+          ENDIF
+    ENDIF
+  MEASURE count
+
+  y_coordinate_sum(S: point_set, count: nat): RECURSIVE int =
+    IF count = 0 THEN
+      0
+    ELSE
+      y_coordinate_sum(S, count - 1)
+        + IF S(grid_point_at(count - 1))
+            THEN y_coord(grid_point_at(count - 1))
+            ELSE 0
+          ENDIF
+    ENDIF
+  MEASURE count
+
+  equal_partition_after_removal(v: point): bool =
+    EXISTS (Q, R: point_set):
+      (FORALL (p: point):
+        (Q(p) OR R(p)) IFF (grid_point(p) AND p /= v))
+      AND (FORALL (p: point):
+        NOT (Q(p) AND R(p)))
+      AND member_count(Q, 303) = member_count(R, 303)
+      AND x_coordinate_sum(Q, 303) = x_coordinate_sum(R, 303)
+      AND y_coordinate_sum(Q, 303) = y_coordinate_sum(R, 303)
+
+  solution_point(v: point): bool =
+    x_coord(v) = 1
+      AND 0 <= y_coord(v)
+      AND y_coord(v) <= 100
+      AND EXISTS (k: int): y_coord(v) = 2 * k
+
+  putnam_2018_b1: bool =
+    FORALL (v: point):
+      (grid_point(v) AND equal_partition_after_removal(v))
+        IFF solution_point(v)
+END putnam_2018_b1

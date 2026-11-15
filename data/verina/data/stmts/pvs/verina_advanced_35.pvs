@@ -1,0 +1,161 @@
+% Statement-only formalization of the VERINA corpus artifact
+% verina_advanced_35, catalog title "majorityElement": counting integer-list
+% frequencies with the specified map-building program and returning the unique
+% value occurring more than half the list length. This file contains no proof.
+
+verina_advanced_35: THEORY
+BEGIN
+
+  frequency_map: TYPE = [int -> nat]
+
+  int_list_length(values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        int_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  occurrence_count(
+      requested: int,
+      values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        (IF head = requested THEN 1 ELSE 0 ENDIF)
+          + occurrence_count(requested, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  % Exact floor division by two on natural numbers.
+  nat_half(value: nat): RECURSIVE nat =
+    IF value < 2 THEN
+      0
+    ELSE
+      nat_half(value - 2) + 1
+    ENDIF
+  MEASURE value
+
+  has_majority_value(
+      remaining, whole: list[int]): RECURSIVE bool =
+    CASES remaining OF
+      null:
+        FALSE,
+      cons(head, tail):
+        occurrence_count(head, whole)
+            > nat_half(int_list_length(whole))
+          OR has_majority_value(tail, whole)
+    ENDCASES
+  MEASURE remaining BY <<
+
+  majorityElement_precond(nums: list[int]): bool =
+    int_list_length(nums) > 0
+      AND has_majority_value(nums, nums)
+
+  empty_frequency_map: frequency_map =
+    LAMBDA (value: int): 0
+
+  frequency_get(
+      value: int,
+      frequencies: frequency_map): nat =
+    frequencies(value)
+
+  frequency_insert(
+      value: int,
+      count: nat,
+      frequencies: frequency_map): frequency_map =
+    LAMBDA (query: int):
+      IF query = value THEN
+        count
+      ELSE
+        frequencies(query)
+      ENDIF
+
+  % This fold is the extensional integer-key semantics of the source HashMap
+  % loop: every input occurrence increments exactly its key's stored count.
+  build_frequency_map(
+      remaining: list[int],
+      frequencies: frequency_map): RECURSIVE frequency_map =
+    CASES remaining OF
+      null:
+        frequencies,
+      cons(head, tail):
+        build_frequency_map(
+          tail,
+          frequency_insert(
+            head,
+            frequency_get(head, frequencies) + 1,
+            frequencies))
+    ENDCASES
+  MEASURE remaining BY <<
+
+  % HashMap.toList may enumerate keys in an implementation-specific order.
+  % Under majorityElement_precond, at most one key has count greater than
+  % floor(n/2), so scanning the input keys returns exactly the same key.
+  find_majority_key(
+      keys: list[int],
+      frequencies: frequency_map,
+      threshold: nat): RECURSIVE int =
+    CASES keys OF
+      null:
+        0,
+      cons(head, tail):
+        IF frequency_get(head, frequencies) > threshold THEN
+          head
+        ELSE
+          find_majority_key(
+            tail,
+            frequencies,
+            threshold)
+        ENDIF
+    ENDCASES
+  MEASURE keys BY <<
+
+  majorityElement(nums: list[int]): int =
+    LET counts: frequency_map =
+          build_frequency_map(
+            nums,
+            empty_frequency_map),
+        n: nat = int_list_length(nums)
+    IN
+      find_majority_key(
+        nums,
+        counts,
+        nat_half(n))
+
+  int_list_contains(
+      values: list[int],
+      requested: int): RECURSIVE bool =
+    CASES values OF
+      null:
+        FALSE,
+      cons(head, tail):
+        head = requested
+          OR int_list_contains(tail, requested)
+    ENDCASES
+  MEASURE values BY <<
+
+  majorityElement_postcond(
+      nums: list[int],
+      result: int): bool =
+    LET threshold: nat =
+          nat_half(int_list_length(nums))
+    IN
+      occurrence_count(result, nums) > threshold
+        AND
+      (FORALL (x: int):
+        (int_list_contains(nums, x)
+          AND x /= result)
+        IMPLIES
+          occurrence_count(x, nums) <= threshold)
+
+  majorityElement_spec_satisfied: bool =
+    FORALL (nums: list[int]):
+      majorityElement_precond(nums) IMPLIES
+        majorityElement_postcond(
+          nums,
+          majorityElement(nums))
+
+END verina_advanced_35

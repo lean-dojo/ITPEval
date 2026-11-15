@@ -1,0 +1,323 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1995_a2:
+% the improper integral with nested square-root differences converges for
+% positive parameters a and b exactly when a = b. This file contains no proof.
+
+putnam_1995_a2: THEORY
+BEGIN
+  real_set: TYPE = [real -> bool]
+  real_function: TYPE = [real -> real]
+  real_sequence: TYPE = [nat -> real]
+  real_set_sequence: TYPE = [nat -> real_set]
+
+  finite_sum(values: real_sequence, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      finite_sum(values, count - 1) + values(count - 1)
+    ENDIF
+  MEASURE count
+
+  converges_to(values: real_sequence, limit_value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (count: nat):
+          cutoff <= count IMPLIES
+            abs(values(count) - limit_value) < epsilon_value
+
+  interval_length(left_endpoint, right_endpoint: real): real =
+    IF left_endpoint < right_endpoint THEN
+      right_endpoint - left_endpoint
+    ELSE
+      0
+    ENDIF
+
+  closed_interval(left_endpoint, right_endpoint: real): real_set =
+    LAMBDA (x: real):
+      left_endpoint <= x AND x <= right_endpoint
+
+  open_interval_cover(
+      covered: real_set,
+      left_endpoints, right_endpoints: real_sequence): bool =
+    FORALL (x: real):
+      covered(x) IMPLIES
+        EXISTS (index: nat):
+          left_endpoints(index) < x
+            AND x < right_endpoints(index)
+
+  cover_partial_length(
+      left_endpoints, right_endpoints: real_sequence,
+      count: nat): real =
+    finite_sum(
+      LAMBDA (index: nat):
+        interval_length(
+          left_endpoints(index),
+          right_endpoints(index)),
+      count)
+
+  cover_has_total_length(
+      left_endpoints, right_endpoints: real_sequence,
+      total: real): bool =
+    converges_to(
+      LAMBDA (count: nat):
+        cover_partial_length(
+          left_endpoints, right_endpoints, count),
+      total)
+
+  has_outer_measure(
+      covered: real_set,
+      measure_value: real): bool =
+    measure_value >= 0
+      AND (FORALL (epsilon_value: posreal):
+        EXISTS
+            (left_endpoints, right_endpoints: real_sequence),
+            (total: real):
+          open_interval_cover(
+            covered, left_endpoints, right_endpoints)
+            AND cover_has_total_length(
+              left_endpoints, right_endpoints, total)
+            AND total < measure_value + epsilon_value)
+      AND (FORALL
+          (left_endpoints, right_endpoints: real_sequence),
+          (total: real):
+        (open_interval_cover(
+            covered, left_endpoints, right_endpoints)
+          AND cover_has_total_length(
+            left_endpoints, right_endpoints, total))
+        IMPLIES measure_value <= total)
+
+  set_intersection(left_set, right_set: real_set): real_set =
+    LAMBDA (x: real):
+      left_set(x) AND right_set(x)
+
+  set_difference(left_set, right_set: real_set): real_set =
+    LAMBDA (x: real):
+      left_set(x) AND NOT right_set(x)
+
+  set_subset(left_set, right_set: real_set): bool =
+    FORALL (x: real):
+      left_set(x) IMPLIES right_set(x)
+
+  lebesgue_measurable(measured_set: real_set): bool =
+    FORALL
+        (test_set: real_set),
+        (test_measure, inside_measure, outside_measure: real):
+      (has_outer_measure(test_set, test_measure)
+        AND has_outer_measure(
+          set_intersection(test_set, measured_set),
+          inside_measure)
+        AND has_outer_measure(
+          set_difference(test_set, measured_set),
+          outside_measure))
+      IMPLIES
+        test_measure = inside_measure + outside_measure
+
+  lebesgue_measure(measured_set: real_set): real =
+    epsilon(
+      LAMBDA (measure_value: real):
+        has_outer_measure(measured_set, measure_value))
+
+  sublevel_set_on(
+      domain: real_set,
+      function_value: real_function,
+      bound: real): real_set =
+    LAMBDA (x: real):
+      domain(x) AND function_value(x) <= bound
+
+  measurable_on(
+      function_value: real_function,
+      domain: real_set): bool =
+    FORALL (bound: real):
+      lebesgue_measurable(
+        sublevel_set_on(domain, function_value, bound))
+
+  pairwise_disjoint_below(
+      pieces: real_set_sequence,
+      count: nat): bool =
+    FORALL (left_index, right_index: nat):
+      left_index < count
+        AND right_index < count
+        AND left_index /= right_index
+      IMPLIES
+        FORALL (x: real):
+          NOT (pieces(left_index)(x)
+            AND pieces(right_index)(x))
+
+  simple_value(
+      coefficients: real_sequence,
+      pieces: real_set_sequence,
+      count: nat,
+      x: real): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      simple_value(coefficients, pieces, count - 1, x)
+        + IF pieces(count - 1)(x)
+            THEN coefficients(count - 1)
+          ELSE
+            0
+          ENDIF
+    ENDIF
+  MEASURE count
+
+  simple_integral(
+      coefficients: real_sequence,
+      pieces: real_set_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      simple_integral(coefficients, pieces, count - 1)
+        + coefficients(count - 1)
+            * lebesgue_measure(pieces(count - 1))
+    ENDIF
+  MEASURE count
+
+  nonnegative_simple_minorant_on(
+      function_value: real_function,
+      domain: real_set,
+      coefficients: real_sequence,
+      pieces: real_set_sequence,
+      count: nat): bool =
+    pairwise_disjoint_below(pieces, count)
+      AND (FORALL (index: nat):
+        index < count IMPLIES
+          coefficients(index) >= 0
+            AND lebesgue_measurable(pieces(index))
+            AND set_subset(pieces(index), domain))
+      AND (FORALL (x: real):
+        domain(x) IMPLIES
+          0 <= simple_value(
+            coefficients, pieces, count, x)
+          AND simple_value(
+            coefficients, pieces, count, x)
+              <= function_value(x))
+
+  nonnegative_integral_upper_bound_on(
+      function_value: real_function,
+      domain: real_set,
+      upper_bound: real): bool =
+    FORALL
+        (coefficients: real_sequence),
+        (pieces: real_set_sequence),
+        (count: nat):
+      nonnegative_simple_minorant_on(
+        function_value, domain,
+        coefficients, pieces, count)
+      IMPLIES
+        simple_integral(coefficients, pieces, count)
+          <= upper_bound
+
+  has_nonnegative_integral_on(
+      function_value: real_function,
+      domain: real_set,
+      integral_value: real): bool =
+    measurable_on(function_value, domain)
+      AND (FORALL (x: real):
+        domain(x) IMPLIES function_value(x) >= 0)
+      AND integral_value >= 0
+      AND nonnegative_integral_upper_bound_on(
+        function_value, domain, integral_value)
+      AND (FORALL (upper_bound: real):
+        nonnegative_integral_upper_bound_on(
+          function_value, domain, upper_bound)
+        IMPLIES integral_value <= upper_bound)
+
+  positive_part(function_value: real_function): real_function =
+    LAMBDA (x: real):
+      IF function_value(x) >= 0
+      THEN function_value(x)
+      ELSE 0
+      ENDIF
+
+  negative_part(function_value: real_function): real_function =
+    LAMBDA (x: real):
+      IF function_value(x) <= 0
+      THEN -function_value(x)
+      ELSE 0
+      ENDIF
+
+  has_integral_on(
+      function_value: real_function,
+      domain: real_set,
+      integral_value: real): bool =
+    measurable_on(function_value, domain)
+      AND EXISTS (positive_integral, negative_integral: real):
+        has_nonnegative_integral_on(
+          positive_part(function_value),
+          domain,
+          positive_integral)
+          AND has_nonnegative_integral_on(
+            negative_part(function_value),
+            domain,
+            negative_integral)
+          AND integral_value =
+            positive_integral - negative_integral
+
+  interval_lebesgue_integral(
+      function_value: real_function,
+      left_endpoint, right_endpoint: real): real =
+    IF EXISTS (integral_value: real):
+        has_integral_on(
+          function_value,
+          closed_interval(left_endpoint, right_endpoint),
+          integral_value)
+    THEN
+      epsilon(
+        LAMBDA (integral_value: real):
+          has_integral_on(
+            function_value,
+            closed_interval(left_endpoint, right_endpoint),
+            integral_value))
+    ELSE
+      0
+    ENDIF
+
+  nonnegative_square_root(value: real): real =
+    IF 0 <= value THEN
+      epsilon(
+        LAMBDA (root: real):
+          0 <= root AND root * root = value)
+    ELSE
+      0
+    ENDIF
+
+  integrand(a, b: real): real_function =
+    LAMBDA (x: real):
+      nonnegative_square_root(
+        nonnegative_square_root(x + a)
+          - nonnegative_square_root(x))
+        - nonnegative_square_root(
+            nonnegative_square_root(x)
+              - nonnegative_square_root(x - b))
+
+  truncated_integral(a, b, t: real): real =
+    interval_lebesgue_integral(
+      integrand(a, b), b, t)
+
+  converges_at_real_top(
+      function_value: real_function,
+      limit_value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: real):
+        FORALL (t: real):
+          cutoff <= t IMPLIES
+            abs(function_value(t) - limit_value)
+              < epsilon_value
+
+  improper_integral_converges(a, b: real): bool =
+    EXISTS (limit_value: real):
+      converges_at_real_top(
+        LAMBDA (t: real):
+          truncated_integral(a, b, t),
+        limit_value)
+
+  putnam_1995_a2_solution(a, b: real): bool =
+    a = b
+
+  putnam_1995_a2: bool =
+    FORALL (a, b: real):
+      (a > 0 AND b > 0)
+        IMPLIES
+          (improper_integral_converges(a, b)
+            IFF putnam_1995_a2_solution(a, b))
+END putnam_1995_a2

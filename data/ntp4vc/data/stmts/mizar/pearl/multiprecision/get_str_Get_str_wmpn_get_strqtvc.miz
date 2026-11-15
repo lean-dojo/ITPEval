@@ -1,0 +1,274 @@
+:: Statement-only formalization of the NTP4VC corpus artifact
+:: pearl/multiprecision/get_str_Get_str_wmpn_get_strqtvc: the call-site
+:: verification condition for converting a positive multiprecision integer
+:: to base digits through either the power-of-two routine or the general-base
+:: routine, preserving value, digit range, leading digit, and memory frames.
+:: This file contains no proof.
+
+environ
+  vocabularies TARSKI, XBOOLE_0, SUBSET_1, RELAT_1, FUNCT_1,
+    FUNCT_2, FUNCT_4, FUNCT_7, FUNCOP_1, PARTFUN1, ZFMISC_1, NUMBERS,
+    XREAL_0, CARD_1, XXREAL_0, ARYTM_1, ARYTM_3, REAL_1,
+    INT_1, INT_2, NAT_1, VALUED_0, VALUED_1, ORDINAL1,
+    ORDINAL4, MARGREL1, XBOOLEAN, MCART_1, NEWTON, BINOP_1;
+  notations TARSKI, XBOOLE_0, SUBSET_1, ZFMISC_1, XTUPLE_0,
+    MCART_1, RELAT_1, FUNCT_1, RELSET_1, PARTFUN1, FUNCT_2,
+    FUNCT_4, FUNCT_7, FUNCOP_1, ORDINAL1, CARD_1, NUMBERS, XCMPLX_0,
+    XREAL_0, REAL_1, INT_1, INT_2, NAT_1, NAT_D, NEWTON,
+    XXREAL_0, MARGREL1, XBOOLEAN, BINOP_1;
+  constructors FUNCT_1, RELSET_1, PARTFUN1, FUNCT_2, FUNCT_4,
+    FUNCT_7, FUNCOP_1, CARD_1, REAL_1, INT_1, INT_2, XXREAL_0,
+    ZFMISC_1, MCART_1, NAT_1, NAT_D, NEWTON, MARGREL1,
+    BINOP_1;
+  registrations XBOOLE_0, SUBSET_1, RELAT_1, FUNCT_1, RELSET_1,
+    FUNCT_2, FUNCT_4, FUNCT_7, FUNCOP_1, NUMBERS, CARD_1, XXREAL_0,
+    MEMBERED, VALUED_0, VALUED_1, XCMPLX_0, XREAL_0,
+    ORDINAL1, INT_1, INT_2, NAT_1, MARGREL1, NEWTON;
+  requirements REAL, NUMERALS, SUBSET, BOOLE, ARITHM;
+  equalities XBOOLEAN;
+
+begin
+
+::$P-
+theorem
+  for P64,P8,Z,BaseInfo being non empty set,
+      S32 being Function of NAT,INT,
+      Pow2N being Function of NAT,NAT,
+      PowerFn being Function of [:INT,INT:],INT,
+      B being Function of BaseInfo,INT,
+      Exp,BigBase being Function of BaseInfo,NAT,
+      Pelt64 being Function of [:P64,INT:],NAT,
+      Pelt8 being Function of [:P8,INT:],NAT,
+      Len64 being Function of P64,NAT,
+      Len8 being Function of P8,NAT,
+      Offset64,Min64,Max64 being Function of P64,INT,
+      Offset8,Min8,Max8 being Function of P8,INT,
+      Writable64 being Function of P64,BOOLEAN,
+      Writable8 being Function of P8,BOOLEAN,
+      Zone64 being Function of P64,Z,
+      Zone8 being Function of P8,Z,
+      Valid64 being Subset of [:P64,INT:],
+      Valid8 being Subset of [:P8,INT:],
+      ValueSub being Function of [:P64,[:INT,INT:]:],INT,
+      Value being Function of [:P64,INT:],INT,
+      SValueSub being
+        Function of [:INT,[:P8,[:INT,INT:]:]:],INT,
+      SValue being Function of [:INT,[:P8,INT:]:],INT,
+      InBase being Subset of [:INT,[:P8,[:INT,INT:]:]:],
+      SameFrame8 being Subset of [:P8,P8:],
+      Outside8 being Subset of [:P8,[:P8,INT:]:],
+      sz,un,base being Nat,
+      sp being Element of P8,
+      up being Element of P64
+  st
+    sz < Pow2N.32 &
+    un < Pow2N.32 &
+    base < Pow2N.32 &
+    (for n being Nat holds Pow2N.n = 2 |^ n) &
+    (for w being Nat st w < Pow2N.32 holds
+      (w < Pow2N.31 implies S32.w = w) &
+      (Pow2N.31 <= w implies S32.w = w - Pow2N.32)) &
+    (for b,e being Integer st 0 <= e holds
+      ex n being Nat st
+        n = e &
+        PowerFn.[b,e] = b |^ n) &
+    (for self being Element of BaseInfo holds
+      2 <= B.self &
+      B.self <= 256 &
+      BigBase.self < Pow2N.64 &
+      Pow2N.64 <= BigBase.self * B.self &
+      7 <= Exp.self &
+      Exp.self <= 63 &
+      BigBase.self = PowerFn.[B.self,Exp.self]) &
+    (for a,c being Element of BaseInfo st
+      B.a = B.c &
+      Exp.a = Exp.c &
+      BigBase.a = BigBase.c
+     holds a = c) &
+    (for p being Element of P64, k being Element of INT holds
+      Pelt64.(p,k) < Pow2N.64) &
+    (for p being Element of P8, k being Element of INT holds
+      Pelt8.(p,k) < Pow2N.8) &
+    (for p being Element of P64, n being Element of INT holds
+      ([p,n] in Valid64 iff
+        -Pow2N.31 <= n &
+        n <= Pow2N.31-1 &
+        0 <= n &
+        0 <= Min64.p &
+        Min64.p <= Offset64.p &
+        Offset64.p+n <= Max64.p &
+        Max64.p <= Len64.p)) &
+    (for p being Element of P8, n being Element of INT holds
+      ([p,n] in Valid8 iff
+        -Pow2N.31 <= n &
+        n <= Pow2N.31-1 &
+        0 <= n &
+        0 <= Min8.p &
+        Min8.p <= Offset8.p &
+        Offset8.p+n <= Max8.p &
+        Max8.p <= Len8.p)) &
+    (for p being Element of P64, n,m being Element of INT holds
+      (n < m implies
+        ValueSub.(p,[n,m]) =
+          Pelt64.(p,n) +
+          Pow2N.64 *
+            ValueSub.(p,In([In(n+1,INT),m],[:INT,INT:]))) &
+      (not n < m implies ValueSub.(p,[n,m]) = 0)) &
+    (for p being Element of P64, n being Element of INT holds
+      Value.(p,n) =
+        ValueSub.(p,[Offset64.p,Offset64.p+n])) &
+    (for b being Element of INT, p being Element of P8,
+         n,m being Element of INT holds
+      (n < m implies
+        SValueSub.(b,[p,[n,m]]) =
+          Pelt8.(p,In(m-1,INT)) +
+          b *
+            SValueSub.(b,
+              In([p,[n,In(m-1,INT)]],[:P8,[:INT,INT:]:]))) &
+      (not n < m implies SValueSub.(b,[p,[n,m]]) = 0)) &
+    (for b being Element of INT, p being Element of P8,
+         n being Element of INT holds
+      SValue.(b,[p,n]) =
+        SValueSub.(b,[p,[Offset8.p,Offset8.p+n]])) &
+    (for b being Element of INT, p being Element of P8,
+         n,m being Element of INT holds
+      ([b,[p,[n,m]]] in InBase iff
+        for k being Element of INT st n <= k & k < m holds
+          0 <= Pelt8.(p,k) &
+          Pelt8.(p,k) < b)) &
+    (for newer,older being Element of P8 holds
+      ([newer,older] in SameFrame8 iff
+        Len8.newer = Len8.older &
+        Offset8.newer = Offset8.older &
+        Min8.newer = Min8.older &
+        Max8.newer = Max8.older &
+        Writable8.newer = Writable8.older &
+        Zone8.newer = Zone8.older)) &
+    (for current,original being Element of P8,
+         n being Element of INT holds
+      ([current,[original,n]] in Outside8 iff
+        for j being Element of INT st
+          j < Offset8.current or Offset8.current+n <= j
+        holds
+          Pelt8.(current,j) = Pelt8.(original,j))) &
+    0 < S32.sz &
+    0 < S32.un &
+    [sp,S32.sz] in Valid8 &
+    [up,S32.un] in Valid64 &
+    Writable8.sp = TRUE &
+    Writable64.up = TRUE &
+    (for radixPower,basePower being Integer st
+      radixPower = PowerFn.[Pow2N.64,S32.un] &
+      basePower = PowerFn.[S32.base,S32.sz-1]
+     holds
+      radixPower <= basePower) &
+    0 < Pelt64.(up,In(Offset64.up+S32.un-1,INT)) &
+    2 <= S32.base &
+    S32.base <= 256 &
+    64*S32.un+7 <= 2147483647
+  holds
+    0 <= S32.base &
+    (for o1 being Nat st
+      o1 < Pow2N.64 &
+      o1 = S32.base
+     holds
+      (2 <= o1 & o1 <= 256) &
+      (for bits being Nat st
+        bits < Pow2N.32 &
+        (0 <= bits & bits <= 8) &
+        (bits <> 0 implies PowerFn.[2,bits] = o1) &
+        (bits = 0 implies
+          for n being Integer st 0 <= n holds
+            PowerFn.[2,n] <> o1)
+       holds
+        (bits = 0 implies bits = 0) implies
+          ((bits <> 0 implies
+            (-Pow2N.31 <= 64*S32.un &
+             64*S32.un <= Pow2N.31-1) &
+            (for o2 being Nat st
+              o2 < Pow2N.32 &
+              S32.o2 = 64*S32.un
+             holds
+              (1 <= S32.un &
+               [up,S32.un] in Valid64 &
+               (1 <= bits & bits <= 8) &
+               [sp,(S32.o2+bits-1) div bits] in Valid8 &
+               0 <= S32.o2 &
+               (for inputValue,powerBound being Integer st
+                 inputValue = Value.(up,S32.un) &
+                 powerBound = PowerFn.[2,S32.o2]
+                holds inputValue < powerBound) &
+               0 <
+                 Pelt64.(up,In(Offset64.up+S32.un-1,INT)) &
+               64*S32.un+7 <= 2147483647 &
+               Writable8.sp = TRUE) &
+              (for sp1 being Element of P8 st
+                [sp1,sp] in SameFrame8
+               holds
+                for result being Nat st
+                  result < Pow2N.32 &
+                  [PowerFn.[2,bits],
+                    [sp1,[Offset8.sp1,Offset8.sp1+result]]]
+                    in InBase &
+                  SValue.(PowerFn.[2,bits],[sp1,result]) =
+                    Value.(up,S32.un) &
+                  (0 < result &
+                   result <= (S32.o2+bits-1) div bits) &
+                  0 < Pelt8.(sp1,Offset8.sp1) &
+                  [sp1,[sp,(S32.o2+bits-1) div bits]]
+                    in Outside8
+                 holds
+                  [S32.base,
+                    [sp1,[Offset8.sp1,Offset8.sp1+result]]]
+                    in InBase &
+                  SValue.(S32.base,[sp1,result]) =
+                    Value.(up,S32.un) &
+                  (0 < result & result < S32.sz) &
+                  0 < Pelt8.(sp1,Offset8.sp1)))) &
+           (bits = 0 implies
+            0 <= S32.base &
+            (for o2 being Nat st
+              o2 < Pow2N.64 &
+              o2 = S32.base
+             holds
+              (2 <= o2 & o2 <= 256) &
+              (for info being Element of BaseInfo st
+                B.info = o2
+               holds
+                ([up,S32.un] in Valid64 &
+                 1 <= S32.un &
+                 B.info = S32.base &
+                 Writable64.up = TRUE &
+                 Writable8.sp = TRUE &
+                 0 <
+                   Pelt64.(up,In(Offset64.up+S32.un-1,INT)) &
+                 0 < S32.sz &
+                 [sp,S32.sz] in Valid8 &
+                 (for inputValue,powerBound being Integer st
+                   inputValue = Value.(up,S32.un) &
+                   powerBound = PowerFn.[S32.base,S32.sz-1]
+                  holds inputValue < powerBound)) &
+                (for sp1 being Element of P8 st
+                  [sp1,sp] in SameFrame8
+                 holds
+                  for result being Nat st
+                    result < Pow2N.32 &
+                    (0 <= result & result < S32.sz) &
+                    SValue.(S32.base,[sp1,result]) =
+                      Value.(up,S32.un) &
+                    [S32.base,
+                      [sp1,[Offset8.sp1,Offset8.sp1+result]]]
+                      in InBase &
+                    0 < Pelt8.(sp1,Offset8.sp1) &
+                    [sp1,[sp,S32.sz]] in Outside8
+                   holds
+                    [S32.base,
+                      [sp1,[Offset8.sp1,Offset8.sp1+result]]]
+                      in InBase &
+                    SValue.(S32.base,[sp1,result]) =
+                      Value.(up,S32.un) &
+                    (0 < result & result < S32.sz) &
+                    0 < Pelt8.(sp1,Offset8.sp1))))))))
+proof
+end;
+::$P+

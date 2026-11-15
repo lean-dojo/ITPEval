@@ -1,0 +1,465 @@
+% Statement-only formalization of the Thousand Theorems corpus artifact Q7525341,
+% "Sion's minimax theorem": the infimum of the row suprema equals the supremum
+% of the column infima for a nonempty compact convex set X and a convex set Y,
+% under the sectionwise semicontinuity and quasiconvexity hypotheses, with
+% explicit order-bound witnesses. This file contains no proof.
+
+Q7525341_sion_s_minimax_theorem[
+  E: TYPE+,
+  F: TYPE+,
+  beta: TYPE,
+  zero_E: E,
+  add_E: [E, E -> E],
+  neg_E: [E -> E],
+  smul_E: [real, E -> E],
+  open_E: [[E -> bool] -> bool],
+  zero_F: F,
+  add_F: [F, F -> F],
+  neg_F: [F -> F],
+  smul_F: [real, F -> F],
+  open_F: [[F -> bool] -> bool],
+  le_beta: [beta, beta -> bool]
+]: THEORY
+BEGIN
+  E_set: TYPE = [E -> bool]
+  F_set: TYPE = [F -> bool]
+  beta_set: TYPE = [beta -> bool]
+  E_set_family: TYPE = [E_set -> bool]
+  F_set_family: TYPE = [F_set -> bool]
+  E_set_sequence: TYPE = [nat -> E_set]
+
+  empty_E_set: E_set =
+    LAMBDA (x: E): FALSE
+
+  whole_E_set: E_set =
+    LAMBDA (x: E): TRUE
+
+  E_intersection(A, B: E_set): E_set =
+    LAMBDA (x: E): A(x) AND B(x)
+
+  E_union(C: E_set_family): E_set =
+    LAMBDA (x: E):
+      EXISTS (U: E_set):
+        C(U) AND U(x)
+
+  empty_F_set: F_set =
+    LAMBDA (y: F): FALSE
+
+  whole_F_set: F_set =
+    LAMBDA (y: F): TRUE
+
+  F_intersection(A, B: F_set): F_set =
+    LAMBDA (y: F): A(y) AND B(y)
+
+  F_union(C: F_set_family): F_set =
+    LAMBDA (y: F):
+      EXISTS (U: F_set):
+        C(U) AND U(y)
+
+  topology_E_laws: bool =
+    open_E(empty_E_set)
+      AND open_E(whole_E_set)
+      AND
+    (FORALL (A, B: E_set):
+      open_E(A) AND open_E(B)
+        IMPLIES open_E(E_intersection(A, B)))
+      AND
+    (FORALL (C: E_set_family):
+      (FORALL (U: E_set):
+        C(U) IMPLIES open_E(U))
+        IMPLIES open_E(E_union(C)))
+
+  topology_F_laws: bool =
+    open_F(empty_F_set)
+      AND open_F(whole_F_set)
+      AND
+    (FORALL (A, B: F_set):
+      open_F(A) AND open_F(B)
+        IMPLIES open_F(F_intersection(A, B)))
+      AND
+    (FORALL (C: F_set_family):
+      (FORALL (U: F_set):
+        C(U) IMPLIES open_F(U))
+        IMPLIES open_F(F_union(C)))
+
+  additive_commutative_group_E_laws: bool =
+    (FORALL (x, y: E):
+      add_E(x, y) = add_E(y, x))
+      AND
+    (FORALL (x, y, z: E):
+      add_E(add_E(x, y), z) = add_E(x, add_E(y, z)))
+      AND
+    (FORALL (x: E):
+      add_E(x, zero_E) = x)
+      AND
+    (FORALL (x: E):
+      add_E(x, neg_E(x)) = zero_E)
+
+  additive_commutative_group_F_laws: bool =
+    (FORALL (x, y: F):
+      add_F(x, y) = add_F(y, x))
+      AND
+    (FORALL (x, y, z: F):
+      add_F(add_F(x, y), z) = add_F(x, add_F(y, z)))
+      AND
+    (FORALL (x: F):
+      add_F(x, zero_F) = x)
+      AND
+    (FORALL (x: F):
+      add_F(x, neg_F(x)) = zero_F)
+
+  real_module_E_laws: bool =
+    additive_commutative_group_E_laws
+      AND
+    (FORALL (x: E):
+      smul_E(1, x) = x)
+      AND
+    (FORALL (a, b: real), (x: E):
+      smul_E(a * b, x) = smul_E(a, smul_E(b, x)))
+      AND
+    (FORALL (a, b: real), (x: E):
+      smul_E(a + b, x) = add_E(smul_E(a, x), smul_E(b, x)))
+      AND
+    (FORALL (a: real), (x, y: E):
+      smul_E(a, add_E(x, y)) =
+        add_E(smul_E(a, x), smul_E(a, y)))
+
+  real_module_F_laws: bool =
+    additive_commutative_group_F_laws
+      AND
+    (FORALL (x: F):
+      smul_F(1, x) = x)
+      AND
+    (FORALL (a, b: real), (x: F):
+      smul_F(a * b, x) = smul_F(a, smul_F(b, x)))
+      AND
+    (FORALL (a, b: real), (x: F):
+      smul_F(a + b, x) = add_F(smul_F(a, x), smul_F(b, x)))
+      AND
+    (FORALL (a: real), (x, y: F):
+      smul_F(a, add_F(x, y)) =
+        add_F(smul_F(a, x), smul_F(a, y)))
+
+  real_open(A: [real -> bool]): bool =
+    FORALL (a: real):
+      A(a) IMPLIES
+        EXISTS (radius: real):
+          0 < radius
+            AND
+          (FORALL (b: real):
+            abs(b - a) < radius IMPLIES A(b))
+
+  continuous_add_E: bool =
+    FORALL (x, y: E), (W: E_set):
+      open_E(W) AND W(add_E(x, y))
+        IMPLIES
+          EXISTS (U, V: E_set):
+            open_E(U)
+              AND open_E(V)
+              AND U(x)
+              AND V(y)
+              AND
+            (FORALL (u, v: E):
+              U(u) AND V(v) IMPLIES W(add_E(u, v)))
+
+  continuous_neg_E: bool =
+    FORALL (x: E), (W: E_set):
+      open_E(W) AND W(neg_E(x))
+        IMPLIES
+          EXISTS (U: E_set):
+            open_E(U)
+              AND U(x)
+              AND
+            (FORALL (u: E):
+              U(u) IMPLIES W(neg_E(u)))
+
+  continuous_smul_E: bool =
+    FORALL (a: real), (x: E), (W: E_set):
+      open_E(W) AND W(smul_E(a, x))
+        IMPLIES
+          EXISTS (R: [real -> bool]), (U: E_set):
+            real_open(R)
+              AND open_E(U)
+              AND R(a)
+              AND U(x)
+              AND
+            (FORALL (b: real), (u: E):
+              R(b) AND U(u) IMPLIES W(smul_E(b, u)))
+
+  continuous_add_F: bool =
+    FORALL (x, y: F), (W: F_set):
+      open_F(W) AND W(add_F(x, y))
+        IMPLIES
+          EXISTS (U, V: F_set):
+            open_F(U)
+              AND open_F(V)
+              AND U(x)
+              AND V(y)
+              AND
+            (FORALL (u, v: F):
+              U(u) AND V(v) IMPLIES W(add_F(u, v)))
+
+  continuous_neg_F: bool =
+    FORALL (x: F), (W: F_set):
+      open_F(W) AND W(neg_F(x))
+        IMPLIES
+          EXISTS (U: F_set):
+            open_F(U)
+              AND U(x)
+              AND
+            (FORALL (u: F):
+              U(u) IMPLIES W(neg_F(u)))
+
+  continuous_smul_F: bool =
+    FORALL (a: real), (x: F), (W: F_set):
+      open_F(W) AND W(smul_F(a, x))
+        IMPLIES
+          EXISTS (R: [real -> bool]), (U: F_set):
+            real_open(R)
+              AND open_F(U)
+              AND R(a)
+              AND U(x)
+              AND
+            (FORALL (b: real), (u: F):
+              R(b) AND U(u) IMPLIES W(smul_F(b, u)))
+
+  lt_beta(a, b: beta): bool =
+    le_beta(a, b) AND NOT le_beta(b, a)
+
+  linear_order_beta_laws: bool =
+    (FORALL (a: beta):
+      le_beta(a, a))
+      AND
+    (FORALL (a, b, c: beta):
+      le_beta(a, b) AND le_beta(b, c)
+        IMPLIES le_beta(a, c))
+      AND
+    (FORALL (a, b: beta):
+      le_beta(a, b) AND le_beta(b, a)
+        IMPLIES a = b)
+      AND
+    (FORALL (a, b: beta):
+      le_beta(a, b) OR le_beta(b, a))
+
+  densely_ordered_beta_law: bool =
+    FORALL (a, b: beta):
+      lt_beta(a, b)
+        IMPLIES
+          EXISTS (c: beta):
+            lt_beta(a, c) AND lt_beta(c, b)
+
+  topological_real_module_E_laws: bool =
+    topology_E_laws
+      AND real_module_E_laws
+      AND continuous_add_E
+      AND continuous_neg_E
+      AND continuous_smul_E
+
+  topological_real_module_F_laws: bool =
+    topology_F_laws
+      AND real_module_F_laws
+      AND continuous_add_F
+      AND continuous_neg_F
+      AND continuous_smul_F
+
+  open_cover_E(C: E_set_family, X: E_set): bool =
+    (FORALL (U: E_set):
+      C(U) IMPLIES open_E(U))
+      AND
+    (FORALL (x: E):
+      X(x) IMPLIES
+        EXISTS (U: E_set):
+          C(U) AND U(x))
+
+  finite_subcover_E(C: E_set_family, X: E_set): bool =
+    EXISTS
+        (count: nat),
+        (chosen: E_set_sequence):
+      (FORALL (index: nat):
+        index < count IMPLIES C(chosen(index)))
+        AND
+      (FORALL (x: E):
+        X(x) IMPLIES
+          EXISTS (index: nat):
+            index < count AND chosen(index)(x))
+
+  compact_E_set(X: E_set): bool =
+    FORALL (C: E_set_family):
+      open_cover_E(C, X) IMPLIES finite_subcover_E(C, X)
+
+  nonempty_E_set(X: E_set): bool =
+    EXISTS (x: E):
+      X(x)
+
+  convex_E_set(X: E_set): bool =
+    FORALL (x, y: E), (a, b: real):
+      X(x)
+        AND X(y)
+        AND 0 <= a
+        AND 0 <= b
+        AND a + b = 1
+      IMPLIES
+        X(add_E(smul_E(a, x), smul_E(b, y)))
+
+  convex_F_set(Y: F_set): bool =
+    FORALL (x, y: F), (a, b: real):
+      Y(x)
+        AND Y(y)
+        AND 0 <= a
+        AND 0 <= b
+        AND a + b = 1
+      IMPLIES
+        Y(add_F(smul_F(a, x), smul_F(b, y)))
+
+  lower_semicontinuous_on_E(
+      g: [E -> beta],
+      X: E_set): bool =
+    FORALL (x: E):
+      X(x) IMPLIES
+        FORALL (bound: beta):
+          lt_beta(bound, g(x))
+            IMPLIES
+              EXISTS (U: E_set):
+                open_E(U)
+                  AND U(x)
+                  AND
+                (FORALL (z: E):
+                  X(z) AND U(z)
+                    IMPLIES lt_beta(bound, g(z)))
+
+  upper_semicontinuous_on_F(
+      g: [F -> beta],
+      Y: F_set): bool =
+    FORALL (y: F):
+      Y(y) IMPLIES
+        FORALL (bound: beta):
+          lt_beta(g(y), bound)
+            IMPLIES
+              EXISTS (U: F_set):
+                open_F(U)
+                  AND U(y)
+                  AND
+                (FORALL (z: F):
+                  Y(z) AND U(z)
+                    IMPLIES lt_beta(g(z), bound))
+
+  quasiconvex_on_E(
+      g: [E -> beta],
+      X: E_set): bool =
+    FORALL (bound: beta):
+      convex_E_set(
+        LAMBDA (x: E):
+          X(x) AND le_beta(g(x), bound))
+
+  quasiconcave_on_F(
+      g: [F -> beta],
+      Y: F_set): bool =
+    FORALL (bound: beta):
+      convex_F_set(
+        LAMBDA (y: F):
+          Y(y) AND le_beta(bound, g(y)))
+
+  is_upper_bound(S: beta_set, upper: beta): bool =
+    FORALL (value: beta):
+      S(value) IMPLIES le_beta(value, upper)
+
+  is_lower_bound(S: beta_set, lower: beta): bool =
+    FORALL (value: beta):
+      S(value) IMPLIES le_beta(lower, value)
+
+  is_LUB(S: beta_set, supremum: beta): bool =
+    is_upper_bound(S, supremum)
+      AND
+    (FORALL (upper: beta):
+      is_upper_bound(S, upper)
+        IMPLIES le_beta(supremum, upper))
+
+  is_GLB(S: beta_set, infimum: beta): bool =
+    is_lower_bound(S, infimum)
+      AND
+    (FORALL (lower: beta):
+      is_lower_bound(S, lower)
+        IMPLIES le_beta(lower, infimum))
+
+  row_values(
+      f: [E, F -> beta],
+      Y: F_set,
+      x: E): beta_set =
+    LAMBDA (value: beta):
+      EXISTS (y: F):
+        Y(y) AND f(x, y) = value
+
+  row_supremum_values(
+      sup_y: [E -> beta],
+      X: E_set): beta_set =
+    LAMBDA (value: beta):
+      EXISTS (x: E):
+        X(x) AND sup_y(x) = value
+
+  column_values(
+      f: [E, F -> beta],
+      X: E_set,
+      y: F): beta_set =
+    LAMBDA (value: beta):
+      EXISTS (x: E):
+        X(x) AND f(x, y) = value
+
+  column_infimum_values(
+      inf_x: [F -> beta],
+      Y: F_set): beta_set =
+    LAMBDA (value: beta):
+      EXISTS (y: F):
+        Y(y) AND inf_x(y) = value
+
+  structure_laws: bool =
+    topological_real_module_E_laws
+      AND topological_real_module_F_laws
+      AND linear_order_beta_laws
+      AND densely_ordered_beta_law
+
+  minimax_Q7525341: bool =
+    structure_laws IMPLIES
+      FORALL
+          (X: E_set),
+          (Y: F_set),
+          (f: [E, F -> beta]),
+          (sup_y: [E -> beta]),
+          (inf_sup: beta),
+          (inf_x: [F -> beta]),
+          (sup_inf: beta):
+        (nonempty_E_set(X)
+          AND compact_E_set(X)
+          AND convex_E_set(X)
+          AND convex_F_set(Y)
+          AND
+          (FORALL (y: F):
+            Y(y) IMPLIES
+              lower_semicontinuous_on_E(
+                LAMBDA (x: E): f(x, y), X))
+          AND
+          (FORALL (y: F):
+            Y(y) IMPLIES
+              quasiconvex_on_E(
+                LAMBDA (x: E): f(x, y), X))
+          AND
+          (FORALL (x: E):
+            X(x) IMPLIES
+              upper_semicontinuous_on_F(
+                LAMBDA (y: F): f(x, y), Y))
+          AND
+          (FORALL (x: E):
+            X(x) IMPLIES
+              quasiconcave_on_F(
+                LAMBDA (y: F): f(x, y), Y))
+          AND
+          (FORALL (x: E):
+            X(x) IMPLIES
+              is_LUB(row_values(f, Y, x), sup_y(x)))
+          AND is_GLB(row_supremum_values(sup_y, X), inf_sup)
+          AND
+          (FORALL (y: F):
+            Y(y) IMPLIES
+              is_GLB(column_values(f, X, y), inf_x(y)))
+          AND is_LUB(column_infimum_values(inf_x, Y), sup_inf))
+        IMPLIES inf_sup = sup_inf
+END Q7525341_sion_s_minimax_theorem

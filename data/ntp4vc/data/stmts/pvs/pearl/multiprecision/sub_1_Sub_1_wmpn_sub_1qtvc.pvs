@@ -1,0 +1,708 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/multiprecision/sub_1_Sub_1_wmpn_sub_1qtvc: the verification condition
+% for subtracting one 64-bit limb from a positive-length multiprecision input
+% into a separate output, including borrow propagation, copying remaining
+% limbs, pointer updates, and memory framing. This file contains no proof.
+
+sub_1_Sub_1_wmpn_sub_1qtvc[zone: TYPE+]: THEORY
+BEGIN
+
+  IMPORTING
+    bv[32], bv[64],
+    bv_nat[32], bv_nat[64]
+
+  word32: TYPE = bvec[32]
+  word64: TYPE = bvec[64]
+
+  ptr: TYPE =
+    [# data_length: nat,
+       cells: [int -> word64],
+       pointer_offset: int,
+       pointer_min: int,
+       pointer_max: int,
+       is_writable: bool,
+       pointer_zone: zone #]
+
+  radix: int = 18446744073709551616
+
+  unsigned64(value1: word64): int =
+    bv2nat[64](value1)
+
+  signed32(value1: word32): int =
+    IF value1(31) THEN
+      bv2nat[32](value1) - 4294967296
+    ELSE
+      bv2nat[32](value1)
+    ENDIF
+
+  word32_of(value1: below(exp2(32))): word32 =
+    nat2bv[32](value1)
+
+  word64_of(value1: below(exp2(64))): word64 =
+    nat2bv[64](value1)
+
+  zero64: word64 = fill[64](FALSE)
+  one32: word32 = word32_of(1)
+  one64: word64 = word64_of(1)
+
+  int_to_nat(value1: int): nat =
+    IF value1 < 0 THEN 0 ELSE value1 ENDIF
+
+  nat_power(base: int, exponent: nat): RECURSIVE int =
+    IF exponent = 0 THEN
+      1
+    ELSE
+      base * nat_power(base, exponent - 1)
+    ENDIF
+  MEASURE exponent
+
+  int_power(base, exponent: int): int =
+    nat_power(base, int_to_nat(exponent))
+
+  value_from(
+      values: [int -> word64],
+      start: int,
+      count: nat): RECURSIVE int =
+    IF count = 0 THEN
+      0
+    ELSE
+      unsigned64(values(start))
+        + radix * value_from(values, start + 1, count - 1)
+    ENDIF
+  MEASURE count
+
+  value(p: ptr, size: int): int =
+    value_from(
+      cells(p),
+      pointer_offset(p),
+      int_to_nat(size))
+
+  int32_in_bounds(value1: int): bool =
+    -2147483648 <= value1 AND value1 <= 2147483647
+
+  valid(p: ptr, size: int): bool =
+    int32_in_bounds(size)
+      AND 0 <= size
+      AND 0 <= pointer_min(p)
+      AND pointer_min(p) <= pointer_offset(p)
+      AND pointer_offset(p) + size <= pointer_max(p)
+      AND pointer_max(p) <= (data_length(p) :: int)
+
+  bounds_at(p: ptr, index: int): bool =
+    pointer_min(p) <= index
+      AND index < pointer_max(p)
+
+  same_pointer_shape(left, right: ptr): bool =
+    data_length(left) = data_length(right)
+      AND pointer_offset(left) = pointer_offset(right)
+      AND pointer_min(left) = pointer_min(right)
+      AND pointer_max(left) = pointer_max(right)
+      AND is_writable(left) = is_writable(right)
+      AND pointer_zone(left) = pointer_zone(right)
+
+  update_cells(
+      values: [int -> word64],
+      index: int,
+      replacement: word64): [int -> word64] =
+    values WITH [(index) := replacement]
+
+  outside_unchanged(
+      current, original_output: ptr,
+      size: int): bool =
+    FORALL (j: int):
+      j < pointer_offset(current)
+        OR pointer_offset(current) + size <= j
+      IMPLIES
+        cells(current)(j) = cells(original_output)(j)
+
+  borrow_invariant(
+      current, input, original_output: ptr,
+      index: word32,
+      borrow: word64,
+      size: word32,
+      subtrahend: word64): bool =
+    1 <= signed32(index)
+      AND signed32(index) <= signed32(size)
+      AND 0 <= unsigned64(borrow)
+      AND unsigned64(borrow) <= 1
+      AND (index = size OR unsigned64(borrow) = 1)
+      AND
+        value(current, signed32(index))
+          - int_power(radix, signed32(index))
+              * unsigned64(borrow)
+        =
+        value(input, signed32(index))
+          - unsigned64(subtrahend)
+      AND
+        outside_unchanged(
+          current,
+          original_output,
+          signed32(size))
+
+  initial_borrow_invariant(
+      current, input, original_output: ptr,
+      size: word32,
+      subtrahend: word64): bool =
+    (1 <= 1 AND 1 <= signed32(size))
+      AND (0 <= unsigned64(one64) AND unsigned64(one64) <= 1)
+      AND (one32 = size OR unsigned64(one64) = 1)
+      AND
+        value(current, 1)
+          - int_power(radix, 1) * unsigned64(one64)
+        =
+        value(input, 1) - unsigned64(subtrahend)
+      AND
+        outside_unchanged(
+          current,
+          original_output,
+          signed32(size))
+
+  copy_word_invariant(
+      current, input, original_output: ptr,
+      index: word32,
+      borrow: word64,
+      size: word32,
+      subtrahend: word64): bool =
+    (index = size OR unsigned64(borrow) = 0)
+      AND (0 <= signed32(index)
+        AND signed32(index) <= signed32(size))
+      AND
+        value(current, signed32(index))
+          - int_power(radix, signed32(index))
+              * unsigned64(borrow)
+        =
+        value(input, signed32(index))
+          - unsigned64(subtrahend)
+      AND
+        outside_unchanged(
+          current,
+          original_output,
+          signed32(size))
+
+  copy_zero_invariant(
+      current, input, original_output: ptr,
+      index: word32,
+      size: word32,
+      subtrahend: word64): bool =
+    (0 <= signed32(index)
+      AND signed32(index) <= signed32(size))
+      AND
+        value(current, signed32(index))
+          - int_power(radix, signed32(index)) * 0
+        =
+        value(input, signed32(index))
+          - unsigned64(subtrahend)
+      AND
+        outside_unchanged(
+          current,
+          original_output,
+          signed32(size))
+
+  final_word_state(
+      current, input, original_output: ptr,
+      size: word32,
+      subtrahend, borrow: word64): bool =
+    value(current, signed32(size))
+        - int_power(radix, signed32(size))
+            * unsigned64(borrow)
+      =
+      value(input, signed32(size))
+        - unsigned64(subtrahend)
+      AND
+        outside_unchanged(
+          current,
+          original_output,
+          signed32(size))
+      AND 0 <= unsigned64(borrow)
+      AND unsigned64(borrow) <= 1
+
+  final_zero_state(
+      current, input, original_output: ptr,
+      size: word32,
+      subtrahend: word64): bool =
+    value(current, signed32(size))
+        - int_power(radix, signed32(size)) * 0
+      =
+      value(input, signed32(size))
+        - unsigned64(subtrahend)
+      AND
+        outside_unchanged(
+          current,
+          original_output,
+          signed32(size))
+      AND 0 <= 0
+      AND 0 <= 1
+
+  after_copy_word(
+      current, input, original_output: ptr,
+      previous_index: word32,
+      borrow: word64,
+      size: word32,
+      subtrahend: word64): bool =
+    int32_in_bounds(signed32(previous_index) + 1)
+      AND
+        (FORALL (next_index: word32):
+          signed32(next_index) = signed32(previous_index) + 1
+            IMPLIES
+              (0 <= signed32(size) - signed32(previous_index)
+                AND
+                  signed32(size) - signed32(next_index)
+                    < signed32(size) - signed32(previous_index))
+              AND
+                copy_word_invariant(
+                  current,
+                  input,
+                  original_output,
+                  next_index,
+                  borrow,
+                  size,
+                  subtrahend))
+
+  after_copy_zero(
+      current, input, original_output: ptr,
+      previous_index: word32,
+      size: word32,
+      subtrahend: word64): bool =
+    int32_in_bounds(signed32(previous_index) + 1)
+      AND
+        (FORALL (next_index: word32):
+          signed32(next_index) = signed32(previous_index) + 1
+            IMPLIES
+              (0 <= signed32(size) - signed32(previous_index)
+                AND
+                  signed32(size) - signed32(next_index)
+                    < signed32(size) - signed32(previous_index))
+              AND
+                copy_zero_invariant(
+                  current,
+                  input,
+                  original_output,
+                  next_index,
+                  size,
+                  subtrahend))
+
+  copy_iteration_word(
+      current, input, original_output: ptr,
+      index: word32,
+      borrow: word64,
+      size: word32,
+      subtrahend: word64): bool =
+    IF signed32(index) < signed32(size) THEN
+      bounds_at(
+        input,
+        pointer_offset(input) + signed32(index))
+        AND
+          (bounds_at(
+            current,
+            pointer_offset(current) + signed32(index))
+            AND is_writable(current) = TRUE)
+        AND
+          (FORALL (updated: ptr):
+            same_pointer_shape(updated, current)
+              IMPLIES
+                (cells(updated)
+                    =
+                    update_cells(
+                      cells(current),
+                      pointer_offset(updated) + signed32(index),
+                      cells(input)(
+                        pointer_offset(input) + signed32(index)))
+                  AND
+                    cells(updated)(
+                      pointer_offset(updated) + signed32(index))
+                    =
+                    cells(input)(
+                      pointer_offset(input) + signed32(index)))
+              IMPLIES
+                after_copy_word(
+                  updated,
+                  input,
+                  original_output,
+                  index,
+                  borrow,
+                  size,
+                  subtrahend))
+    ELSE
+      final_word_state(
+        current,
+        input,
+        original_output,
+        size,
+        subtrahend,
+        borrow)
+    ENDIF
+
+  copy_iteration_zero(
+      current, input, original_output: ptr,
+      index: word32,
+      size: word32,
+      subtrahend: word64): bool =
+    IF signed32(index) < signed32(size) THEN
+      bounds_at(
+        input,
+        pointer_offset(input) + signed32(index))
+        AND
+          (bounds_at(
+            current,
+            pointer_offset(current) + signed32(index))
+            AND is_writable(current) = TRUE)
+        AND
+          (FORALL (updated: ptr):
+            same_pointer_shape(updated, current)
+              IMPLIES
+                (cells(updated)
+                    =
+                    update_cells(
+                      cells(current),
+                      pointer_offset(updated) + signed32(index),
+                      cells(input)(
+                        pointer_offset(input) + signed32(index)))
+                  AND
+                    cells(updated)(
+                      pointer_offset(updated) + signed32(index))
+                    =
+                    cells(input)(
+                      pointer_offset(input) + signed32(index)))
+              IMPLIES
+                after_copy_zero(
+                  updated,
+                  input,
+                  original_output,
+                  index,
+                  size,
+                  subtrahend))
+    ELSE
+      final_zero_state(
+        current,
+        input,
+        original_output,
+        size,
+        subtrahend)
+    ENDIF
+
+  copy_loop_word(
+      initial, input, original_output: ptr,
+      borrow: word64,
+      size: word32,
+      subtrahend: word64): bool =
+    FORALL (index: word32), (current: ptr):
+      same_pointer_shape(current, initial)
+        IMPLIES
+          copy_word_invariant(
+            current,
+            input,
+            original_output,
+            index,
+            borrow,
+            size,
+            subtrahend)
+        IMPLIES
+          copy_iteration_word(
+            current,
+            input,
+            original_output,
+            index,
+            borrow,
+            size,
+            subtrahend)
+
+  copy_loop_zero(
+      initial, input, original_output: ptr,
+      size: word32,
+      subtrahend: word64): bool =
+    FORALL (index: word32), (current: ptr):
+      same_pointer_shape(current, initial)
+        IMPLIES
+          copy_zero_invariant(
+            current,
+            input,
+            original_output,
+            index,
+            size,
+            subtrahend)
+        IMPLIES
+          copy_iteration_zero(
+            current,
+            input,
+            original_output,
+            index,
+            size,
+            subtrahend)
+
+  zero_test_characterization(
+      limb: word64,
+      zero_test: bool): bool =
+    (unsigned64(limb) = unsigned64(zero64)
+      IMPLIES zero_test = TRUE)
+      AND
+        (zero_test = TRUE
+          IMPLIES limb = zero64)
+
+  after_borrow_write(
+      current, input, original_output: ptr,
+      previous_index: word32,
+      borrow: word64,
+      size: word32,
+      subtrahend: word64): bool =
+    int32_in_bounds(signed32(previous_index) + 1)
+      AND
+        (FORALL (next_index: word32):
+          signed32(next_index) = signed32(previous_index) + 1
+            IMPLIES
+              (FORALL (zero_test: bool):
+                zero_test_characterization(
+                  cells(input)(
+                    pointer_offset(input)
+                      + signed32(previous_index)),
+                  zero_test)
+                  IMPLIES
+                    IF NOT (zero_test = TRUE) THEN
+                      copy_word_invariant(
+                        current,
+                        input,
+                        original_output,
+                        next_index,
+                        zero64,
+                        size,
+                        subtrahend)
+                        AND
+                          copy_loop_word(
+                            current,
+                            input,
+                            original_output,
+                            zero64,
+                            size,
+                            subtrahend)
+                    ELSE
+                      (0 <= signed32(size)
+                          - signed32(previous_index)
+                        AND
+                          signed32(size) - signed32(next_index)
+                            <
+                          signed32(size)
+                            - signed32(previous_index))
+                        AND
+                          borrow_invariant(
+                            current,
+                            input,
+                            original_output,
+                            next_index,
+                            borrow,
+                            size,
+                            subtrahend)
+                    ENDIF))
+
+  borrow_iteration(
+      current, input, original_output: ptr,
+      index: word32,
+      borrow: word64,
+      size: word32,
+      subtrahend: word64): bool =
+    IF signed32(index) < signed32(size) THEN
+      bounds_at(
+        input,
+        pointer_offset(input) + signed32(index))
+        AND
+          (FORALL (result: word64):
+            unsigned64(result)
+                =
+                mod(
+                  unsigned64(
+                    cells(input)(
+                      pointer_offset(input) + signed32(index)))
+                    - 1,
+                  radix)
+              IMPLIES
+                (bounds_at(
+                  current,
+                  pointer_offset(current) + signed32(index))
+                  AND is_writable(current) = TRUE)
+                AND
+                  (FORALL (updated: ptr):
+                    same_pointer_shape(updated, current)
+                      IMPLIES
+                        (cells(updated)
+                            =
+                            update_cells(
+                              cells(current),
+                              pointer_offset(updated)
+                                + signed32(index),
+                              result)
+                          AND
+                            cells(updated)(
+                              pointer_offset(updated)
+                                + signed32(index))
+                            =
+                            result)
+                      IMPLIES
+                        after_borrow_write(
+                          updated,
+                          input,
+                          original_output,
+                          index,
+                          borrow,
+                          size,
+                          subtrahend)))
+    ELSE
+      copy_word_invariant(
+        current,
+        input,
+        original_output,
+        index,
+        borrow,
+        size,
+        subtrahend)
+        AND
+          copy_loop_word(
+            current,
+            input,
+            original_output,
+            borrow,
+            size,
+            subtrahend)
+    ENDIF
+
+  borrow_loop(
+      initial, input, original_output: ptr,
+      size: word32,
+      subtrahend: word64): bool =
+    FORALL
+        (index: word32),
+        (borrow: word64),
+        (current: ptr):
+      same_pointer_shape(current, initial)
+        IMPLIES
+          borrow_invariant(
+            current,
+            input,
+            original_output,
+            index,
+            borrow,
+            size,
+            subtrahend)
+        IMPLIES
+          borrow_iteration(
+            current,
+            input,
+            original_output,
+            index,
+            borrow,
+            size,
+            subtrahend)
+
+  initial_borrow_branch(
+      current, input, original_output: ptr,
+      size: word32,
+      subtrahend: word64): bool =
+    initial_borrow_invariant(
+      current,
+      input,
+      original_output,
+      size,
+      subtrahend)
+      AND
+        borrow_loop(
+          current,
+          input,
+          original_output,
+          size,
+          subtrahend)
+
+  initial_zero_branch(
+      current, input, original_output: ptr,
+      size: word32,
+      subtrahend: word64): bool =
+    copy_zero_invariant(
+      current,
+      input,
+      original_output,
+      one32,
+      size,
+      subtrahend)
+      AND
+        copy_loop_zero(
+          current,
+          input,
+          original_output,
+          size,
+          subtrahend)
+
+  after_first_write(
+      current, input, original_output: ptr,
+      size: word32,
+      subtrahend, initial_limb: word64): bool =
+    IF unsigned64(initial_limb) < unsigned64(subtrahend) THEN
+      initial_borrow_branch(
+        current,
+        input,
+        original_output,
+        size,
+        subtrahend)
+    ELSE
+      initial_zero_branch(
+        current,
+        input,
+        original_output,
+        size,
+        subtrahend)
+    ENDIF
+
+  first_result(
+      input, output: ptr,
+      size: word32,
+      subtrahend, initial_limb: word64): bool =
+    FORALL (result: word64):
+      unsigned64(result)
+          =
+          mod(
+            unsigned64(initial_limb) - unsigned64(subtrahend),
+            radix)
+        IMPLIES
+          (bounds_at(output, pointer_offset(output))
+            AND is_writable(output) = TRUE)
+          AND
+            (FORALL (current: ptr):
+              same_pointer_shape(current, output)
+                IMPLIES
+                  cells(current)
+                    =
+                    update_cells(
+                      cells(output),
+                      pointer_offset(current),
+                      result)
+                IMPLIES
+                  after_first_write(
+                    current,
+                    input,
+                    output,
+                    size,
+                    subtrahend,
+                    initial_limb))
+
+  wmpn_sub_1_vc: bool =
+    FORALL
+        (input: ptr),
+        (size: word32),
+        (output: ptr),
+        (subtrahend: word64):
+      valid(input, signed32(size))
+        IMPLIES
+          valid(output, signed32(size))
+        IMPLIES
+          0 < signed32(size)
+        IMPLIES
+          is_writable(output) = TRUE
+        IMPLIES
+          bounds_at(input, pointer_offset(input))
+            AND
+              (LET initial_limb: word64 =
+                 cells(input)(pointer_offset(input))
+               IN
+                 first_result(
+                   input,
+                   output,
+                   size,
+                   subtrahend,
+                   initial_limb))
+
+END sub_1_Sub_1_wmpn_sub_1qtvc

@@ -1,0 +1,69 @@
+% Statement-only formalization of the Thousand Theorems corpus artifact Q422187,
+% "Myhill–Nerode theorem": a language over an arbitrary alphabet is regular if
+% and only if its family of left quotients is finite. This file contains no proof.
+
+Q422187_myhill_nerode_theorem[Alphabet: TYPE]: THEORY
+BEGIN
+  word: TYPE = list[Alphabet]
+  language: TYPE = [word -> bool]
+
+  concatenate(left, right: word): RECURSIVE word =
+    CASES left OF
+      null: right,
+      cons(symbol, rest):
+        cons(symbol, concatenate(rest, right))
+    ENDCASES
+  MEASURE left BY <<
+
+  left_quotient(L: language, prefix: word): language =
+    LAMBDA (suffix: word):
+      L(concatenate(prefix, suffix))
+
+  run(
+      number_of_states: posnat,
+      transition:
+        [below[number_of_states], Alphabet ->
+          below[number_of_states]],
+      state: below[number_of_states],
+      input: word): RECURSIVE below[number_of_states] =
+    CASES input OF
+      null: state,
+      cons(symbol, rest):
+        run(
+          number_of_states,
+          transition,
+          transition(state, symbol),
+          rest)
+    ENDCASES
+  MEASURE input BY <<
+
+  is_regular(L: language): bool =
+    EXISTS
+      (number_of_states: posnat),
+      (start_state: below[number_of_states]),
+      (transition:
+        [below[number_of_states], Alphabet ->
+          below[number_of_states]]),
+      (accepting: [below[number_of_states] -> bool]):
+        FORALL (input: word):
+          L(input) IFF
+            accepting(
+              run(
+                number_of_states,
+                transition,
+                start_state,
+                input))
+
+  finite_range_left_quotient(L: language): bool =
+    EXISTS
+      (number_of_quotients: posnat),
+      (representative:
+        [below[number_of_quotients] -> language]):
+        FORALL (prefix: word):
+          EXISTS (index: below[number_of_quotients]):
+            left_quotient(L, prefix) = representative(index)
+
+  myhill_nerode_theorem: bool =
+    FORALL (L: language):
+      is_regular(L) IFF finite_range_left_quotient(L)
+END Q422187_myhill_nerode_theorem

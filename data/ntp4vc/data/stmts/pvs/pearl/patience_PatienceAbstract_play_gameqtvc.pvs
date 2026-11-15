@@ -1,0 +1,273 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/patience_PatienceAbstract_play_gameqtvc: the verification condition
+% for an abstract patience-solitaire game, relating the final stack count to
+% the maximum length of a strictly increasing input subsequence. This file
+% contains no proof.
+
+patience_PatienceAbstract_play_gameqtvc: THEORY
+BEGIN
+
+  card: TYPE = int
+
+  state: TYPE =
+    [# num_stacks: int,
+       num_elts: int,
+       values: [int -> int],
+       stack_sizes: [int -> int],
+       stacks: [int -> [int -> int]],
+       positions: [int -> [int, int]],
+       preds: [int -> int] #]
+
+  sequence: TYPE =
+    [# seqlen: int,
+       seqval: [int -> int] #]
+
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  nth_int(values: list[int], index: int): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF int_to_nat(index) = 0 THEN
+          head
+        ELSE
+          nth_int(tail, int_to_nat(index) - 1)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  inv(s: state): bool =
+    (0 <= num_stacks(s) AND num_stacks(s) <= num_elts(s))
+      AND
+    (0 < num_elts(s) IMPLIES 0 < num_stacks(s))
+      AND
+    (FORALL (i: int):
+      (0 <= i AND i < num_stacks(s))
+        IMPLIES
+          (1 <= stack_sizes(s)(i)
+            AND
+           (FORALL (j: int):
+             (0 <= j AND j < stack_sizes(s)(i))
+               IMPLIES
+                 (0 <= stacks(s)(i)(j)
+                   AND stacks(s)(i)(j) < num_elts(s)))))
+      AND
+    (FORALL (i: int):
+      (0 <= i AND i < num_elts(s))
+        IMPLIES
+          LET position: [int, int] = positions(s)(i),
+              stack_index: int = position`1,
+              stack_position: int = position`2
+          IN
+            (0 <= stack_index AND stack_index < num_stacks(s))
+              AND
+            (0 <= stack_position
+              AND stack_position < stack_sizes(s)(stack_index))
+              AND
+            stacks(s)(stack_index)(stack_position) = i)
+      AND
+    (FORALL (stack_index: int):
+      (0 <= stack_index AND stack_index < num_stacks(s))
+        IMPLIES
+          (FORALL (stack_position: int):
+            (0 <= stack_position
+              AND stack_position < stack_sizes(s)(stack_index))
+              IMPLIES
+                LET card_index: int =
+                  stacks(s)(stack_index)(stack_position)
+                IN
+                  positions(s)(card_index)
+                    = (stack_index, stack_position)))
+      AND
+    (FORALL (stack_index: int):
+      (0 <= stack_index AND stack_index < num_stacks(s))
+        IMPLIES
+          (FORALL (lower, upper: int):
+            (0 <= lower
+              AND lower < upper
+              AND upper < stack_sizes(s)(stack_index))
+              IMPLIES
+                stacks(s)(stack_index)(lower)
+                  < stacks(s)(stack_index)(upper)))
+      AND
+    (FORALL (stack_index: int):
+      (0 <= stack_index AND stack_index < num_stacks(s))
+        IMPLIES
+          (FORALL (lower, upper: int):
+            (0 <= lower
+              AND lower <= upper
+              AND upper < stack_sizes(s)(stack_index))
+              IMPLIES
+                values(s)(stacks(s)(stack_index)(upper))
+                  <= values(s)(stacks(s)(stack_index)(lower))))
+      AND
+    (FORALL (i: int):
+      (0 <= i AND i < num_elts(s))
+        IMPLIES
+          LET predecessor: int = preds(s)(i),
+              position: [int, int] = positions(s)(i),
+              stack_index: int = position`1
+          IN
+            (-1 <= predecessor AND predecessor < num_elts(s))
+              AND predecessor < i
+              AND
+            (IF predecessor < 0 THEN
+               stack_index = 0
+             ELSE
+               LET predecessor_position: [int, int] =
+                     positions(s)(predecessor),
+                   predecessor_stack: int = predecessor_position`1
+               IN
+                 values(s)(predecessor) < values(s)(i)
+                   AND 0 < stack_index
+                   AND predecessor_stack = stack_index - 1
+             ENDIF))
+
+  increasing_subsequence(candidate: sequence, input: list[int]): bool =
+    (0 <= seqlen(candidate)
+      AND seqlen(candidate) <= length(input))
+      AND
+    ((FORALL (i: int):
+      (0 <= i AND i < seqlen(candidate))
+        IMPLIES
+          (0 <= seqval(candidate)(i)
+            AND seqval(candidate)(i) < length(input)))
+      AND
+     (FORALL (i, j: int):
+       (0 <= i AND i < j AND j < seqlen(candidate))
+         IMPLIES seqval(candidate)(i) < seqval(candidate)(j)))
+      AND
+    (FORALL (i, j: int):
+      (0 <= i AND i < j AND j < seqlen(candidate))
+        IMPLIES
+          nth_int(input, seqval(candidate)(i))
+            < nth_int(input, seqval(candidate)(j)))
+
+  maximal_subsequence(stack_count: int, input: list[int]): bool =
+    (EXISTS (candidate: sequence):
+      seqlen(candidate) = stack_count
+        AND increasing_subsequence(candidate, input))
+      AND
+    (FORALL (candidate: sequence):
+      increasing_subsequence(candidate, input)
+        IMPLIES seqlen(candidate) <= stack_count)
+
+  loop_inv(
+      s: state,
+      ns, i: int,
+      seq1: [int -> int],
+      idx: int): bool =
+    (-1 <= idx AND idx < num_elts(s))
+      AND
+    (0 <= i
+      IMPLIES
+        0 <= idx
+          AND
+        LET position: [int, int] = positions(s)(idx)
+        IN position`1 = i)
+      AND
+    (i + 1 < ns IMPLIES idx < seq1(i + 1))
+      AND
+    ((0 <= i AND i < ns - 1)
+      IMPLIES values(s)(idx) < values(s)(seq1(i + 1)))
+      AND
+    (FORALL (j: int):
+      (i < j AND j < ns)
+        IMPLIES
+          (0 <= seq1(j) AND seq1(j) < num_elts(s)))
+      AND
+    (FORALL (j, k: int):
+      (i < j AND j < k AND k < ns)
+        IMPLIES seq1(j) < seq1(k))
+      AND
+    (FORALL (j, k: int):
+      (i < j AND j < k AND k < ns)
+        IMPLIES values(s)(seq1(j)) < values(s)(seq1(k)))
+
+  update_sequence(
+      seq1: [int -> int],
+      index, value: int): [int -> int] =
+    seq1 WITH [(index) := value]
+
+  loop_preservation(
+      s: state,
+      ns, upper: int,
+      seq1: [int -> int],
+      idx: int): bool =
+    FORALL (i: int):
+      ((i <= upper AND 0 <= i)
+        AND loop_inv(s, ns, i, seq1, idx))
+        IMPLIES
+          loop_inv(
+            s,
+            ns,
+            i - 1,
+            update_sequence(seq1, i, idx),
+            preds(s)(idx))
+
+  loop_obligations(
+      s: state,
+      input: list[int],
+      ns, upper: int): bool =
+    FORALL (seq1: [int -> int]), (idx: int):
+      loop_preservation(s, ns, upper, seq1, idx)
+        AND
+      (loop_inv(s, ns, 0 - 1, seq1, idx)
+        IMPLIES maximal_subsequence(num_stacks(s), input))
+
+  nonempty_branch(s: state, input: list[int]): bool =
+    LET ns: int = num_stacks(s),
+        top_index: int =
+          stacks(s)(ns - 1)(stack_sizes(s)(ns - 1) - 1),
+        empty_sequence: [int -> int] =
+          (LAMBDA (ignored: int): -1),
+        upper: int = ns - 1
+    IN
+      ((0 - 1 <= upper)
+        IMPLIES
+          loop_inv(s, ns, upper, empty_sequence, top_index)
+            AND loop_obligations(s, input, ns, upper))
+        AND
+      (upper < 0 - 1
+        IMPLIES maximal_subsequence(num_stacks(s), input))
+
+  final_state(s: state, input: list[int]): bool =
+    inv(s)
+      AND num_elts(s) = 0 + length(input)
+      AND
+    (FORALL (i: int):
+      (0 <= i AND i < 0)
+        IMPLIES values(s)(i) = -1)
+      AND
+    (FORALL (i: int):
+      (0 <= i AND i < num_elts(s))
+        IMPLIES values(s)(i) = nth_int(input, i - 0))
+
+  play_game_vc: bool =
+    FORALL (input: list[int]):
+      LET initial_state: state =
+        (# num_stacks := 0,
+           num_elts := 0,
+           values := (LAMBDA (i: int): -1),
+           stack_sizes := (LAMBDA (i: int): 0),
+           stacks :=
+             (LAMBDA (i: int):
+               (LAMBDA (j: int): -1)),
+           positions :=
+             (LAMBDA (i: int): (-1, -1)),
+           preds := (LAMBDA (i: int): -1) #)
+      IN
+        inv(initial_state)
+          AND
+        (FORALL (s: state):
+          final_state(s, input)
+            IMPLIES
+              IF num_stacks(s) = 0 THEN
+                maximal_subsequence(num_stacks(s), input)
+              ELSE
+                nonempty_branch(s, input)
+              ENDIF)
+
+END patience_PatienceAbstract_play_gameqtvc

@@ -1,0 +1,133 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/tree_height_HeightStack_height_stackqtvc: the verification condition
+% for recursive explicit-stack tree-height computation, including termination
+% decrease and preservation of the result specification. This file contains
+% no proof.
+
+tree_height_HeightStack_height_stackqtvc[
+    Element: TYPE+]: THEORY
+BEGIN
+
+  tree: DATATYPE
+  BEGIN
+    Empty: Empty?
+    Node(
+      left_subtree: tree,
+      root_element: Element,
+      right_subtree: tree): Node?
+  END tree
+
+  stack_entry: TYPE = [int, tree]
+  stack: TYPE = list[stack_entry]
+
+  int_max(left, right: int): int =
+    IF left <= right THEN right ELSE left ENDIF
+
+  tree_size(values: tree): RECURSIVE int =
+    CASES values OF
+      Empty:
+        0,
+      Node(left, root, right):
+        1 + tree_size(left) + tree_size(right)
+    ENDCASES
+  MEASURE values BY <<
+
+  tree_height(values: tree): RECURSIVE int =
+    CASES values OF
+      Empty:
+        0,
+      Node(left, root, right):
+        1 + int_max(tree_height(left), tree_height(right))
+    ENDCASES
+  MEASURE values BY <<
+
+  heights(values: stack): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(entry, rest):
+        int_max(
+          entry`1 + tree_height(entry`2),
+          heights(rest))
+    ENDCASES
+  MEASURE values BY <<
+
+  sizes(values: stack): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(entry, rest):
+        tree_size(entry`2) + sizes(rest)
+    ENDCASES
+  MEASURE values BY <<
+
+  tail_is(values, expected_tail: stack): bool =
+    CASES values OF
+      null:
+        FALSE,
+      cons(entry, rest):
+        rest = expected_tail
+    ENDCASES
+
+  recursive_call_obligation(m: int, values: stack): bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(entry, rest):
+        CASES entry`2 OF
+          Empty:
+            (((0 <= sizes(values) AND sizes(rest) < sizes(values))
+                OR
+              (sizes(values) = sizes(rest)
+                AND tail_is(values, rest)))
+              AND 0 <= int_max(m, entry`1)),
+          Node(left, root, right):
+            LET recursive_stack: stack =
+              cons(
+                (entry`1 + 1, left),
+                cons((entry`1 + 1, right), rest))
+            IN
+              (((0 <= sizes(values)
+                  AND sizes(recursive_stack) < sizes(values))
+                  OR
+                (sizes(values) = sizes(recursive_stack)
+                  AND tail_is(values, recursive_stack)))
+                AND 0 <= m)
+        ENDCASES
+    ENDCASES
+
+  result_premise(
+      m: int,
+      values: stack,
+      result: int): bool =
+    CASES values OF
+      null:
+        result = m,
+      cons(entry, rest):
+        CASES entry`2 OF
+          Empty:
+            result =
+              int_max(int_max(m, entry`1), heights(rest)),
+          Node(left, root, right):
+            LET recursive_stack: stack =
+              cons(
+                (entry`1 + 1, left),
+                cons((entry`1 + 1, right), rest))
+            IN
+              result =
+                int_max(m, heights(recursive_stack))
+        ENDCASES
+    ENDCASES
+
+  height_stack_vc: bool =
+    FORALL (m: int), (values: stack):
+      0 <= m
+        IMPLIES
+          recursive_call_obligation(m, values)
+            AND
+          (FORALL (result: int):
+            result_premise(m, values, result)
+              IMPLIES
+                result = int_max(m, heights(values)))
+
+END tree_height_HeightStack_height_stackqtvc

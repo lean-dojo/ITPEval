@@ -1,0 +1,136 @@
+% Statement-only formalization of the VERINA corpus artifact
+% verina_advanced_70, catalog title "semiOrderedPermutation": computing the
+% minimum adjacent swaps needed to place 1 first and n last in a permutation,
+% with its exact index-arithmetic correctness contract. This file contains no proof.
+
+verina_advanced_70: THEORY
+BEGIN
+
+  int_list_length(values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        int_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  int_member(
+      value: int,
+      values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        FALSE,
+      cons(head, tail):
+        head = value OR int_member(value, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  no_duplicates(values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        NOT int_member(head, tail)
+          AND no_duplicates(tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  all_in_permutation_range(
+      values: list[int],
+      upper_bound: nat): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        1 <= head
+          AND head <= (upper_bound :: int)
+          AND all_in_permutation_range(tail, upper_bound)
+    ENDCASES
+  MEASURE values BY <<
+
+  semiOrderedPermutation_precond(
+      nums: list[int]): bool =
+    LET n: nat = int_list_length(nums)
+    IN
+      n > 0
+        AND no_duplicates(nums)
+        AND all_in_permutation_range(nums, n)
+
+  % This is Lean List.idxOf: it returns the first matching index, or the list
+  % length when the requested value does not occur.
+  int_list_index_of(
+      value: int,
+      values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF head = value THEN
+          0
+        ELSE
+          1 + int_list_index_of(value, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  % Lean natural-number subtraction is truncated at zero.
+  nat_subtract(first, second: nat): nat =
+    IF first >= second THEN first - second ELSE 0 ENDIF
+
+  % The source precondition proof argument is computationally irrelevant.
+  % This definition is the exact proof-erased index arithmetic of the source.
+  semiOrderedPermutation(nums: list[int]): int =
+    LET lengthList: nat = int_list_length(nums),
+        numOne: int = 1,
+        largestNum: int = (lengthList :: int),
+        firstIndex: nat = int_list_index_of(numOne, nums),
+        lastIndex: nat = int_list_index_of(largestNum, nums),
+        startPosition: nat = 0,
+        endPosition: nat = nat_subtract(lengthList, 1),
+        shouldMoveOne: bool = firstIndex /= startPosition,
+        shouldMoveLast: bool = lastIndex /= endPosition,
+        distanceOne: nat =
+          IF shouldMoveOne THEN firstIndex ELSE 0 ENDIF,
+        distanceLast: nat =
+          IF shouldMoveLast THEN
+            nat_subtract(endPosition, lastIndex)
+          ELSE
+            0
+          ENDIF,
+        totalMoves: nat = distanceOne + distanceLast,
+        needAdjustment: bool = firstIndex > lastIndex,
+        adjustedMoves: nat =
+          IF needAdjustment THEN
+            nat_subtract(totalMoves, 1)
+          ELSE
+            totalMoves
+          ENDIF
+    IN
+      (adjustedMoves :: int)
+
+  semiOrderedPermutation_postcond(
+      nums: list[int],
+      result: int): bool =
+    LET n: nat = int_list_length(nums),
+        pos1: nat = int_list_index_of(1, nums),
+        posn: nat =
+          int_list_index_of((n :: int), nums)
+    IN
+      IF pos1 > posn THEN
+        ((pos1 + n) :: int)
+          = result + 2 + (posn :: int)
+      ELSE
+        ((pos1 + n) :: int)
+          = result + 1 + (posn :: int)
+      ENDIF
+
+  semiOrderedPermutation_spec_satisfied: bool =
+    FORALL (nums: list[int]):
+      semiOrderedPermutation_precond(nums)
+        IMPLIES
+          semiOrderedPermutation_postcond(
+            nums,
+            semiOrderedPermutation(nums))
+
+END verina_advanced_70

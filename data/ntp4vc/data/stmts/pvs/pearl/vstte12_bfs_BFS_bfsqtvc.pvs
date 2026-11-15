@@ -1,0 +1,297 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/vstte12_bfs_BFS_bfsqtvc: the breadth-first-search verification
+% condition for shortest-path frontiers, successor closure, and the
+% unreachable-target result. This file contains no proof.
+
+vstte12_bfs_BFS_bfsqtvc[
+  vertex, set_value: TYPE+,
+  successor: [vertex -> finite_set[vertex]],
+  vertex_equal: [vertex, vertex -> bool],
+  to_fset: [set_value -> finite_set[vertex]],
+  choose1: [set_value -> vertex]
+]: THEORY
+BEGIN
+
+  IMPORTING finite_sets[vertex]
+
+  path(
+      source, destination: vertex,
+      path_length: int): INDUCTIVE bool =
+    (source = destination AND path_length = 0)
+      OR
+    (EXISTS (previous: vertex), (previous_length: int):
+      path(source, previous, previous_length)
+        AND successor(previous)(destination)
+        AND path_length = previous_length + 1)
+
+  shortest_path(
+      source, destination: vertex,
+      path_length: int): bool =
+    path(source, destination, path_length)
+      AND
+    (FORALL (other_length: int):
+      other_length < path_length
+        IMPLIES
+          NOT path(source, destination, other_length))
+
+  inv(
+      source, target: vertex,
+      visited, current, next_set: finite_set[vertex],
+      depth: int): bool =
+    subset?(current, visited)
+      AND
+    (FORALL (x: vertex):
+      current(x)
+        IMPLIES shortest_path(source, x, depth))
+      AND
+    subset?(next_set, visited)
+      AND
+    (FORALL (x: vertex):
+      next_set(x)
+        IMPLIES shortest_path(source, x, depth + 1))
+      AND
+    (FORALL (x: vertex), (path_length: int):
+      path(source, x, path_length)
+        IMPLIES
+          path_length <= depth
+            IMPLIES visited(x))
+      AND
+    (FORALL (x: vertex):
+      visited(x)
+        IMPLIES
+          (EXISTS (path_length: int):
+            path(source, x, path_length)
+              AND path_length <= depth + 1))
+      AND
+    (FORALL (x: vertex):
+      shortest_path(source, x, depth + 1)
+        IMPLIES next_set(x) OR NOT visited(x))
+      AND
+    (visited(target)
+      IMPLIES current(target) OR next_set(target))
+
+  closed_after_frontiers(
+      visited, current, next_set: finite_set[vertex],
+      x: vertex): bool =
+    visited(x)
+      IMPLIES
+        NOT current(x)
+          IMPLIES
+            NOT next_set(x)
+              IMPLIES
+                (FORALL (y: vertex):
+                  successor(x)(y)
+                    IMPLIES visited(y))
+
+  set_specification: bool =
+    FORALL (selected_set: set_value):
+      to_fset(selected_set) /= emptyset[vertex]
+        IMPLIES
+          to_fset(selected_set)(choose1(selected_set))
+
+  bfs_vc: bool =
+    set_specification
+      IMPLIES
+        (FORALL
+            (visited, o1, o2, visited1: set_value),
+            (source: vertex),
+            (current: set_value),
+            (target: vertex):
+          (to_fset(visited) = emptyset[vertex]
+            AND (card(to_fset(visited)) :: int) = 0
+            AND to_fset(o1) = emptyset[vertex]
+            AND (card(to_fset(o1)) :: int) = 0
+            AND to_fset(o2) = emptyset[vertex]
+            AND (card(to_fset(o2)) :: int) = 0
+            AND
+              to_fset(visited1)
+                = add(source, to_fset(visited))
+            AND
+              (IF to_fset(visited)(source) THEN
+                 card(to_fset(visited1))
+                   = card(to_fset(visited))
+               ELSE
+                 (card(to_fset(visited1)) :: int)
+                   = (card(to_fset(visited)) :: int) + 1
+               ENDIF)
+            AND
+              to_fset(current)
+                = add(source, to_fset(o1))
+            AND
+              (IF to_fset(o1)(source) THEN
+                 card(to_fset(current))
+                   = card(to_fset(o1))
+               ELSE
+                 (card(to_fset(current)) :: int)
+                   = (card(to_fset(o1)) :: int) + 1
+               ENDIF))
+            IMPLIES
+              inv(
+                source, target,
+                to_fset(visited1),
+                to_fset(current),
+                to_fset(o2),
+                0)
+              AND
+              (to_fset(current) = emptyset[vertex]
+                IMPLIES to_fset(o2) = emptyset[vertex])
+              AND
+              (FORALL (x: vertex):
+                closed_after_frontiers(
+                  to_fset(visited1),
+                  to_fset(current),
+                  to_fset(o2),
+                  x))
+              AND 0 <= 0
+              AND
+              (FORALL
+                  (depth: int),
+                  (next_set, current1, visited2: set_value):
+                (inv(
+                   source, target,
+                   to_fset(visited2),
+                   to_fset(current1),
+                   to_fset(next_set),
+                   depth)
+                  AND
+                  (to_fset(current1) = emptyset[vertex]
+                    IMPLIES
+                      to_fset(next_set) = emptyset[vertex])
+                  AND
+                  (FORALL (x: vertex):
+                    closed_after_frontiers(
+                      to_fset(visited2),
+                      to_fset(current1),
+                      to_fset(next_set),
+                      x))
+                  AND 0 <= depth)
+                  IMPLIES
+                    IF to_fset(current1) /= emptyset[vertex]
+                    THEN
+                      to_fset(current1) /= emptyset[vertex]
+                        AND
+                      (FORALL (current2: set_value):
+                        LET selected: vertex = choose1(current1)
+                        IN
+                          (to_fset(current1)(selected)
+                            AND
+                           to_fset(current2)
+                             = remove(
+                                 selected,
+                                 to_fset(current1)))
+                            IMPLIES
+                              (vertex_equal(selected, target)
+                                IFF selected = target)
+                                IMPLIES
+                                  IF vertex_equal(
+                                       selected, target)
+                                  THEN
+                                    shortest_path(
+                                      source, target, depth)
+                                  ELSE
+                                    (inv(
+                                       source, target,
+                                       to_fset(visited2),
+                                       to_fset(current2),
+                                       to_fset(next_set),
+                                       depth)
+                                      AND
+                                     shortest_path(
+                                       source, selected, depth)
+                                      AND
+                                     (FORALL (x: vertex):
+                                       x /= selected
+                                         IMPLIES
+                                           closed_after_frontiers(
+                                             to_fset(visited2),
+                                             to_fset(current2),
+                                             to_fset(next_set),
+                                             x)))
+                                      AND
+                                    (FORALL
+                                        (next1, visited3:
+                                          set_value):
+                                      (inv(
+                                         source, target,
+                                         to_fset(visited3),
+                                         to_fset(current2),
+                                         to_fset(next1),
+                                         depth)
+                                        AND
+                                       subset?(
+                                         successor(selected),
+                                         to_fset(visited3))
+                                        AND
+                                       (FORALL (x: vertex):
+                                         closed_after_frontiers(
+                                           to_fset(visited3),
+                                           to_fset(current2),
+                                           to_fset(next1),
+                                           x)))
+                                        IMPLIES
+                                          IF to_fset(current2)
+                                               = emptyset[vertex]
+                                          THEN
+                                            (FORALL
+                                                (o3: set_value):
+                                              (to_fset(o3)
+                                                 = emptyset[vertex]
+                                                AND
+                                               (card(to_fset(o3))
+                                                  :: int)
+                                                 = 0)
+                                                IMPLIES
+                                                  inv(
+                                                    source,
+                                                    target,
+                                                    to_fset(visited3),
+                                                    to_fset(next1),
+                                                    to_fset(o3),
+                                                    depth + 1)
+                                                  AND
+                                                  (to_fset(next1)
+                                                     = emptyset[vertex]
+                                                    IMPLIES
+                                                      to_fset(o3)
+                                                        = emptyset[
+                                                            vertex])
+                                                  AND
+                                                  (FORALL
+                                                      (x: vertex):
+                                                    closed_after_frontiers(
+                                                      to_fset(
+                                                        visited3),
+                                                      to_fset(next1),
+                                                      to_fset(o3),
+                                                      x))
+                                                  AND 0 <= depth + 1)
+                                          ELSE
+                                            inv(
+                                              source, target,
+                                              to_fset(visited3),
+                                              to_fset(current2),
+                                              to_fset(next1),
+                                              depth)
+                                              AND
+                                            (to_fset(current2)
+                                               = emptyset[vertex]
+                                              IMPLIES
+                                                to_fset(next1)
+                                                  = emptyset[vertex])
+                                              AND
+                                            (FORALL (x: vertex):
+                                              closed_after_frontiers(
+                                                to_fset(visited3),
+                                                to_fset(current2),
+                                                to_fset(next1),
+                                                x))
+                                              AND 0 <= depth
+                                          ENDIF)
+                                  ENDIF)
+                    ELSE
+                      (FORALL (path_length: int):
+                        NOT path(
+                          source, target, path_length))
+                    ENDIF))
+
+END vstte12_bfs_BFS_bfsqtvc

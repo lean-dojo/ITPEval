@@ -1,0 +1,78 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2025_a5
+% (putnambench__pvs__putnam_2025_a5): the sign sequences maximizing the
+% number of permutations with prescribed adjacent ascent and descent signs
+% are exactly the two alternating sign sequences. This file contains no proof.
+
+putnam_2025_a5: THEORY
+BEGIN
+  sign_sequence: TYPE = [nat -> int]
+
+  admissible_sign_sequence(n: nat, s: sign_sequence): bool =
+    FORALL (index: nat):
+      index < n IMPLIES (s(index) = 1 OR s(index) = -1)
+
+  permutation_code_count(n: nat): nat =
+    (n + 1) ^ (n + 1)
+
+  permutation_entry(code, index, n: nat): nat =
+    mod(ndiv(code, (n + 1) ^ index), n + 1)
+
+  permutation_code(code, n: nat): bool =
+    code < permutation_code_count(n)
+      AND
+        (FORALL (left, right: nat):
+          (left < n + 1
+            AND right < n + 1
+            AND permutation_entry(code, left, n)
+              = permutation_entry(code, right, n))
+          IMPLIES left = right)
+
+  satisfies_signs(
+      code, n: nat,
+      s: sign_sequence): bool =
+    permutation_code(code, n)
+      AND
+        (FORALL (index: nat):
+          index < n IMPLIES
+            0
+              < s(index)
+                  * ((permutation_entry(code, index + 1, n) :: int)
+                      - (permutation_entry(code, index, n) :: int)))
+
+  qualifying_permutation_count(
+      n: nat,
+      s: sign_sequence,
+      limit: nat): RECURSIVE nat =
+    IF limit = 0 THEN
+      0
+    ELSE
+      qualifying_permutation_count(n, s, limit - 1)
+        + IF satisfies_signs(limit - 1, n, s) THEN 1 ELSE 0 ENDIF
+    ENDIF
+  MEASURE limit
+
+  f(n: nat, s: sign_sequence): nat =
+    qualifying_permutation_count(
+      n, s, permutation_code_count(n))
+
+  alternating_sign(index: nat): int =
+    IF mod(index, 2) = 0 THEN 1 ELSE -1 ENDIF
+
+  alternating_solution(n: nat, s: sign_sequence): bool =
+    (FORALL (index: nat):
+      index < n IMPLIES
+        s(index) = alternating_sign(index + 1))
+      OR
+        (FORALL (index: nat):
+          index < n IMPLIES
+            s(index) = alternating_sign(index))
+
+  putnam_2025_a5: bool =
+    FORALL (n: nat), (s: sign_sequence):
+      (1 <= n AND admissible_sign_sequence(n, s))
+        IMPLIES
+          ((FORALL (t: sign_sequence):
+              admissible_sign_sequence(n, t)
+                IMPLIES f(n, t) <= f(n, s))
+            IFF alternating_solution(n, s))
+END putnam_2025_a5

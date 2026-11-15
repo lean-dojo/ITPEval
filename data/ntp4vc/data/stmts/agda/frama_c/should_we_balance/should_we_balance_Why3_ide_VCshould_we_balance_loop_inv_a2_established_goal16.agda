@@ -1,0 +1,478 @@
+-- Statement-only formalization of the NTP4VC corpus artifact
+-- frama_c/should_we_balance/should_we_balance_Why3_ide_VCshould_we_balance_loop_inv_a2_established_goal16:
+-- under the stated integer-range, memory-validity, separation, framing,
+-- linkedness, havoc-update, and imported universal CPU-mask laws, the
+-- havoc-updated mask entry at the address based on a_8 and i_1 is nonzero.
+-- This file contains no proof.
+
+{-# OPTIONS --safe #-}
+
+module should-we-balance-Why3-ide-VCshould-we-balance-loop-inv-a2-established-goal16 where
+
+open import Agda.Builtin.Bool using (Bool; false; true)
+open import Agda.Builtin.Equality using (_≡_)
+open import Agda.Builtin.Int using (Int; negsuc; pos)
+open import Agda.Builtin.Nat using (Nat; zero; suc; _+_)
+
+infix 4 _≠_ _≤Z_ _<Z_ _↔_
+infixr 3 _∧_
+
+data Bottom : Set where
+
+Not : Set → Set
+Not proposition = proposition → Bottom
+
+_≠_ : {A : Set} → A → A → Set
+x ≠ y = Not (x ≡ y)
+
+record _∧_ (A B : Set) : Set where
+  constructor both
+  field
+    first  : A
+    second : B
+
+data Either (A B : Set) : Set where
+  left  : A → Either A B
+  right : B → Either A B
+
+record _↔_ (A B : Set) : Set where
+  constructor iff
+  field
+    forward  : A → B
+    backward : B → A
+
+natLessOrEqual : Nat → Nat → Bool
+natLessOrEqual zero _ = true
+natLessOrEqual (suc _) zero = false
+natLessOrEqual (suc m) (suc n) = natLessOrEqual m n
+
+natLess : Nat → Nat → Bool
+natLess zero zero = false
+natLess zero (suc _) = true
+natLess (suc _) zero = false
+natLess (suc m) (suc n) = natLess m n
+
+intLessOrEqual : Int → Int → Bool
+intLessOrEqual (pos m) (pos n) = natLessOrEqual m n
+intLessOrEqual (pos _) (negsuc _) = false
+intLessOrEqual (negsuc _) (pos _) = true
+intLessOrEqual (negsuc m) (negsuc n) = natLessOrEqual n m
+
+intLess : Int → Int → Bool
+intLess (pos m) (pos n) = natLess m n
+intLess (pos _) (negsuc _) = false
+intLess (negsuc _) (pos _) = true
+intLess (negsuc m) (negsuc n) = natLess n m
+
+_≤Z_ : Int → Int → Set
+x ≤Z y = intLessOrEqual x y ≡ true
+
+_<Z_ : Int → Int → Set
+x <Z y = intLess x y ≡ true
+
+difference : Nat → Nat → Int
+difference zero zero = pos zero
+difference (suc m) zero = pos (suc m)
+difference zero (suc n) = negsuc n
+difference (suc m) (suc n) = difference m n
+
+addInt : Int → Int → Int
+addInt (pos m) (pos n) = pos (m + n)
+addInt (pos m) (negsuc n) = difference m (suc n)
+addInt (negsuc m) (pos n) = difference n (suc m)
+addInt (negsuc m) (negsuc n) = negsuc (suc (m + n))
+
+zeroZ oneZ twoZ threeZ fourZ fiveZ : Int
+zeroZ = pos zero
+oneZ = pos (suc zero)
+twoZ = pos 2
+threeZ = pos 3
+fourZ = pos 4
+fiveZ = pos 5
+
+uint8Upper uint32Upper : Int
+uint8Upper = pos 256
+uint32Upper = pos 4294967296
+
+signed32Lower signed32Upper signed32Maximum : Int
+signed32Lower = negsuc 2147483647
+signed32Upper = pos 2147483648
+signed32Maximum = pos 2147483647
+
+record Addr : Set where
+  constructor addr
+  field
+    base   : Int
+    offset : Int
+
+open Addr
+
+shift : Addr → Int → Addr
+shift p k = addr (base p) (addInt (offset p) k)
+
+ValidRW : (Int → Int) → Addr → Int → Set
+ValidRW allocation p n =
+  zeroZ <Z n →
+  (zeroZ <Z base p) ∧
+  (zeroZ ≤Z offset p) ∧
+  (addInt (offset p) n ≤Z allocation (base p))
+
+ValidRD : (Int → Int) → Addr → Int → Set
+ValidRD allocation p n =
+  zeroZ <Z n →
+  (zeroZ ≠ base p) ∧
+  (zeroZ ≤Z offset p) ∧
+  (addInt (offset p) n ≤Z allocation (base p))
+
+Separated : Addr → Int → Addr → Int → Set
+Separated p a q b =
+  Either
+    (a ≤Z zeroZ)
+    (Either
+      (b ≤Z zeroZ)
+      (Either
+        (base p ≠ base q)
+        (Either
+          (addInt (offset q) b ≤Z offset p)
+          (addInt (offset p) a ≤Z offset q))))
+
+Framed : (Int → Int) → (Addr → Addr) → Set
+Framed region pointer-memory =
+  (p : Addr) →
+  region (base (pointer-memory p)) ≤Z zeroZ
+
+IsUint8 : Int → Set
+IsUint8 x =
+  (zeroZ ≤Z x) ∧
+  (x <Z uint8Upper)
+
+IsUint32 : Int → Set
+IsUint32 x =
+  (zeroZ ≤Z x) ∧
+  (x <Z uint32Upper)
+
+IsSint32 : Int → Set
+IsSint32 x =
+  (signed32Lower ≤Z x) ∧
+  (x <Z signed32Upper)
+
+record HavocTheory : Set where
+  field
+    havoc :
+      (Addr → Int) →
+      (Addr → Int) →
+      Addr →
+      Int →
+      Addr →
+      Int
+
+    havoc-separated :
+      (memory₀ memory₁ : Addr → Int) →
+      (start : Addr) →
+      (length : Int) →
+      (location : Addr) →
+      Separated location oneZ start length →
+      havoc memory₀ memory₁ start length location ≡ memory₁ location
+
+    havoc-overwritten :
+      (memory₀ memory₁ : Addr → Int) →
+      (start : Addr) →
+      (length : Int) →
+      (location : Addr) →
+      Not (Separated location oneZ start length) →
+      havoc memory₀ memory₁ start length location ≡ memory₀ location
+
+open HavocTheory
+
+record CpuMaskTheory (lSize : Int) : Set₁ where
+  field
+    lIdleCpu          : Int → Int
+    lSchedGroupCpus   : Addr → Addr
+    lSchedGroupMask   : Addr → Addr
+    lGroupBalanceMask : Addr → Addr
+    lGroupBalanceCpu  : Addr → Int
+    lCpuSmtMask       : Int → Addr
+
+    idle-cpu-is-uint8 :
+      (cpu : Int) →
+      IsUint8 (lIdleCpu cpu)
+
+    mask-reflexive :
+      (i : Int) →
+      (integer-memory : Addr → Int) →
+      (pointer-memory : Addr → Addr) →
+      zeroZ ≤Z i →
+      i <Z lSize →
+      integer-memory
+        (shift
+          (pointer-memory (shift (lCpuSmtMask i) zeroZ))
+          i)
+        ≠ zeroZ
+
+    mask-symmetric :
+      (integer-memory : Addr → Int) →
+      (pointer-memory : Addr → Addr) →
+      (j i : Int) →
+      integer-memory
+        (shift
+          (pointer-memory (shift (lCpuSmtMask j) zeroZ))
+          i)
+        ≠ zeroZ →
+      zeroZ ≤Z i →
+      i <Z lSize →
+      zeroZ ≤Z j →
+      j <Z lSize →
+      integer-memory
+        (shift
+          (pointer-memory (shift (lCpuSmtMask i) zeroZ))
+          j)
+        ≠ zeroZ
+
+    mask-transitive :
+      (pointer-memory : Addr → Addr) →
+      (i : Int) →
+      (integer-memory : Addr → Int) →
+      (j k : Int) →
+      integer-memory
+        (shift
+          (pointer-memory (shift (lCpuSmtMask i) zeroZ))
+          j)
+        ≠ zeroZ →
+      integer-memory
+        (shift
+          (pointer-memory (shift (lCpuSmtMask j) zeroZ))
+          k)
+        ≠ zeroZ →
+      zeroZ ≤Z i →
+      i <Z lSize →
+      zeroZ ≤Z j →
+      j <Z lSize →
+      zeroZ ≤Z k →
+      k <Z lSize →
+      integer-memory
+        (shift
+          (pointer-memory (shift (lCpuSmtMask i) zeroZ))
+          k)
+        ≠ zeroZ
+
+open CpuMaskTheory
+
+Goal16 :
+  HavocTheory →
+  Int →
+  (Addr → Addr) →
+  (Addr → Addr) →
+  (Addr → Addr) →
+  (Int → Addr) →
+  (Int → Int) →
+  ((Int → Int) → Set) →
+  Set
+Goal16
+  havoc-theory
+  lSize
+  lSchedGroupCpus
+  lSchedGroupMask
+  lGroupBalanceMask
+  lCpuSmtMask
+  region
+  linked =
+  (a₁ : Addr) →
+  (integer-memory : Addr → Int) →
+  (pointer-memory : Addr → Addr) →
+  (a : Addr) →
+  (i : Int) →
+  (integer-memory₁ : Addr → Int) →
+  (i₁ : Int) →
+  (allocation : Int → Int) →
+  let
+    a₂ = shift a₁ threeZ
+    x = integer-memory a₂
+    a₃ = shift a₁ fourZ
+    a₄ = pointer-memory a₃
+    a₅ = pointer-memory (shift a₄ zeroZ)
+    a₆ = shift a₁ oneZ
+    x₁ = integer-memory a₆
+    x₂ = integer-memory (shift a₅ x₁)
+    a₇ = shift a i
+    a₈ = pointer-memory (shift a₇ zeroZ)
+    a₉ = shift a₈ zeroZ
+    a₁₀ =
+      havoc havoc-theory
+        integer-memory₁
+        integer-memory
+        a₉
+        lSize
+    a₁₁ = shift a₁ zeroZ
+    a₁₂ = pointer-memory a₁₁
+    a₁₃ = shift a₁₂ zeroZ
+    a₁₄ = pointer-memory a₁₃
+    a₁₅ = lGroupBalanceMask a₁₄
+    a₁₆ = pointer-memory (shift a₁₅ zeroZ)
+    a₁₇ = shift a₅ zeroZ
+    a₁₈ = shift a₁₆ zeroZ
+  in
+  x ≠ twoZ →
+  x₂ ≠ zeroZ →
+  a₁₀ (shift a₁₆ i₁) ≠ zeroZ →
+  zeroZ ≤Z i →
+  i <Z lSize →
+  zeroZ ≤Z i₁ →
+  i₁ <Z lSize →
+  zeroZ ≤Z x₁ →
+  x₁ <Z lSize →
+  region (base a) ≤Z zeroZ →
+  region (base a₁) ≤Z zeroZ →
+  Framed region pointer-memory →
+  linked allocation →
+  IsUint32 i →
+  ValidRD allocation a₁ fiveZ →
+  IsUint32 x →
+  IsSint32 x₁ →
+  ValidRD allocation a₃ oneZ →
+  ValidRD allocation a₆ oneZ →
+  ValidRD allocation a₂ oneZ →
+  ValidRD allocation a₁₁ oneZ →
+  ValidRD allocation a₇ oneZ →
+  ValidRD allocation a₄ oneZ →
+  ValidRD
+    allocation
+    (pointer-memory (shift a₁ twoZ))
+    twoZ →
+  ValidRD allocation a₁₂ twoZ →
+  IsSint32 (integer-memory (shift a₁₂ oneZ)) →
+  ValidRD allocation a₁₃ oneZ →
+  ValidRD allocation a₁₄ oneZ →
+  ValidRD allocation a₁₅ oneZ →
+  IsUint8 x₂ →
+  ValidRD allocation a₁₇ lSize →
+  ValidRW allocation a₉ lSize →
+  ValidRD allocation a₁₈ lSize →
+  Separated a₉ lSize a₁₈ lSize →
+  ((index : Int) →
+    zeroZ ≤Z index →
+    index <Z lSize →
+    Separated
+      a₁₇
+      lSize
+      (shift
+        (pointer-memory (shift (shift a index) zeroZ))
+        zeroZ)
+      lSize) →
+  ((index : Int) →
+    let current = shift a index
+    in
+    zeroZ ≤Z index →
+    index <Z lSize →
+    ValidRD allocation current oneZ ∧
+    ValidRW
+      allocation
+      (shift
+        (pointer-memory (shift current zeroZ))
+        zeroZ)
+      lSize) →
+  ((index : Int) →
+    zeroZ ≤Z index →
+    index <Z lSize →
+    ((a₁₀ (shift a₁₆ index) ≠ zeroZ) ↔
+      (a₁₀ (shift a₈ index) ≠ zeroZ))) →
+  ((address : Addr) →
+    let
+      mask = lSchedGroupCpus address
+      contents =
+        shift
+          (pointer-memory (shift mask zeroZ))
+          zeroZ
+    in
+    ValidRD allocation mask oneZ ∧
+    ValidRD allocation contents lSize ∧
+    ((index : Int) →
+      zeroZ ≤Z index →
+      index <Z lSize →
+      Separated
+        contents
+        lSize
+        (shift
+          (pointer-memory (shift (shift a index) zeroZ))
+          zeroZ)
+        lSize)) →
+  ((address : Addr) →
+    let
+      mask = lSchedGroupMask address
+      contents =
+        shift
+          (pointer-memory (shift mask zeroZ))
+          zeroZ
+    in
+    ValidRD allocation mask oneZ ∧
+    ValidRD allocation contents lSize ∧
+    ((index : Int) →
+      zeroZ ≤Z index →
+      index <Z lSize →
+      Separated
+        contents
+        lSize
+        (shift
+          (pointer-memory (shift (shift a index) zeroZ))
+          zeroZ)
+        lSize)) →
+  ((address : Addr) →
+    let
+      mask = lGroupBalanceMask address
+      contents =
+        shift
+          (pointer-memory (shift mask zeroZ))
+          zeroZ
+    in
+    ValidRD allocation mask oneZ ∧
+    ValidRD allocation contents lSize ∧
+    ((index : Int) →
+      zeroZ ≤Z index →
+      index <Z lSize →
+      Separated
+        contents
+        lSize
+        (shift
+          (pointer-memory (shift (shift a index) zeroZ))
+          zeroZ)
+        lSize)) →
+  ((index : Int) →
+    let
+      mask = lCpuSmtMask index
+      contents =
+        shift
+          (pointer-memory (shift mask zeroZ))
+          zeroZ
+    in
+    zeroZ ≤Z index →
+    index <Z lSize →
+    ValidRD allocation mask oneZ ∧
+    ValidRD allocation contents lSize ∧
+    ((other-index : Int) →
+      zeroZ ≤Z other-index →
+      other-index <Z lSize →
+      Separated
+        contents
+        lSize
+        (shift
+          (pointer-memory (shift (shift a other-index) zeroZ))
+          zeroZ)
+        lSize)) →
+  a₁₀ (shift a₈ i₁) ≠ zeroZ
+
+should-we-balance-loop-inv-a2-established-goal16 : Set₁
+should-we-balance-loop-inv-a2-established-goal16 =
+  (havoc-theory : HavocTheory) →
+  (lSize : Int) →
+  ((zeroZ <Z lSize) ∧ (lSize ≤Z signed32Maximum)) →
+  (cpu-mask-theory : CpuMaskTheory lSize) →
+  (region : Int → Int) →
+  (linked : (Int → Int) → Set) →
+  Goal16
+    havoc-theory
+    lSize
+    (lSchedGroupCpus cpu-mask-theory)
+    (lSchedGroupMask cpu-mask-theory)
+    (lGroupBalanceMask cpu-mask-theory)
+    (lCpuSmtMask cpu-mask-theory)
+    region
+    linked

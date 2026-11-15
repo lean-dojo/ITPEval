@@ -1,0 +1,260 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2011_b4:
+% the determinant of the complex standings matrix from 2011 multiplayer
+% win-loss games is a natural number divisible by 2^2010. This file contains
+% no proof.
+
+putnam_2011_b4: THEORY
+BEGIN
+  player_count: posnat = 2011
+
+  complex: TYPE = [# real_part: real, imag_part: real #]
+  game_results: TYPE = [nat, nat -> bool]
+  matrix: TYPE = [nat, nat -> complex]
+
+  complex_zero: complex =
+    (# real_part := 0, imag_part := 0 #)
+
+  complex_one: complex =
+    (# real_part := 1, imag_part := 0 #)
+
+  imaginary_unit: complex =
+    (# real_part := 0, imag_part := 1 #)
+
+  complex_of_real(value: real): complex =
+    (# real_part := value, imag_part := 0 #)
+
+  complex_of_nat(value: nat): complex =
+    complex_of_real(value :: real)
+
+  complex_neg(value: complex): complex =
+    (# real_part := -real_part(value),
+       imag_part := -imag_part(value) #)
+
+  complex_add(left, right: complex): complex =
+    (# real_part := real_part(left) + real_part(right),
+       imag_part := imag_part(left) + imag_part(right) #)
+
+  complex_sub(left, right: complex): complex =
+    complex_add(left, complex_neg(right))
+
+  complex_mul(left, right: complex): complex =
+    (# real_part :=
+         real_part(left) * real_part(right)
+           - imag_part(left) * imag_part(right),
+       imag_part :=
+         real_part(left) * imag_part(right)
+           + imag_part(left) * real_part(right) #)
+
+  count_true(
+      property: [nat -> bool],
+      count: nat): RECURSIVE nat =
+    IF count = 0 THEN
+      0
+    ELSE
+      count_true(property, count - 1)
+        + IF property(count - 1) THEN 1 ELSE 0 ENDIF
+    ENDIF
+  MEASURE count
+
+  tied_count(
+      games: game_results,
+      first_player, second_player: nat): nat =
+    count_true(
+      (LAMBDA (game: nat):
+        games(game, first_player)
+          = games(game, second_player)),
+      player_count)
+
+  first_wins_second_loses_count(
+      games: game_results,
+      first_player, second_player: nat): nat =
+    count_true(
+      (LAMBDA (game: nat):
+        games(game, first_player)
+          AND NOT games(game, second_player)),
+      player_count)
+
+  standings_t_entry(
+      games: game_results,
+      first_player, second_player: nat): complex =
+    complex_of_nat(
+      tied_count(games, first_player, second_player))
+
+  standings_w_entry(
+      games: game_results,
+      first_player, second_player: nat): complex =
+    complex_sub(
+      complex_of_nat(
+        first_wins_second_loses_count(
+          games, first_player, second_player)),
+      complex_of_nat(
+        first_wins_second_loses_count(
+          games, second_player, first_player)))
+
+  is_standings_t(games: game_results, T: matrix): bool =
+    FORALL (first_player, second_player: nat):
+      (first_player < player_count
+        AND second_player < player_count)
+      IMPLIES
+        T(first_player, second_player)
+          = standings_t_entry(
+              games, first_player, second_player)
+
+  is_standings_w(games: game_results, W: matrix): bool =
+    FORALL (first_player, second_player: nat):
+      (first_player < player_count
+        AND second_player < player_count)
+      IMPLIES
+        W(first_player, second_player)
+          = standings_w_entry(
+              games, first_player, second_player)
+
+  quotient_aux(
+      numerator, denominator, fuel: nat): RECURSIVE nat =
+    IF fuel = 0
+        OR denominator = 0
+        OR numerator < denominator THEN
+      0
+    ELSE
+      1
+        + quotient_aux(
+            numerator - denominator,
+            denominator,
+            fuel - 1)
+    ENDIF
+  MEASURE fuel
+
+  remainder_aux(
+      numerator, denominator, fuel: nat): RECURSIVE nat =
+    IF fuel = 0
+        OR denominator = 0
+        OR numerator < denominator THEN
+      numerator
+    ELSE
+      remainder_aux(
+        numerator - denominator,
+        denominator,
+        fuel - 1)
+    ENDIF
+  MEASURE fuel
+
+  safe_ndiv(numerator, denominator: nat): nat =
+    quotient_aux(
+      numerator,
+      denominator,
+      numerator + 1)
+
+  safe_mod(numerator, denominator: nat): nat =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      remainder_aux(
+        numerator,
+        denominator,
+        numerator + 1)
+    ENDIF
+
+  function_code_count: nat =
+    player_count ^ player_count
+
+  permutation_entry(code, row: nat): nat =
+    safe_mod(
+      safe_ndiv(code, player_count ^ row),
+      player_count)
+
+  permutation_code(code: nat): bool =
+    code < function_code_count
+      AND (FORALL (row_1, row_2: nat):
+        (row_1 < player_count
+          AND row_2 < player_count
+          AND permutation_entry(code, row_1)
+            = permutation_entry(code, row_2))
+        IMPLIES row_1 = row_2)
+
+  pair_row(pair: nat): nat =
+    safe_ndiv(pair, player_count)
+
+  pair_column(pair: nat): nat =
+    safe_mod(pair, player_count)
+
+  inversion_at(code, pair: nat): bool =
+    pair_row(pair) < player_count
+      AND pair_column(pair) < player_count
+      AND pair_row(pair) < pair_column(pair)
+      AND permutation_entry(code, pair_row(pair))
+        > permutation_entry(code, pair_column(pair))
+
+  inversion_count(code: nat): nat =
+    count_true(
+      (LAMBDA (pair: nat):
+        inversion_at(code, pair)),
+      player_count * player_count)
+
+  permutation_sign(code: nat): complex =
+    IF mod(inversion_count(code), 2) = 0 THEN
+      complex_one
+    ELSE
+      complex_of_real(-1)
+    ENDIF
+
+  permutation_product(
+      A: matrix,
+      code, count: nat): RECURSIVE complex =
+    IF count = 0 THEN
+      complex_one
+    ELSE
+      complex_mul(
+        permutation_product(A, code, count - 1),
+        A(
+          count - 1,
+          permutation_entry(code, count - 1)))
+    ENDIF
+  MEASURE count
+
+  determinant_sum(
+      A: matrix,
+      limit: nat): RECURSIVE complex =
+    IF limit = 0 THEN
+      complex_zero
+    ELSE
+      LET code: nat = limit - 1 IN
+        complex_add(
+          determinant_sum(A, limit - 1),
+          IF permutation_code(code) THEN
+            complex_mul(
+              permutation_sign(code),
+              permutation_product(
+                A, code, player_count))
+          ELSE
+            complex_zero
+          ENDIF)
+    ENDIF
+  MEASURE limit
+
+  determinant(A: matrix): complex =
+    determinant_sum(A, function_code_count)
+
+  complex_standings_matrix(T, W: matrix): matrix =
+    LAMBDA (row, column: nat):
+      complex_add(
+        T(row, column),
+        complex_mul(
+          imaginary_unit,
+          W(row, column)))
+
+  nat_divides(divisor, value: nat): bool =
+    EXISTS (quotient: nat):
+      value = divisor * quotient
+
+  putnam_2011_b4: bool =
+    FORALL
+        (games: game_results),
+        (T, W: matrix):
+      (is_standings_t(games, T)
+        AND is_standings_w(games, W))
+      IMPLIES
+        EXISTS (n: nat):
+          determinant(complex_standings_matrix(T, W))
+            = complex_of_nat(n)
+            AND nat_divides(2 ^ 2010, n)
+END putnam_2011_b4

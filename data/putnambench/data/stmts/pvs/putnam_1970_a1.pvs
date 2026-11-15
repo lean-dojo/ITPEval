@@ -1,0 +1,82 @@
+% Statement-only formalization of PutnamBench artifact putnam_1970_a1:
+% for positive real a and b, the power series of exp(a*x) * cos(b*x) has
+% either no zero coefficients or infinitely many. This file contains no proof.
+
+putnam_1970_a1: THEORY
+BEGIN
+  real_sequence: TYPE = [nat -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  partial_sum(values: real_sequence, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      partial_sum(values, count - 1) + values(count - 1)
+    ENDIF
+  MEASURE count
+
+  converges_to(values: real_sequence, limit: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (count: nat):
+          cutoff <= count IMPLIES
+            abs(partial_sum(values, count) - limit) < epsilon_value
+
+  exponential_terms(x: real): real_sequence =
+    LAMBDA (index: nat):
+      safe_div(x ^ index, factorial(index) :: real)
+
+  cosine_terms(x: real): real_sequence =
+    LAMBDA (index: nat):
+      safe_div(
+        ((-1 :: real) ^ index) * x ^ (2 * index),
+        factorial(2 * index) :: real)
+
+  power_series_terms(p: real_sequence, x: real): real_sequence =
+    LAMBDA (index: nat): p(index) * x ^ index
+
+  locally_represents_exp_cos(
+      a, b: real,
+      p: real_sequence): bool =
+    EXISTS (radius: real):
+      radius > 0
+        AND FORALL (x: real):
+          abs(x) < radius IMPLIES
+            EXISTS (exp_value, cos_value: real):
+              converges_to(exponential_terms(a * x), exp_value)
+                AND converges_to(cosine_terms(b * x), cos_value)
+                AND converges_to(
+                  power_series_terms(p, x),
+                  exp_value * cos_value)
+
+  has_no_zero_coefficients(p: real_sequence): bool =
+    FORALL (index: nat): p(index) /= 0
+
+  has_infinitely_many_zero_coefficients(p: real_sequence): bool =
+    FORALL (bound: nat):
+      EXISTS (index: nat):
+        bound <= index AND p(index) = 0
+
+  putnam_1970_a1: bool =
+    FORALL (a, b: real), (p: real_sequence):
+      (a > 0
+        AND b > 0
+        AND locally_represents_exp_cos(a, b, p))
+      IMPLIES
+        (has_no_zero_coefficients(p)
+          OR has_infinitely_many_zero_coefficients(p))
+END putnam_1970_a1

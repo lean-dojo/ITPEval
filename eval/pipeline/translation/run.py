@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -15,7 +16,7 @@ from eval.pipeline.records import make_translation_record, translation_record_ke
 from eval.pipeline.translation.data import load_pairs
 from eval.pipeline.translation.prompt import build_prompt
 from eval.pipeline.translate import translate
-from eval.pipeline.verify import verify
+from eval.pipeline.verify import verify_translation_record
 
 
 def _run_single(
@@ -73,10 +74,12 @@ def _run_single(
         verify_ms = 0
     else:
         # Synchronous runs verify immediately unless --no-verify is set
-        vr = verify(tgt_prover, generated)
-        verified = vr.ok
-        verify_error = vr.error
-        verify_ms = vr.duration_ms
+        checked = verify_translation_record({"mode": mode, "tgt_prover": tgt_prover,
+                                             "generated": generated})
+        generated = checked["generated"]
+        verified = checked["verified"]
+        verify_error = checked["verify_error"]
+        verify_ms = checked["verify_ms"]
 
     if no_verify:
         status = "OK" if generated else "FAIL"
@@ -199,8 +202,8 @@ def main() -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser.add_argument("--model",         help="Model label(s), comma-separated (default: all)")
-    parser.add_argument("--mode",          choices=["stmts", "proofs"], default="proofs",
-                        help="Use sorry-stripped statements or full proofs as source (default: proofs)")
+    parser.add_argument("--mode",          choices=["stmts", "proofs"], default="stmts",
+                        help="Translate statements or full proofs (default: stmts)")
     parser.add_argument("--sources",       help="Benchmark sources, comma-separated (default: all)")
     parser.add_argument("--src",           help="Filter to this source prover")
     parser.add_argument("--tgt",           help="Filter to this target prover")
@@ -220,7 +223,7 @@ def main() -> None:
     parser.add_argument("--workers",        type=int, default=1,
                         help="Number of parallel translation workers (default: 1)")
     parser.add_argument("--no-verify",      action="store_true",
-                        help="Generate proofs but skip verification")
+                        help="Generate translations but skip verification")
     parser.add_argument("--resume",         metavar="PATH",
                         help="Resume from an existing results JSONL, skipping completed jobs")
     parser.add_argument("--dry-run",       action="store_true",
@@ -247,7 +250,8 @@ def main() -> None:
             sys.exit(f"Resume file not found: {results_path}")
     else:
         out_dir = GENERATED_DIR if args.no_verify else VERIFIED_DIR
-        out_dir.mkdir(parents=True, exist_ok=True)
+        if not args.dry_run:
+            out_dir.mkdir(parents=True, exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         model_tag = args.model.replace(",", "+") if args.model else "all"
         results_path = out_dir / f"{model_tag}_{args.mode}_{timestamp}.jsonl"

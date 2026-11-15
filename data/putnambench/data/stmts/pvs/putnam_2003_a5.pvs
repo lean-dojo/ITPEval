@@ -1,0 +1,66 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2003_a5:
+% Dyck n-paths with no return of even length correspond one-to-one with Dyck
+% (n - 1)-paths for every positive n. This file contains no proof.
+
+putnam_2003_a5: THEORY
+BEGIN
+  integer_sequence: TYPE = [nat -> int]
+  sequence_map: TYPE = [integer_sequence -> integer_sequence]
+
+  prefix_sum(path: integer_sequence, count: nat): RECURSIVE int =
+    IF count = 0 THEN
+      0
+    ELSE
+      prefix_sum(path, count - 1) + path(count - 1)
+    ENDIF
+  MEASURE count
+
+  canonical_path(path: integer_sequence, semilength: nat): bool =
+    FORALL (index: nat):
+      2 * semilength <= index IMPLIES path(index) = 0
+
+  dyck_path(path: integer_sequence, semilength: nat): bool =
+    canonical_path(path, semilength)
+      AND (FORALL (index: nat):
+        index < 2 * semilength
+          IMPLIES (path(index) = -1 OR path(index) = 1))
+      AND prefix_sum(path, 2 * semilength) = 0
+      AND (FORALL (index: nat):
+        index < 2 * semilength
+          IMPLIES 0 <= prefix_sum(path, index + 1))
+
+  even_nat(value: nat): bool =
+    EXISTS (half: nat):
+      value = 2 * half
+
+  no_even_return(path: integer_sequence, semilength: nat): bool =
+    canonical_path(path, semilength)
+      AND NOT EXISTS (first, last: nat):
+        first < last
+          AND last < 2 * semilength
+          AND path(first) = 1
+          AND (FORALL (index: nat):
+            (first < index AND index <= last)
+              IMPLIES path(index) = -1)
+          AND even_nat(last - first)
+          AND prefix_sum(path, last + 1) = 0
+
+  putnam_2003_a5: bool =
+    FORALL (n: nat):
+      n > 0 IMPLIES
+        EXISTS (correspondence: sequence_map):
+          FORALL (target: integer_sequence):
+            dyck_path(target, n - 1) IMPLIES
+              (EXISTS (source: integer_sequence):
+                dyck_path(source, n)
+                  AND no_even_return(source, n)
+                  AND correspondence(source) = target)
+              AND (FORALL (left, right: integer_sequence):
+                ((dyck_path(left, n)
+                    AND no_even_return(left, n)
+                    AND correspondence(left) = target)
+                  AND (dyck_path(right, n)
+                    AND no_even_return(right, n)
+                    AND correspondence(right) = target))
+                  IMPLIES left = right)
+END putnam_2003_a5

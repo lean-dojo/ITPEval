@@ -1,0 +1,131 @@
+% Statement-only formalization of PutnamBench artifact putnam_1968_b4:
+% invariance of a convergent symmetric improper integral under the substitution
+% x maps to x - 1/x for a continuous real function. This file contains no proof.
+
+putnam_1968_b4: THEORY
+BEGIN
+  real_function: TYPE = [real -> real]
+  real_sequence: TYPE = [nat -> real]
+  positive_real_function: TYPE = [posreal -> real]
+
+  continuous(f: real_function): bool =
+    FORALL (x: real), (epsilon_value: posreal):
+      EXISTS (delta: posreal):
+        FORALL (y: real):
+          abs(y - x) < delta IMPLIES
+            abs(f(y) - f(x)) < epsilon_value
+
+  valid_tagged_partition(
+      left, right: real,
+      points, tags: real_sequence,
+      count: nat): bool =
+    count > 0
+      AND points(0) = left
+      AND points(count) = right
+      AND FORALL (index: nat):
+        index < count IMPLIES
+          (points(index) < points(index + 1)
+            AND points(index) <= tags(index)
+            AND tags(index) <= points(index + 1))
+
+  mesh_less_than(
+      points: real_sequence,
+      count: nat,
+      bound: real): bool =
+    FORALL (index: nat):
+      index < count IMPLIES
+        points(index + 1) - points(index) < bound
+
+  riemann_sum(
+      f: real_function,
+      points, tags: real_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      riemann_sum(f, points, tags, count - 1)
+        + f(tags(count - 1))
+            * (points(count) - points(count - 1))
+    ENDIF
+  MEASURE count
+
+  has_interval_integral(
+      f: real_function,
+      left, right, integral_value: real): bool =
+    left < right
+      AND FORALL (epsilon_value: posreal):
+        EXISTS (mesh_bound: posreal):
+          FORALL
+              (points, tags: real_sequence),
+              (count: nat):
+            (valid_tagged_partition(
+                left, right, points, tags, count)
+              AND mesh_less_than(points, count, mesh_bound))
+            IMPLIES
+              abs(
+                riemann_sum(f, points, tags, count)
+                  - integral_value)
+                < epsilon_value
+
+  interval_integral(
+      f: real_function,
+      left, right: real): real =
+    IF EXISTS (integral_value: real):
+        has_interval_integral(f, left, right, integral_value)
+    THEN
+      epsilon(
+        LAMBDA (integral_value: real):
+          has_interval_integral(
+            f, left, right, integral_value))
+    ELSE
+      0
+    ENDIF
+
+  converges_at_real_top(
+      values: positive_real_function,
+      limit_value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: posreal):
+        FORALL (radius: posreal):
+          cutoff <= radius IMPLIES
+            abs(values(radius) - limit_value) < epsilon_value
+
+  reciprocal_or_zero(x: real): real =
+    IF x = 0 THEN 0 ELSE 1 / x ENDIF
+
+  symmetric_truncation(
+      f: real_function,
+      radius: posreal): real =
+    interval_integral(f, -radius, radius)
+
+  transformed_truncation(
+      f: real_function,
+      radius: posreal): real =
+    LET transformed: real_function =
+          LAMBDA (x: real):
+            f(x - reciprocal_or_zero(x))
+    IN
+      interval_integral(
+        transformed, -radius, -(1 / radius))
+        + interval_integral(
+            transformed, 1 / radius, radius)
+
+  putnam_1968_b4: bool =
+    FORALL (f: real_function):
+      (continuous(f)
+        AND EXISTS (original_limit: real):
+          converges_at_real_top(
+            LAMBDA (radius: posreal):
+              symmetric_truncation(f, radius),
+            original_limit))
+      IMPLIES
+        EXISTS (common_limit: real):
+          converges_at_real_top(
+            LAMBDA (radius: posreal):
+              transformed_truncation(f, radius),
+            common_limit)
+            AND converges_at_real_top(
+              LAMBDA (radius: posreal):
+                symmetric_truncation(f, radius),
+              common_limit)
+END putnam_1968_b4

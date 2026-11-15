@@ -1,0 +1,529 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/avl/tables_MapBase_removeqtvc: the sorted sequence-map removal
+% verification condition relating a selected AVL split to map cardinality,
+% membership, and stored values. This file contains no proof.
+
+tables_MapBase_removeqtvc[
+  element: TYPE+,
+  key_value: TYPE+,
+  avl_value: TYPE+,
+  map_value: TYPE+
+]: THEORY
+BEGIN
+  model: TYPE = [# seq: list[element], hgt: int #]
+
+  unit_value: DATATYPE
+  BEGIN
+    UnitValue: UnitValue?
+  END unit_value
+
+  avl_tree: DATATYPE
+  BEGIN
+    Empty: Empty?
+    Node(
+      tree_left: avl_tree,
+      tree_datum: element,
+      tree_right: avl_tree,
+      tree_height: nat,
+      tree_summary: unit_value): Node?
+  END avl_tree
+
+  element_option: DATATYPE
+  BEGIN
+    NoElement: NoElement?
+    SomeElement(option_datum: element): SomeElement?
+  END element_option
+
+  selection_split: TYPE =
+    [# split_left: list[element],
+       split_middle: element_option,
+       split_right: list[element] #]
+
+  map_model: TYPE =
+    [# domain_flag: [key_value -> bool],
+       map_function: [key_value -> element],
+       model_card: int #]
+
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  nth_default(
+      values: list[element],
+      index: nat,
+      default_element: element): RECURSIVE element =
+    CASES values OF
+      null:
+        default_element,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          nth_default(tail, index - 1, default_element)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  option_to_sequence(option: element_option): list[element] =
+    CASES option OF
+      NoElement:
+        null,
+      SomeElement(datum):
+        cons(datum, null)
+    ENDCASES
+
+  rebuild(parts: selection_split): list[element] =
+    append(
+      append(
+        split_left(parts),
+        option_to_sequence(split_middle(parts))),
+      split_right(parts))
+
+  node_model(
+      left_values: list[element],
+      datum: element,
+      right_values: list[element]): list[element] =
+    append(left_values, cons(datum, right_values))
+
+  seq_model(represented_tree: avl_tree):
+      RECURSIVE list[element] =
+    CASES represented_tree OF
+      Empty:
+        null,
+      Node(left_tree, datum, right_tree, height, summary):
+        node_model(
+          seq_model(left_tree),
+          datum,
+          seq_model(right_tree))
+    ENDCASES
+  MEASURE represented_tree BY <<
+
+  real_height(represented_tree: avl_tree): RECURSIVE int =
+    CASES represented_tree OF
+      Empty:
+        0,
+      Node(left_tree, datum, right_tree, height, summary):
+        1
+          + (IF real_height(left_tree) < real_height(right_tree)
+             THEN real_height(right_tree)
+             ELSE real_height(left_tree)
+             ENDIF)
+    ENDCASES
+  MEASURE represented_tree BY <<
+
+  balanced(
+      represented_tree: avl_tree,
+      balancing: nat): RECURSIVE bool =
+    CASES represented_tree OF
+      Empty:
+        TRUE,
+      Node(left_tree, datum, right_tree, height, summary):
+        (height :: int) = real_height(represented_tree)
+          AND summary = UnitValue
+          AND
+            -(balancing :: int)
+              <= real_height(right_tree) - real_height(left_tree)
+          AND
+            real_height(right_tree) - real_height(left_tree)
+              <= (balancing :: int)
+          AND balanced(left_tree, balancing)
+          AND balanced(right_tree, balancing)
+    ENDCASES
+  MEASURE represented_tree BY <<
+
+  strict_key_order(
+      leq: [key_value, key_value -> bool],
+      left, right: key_value): bool =
+    leq(left, right) AND NOT leq(right, left)
+
+  key_equivalent(
+      leq: [key_value, key_value -> bool],
+      left, right: key_value): bool =
+    leq(left, right) AND leq(right, left)
+
+  selection_possible(
+      values: list[element],
+      key: [element -> key_value],
+      leq: [key_value, key_value -> bool],
+      default_element: element): bool =
+    FORALL (left_index, right_index: int):
+      (0 <= left_index
+        AND left_index < right_index
+        AND right_index < length(values))
+      IMPLIES
+        strict_key_order(
+          leq,
+          key(
+            nth_default(
+              values,
+              int_to_nat(left_index),
+              default_element)),
+          key(
+            nth_default(
+              values,
+              int_to_nat(right_index),
+              default_element)))
+
+  upper_bound_sequence(
+      selected_key: key_value,
+      values: list[element],
+      key: [element -> key_value],
+      leq: [key_value, key_value -> bool],
+      default_element: element): bool =
+    FORALL (index: int):
+      (0 <= index AND index < length(values))
+      IMPLIES
+        strict_key_order(
+          leq,
+          key(
+            nth_default(
+              values,
+              int_to_nat(index),
+              default_element)),
+          selected_key)
+
+  lower_bound_sequence(
+      selected_key: key_value,
+      values: list[element],
+      key: [element -> key_value],
+      leq: [key_value, key_value -> bool],
+      default_element: element): bool =
+    FORALL (index: int):
+      (0 <= index AND index < length(values))
+      IMPLIES
+        strict_key_order(
+          leq,
+          selected_key,
+          key(
+            nth_default(
+              values,
+              int_to_nat(index),
+              default_element)))
+
+  selected(
+      selected_key: key_value,
+      parts: selection_split,
+      key: [element -> key_value],
+      leq: [key_value, key_value -> bool],
+      default_element: element): bool =
+    upper_bound_sequence(
+      selected_key, split_left(parts),
+      key, leq, default_element)
+      AND
+    lower_bound_sequence(
+      selected_key, split_right(parts),
+      key, leq, default_element)
+      AND
+    CASES split_middle(parts) OF
+      NoElement:
+        TRUE,
+      SomeElement(datum):
+        key_equivalent(leq, selected_key, key(datum))
+    ENDCASES
+
+  domain(
+      values: list[element],
+      selected_key: key_value,
+      key: [element -> key_value],
+      leq: [key_value, key_value -> bool],
+      default_element: element): bool =
+    EXISTS (index: int):
+      (0 <= index AND index < length(values))
+        AND
+      key_equivalent(
+        leq,
+        key(
+          nth_default(
+            values,
+            int_to_nat(index),
+            default_element)),
+        selected_key)
+
+  order_laws(
+      leq: [key_value, key_value -> bool]): bool =
+    (FORALL (x: key_value): leq(x, x))
+      AND
+    (FORALL (x, y, z: key_value):
+      leq(x, y) AND leq(y, z) IMPLIES leq(x, z))
+      AND
+    (FORALL (x, y: key_value):
+      leq(x, y) OR leq(y, x))
+
+  representation_invariant(
+      repr: [avl_value -> avl_tree],
+      m1: [avl_value -> model],
+      balancing: nat): bool =
+    FORALL (self: avl_value):
+      balanced(repr(self), balancing)
+        AND seq(m1(self)) = seq_model(repr(self))
+        AND hgt(m1(self)) = real_height(repr(self))
+
+  representation_injective(
+      repr: [avl_value -> avl_tree],
+      m1: [avl_value -> model]): bool =
+    FORALL (left_value, right_value: avl_value):
+      (repr(left_value) = repr(right_value)
+        AND m1(left_value) = m1(right_value))
+      IMPLIES left_value = right_value
+
+  map_invariant(
+      field: [map_value -> avl_value],
+      m1: [avl_value -> model],
+      key: [element -> key_value],
+      leq: [key_value, key_value -> bool],
+      default_element: element): bool =
+    FORALL (self: map_value):
+      selection_possible(
+        seq(m1(field(self))),
+        key, leq, default_element)
+
+  map_injective(
+      field: [map_value -> avl_value]): bool =
+    FORALL (left_map, right_map: map_value):
+      field(left_map) = field(right_map)
+        IMPLIES left_map = right_map
+
+  make_function_specification(
+      make_function:
+        [list[element], key_value -> element],
+      key: [element -> key_value],
+      leq: [key_value, key_value -> bool],
+      default_element: element): bool =
+    FORALL
+      (values: list[element]),
+      (selected_key: key_value),
+      (index: int):
+        selection_possible(
+          values, key, leq, default_element)
+          AND
+        domain(
+          values, selected_key,
+          key, leq, default_element)
+          AND 0 <= index
+          AND index < length(values)
+          AND
+            key_equivalent(
+              leq,
+              key(
+                nth_default(
+                  values,
+                  int_to_nat(index),
+                  default_element)),
+              selected_key)
+        IMPLIES
+          make_function(values, selected_key)
+            = nth_default(
+                values,
+                int_to_nat(index),
+                default_element)
+
+  closure_definitions(
+      domain_closure:
+        [list[element], key_value -> bool],
+      make_function_closure:
+        [list[element], key_value -> element],
+      make_function:
+        [list[element], key_value -> element],
+      key: [element -> key_value],
+      leq: [key_value, key_value -> bool],
+      default_element: element): bool =
+    (FORALL
+      (values: list[element]),
+      (selected_key: key_value):
+        domain_closure(values, selected_key)
+          = domain(
+              values, selected_key,
+              key, leq, default_element))
+      AND
+    (FORALL
+      (values: list[element]),
+      (selected_key: key_value):
+        make_function_closure(values, selected_key)
+          = make_function(values, selected_key))
+
+  background_assumptions(
+      balancing: nat,
+      key: [element -> key_value],
+      leq: [key_value, key_value -> bool],
+      repr: [avl_value -> avl_tree],
+      m1: [avl_value -> model],
+      field: [map_value -> avl_value],
+      make_function:
+        [list[element], key_value -> element],
+      domain_closure:
+        [list[element], key_value -> bool],
+      make_function_closure:
+        [list[element], key_value -> element],
+      default_element: element): bool =
+    0 < balancing
+      AND order_laws(leq)
+      AND representation_invariant(repr, m1, balancing)
+      AND representation_injective(repr, m1)
+      AND
+        map_invariant(
+          field, m1, key, leq, default_element)
+      AND map_injective(field)
+      AND
+        make_function_specification(
+          make_function, key, leq, default_element)
+      AND
+        closure_definitions(
+          domain_closure, make_function_closure,
+          make_function, key, leq, default_element)
+
+  map_model_of:
+    [map_value,
+     [map_value -> avl_value],
+     [avl_value -> model],
+     [list[element], key_value -> bool],
+     [list[element], key_value -> element] -> map_model] =
+    LAMBDA
+      (map_object: map_value),
+      (field: [map_value -> avl_value]),
+      (m1: [avl_value -> model]),
+      (domain_closure:
+        [list[element], key_value -> bool]),
+      (make_function_closure:
+        [list[element], key_value -> element]):
+        LET values: list[element] = seq(m1(field(map_object)))
+        IN
+          (# domain_flag :=
+               (LAMBDA (selected_key: key_value):
+                 domain_closure(values, selected_key)),
+             map_function :=
+               (LAMBDA (selected_key: key_value):
+                 make_function_closure(values, selected_key)),
+             model_card := (length(values) :: int) #)
+
+  remove_vc: bool =
+    FORALL
+      (balancing: nat),
+      (key: [element -> key_value]),
+      (leq: [key_value, key_value -> bool]),
+      (repr: [avl_value -> avl_tree]),
+      (m1: [avl_value -> model]),
+      (field: [map_value -> avl_value]),
+      (make_function:
+        [list[element], key_value -> element]),
+      (domain_closure:
+        [list[element], key_value -> bool]),
+      (make_function_closure:
+        [list[element], key_value -> element]),
+      (default_element: element),
+      (map_object: map_value),
+      (removed_key: key_value):
+        background_assumptions(
+          balancing, key, leq, repr, m1, field,
+          make_function, domain_closure,
+          make_function_closure, default_element)
+        IMPLIES
+          LET old_tree: avl_value = field(map_object)
+          IN
+            selection_possible(
+              seq(m1(old_tree)),
+              key, leq, default_element)
+            AND
+            (FORALL
+              (parts: selection_split),
+              (new_tree: avl_value):
+                (seq(m1(new_tree))
+                    = append(
+                        split_left(parts),
+                        split_right(parts))
+                  AND
+                    (selected(
+                       removed_key, parts,
+                       key, leq, default_element)
+                      AND rebuild(parts) = seq(m1(old_tree)))
+                  AND hgt(m1(old_tree)) - hgt(m1(new_tree)) <= 1
+                  AND 0 <= hgt(m1(old_tree)) - hgt(m1(new_tree)))
+                IMPLIES
+                  selection_possible(
+                    seq(m1(new_tree)),
+                    key, leq, default_element)
+                  AND
+                  (FORALL (result: map_value):
+                    field(result) = new_tree
+                    IMPLIES
+                      model_card(
+                        map_model_of(
+                          result, field, m1,
+                          domain_closure,
+                          make_function_closure))
+                        =
+                        IF
+                          domain_flag(
+                            map_model_of(
+                              map_object, field, m1,
+                              domain_closure,
+                              make_function_closure))(removed_key)
+                        THEN
+                          model_card(
+                            map_model_of(
+                              map_object, field, m1,
+                              domain_closure,
+                              make_function_closure))
+                            - 1
+                        ELSE
+                          model_card(
+                            map_model_of(
+                              map_object, field, m1,
+                              domain_closure,
+                              make_function_closure))
+                        ENDIF
+                      AND
+                      (FORALL (selected_key: key_value):
+                        key_equivalent(
+                          leq, selected_key, removed_key)
+                        IMPLIES
+                          NOT
+                            domain_flag(
+                              map_model_of(
+                                result, field, m1,
+                                domain_closure,
+                                make_function_closure))(selected_key))
+                      AND
+                        NOT
+                          domain_flag(
+                            map_model_of(
+                              result, field, m1,
+                              domain_closure,
+                              make_function_closure))(removed_key)
+                      AND
+                      (FORALL (selected_key: key_value):
+                        NOT key_equivalent(
+                          leq, selected_key, removed_key)
+                        IMPLIES
+                          domain_flag(
+                            map_model_of(
+                              result, field, m1,
+                              domain_closure,
+                              make_function_closure))(selected_key)
+                            =
+                          domain_flag(
+                            map_model_of(
+                              map_object, field, m1,
+                              domain_closure,
+                              make_function_closure))(selected_key))
+                      AND
+                      (FORALL (selected_key: key_value):
+                        (NOT key_equivalent(
+                           leq, selected_key, removed_key)
+                          AND
+                         domain_flag(
+                           map_model_of(
+                             result, field, m1,
+                             domain_closure,
+                             make_function_closure))(selected_key))
+                        IMPLIES
+                          map_function(
+                            map_model_of(
+                              result, field, m1,
+                              domain_closure,
+                              make_function_closure))(selected_key)
+                            =
+                          map_function(
+                            map_model_of(
+                              map_object, field, m1,
+                              domain_closure,
+                              make_function_closure))(selected_key))))
+END tables_MapBase_removeqtvc

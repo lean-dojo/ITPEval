@@ -1,0 +1,86 @@
+% Statement-only formalization of "Pi is Transcendental" from Hundred Theorems
+% item 053: the real circle constant pi is not algebraic over the rationals.
+% This file contains no proof.
+
+hundred_theorems_053: THEORY
+BEGIN
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  alternating_sign(index: nat): RECURSIVE real =
+    IF index = 0 THEN
+      1
+    ELSE
+      -alternating_sign(index - 1)
+    ENDIF
+  MEASURE index
+
+  cosine_partial_sum(count: nat, x: real): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        cosine_partial_sum(count - 1, x)
+          + safe_div(
+              alternating_sign(index) * x ^ (2 * index),
+              factorial(2 * index) :: real)
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: [nat -> real], value: real): bool =
+    FORALL (eps: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (count: nat):
+          cutoff <= count IMPLIES
+            abs(sequence(count) - value) < eps
+
+  power_series_cosine(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          (LAMBDA (count: nat): cosine_partial_sum(count, x)),
+          value))
+
+  is_pi(value: real): bool =
+    2 < value
+      AND value < 4
+      AND power_series_cosine(value / 2) = 0
+
+  pi: real =
+    epsilon(LAMBDA (value: real): is_pi(value))
+
+  integer_polynomial_value(
+      coefficients: [nat -> int],
+      x: real,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET degree: nat = count - 1 IN
+        integer_polynomial_value(coefficients, x, count - 1)
+          + (coefficients(degree) :: real) * x ^ degree
+    ENDIF
+  MEASURE count
+
+  algebraic_real(x: real): bool =
+    EXISTS (degree: nat):
+      EXISTS (coefficients: [nat -> int]):
+        NOT (coefficients(degree) = 0)
+          AND integer_polynomial_value(
+            coefficients, x, degree + 1) = 0
+
+  pi_is_transcendental: bool =
+    NOT algebraic_real(pi)
+END hundred_theorems_053

@@ -1,0 +1,82 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2025_b4:
+% a nonnegative integer matrix with a triangular zero region and unit-step
+% horizontal and vertical growth satisfies the stated sum-versus-support
+% bound. This file contains no proof.
+
+putnam_2025_b4: THEORY
+BEGIN
+  natural_matrix: TYPE = [nat, nat -> nat]
+
+  row_sum(
+      A: natural_matrix,
+      row, column_count: nat): RECURSIVE nat =
+    IF column_count = 0 THEN
+      0
+    ELSE
+      row_sum(A, row, column_count - 1)
+        + A(row, column_count - 1)
+    ENDIF
+  MEASURE column_count
+
+  matrix_sum(
+      A: natural_matrix,
+      row_count, column_count: nat): RECURSIVE nat =
+    IF row_count = 0 THEN
+      0
+    ELSE
+      matrix_sum(A, row_count - 1, column_count)
+        + row_sum(A, row_count - 1, column_count)
+    ENDIF
+  MEASURE row_count
+
+  row_nonzero_count(
+      A: natural_matrix,
+      row, column_count: nat): RECURSIVE nat =
+    IF column_count = 0 THEN
+      0
+    ELSE
+      row_nonzero_count(A, row, column_count - 1)
+        + (IF A(row, column_count - 1) /= 0 THEN 1 ELSE 0 ENDIF)
+    ENDIF
+  MEASURE column_count
+
+  matrix_nonzero_count(
+      A: natural_matrix,
+      row_count, column_count: nat): RECURSIVE nat =
+    IF row_count = 0 THEN
+      0
+    ELSE
+      matrix_nonzero_count(A, row_count - 1, column_count)
+        + row_nonzero_count(A, row_count - 1, column_count)
+    ENDIF
+  MEASURE row_count
+
+  has_triangular_zero_region(m: nat, A: natural_matrix): bool =
+    FORALL (i, j: nat):
+      (i < m + 2 AND j < m + 2 AND i + j <= m)
+        IMPLIES A(i, j) = 0
+
+  has_vertical_unit_steps(m: nat, A: natural_matrix): bool =
+    FORALL (i, j: nat):
+      (i < m + 1 AND j < m + 2)
+        IMPLIES
+          (A(i + 1, j) = A(i, j)
+            OR A(i + 1, j) = A(i, j) + 1)
+
+  has_horizontal_unit_steps(m: nat, A: natural_matrix): bool =
+    FORALL (i, j: nat):
+      (i < m + 2 AND j < m + 1)
+        IMPLIES
+          (A(i, j + 1) = A(i, j)
+            OR A(i, j + 1) = A(i, j) + 1)
+
+  putnam_2025_b4: bool =
+    FORALL (m: nat), (A: natural_matrix), (S, N: nat):
+      (has_triangular_zero_region(m, A)
+        AND has_vertical_unit_steps(m, A)
+        AND has_horizontal_unit_steps(m, A)
+        AND S = matrix_sum(A, m + 2, m + 2)
+        AND N = matrix_nonzero_count(A, m + 2, m + 2))
+      IMPLIES
+        3 * S <= (m + 4) * N
+END putnam_2025_b4

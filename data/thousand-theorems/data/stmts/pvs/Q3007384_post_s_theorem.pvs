@@ -1,0 +1,221 @@
+% Statement-only formalization of the Thousand Theorems corpus artifact Q3007384
+% (thousand-theorems__pvs__Q3007384), "Post's theorem": on a primitively
+% codable type, a decidable predicate is computable exactly when it and its
+% complement are recursively enumerable. This file contains no proof.
+
+post_code_Q3007384: DATATYPE
+BEGIN
+  post_zero_code: post_zero_code?
+  post_succ_code: post_succ_code?
+  post_left_code: post_left_code?
+  post_right_code: post_right_code?
+  post_pair_code(
+    post_pair_left,
+    post_pair_right: post_code_Q3007384): post_pair_code?
+  post_comp_code(
+    post_comp_outer,
+    post_comp_inner: post_code_Q3007384): post_comp_code?
+  post_prec_code(
+    post_prec_base,
+    post_prec_step: post_code_Q3007384): post_prec_code?
+  post_rfind_code(
+    post_rfind_body: post_code_Q3007384): post_rfind_code?
+END post_code_Q3007384
+
+Q3007384_post_s_theorem[
+  A: TYPE,
+  encode: [A -> nat],
+  decodes: [nat, A -> bool]
+]: THEORY
+BEGIN
+  IMPORTING post_code_Q3007384
+
+  code: TYPE = post_code_Q3007384
+  predicate: TYPE = [A -> bool]
+  evaluation_relation: TYPE = [code, nat, nat -> bool]
+  nat_relation: TYPE = [nat, nat -> bool]
+
+  nat_pair(left, right: nat): nat =
+    IF left < right THEN
+      right * right + left
+    ELSE
+      left * left + left + right
+    ENDIF
+
+  evaluator_closed(candidate: evaluation_relation): bool =
+    (FORALL (input: nat):
+      candidate(post_zero_code, input, 0))
+    AND
+    (FORALL (input: nat):
+      candidate(post_succ_code, input, input + 1))
+    AND
+    (FORALL (left, right: nat):
+      candidate(post_left_code, nat_pair(left, right), left))
+    AND
+    (FORALL (left, right: nat):
+      candidate(post_right_code, nat_pair(left, right), right))
+    AND
+    (FORALL (left_program, right_program: code),
+            (input, left_value, right_value: nat):
+      (candidate(left_program, input, left_value)
+        AND candidate(right_program, input, right_value))
+      IMPLIES
+        candidate(
+          post_pair_code(left_program, right_program),
+          input,
+          nat_pair(left_value, right_value)))
+    AND
+    (FORALL (outer_program, inner_program: code),
+            (input, intermediate, output: nat):
+      (candidate(inner_program, input, intermediate)
+        AND candidate(outer_program, intermediate, output))
+      IMPLIES
+        candidate(
+          post_comp_code(outer_program, inner_program),
+          input,
+          output))
+    AND
+    (FORALL (base_program, step_program: code),
+            (parameter, output: nat):
+      candidate(base_program, parameter, output)
+      IMPLIES
+        candidate(
+          post_prec_code(base_program, step_program),
+          nat_pair(parameter, 0),
+          output))
+    AND
+    (FORALL (base_program, step_program: code),
+            (parameter, index, previous, output: nat):
+      (candidate(
+          post_prec_code(base_program, step_program),
+          nat_pair(parameter, index),
+          previous)
+        AND candidate(
+          step_program,
+          nat_pair(parameter, nat_pair(index, previous)),
+          output))
+      IMPLIES
+        candidate(
+          post_prec_code(base_program, step_program),
+          nat_pair(parameter, index + 1),
+          output))
+    AND
+    (FORALL (body_program: code),
+            (parameter, start, offset: nat):
+      (candidate(
+          body_program,
+          nat_pair(parameter, start + offset),
+          0)
+        AND
+          (FORALL (earlier: nat):
+            earlier < offset IMPLIES
+              EXISTS (nonzero_value: nat):
+                candidate(
+                  body_program,
+                  nat_pair(parameter, start + earlier),
+                  nonzero_value)
+                  AND nonzero_value /= 0))
+      IMPLIES
+        candidate(
+          post_rfind_code(body_program),
+          nat_pair(parameter, start),
+          start + offset))
+
+  evaluates(program: code, input, output: nat): bool =
+    FORALL (candidate: evaluation_relation):
+      evaluator_closed(candidate)
+      IMPLIES candidate(program, input, output)
+
+  primitive_code(program: code): RECURSIVE bool =
+    CASES program OF
+      post_zero_code:
+        TRUE,
+      post_succ_code:
+        TRUE,
+      post_left_code:
+        TRUE,
+      post_right_code:
+        TRUE,
+      post_pair_code(left_program, right_program):
+        primitive_code(left_program)
+          AND primitive_code(right_program),
+      post_comp_code(outer_program, inner_program):
+        primitive_code(outer_program)
+          AND primitive_code(inner_program),
+      post_prec_code(base_program, step_program):
+        primitive_code(base_program)
+          AND primitive_code(step_program),
+      post_rfind_code(body_program):
+        FALSE
+    ENDCASES
+  MEASURE program BY <<
+
+  primitive_recursive_graph(graph: nat_relation): bool =
+    EXISTS (program: code):
+      primitive_code(program)
+        AND (FORALL (input, output: nat):
+          evaluates(program, input, output)
+            IFF graph(input, output))
+
+  functional_decoding: bool =
+    FORALL (input: nat), (left, right: A):
+      decodes(input, left)
+        AND decodes(input, right)
+      IMPLIES left = right
+
+  decode_encode_law: bool =
+    FORALL (value: A):
+      decodes(encode(value), value)
+
+  reencode_after_decode(input, output: nat): bool =
+    (output = 0
+      AND NOT (EXISTS (value: A): decodes(input, value)))
+    OR
+    (EXISTS (value: A):
+      decodes(input, value)
+        AND output = encode(value) + 1)
+
+  primcodable_structure: bool =
+    functional_decoding
+      AND decode_encode_law
+      AND primitive_recursive_graph(reencode_after_decode)
+
+  semidecides(program: code, p: predicate): bool =
+    FORALL (input, output: nat):
+      evaluates(program, input, output)
+      IFF
+        EXISTS (value: A):
+          decodes(input, value)
+            AND p(value)
+            AND output = 0
+
+  recursively_enumerable(p: predicate): bool =
+    EXISTS (program: code):
+      semidecides(program, p)
+
+  decides(program: code, p: predicate): bool =
+    FORALL (input, output: nat):
+      evaluates(program, input, output)
+      IFF
+        EXISTS (value: A):
+          decodes(input, value)
+            AND
+              ((p(value) AND output = 1)
+                OR ((NOT p(value)) AND output = 0))
+
+  computable_predicate(p: predicate): bool =
+    EXISTS (program: code):
+      decides(program, p)
+
+  complement(p: predicate): predicate =
+    LAMBDA (value: A): NOT p(value)
+
+  post_s_theorem: bool =
+    primcodable_structure
+    IMPLIES
+      FORALL (p: predicate):
+        computable_predicate(p)
+        IFF
+          (recursively_enumerable(p)
+            AND recursively_enumerable(complement(p)))
+END Q3007384_post_s_theorem

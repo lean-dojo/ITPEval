@@ -1,0 +1,312 @@
+% Statement-only formalization of thousand-theorems corpus artifact Q1065966,
+% "Isomorphism theorem": Noether's first, second, and third isomorphism theorems
+% for arbitrary groups through their canonical quotient-group maps. This file contains no proof.
+
+Q1065966_isomorphism_theorem[
+  G: TYPE+,
+  H: TYPE+,
+  g_mul: [G, G -> G],
+  g_inv: [G -> G],
+  g_one: G,
+  h_mul: [H, H -> H],
+  h_inv: [H -> H],
+  h_one: H,
+  phi: [G -> H]
+]: THEORY
+BEGIN
+
+  g_set: TYPE = [G -> bool]
+  h_set: TYPE = [H -> bool]
+  quotient_set: TYPE = [g_set -> bool]
+
+  first_relation: TYPE = [g_set, H -> bool]
+  quotient_relation: TYPE = [g_set, g_set -> bool]
+  iterated_quotient_relation: TYPE = [quotient_set, g_set -> bool]
+
+  g_group_laws: bool =
+    (FORALL (x, y, z: G):
+      g_mul(g_mul(x, y), z) = g_mul(x, g_mul(y, z)))
+      AND (FORALL (x: G):
+        g_mul(g_one, x) = x
+          AND g_mul(x, g_one) = x)
+      AND (FORALL (x: G):
+        g_mul(g_inv(x), x) = g_one
+          AND g_mul(x, g_inv(x)) = g_one)
+
+  h_group_laws: bool =
+    (FORALL (x, y, z: H):
+      h_mul(h_mul(x, y), z) = h_mul(x, h_mul(y, z)))
+      AND (FORALL (x: H):
+        h_mul(h_one, x) = x
+          AND h_mul(x, h_one) = x)
+      AND (FORALL (x: H):
+        h_mul(h_inv(x), x) = h_one
+          AND h_mul(x, h_inv(x)) = h_one)
+
+  is_homomorphism: bool =
+    phi(g_one) = h_one
+      AND (FORALL (x, y: G):
+        phi(g_mul(x, y)) = h_mul(phi(x), phi(y)))
+
+  subset_of(A, B: g_set): bool =
+    FORALL (x: G): A(x) IMPLIES B(x)
+
+  is_subgroup(A: g_set): bool =
+    A(g_one)
+      AND (FORALL (x, y: G):
+        A(x) AND A(y) IMPLIES A(g_mul(x, y)))
+      AND (FORALL (x: G):
+        A(x) IMPLIES A(g_inv(x)))
+
+  is_normal_subgroup(A: g_set): bool =
+    is_subgroup(A)
+      AND (FORALL (g, x: G):
+        A(x) IMPLIES
+          A(g_mul(g_mul(g, x), g_inv(g))))
+
+  kernel: g_set =
+    LAMBDA (x: G): phi(x) = h_one
+
+  range: h_set =
+    LAMBDA (y: H): EXISTS (x: G): y = phi(x)
+
+  intersection(A, B: g_set): g_set =
+    LAMBDA (x: G): A(x) AND B(x)
+
+  subgroup_product(A, B: g_set): g_set =
+    LAMBDA (x: G):
+      EXISTS (a, b: G):
+        A(a) AND B(b) AND x = g_mul(a, b)
+
+  left_coset(g: G, A: g_set): g_set =
+    LAMBDA (x: G):
+      EXISTS (a: G):
+        A(a) AND x = g_mul(g, a)
+
+  is_coset(A: g_set, C: g_set): bool =
+    EXISTS (g: G): C = left_coset(g, A)
+
+  is_coset_with_representative_in(
+      A, carrier: g_set,
+      C: g_set): bool =
+    EXISTS (g: G):
+      carrier(g) AND C = left_coset(g, A)
+
+  quotient_product(
+      A: g_set,
+      C, D, E: g_set): bool =
+    EXISTS (x, y: G):
+      C = left_coset(x, A)
+        AND D = left_coset(y, A)
+        AND E = left_coset(g_mul(x, y), A)
+
+  first_canonical_relation(C: g_set, y: H): bool =
+    EXISTS (x: G):
+      C = left_coset(x, kernel)
+        AND y = phi(x)
+
+  bijection_gset_to_h(
+      relation: first_relation,
+      domain: [g_set -> bool],
+      codomain: h_set): bool =
+    (FORALL (C: g_set), (y: H):
+      relation(C, y) IMPLIES domain(C) AND codomain(y))
+      AND (FORALL (C: g_set):
+        domain(C) IMPLIES
+          EXISTS (y: H): codomain(y) AND relation(C, y))
+      AND (FORALL (C: g_set), (y, z: H):
+        domain(C)
+          AND codomain(y)
+          AND codomain(z)
+          AND relation(C, y)
+          AND relation(C, z)
+          IMPLIES y = z)
+      AND (FORALL (y: H):
+        codomain(y) IMPLIES
+          EXISTS (C: g_set): domain(C) AND relation(C, y))
+      AND (FORALL (C, D: g_set), (y: H):
+        domain(C)
+          AND domain(D)
+          AND codomain(y)
+          AND relation(C, y)
+          AND relation(D, y)
+          IMPLIES C = D)
+
+  multiplicative_gset_to_h(
+      relation: first_relation,
+      normal_subgroup: g_set): bool =
+    FORALL (C, D, E: g_set), (x, y, z: H):
+      quotient_product(normal_subgroup, C, D, E)
+        AND relation(C, x)
+        AND relation(D, y)
+        AND relation(E, z)
+        IMPLIES h_mul(x, y) = z
+
+  quotientKerEquivRange: bool =
+    (g_group_laws AND h_group_laws AND is_homomorphism)
+      IMPLIES
+        (bijection_gset_to_h(
+          first_canonical_relation,
+          LAMBDA (C: g_set): is_coset(kernel, C),
+          range)
+          AND multiplicative_gset_to_h(
+            first_canonical_relation,
+            kernel))
+
+  second_canonical_relation(
+      A, N: g_set,
+      C, D: g_set): bool =
+    EXISTS (a: G):
+      A(a)
+        AND C = left_coset(a, intersection(A, N))
+        AND D = left_coset(a, N)
+
+  bijection_between_quotients(
+      relation: quotient_relation,
+      domain, codomain: [g_set -> bool]): bool =
+    (FORALL (C, D: g_set):
+      relation(C, D) IMPLIES domain(C) AND codomain(D))
+      AND (FORALL (C: g_set):
+        domain(C) IMPLIES
+          EXISTS (D: g_set): codomain(D) AND relation(C, D))
+      AND (FORALL (C, D, E: g_set):
+        domain(C)
+          AND codomain(D)
+          AND codomain(E)
+          AND relation(C, D)
+          AND relation(C, E)
+          IMPLIES D = E)
+      AND (FORALL (D: g_set):
+        codomain(D) IMPLIES
+          EXISTS (C: g_set): domain(C) AND relation(C, D))
+      AND (FORALL (C, D, E: g_set):
+        domain(C)
+          AND domain(D)
+          AND codomain(E)
+          AND relation(C, E)
+          AND relation(D, E)
+          IMPLIES C = D)
+
+  canonical_quotient_products_preserved(
+      relation: quotient_relation,
+      source_normal, target_normal: g_set): bool =
+    FORALL (C1, C2, C3, D1, D2, D3: g_set):
+      quotient_product(source_normal, C1, C2, C3)
+        AND relation(C1, D1)
+        AND relation(C2, D2)
+        AND relation(C3, D3)
+        IMPLIES quotient_product(target_normal, D1, D2, D3)
+
+  quotientInfEquivProdNormalQuotient: bool =
+    FORALL (A, N: g_set):
+      (g_group_laws
+        AND is_subgroup(A)
+        AND is_normal_subgroup(N))
+      IMPLIES
+        (bijection_between_quotients(
+          LAMBDA (C, D: g_set):
+            second_canonical_relation(A, N, C, D),
+          LAMBDA (C: g_set):
+            is_coset_with_representative_in(
+              intersection(A, N), A, C),
+          LAMBDA (D: g_set):
+            is_coset_with_representative_in(
+              N, subgroup_product(A, N), D))
+          AND canonical_quotient_products_preserved(
+            LAMBDA (C, D: g_set):
+              second_canonical_relation(A, N, C, D),
+            intersection(A, N),
+            N))
+
+  quotient_subgroup(N, M: g_set, C: g_set): bool =
+    EXISTS (m: G):
+      M(m) AND C = left_coset(m, N)
+
+  iterated_left_coset(
+      N, M: g_set,
+      g: G): quotient_set =
+    LAMBDA (C: g_set):
+      EXISTS (m: G):
+        M(m) AND C = left_coset(g_mul(g, m), N)
+
+  is_iterated_coset(
+      N, M: g_set,
+      Q: quotient_set): bool =
+    EXISTS (g: G):
+      Q = iterated_left_coset(N, M, g)
+
+  iterated_quotient_product(
+      N, M: g_set,
+      Q1, Q2, Q3: quotient_set): bool =
+    EXISTS (x, y: G):
+      Q1 = iterated_left_coset(N, M, x)
+        AND Q2 = iterated_left_coset(N, M, y)
+        AND Q3 = iterated_left_coset(N, M, g_mul(x, y))
+
+  third_canonical_relation(
+      N, M: g_set,
+      Q: quotient_set,
+      C: g_set): bool =
+    EXISTS (g: G):
+      Q = iterated_left_coset(N, M, g)
+        AND C = left_coset(g, M)
+
+  bijection_iterated_to_quotient(
+      relation: iterated_quotient_relation,
+      domain: [quotient_set -> bool],
+      codomain: [g_set -> bool]): bool =
+    (FORALL (Q: quotient_set), (C: g_set):
+      relation(Q, C) IMPLIES domain(Q) AND codomain(C))
+      AND (FORALL (Q: quotient_set):
+        domain(Q) IMPLIES
+          EXISTS (C: g_set): codomain(C) AND relation(Q, C))
+      AND (FORALL (Q: quotient_set), (C, D: g_set):
+        domain(Q)
+          AND codomain(C)
+          AND codomain(D)
+          AND relation(Q, C)
+          AND relation(Q, D)
+          IMPLIES C = D)
+      AND (FORALL (C: g_set):
+        codomain(C) IMPLIES
+          EXISTS (Q: quotient_set): domain(Q) AND relation(Q, C))
+      AND (FORALL (Q, R: quotient_set), (C: g_set):
+        domain(Q)
+          AND domain(R)
+          AND codomain(C)
+          AND relation(Q, C)
+          AND relation(R, C)
+          IMPLIES Q = R)
+
+  canonical_iterated_products_preserved(
+      N, M: g_set,
+      relation: iterated_quotient_relation): bool =
+    FORALL (Q1, Q2, Q3: quotient_set),
+           (C1, C2, C3: g_set):
+      iterated_quotient_product(N, M, Q1, Q2, Q3)
+        AND relation(Q1, C1)
+        AND relation(Q2, C2)
+        AND relation(Q3, C3)
+        IMPLIES quotient_product(M, C1, C2, C3)
+
+  quotientQuotientEquivQuotient: bool =
+    FORALL (N, M: g_set):
+      (g_group_laws
+        AND is_normal_subgroup(N)
+        AND is_normal_subgroup(M)
+        AND subset_of(N, M))
+      IMPLIES
+        (bijection_iterated_to_quotient(
+          LAMBDA (Q: quotient_set), (C: g_set):
+            third_canonical_relation(N, M, Q, C),
+          LAMBDA (Q: quotient_set):
+            is_iterated_coset(N, M, Q),
+          LAMBDA (C: g_set):
+            is_coset(M, C))
+          AND canonical_iterated_products_preserved(
+            N,
+            M,
+            LAMBDA (Q: quotient_set), (C: g_set):
+              third_canonical_relation(N, M, Q, C)))
+
+END Q1065966_isomorphism_theorem

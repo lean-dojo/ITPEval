@@ -1,0 +1,109 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% frama_c/contiki_list/linked_n_split_segment_right_direct_Why3_ide_VClinked_n_split_segment_right_direct_post_2_goal1:
+% direct extraction of a one-element right linked-list segment at the combined
+% array index in pointer memory. This file contains no proof.
+
+linked_n_split_segment_right_direct_Why3_ide_VClinked_n_split_segment_right_direct_post_2_goal1[
+  region: [int -> int],
+  linked: [[int -> int] -> bool]
+]: THEORY
+BEGIN
+  addr: TYPE = [# base: int, offset: int #]
+  pointer_memory: TYPE = [addr -> addr]
+  allocation_table: TYPE = [int -> int]
+
+  shift(p: addr, k: int): addr =
+    (# base := base(p), offset := offset(p) + k #)
+
+  valid_rw(malloc: allocation_table, p: addr, size: int): bool =
+    0 < size IMPLIES
+      0 < base(p)
+        AND 0 <= offset(p)
+        AND offset(p) + size <= malloc(base(p))
+
+  framed(memory: pointer_memory): bool =
+    FORALL (p: addr): region(base(memory(p))) <= 0
+
+  is_sint32(value: int): bool =
+    -2147483648 <= value AND value < 2147483648
+
+  linked_candidate: TYPE =
+    [[int -> int], pointer_memory, addr, addr, int, int, addr -> bool]
+
+  p_linked_n(
+      malloc: allocation_table,
+      ptr_memory: pointer_memory,
+      root, array_base: addr,
+      index, count: int,
+      bound: addr): bool =
+    FORALL (candidate: linked_candidate):
+      ((FORALL (base_index: int),
+               (candidate_malloc: allocation_table),
+               (candidate_memory: pointer_memory),
+               (candidate_bound, candidate_array: addr):
+          (0 <= base_index AND base_index <= 2147483646)
+            IMPLIES
+              candidate(
+                candidate_malloc,
+                candidate_memory,
+                candidate_bound,
+                candidate_array,
+                base_index,
+                0,
+                candidate_bound))
+        AND
+        (FORALL (base_index, positive_count: int),
+                (candidate_memory: pointer_memory),
+                (candidate_array, candidate_root: addr),
+                (candidate_malloc: allocation_table),
+                (candidate_bound: addr):
+          (candidate_memory(shift(candidate_array, base_index))
+              = candidate_root
+            AND 0 < positive_count
+            AND 0 <= base_index
+            AND 0 <= base_index + positive_count
+            AND base_index + positive_count <= 2147483646
+            AND valid_rw(candidate_malloc, candidate_root, 4)
+            AND candidate(
+              candidate_malloc,
+              candidate_memory,
+              candidate_memory(shift(candidate_root, 0)),
+              candidate_array,
+              1 + base_index,
+              positive_count - 1,
+              candidate_bound))
+          IMPLIES
+            candidate(
+              candidate_malloc,
+              candidate_memory,
+              candidate_root,
+              candidate_array,
+              base_index,
+              positive_count,
+              candidate_bound)))
+      IMPLIES
+        candidate(malloc, ptr_memory, root, array_base, index, count, bound)
+
+  goal1: bool =
+    FORALL (t_1: pointer_memory),
+           (a_2: addr),
+           (i, i_1: int),
+           (a, a_1: addr),
+           (t: allocation_table):
+      LET a_3: addr =
+        t_1(shift(t_1(shift(a_2, i + i_1 - 1)), 0))
+      IN
+        (0 < i
+          AND region(base(a)) <= 0
+          AND region(base(a_1)) <= 0
+          AND region(base(a_2)) <= 0
+          AND region(base(a_3)) <= 0
+          AND framed(t_1)
+          AND linked(t)
+          AND is_sint32(i)
+          AND is_sint32(i_1)
+          AND valid_rw(t, shift(a_2, 0), 2147483646)
+          AND p_linked_n(t, t_1, a, a_2, i_1, 1 + i, a_1))
+        IMPLIES
+          p_linked_n(t, t_1, a_3, a_2, i + i_1, 1, a_1)
+END linked_n_split_segment_right_direct_Why3_ide_VClinked_n_split_segment_right_direct_post_2_goal1

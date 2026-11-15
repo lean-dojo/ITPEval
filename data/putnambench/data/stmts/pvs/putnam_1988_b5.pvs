@@ -1,0 +1,94 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1988_b5:
+% the specified odd-dimensional real skew-symmetric band matrix has rank
+% exactly 2n. This file contains no proof.
+
+putnam_1988_b5[n: posnat]: THEORY
+BEGIN
+  matrix_index: TYPE = below(2 * n + 1)
+  independent_index: TYPE = below(2 * n)
+
+  matrix: TYPE = [matrix_index, matrix_index -> real]
+  selected_columns: TYPE = [independent_index -> matrix_index]
+  selected_coefficients: TYPE = [independent_index -> real]
+  full_coefficients: TYPE = [matrix_index -> real]
+
+  selected_column_sum(
+      M: matrix,
+      columns: selected_columns,
+      coefficients: selected_coefficients,
+      row: matrix_index,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      selected_column_sum(
+        M, columns, coefficients, row, count - 1)
+        + IF count <= 2 * n THEN
+            coefficients(count - 1)
+              * M(row, columns(count - 1))
+          ELSE
+            0
+          ENDIF
+    ENDIF
+  MEASURE count
+
+  full_column_sum(
+      M: matrix,
+      coefficients: full_coefficients,
+      row: matrix_index,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      full_column_sum(M, coefficients, row, count - 1)
+        + IF count <= 2 * n + 1 THEN
+            coefficients(count - 1) * M(row, count - 1)
+          ELSE
+            0
+          ENDIF
+    ENDIF
+  MEASURE count
+
+  injective_selection(columns: selected_columns): bool =
+    FORALL (left, right: independent_index):
+      columns(left) = columns(right) IMPLIES left = right
+
+  selected_columns_independent(
+      M: matrix,
+      columns: selected_columns): bool =
+    FORALL (coefficients: selected_coefficients):
+      (FORALL (row: matrix_index):
+        selected_column_sum(
+          M, columns, coefficients, row, 2 * n) = 0)
+      IMPLIES
+        (FORALL (index: independent_index):
+          coefficients(index) = 0)
+
+  all_columns_dependent(M: matrix): bool =
+    EXISTS (coefficients: full_coefficients):
+      (EXISTS (index: matrix_index):
+        coefficients(index) /= 0)
+        AND (FORALL (row: matrix_index):
+          full_column_sum(
+            M, coefficients, row, 2 * n + 1) = 0)
+
+  has_rank_2n(M: matrix): bool =
+    all_columns_dependent(M)
+      AND EXISTS (columns: selected_columns):
+        injective_selection(columns)
+          AND selected_columns_independent(M, columns)
+
+  specified_matrix(M: matrix): bool =
+    (FORALL (i, j: matrix_index):
+      M(i, j) = -M(j, i))
+      AND (FORALL (i, j: matrix_index):
+        (j < i AND i <= j + n) IMPLIES M(i, j) = 1)
+      AND (FORALL (i, j: matrix_index):
+        j + n < i IMPLIES M(i, j) = -1)
+
+  putnam_1988_b5_solution: nat = 2 * n
+
+  putnam_1988_b5: bool =
+    FORALL (M: matrix):
+      specified_matrix(M) IMPLIES has_rank_2n(M)
+END putnam_1988_b5

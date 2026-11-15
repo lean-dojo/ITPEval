@@ -1,0 +1,290 @@
+% Statement-only formalization of the Thousand Theorems corpus artifact Q660799
+% (thousand-theorems__pvs__Q660799), "Darboux's theorem (analysis)":
+% derivatives on real intervals take intermediate values, so derivative images
+% of order-connected or convex real sets remain order-connected or convex.
+% This file contains no proof.
+
+Q660799_darboux_s_theorem_analysis: THEORY
+BEGIN
+  real_function: TYPE = [real -> real]
+  real_set: TYPE = [real -> bool]
+
+  in_closed_interval(x, a, b: real): bool =
+    a <= x AND x <= b
+
+  in_open_interval(x, a, b: real): bool =
+    a < x AND x < b
+
+  has_derivative_within_at(
+      f: real_function,
+      derivative, x: real,
+      s: real_set): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (delta: posreal):
+        FORALL (y: real):
+          (s(y)
+            AND y /= x
+            AND abs(y - x) < delta)
+          IMPLIES
+            abs(
+              f(y) - f(x)
+                - derivative * (y - x))
+              < epsilon_value * abs(y - x)
+
+  has_derivative_at(
+      f: real_function,
+      derivative, x: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (delta: posreal):
+        FORALL (y: real):
+          (y /= x
+            AND abs(y - x) < delta)
+          IMPLIES
+            abs(
+              f(y) - f(x)
+                - derivative * (y - x))
+              < epsilon_value * abs(y - x)
+
+  differentiable_within_at(
+      f: real_function,
+      s: real_set,
+      x: real): bool =
+    EXISTS (derivative: real):
+      has_derivative_within_at(f, derivative, x, s)
+
+  differentiable_at(
+      f: real_function,
+      x: real): bool =
+    EXISTS (derivative: real):
+      has_derivative_at(f, derivative, x)
+
+  differentiable_on(
+      f: real_function,
+      s: real_set): bool =
+    FORALL (x: real):
+      s(x) IMPLIES differentiable_within_at(f, s, x)
+
+  deriv_within(
+      f: real_function,
+      s: real_set,
+      x: real): real =
+    IF has_derivative_within_at(f, 0, x, s) THEN
+      0
+    ELSIF differentiable_within_at(f, s, x) THEN
+      epsilon(
+        LAMBDA (derivative: real):
+          has_derivative_within_at(
+            f, derivative, x, s))
+    ELSE
+      0
+    ENDIF
+
+  deriv(
+      f: real_function,
+      x: real): real =
+    IF has_derivative_at(f, 0, x) THEN
+      0
+    ELSIF differentiable_at(f, x) THEN
+      epsilon(
+        LAMBDA (derivative: real):
+          has_derivative_at(f, derivative, x))
+    ELSE
+      0
+    ENDIF
+
+  order_connected(s: real_set): bool =
+    FORALL (left, right, x: real):
+      (s(left)
+        AND s(right)
+        AND left <= x
+        AND x <= right)
+      IMPLIES s(x)
+
+  convex(s: real_set): bool =
+    FORALL (x, y, weight: real):
+      (s(x)
+        AND s(y)
+        AND 0 <= weight
+        AND weight <= 1)
+      IMPLIES
+        s((1 - weight) * x + weight * y)
+
+  image_set(
+      values: real_function,
+      s: real_set): real_set =
+    LAMBDA (value: real):
+      EXISTS (x: real):
+        s(x) AND values(x) = value
+
+  exists_hasDerivWithinAt_eq_of_gt_of_lt: bool =
+    FORALL
+        (f, f_prime: real_function),
+        (a, b, m: real):
+      (a <= b
+        AND (FORALL (x: real):
+          in_closed_interval(x, a, b)
+            IMPLIES
+              has_derivative_within_at(
+                f,
+                f_prime(x),
+                x,
+                LAMBDA (y: real):
+                  in_closed_interval(y, a, b)))
+        AND f_prime(a) < m
+        AND m < f_prime(b))
+      IMPLIES
+        EXISTS (c: real):
+          in_open_interval(c, a, b)
+            AND f_prime(c) = m
+
+  exists_hasDerivWithinAt_eq_of_lt_of_gt: bool =
+    FORALL
+        (f, f_prime: real_function),
+        (a, b, m: real):
+      (a <= b
+        AND (FORALL (x: real):
+          in_closed_interval(x, a, b)
+            IMPLIES
+              has_derivative_within_at(
+                f,
+                f_prime(x),
+                x,
+                LAMBDA (y: real):
+                  in_closed_interval(y, a, b)))
+        AND m < f_prime(a)
+        AND f_prime(b) < m)
+      IMPLIES
+        EXISTS (c: real):
+          in_open_interval(c, a, b)
+            AND f_prime(c) = m
+
+  ordConnected_image_hasDerivWithinAt: bool =
+    FORALL
+        (s: real_set),
+        (f, f_prime: real_function):
+      (order_connected(s)
+        AND (FORALL (x: real):
+          s(x) IMPLIES
+            has_derivative_within_at(
+              f, f_prime(x), x, s)))
+      IMPLIES
+        order_connected(image_set(f_prime, s))
+
+  ordConnected_image_derivWithin: bool =
+    FORALL
+        (s: real_set),
+        (f: real_function):
+      (order_connected(s)
+        AND differentiable_on(f, s))
+      IMPLIES
+        order_connected(
+          image_set(
+            LAMBDA (x: real):
+              deriv_within(f, s, x),
+            s))
+
+  ordConnected_image_deriv: bool =
+    FORALL
+        (s: real_set),
+        (f: real_function):
+      (order_connected(s)
+        AND (FORALL (x: real):
+          s(x) IMPLIES differentiable_at(f, x)))
+      IMPLIES
+        order_connected(
+          image_set(
+            LAMBDA (x: real): deriv(f, x),
+            s))
+
+  convex_image_hasDerivWithinAt: bool =
+    FORALL
+        (s: real_set),
+        (f, f_prime: real_function):
+      (convex(s)
+        AND (FORALL (x: real):
+          s(x) IMPLIES
+            has_derivative_within_at(
+              f, f_prime(x), x, s)))
+      IMPLIES
+        convex(image_set(f_prime, s))
+
+  convex_image_derivWithin: bool =
+    FORALL
+        (s: real_set),
+        (f: real_function):
+      (convex(s)
+        AND differentiable_on(f, s))
+      IMPLIES
+        convex(
+          image_set(
+            LAMBDA (x: real):
+              deriv_within(f, s, x),
+            s))
+
+  convex_image_deriv: bool =
+    FORALL
+        (s: real_set),
+        (f: real_function):
+      (convex(s)
+        AND (FORALL (x: real):
+          s(x) IMPLIES differentiable_at(f, x)))
+      IMPLIES
+        convex(
+          image_set(
+            LAMBDA (x: real): deriv(f, x),
+            s))
+
+  exists_hasDerivWithinAt_eq_of_ge_of_le: bool =
+    FORALL
+        (f, f_prime: real_function),
+        (a, b, m: real):
+      (a <= b
+        AND (FORALL (x: real):
+          in_closed_interval(x, a, b)
+            IMPLIES
+              has_derivative_within_at(
+                f,
+                f_prime(x),
+                x,
+                LAMBDA (y: real):
+                  in_closed_interval(y, a, b)))
+        AND f_prime(a) <= m
+        AND m <= f_prime(b))
+      IMPLIES
+        EXISTS (c: real):
+          in_closed_interval(c, a, b)
+            AND f_prime(c) = m
+
+  exists_hasDerivWithinAt_eq_of_le_of_ge: bool =
+    FORALL
+        (f, f_prime: real_function),
+        (a, b, m: real):
+      (a <= b
+        AND (FORALL (x: real):
+          in_closed_interval(x, a, b)
+            IMPLIES
+              has_derivative_within_at(
+                f,
+                f_prime(x),
+                x,
+                LAMBDA (y: real):
+                  in_closed_interval(y, a, b)))
+        AND f_prime(a) <= m
+        AND m <= f_prime(b))
+      IMPLIES
+        EXISTS (c: real):
+          in_closed_interval(c, a, b)
+            AND f_prime(c) = m
+
+  darboux_s_theorem_analysis: bool =
+    exists_hasDerivWithinAt_eq_of_gt_of_lt
+      AND exists_hasDerivWithinAt_eq_of_lt_of_gt
+      AND ordConnected_image_hasDerivWithinAt
+      AND ordConnected_image_derivWithin
+      AND ordConnected_image_deriv
+      AND convex_image_hasDerivWithinAt
+      AND convex_image_derivWithin
+      AND convex_image_deriv
+      AND exists_hasDerivWithinAt_eq_of_ge_of_le
+      AND exists_hasDerivWithinAt_eq_of_le_of_ge
+END Q660799_darboux_s_theorem_analysis

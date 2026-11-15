@@ -1,0 +1,137 @@
+% Statement-only formalization of the Thousand Theorems corpus artifact Q2734084,
+% "Bohr–Mollerup theorem": every positive-valued log-convex real function on
+% the positive reals, normalized at one and satisfying the Gamma recurrence,
+% agrees there with the Gamma function. This file contains no proof.
+
+Q2734084_bohr_mollerup_theorem: THEORY
+BEGIN
+  real_function: TYPE = [real -> real]
+  real_sequence: TYPE = [nat -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  nat_factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * nat_factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  exponential_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        exponential_partial(x, count - 1)
+          + safe_div(
+              x ^ index,
+              nat_factorial(index) :: real)
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  real_exponential(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat):
+            exponential_partial(x, count),
+          value))
+
+  natural_log(x: real): real =
+    IF x > 0 THEN
+      epsilon(
+        LAMBDA (value: real):
+          real_exponential(value) = x)
+    ELSE
+      0
+    ENDIF
+
+  real_power(base, exponent: real): real =
+    IF base > 0 THEN
+      real_exponential(exponent * natural_log(base))
+    ELSIF base = 0 AND exponent = 0 THEN
+      1
+    ELSE
+      0
+    ENDIF
+
+  rising_product(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      1
+    ELSE
+      rising_product(x, count - 1)
+        * (x + ((count - 1) :: real))
+    ENDIF
+  MEASURE count
+
+  gamma_approximation(x: real, index: nat): real =
+    safe_div(
+      (nat_factorial(index) :: real)
+        * real_power(index :: real, x),
+      rising_product(x, index + 1))
+
+  gamma_function(x: real): real =
+    IF x > 0 THEN
+      epsilon(
+        LAMBDA (value: real):
+          converges_to(
+            LAMBDA (index: nat):
+              gamma_approximation(x, index),
+            value))
+    ELSE
+      0
+    ENDIF
+
+  positive_reals_convex: bool =
+    FORALL (x, y, a, b: real):
+      (0 < x
+        AND 0 < y
+        AND 0 <= a
+        AND 0 <= b
+        AND a + b = 1)
+      IMPLIES
+        0 < a * x + b * y
+
+  log_convex_on_positive(f: real_function): bool =
+    positive_reals_convex
+      AND
+        FORALL (x, y, a, b: real):
+          (0 < x
+            AND 0 < y
+            AND 0 <= a
+            AND 0 <= b
+            AND a + b = 1)
+          IMPLIES
+            natural_log(f(a * x + b * y))
+              <= a * natural_log(f(x))
+                + b * natural_log(f(y))
+
+  bohr_mollerup_theorem: bool =
+    FORALL (f: real_function):
+      (log_convex_on_positive(f)
+        AND
+          (FORALL (y: real):
+            0 < y IMPLIES
+              f(y + 1) = y * f(y))
+        AND
+          (FORALL (y: real):
+            0 < y IMPLIES 0 < f(y))
+        AND f(1) = 1)
+      IMPLIES
+        FORALL (x: real):
+          0 < x IMPLIES
+            f(x) = gamma_function(x)
+END Q2734084_bohr_mollerup_theorem

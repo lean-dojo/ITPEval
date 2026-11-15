@@ -1,0 +1,195 @@
+% Statement-only formalization of the Thousand Theorems corpus artifact Q2226625,
+% "Commandino's theorem": in a simplex over a characteristic-zero division ring,
+% the vector from the centroid to a vertex is the dimension times the vector from
+% the opposite-face centroid to the simplex centroid. This file contains no proof.
+
+Q2226625_commandino_s_theorem[
+  K, V, P: TYPE+,
+  zeroK, oneK: K,
+  negK, invK: [K -> K],
+  addK, mulK: [K, K -> K],
+  zeroV: V,
+  negV: [V -> V],
+  addV: [V, V -> V],
+  smul: [K, V -> V],
+  vadd: [V, P -> P],
+  vsub: [P, P -> V]
+]: THEORY
+BEGIN
+  scalar_sequence: TYPE = [nat -> K]
+  vector_sequence: TYPE = [nat -> V]
+  point_sequence: TYPE = [nat -> P]
+
+  division_ring_laws: bool =
+    zeroK /= oneK
+      AND (FORALL (a, b: K):
+        addK(a, b) = addK(b, a))
+      AND (FORALL (a, b, c: K):
+        addK(addK(a, b), c) = addK(a, addK(b, c)))
+      AND (FORALL (a: K):
+        addK(a, zeroK) = a)
+      AND (FORALL (a: K):
+        addK(a, negK(a)) = zeroK)
+      AND (FORALL (a, b, c: K):
+        mulK(mulK(a, b), c) = mulK(a, mulK(b, c)))
+      AND (FORALL (a: K):
+        mulK(oneK, a) = a
+          AND mulK(a, oneK) = a)
+      AND (FORALL (a, b, c: K):
+        mulK(a, addK(b, c)) =
+          addK(mulK(a, b), mulK(a, c)))
+      AND (FORALL (a, b, c: K):
+        mulK(addK(a, b), c) =
+          addK(mulK(a, c), mulK(b, c)))
+      AND invK(zeroK) = zeroK
+      AND (FORALL (a: K):
+        a /= zeroK IMPLIES
+          mulK(invK(a), a) = oneK
+            AND mulK(a, invK(a)) = oneK)
+
+  nat_cast(value: nat): RECURSIVE K =
+    IF value = 0 THEN
+      zeroK
+    ELSE
+      addK(nat_cast(value - 1), oneK)
+    ENDIF
+  MEASURE value
+
+  characteristic_zero: bool =
+    FORALL (left, right: nat):
+      nat_cast(left) = nat_cast(right) IMPLIES left = right
+
+  module_laws: bool =
+    (FORALL (u, v: V):
+      addV(u, v) = addV(v, u))
+      AND (FORALL (u, v, w: V):
+        addV(addV(u, v), w) = addV(u, addV(v, w)))
+      AND (FORALL (u: V):
+        addV(u, zeroV) = u)
+      AND (FORALL (u: V):
+        addV(u, negV(u)) = zeroV)
+      AND (FORALL (a: K), (u, v: V):
+        smul(a, addV(u, v)) =
+          addV(smul(a, u), smul(a, v)))
+      AND (FORALL (a, b: K), (u: V):
+        smul(addK(a, b), u) =
+          addV(smul(a, u), smul(b, u)))
+      AND (FORALL (a, b: K), (u: V):
+        smul(mulK(a, b), u) =
+          smul(a, smul(b, u)))
+      AND (FORALL (u: V):
+        smul(oneK, u) = u)
+      AND (FORALL (u: V):
+        smul(zeroK, u) = zeroV)
+      AND (FORALL (a: K):
+        smul(a, zeroV) = zeroV)
+
+  affine_space_laws: bool =
+    (FORALL (p: P):
+      vadd(zeroV, p) = p)
+      AND (FORALL (u, v: V), (p: P):
+        vadd(addV(u, v), p) =
+          vadd(u, vadd(v, p)))
+      AND (FORALL (p, q: P):
+        vadd(vsub(p, q), q) = p)
+      AND (FORALL (u: V), (p: P):
+        vsub(vadd(u, p), p) = u)
+
+  scalar_sum(
+      values: scalar_sequence,
+      count: nat): RECURSIVE K =
+    IF count = 0 THEN
+      zeroK
+    ELSE
+      addK(
+        scalar_sum(values, count - 1),
+        values(count - 1))
+    ENDIF
+  MEASURE count
+
+  vector_sum(
+      values: vector_sequence,
+      count: nat): RECURSIVE V =
+    IF count = 0 THEN
+      zeroV
+    ELSE
+      addV(
+        vector_sum(values, count - 1),
+        values(count - 1))
+    ENDIF
+  MEASURE count
+
+  affinely_independent(
+      dimension: nat,
+      points: point_sequence): bool =
+    FORALL (coefficients: scalar_sequence):
+      scalar_sum(coefficients, dimension + 1) = zeroK
+        AND vector_sum(
+          (LAMBDA (index: nat):
+            smul(
+              coefficients(index),
+              vsub(points(index), points(0)))),
+          dimension + 1) = zeroV
+      IMPLIES
+        (FORALL (index: nat):
+          index <= dimension IMPLIES
+            coefficients(index) = zeroK)
+
+  centroid(
+      dimension: nat,
+      points: point_sequence): P =
+    vadd(
+      smul(
+        invK(nat_cast(dimension + 1)),
+        vector_sum(
+          (LAMBDA (index: nat):
+            vsub(points(index), points(0))),
+          dimension + 1)),
+      points(0))
+
+  face_opposite_centroid(
+      dimension: nat,
+      points: point_sequence,
+      vertex: nat): P =
+    vadd(
+      smul(
+        invK(nat_cast(dimension)),
+        vector_sum(
+          (LAMBDA (index: nat):
+            IF index = vertex THEN
+              zeroV
+            ELSE
+              vsub(points(index), points(vertex))
+            ENDIF),
+          dimension + 1)),
+      points(vertex))
+
+  algebraic_affine_context: bool =
+    division_ring_laws
+      AND characteristic_zero
+      AND module_laws
+      AND affine_space_laws
+
+  commandinos_theorem: bool =
+    algebraic_affine_context IMPLIES
+      (FORALL
+          (dimension: nat),
+          (points: point_sequence),
+          (vertex: nat):
+        0 < dimension
+          AND vertex <= dimension
+          AND affinely_independent(dimension, points)
+        IMPLIES
+          vsub(
+            points(vertex),
+            centroid(dimension, points))
+          =
+          smul(
+            nat_cast(dimension),
+            vsub(
+              centroid(dimension, points),
+              face_opposite_centroid(
+                dimension,
+                points,
+                vertex))))
+END Q2226625_commandino_s_theorem

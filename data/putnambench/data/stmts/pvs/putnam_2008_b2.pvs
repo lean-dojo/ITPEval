@@ -1,0 +1,203 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2008_b2:
+% the factorial-normalized values at one of the iterated integrals of the
+% real logarithm converge to -1. This file contains no proof.
+
+putnam_2008_b2: THEORY
+BEGIN
+  real_function: TYPE = [real -> real]
+  real_sequence: TYPE = [nat -> real]
+  real_function_family: TYPE = [nat -> real_function]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  nat_factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * nat_factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  exponential_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        exponential_partial(x, count - 1)
+          + safe_div(
+              x ^ index,
+              nat_factorial(index) :: real)
+    ENDIF
+  MEASURE count
+
+  real_exponential(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat):
+            exponential_partial(x, count),
+          value))
+
+  real_logarithm(x: real): real =
+    IF x > 0 THEN
+      epsilon(
+        LAMBDA (value: real):
+          real_exponential(value) = x)
+    ELSIF x < 0 THEN
+      epsilon(
+        LAMBDA (value: real):
+          real_exponential(value) = -x)
+    ELSE
+      0
+    ENDIF
+
+  valid_tagged_partition(
+      left, right: real,
+      points, tags: real_sequence,
+      count: nat): bool =
+    count > 0
+      AND points(0) = left
+      AND points(count) = right
+      AND FORALL (index: nat):
+        index < count IMPLIES
+          (points(index) < points(index + 1)
+            AND points(index) <= tags(index)
+            AND tags(index) <= points(index + 1))
+
+  mesh_less_than(
+      points: real_sequence,
+      count: nat,
+      bound: real): bool =
+    FORALL (index: nat):
+      index < count IMPLIES
+        points(index + 1) - points(index) < bound
+
+  riemann_sum(
+      function_value: real_function,
+      points, tags: real_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      riemann_sum(
+        function_value, points, tags, count - 1)
+        + function_value(tags(count - 1))
+            * (points(count) - points(count - 1))
+    ENDIF
+  MEASURE count
+
+  has_proper_interval_integral(
+      function_value: real_function,
+      left, right, integral_value: real): bool =
+    left < right
+      AND FORALL (epsilon_value: posreal):
+        EXISTS (mesh_bound: posreal):
+          FORALL
+              (points, tags: real_sequence),
+              (count: nat):
+            (valid_tagged_partition(
+                left, right, points, tags, count)
+              AND mesh_less_than(
+                points, count, mesh_bound))
+            IMPLIES
+              abs(
+                riemann_sum(
+                  function_value, points, tags, count)
+                  - integral_value)
+                < epsilon_value
+
+  proper_interval_integral(
+      function_value: real_function,
+      left, right: real): real =
+    IF left = right THEN
+      0
+    ELSIF left < right THEN
+      IF EXISTS (integral_value: real):
+          has_proper_interval_integral(
+            function_value, left, right, integral_value)
+      THEN
+        epsilon(
+          LAMBDA (integral_value: real):
+            has_proper_interval_integral(
+              function_value, left, right, integral_value))
+      ELSE
+        0
+      ENDIF
+    ELSE
+      IF EXISTS (integral_value: real):
+          has_proper_interval_integral(
+            function_value, right, left, integral_value)
+      THEN
+        -epsilon(
+          LAMBDA (integral_value: real):
+            has_proper_interval_integral(
+              function_value, right, left, integral_value))
+      ELSE
+        0
+      ENDIF
+    ENDIF
+
+  has_integral_from_zero(
+      function_value: real_function,
+      right, integral_value: real): bool =
+    right > 0
+      AND FORALL (epsilon_value: posreal):
+        EXISTS (delta: posreal):
+          FORALL (left: real):
+            (0 < left AND left < right AND left < delta)
+              IMPLIES
+                abs(
+                  proper_interval_integral(
+                    function_value, left, right)
+                    - integral_value)
+                  < epsilon_value
+
+  integral_from_zero(
+      function_value: real_function,
+      right: real): real =
+    IF right > 0
+        AND EXISTS (integral_value: real):
+          has_integral_from_zero(
+            function_value, right, integral_value)
+    THEN
+      epsilon(
+        LAMBDA (integral_value: real):
+          has_integral_from_zero(
+            function_value, right, integral_value))
+    ELSE
+      0
+    ENDIF
+
+  satisfies_initial_condition(F: real_function_family): bool =
+    FORALL (x: real):
+      F(0)(x) = real_logarithm(x)
+
+  satisfies_integral_recurrence(F: real_function_family): bool =
+    FORALL (n: nat), (x: real):
+      x > 0 IMPLIES
+        F(n + 1)(x) = integral_from_zero(F(n), x)
+
+  normalized_values(F: real_function_family): real_sequence =
+    LAMBDA (n: nat):
+      safe_div(
+        (nat_factorial(n) :: real) * F(n)(1),
+        real_logarithm(n :: real))
+
+  putnam_2008_b2: bool =
+    FORALL (F: real_function_family):
+      (satisfies_initial_condition(F)
+        AND satisfies_integral_recurrence(F))
+      IMPLIES converges_to(normalized_values(F), -1)
+END putnam_2008_b2

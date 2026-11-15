@@ -1,0 +1,458 @@
+% Statement-only formalization of the Thousand Theorems corpus artifact Q3526996,
+% "Kolmogorov extension theorem": a projectively consistent family of finite
+% measures on finite products of an arbitrary indexed family of Polish Borel
+% spaces extends to a measure on the full product with those marginals. This
+% file contains no proof.
+
+kolmogorov_extension_theorem_Q3526996[
+  Index: TYPE,
+  Value: TYPE+,
+  fiber: [Index -> [Value -> bool]],
+  distance: [Index -> [Value, Value -> real]],
+  fiber_sigma: [Index -> [[Value -> bool] -> bool]]
+]: THEORY
+BEGIN
+  IMPORTING finite_sets[Index]
+
+  point_event: TYPE = [Value -> bool]
+  point_event_sequence: TYPE = [nat -> point_event]
+  point_sigma_algebra: TYPE = [point_event -> bool]
+  point_sequence: TYPE = [nat -> Value]
+
+  assignment: TYPE = [Index -> Value]
+  assignment_event: TYPE = [assignment -> bool]
+  assignment_event_sequence: TYPE = [nat -> assignment_event]
+  assignment_sigma_algebra: TYPE = [assignment_event -> bool]
+
+  finite_index_set: TYPE = finite_set[Index]
+
+  measure_value: TYPE =
+    [# infinite_flag: bool, finite_part: real #]
+  measure_value_sequence: TYPE = [nat -> measure_value]
+  real_sequence: TYPE = [nat -> real]
+  measure_map: TYPE = [assignment_event -> measure_value]
+  finite_measure_family: TYPE = [finite_index_set -> measure_map]
+
+  zero_measure_value: measure_value =
+    (# infinite_flag := FALSE, finite_part := 0 #)
+
+  infinite_measure_value: measure_value =
+    (# infinite_flag := TRUE, finite_part := 0 #)
+
+  canonical_measure_value(value: measure_value): bool =
+    IF infinite_flag(value) THEN
+      finite_part(value) = 0
+    ELSE
+      finite_part(value) >= 0
+    ENDIF
+
+  measure_value_is_zero(value: measure_value): bool =
+    NOT infinite_flag(value)
+      AND finite_part(value) = 0
+
+  finite_real_sum(
+      values: real_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      finite_real_sum(values, count - 1)
+        + values(count - 1)
+    ENDIF
+  MEASURE count
+
+  converges_to_real(
+      values: real_sequence,
+      limit: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(values(index) - limit) < epsilon_value
+
+  unbounded_above(values: real_sequence): bool =
+    FORALL (bound: real):
+      EXISTS (index: nat):
+        bound < values(index)
+
+  partial_measure_sum(
+      values: measure_value_sequence,
+      count: nat): real =
+    finite_real_sum(
+      LAMBDA (index: nat):
+        finite_part(values(index)),
+      count)
+
+  extended_nonnegative_sum(
+      values: measure_value_sequence,
+      total: measure_value): bool =
+    canonical_measure_value(total)
+      AND (FORALL (index: nat):
+        canonical_measure_value(values(index)))
+      AND IF infinite_flag(total) THEN
+        (EXISTS (index: nat):
+          infinite_flag(values(index)))
+          OR ((FORALL (index: nat):
+                NOT infinite_flag(values(index)))
+            AND unbounded_above(
+              LAMBDA (count: nat):
+                partial_measure_sum(values, count)))
+      ELSE
+        (FORALL (index: nat):
+          NOT infinite_flag(values(index)))
+          AND converges_to_real(
+            LAMBDA (count: nat):
+              partial_measure_sum(values, count),
+            finite_part(total))
+      ENDIF
+
+  point_event_subset(left, right: point_event): bool =
+    FORALL (value: Value):
+      left(value) IMPLIES right(value)
+
+  fiber_event(index: Index): point_event =
+    LAMBDA (value: Value):
+      fiber(index)(value)
+
+  empty_point_event: point_event =
+    LAMBDA (value: Value): FALSE
+
+  point_complement(
+      index: Index,
+      event: point_event): point_event =
+    LAMBDA (value: Value):
+      fiber(index)(value) AND NOT event(value)
+
+  point_countable_union(
+      index: Index,
+      events: point_event_sequence): point_event =
+    LAMBDA (value: Value):
+      fiber(index)(value)
+        AND EXISTS (number: nat): events(number)(value)
+
+  is_point_sigma_algebra(
+      index: Index,
+      Sigma: point_sigma_algebra): bool =
+    (FORALL (event: point_event):
+      Sigma(event) IMPLIES
+        point_event_subset(event, fiber_event(index)))
+      AND Sigma(fiber_event(index))
+      AND (FORALL (event: point_event):
+        Sigma(event) IMPLIES
+          Sigma(point_complement(index, event)))
+      AND (FORALL (events: point_event_sequence):
+        (FORALL (number: nat): Sigma(events(number)))
+          IMPLIES
+            Sigma(point_countable_union(index, events)))
+
+  metric_space_at(index: Index): bool =
+    (FORALL (left, right: Value):
+      fiber(index)(left) AND fiber(index)(right)
+        IMPLIES distance(index)(left, right) >= 0)
+      AND (FORALL (value: Value):
+        fiber(index)(value)
+          IMPLIES distance(index)(value, value) = 0)
+      AND (FORALL (left, right: Value):
+        fiber(index)(left) AND fiber(index)(right)
+          IMPLIES
+            distance(index)(left, right)
+              = distance(index)(right, left))
+      AND (FORALL (left, middle, right: Value):
+        fiber(index)(left)
+          AND fiber(index)(middle)
+          AND fiber(index)(right)
+        IMPLIES
+          distance(index)(left, right)
+            <= distance(index)(left, middle)
+              + distance(index)(middle, right))
+      AND (FORALL (left, right: Value):
+        fiber(index)(left) AND fiber(index)(right)
+          IMPLIES
+            (distance(index)(left, right) = 0
+              IFF left = right))
+
+  cauchy_at(
+      index: Index,
+      values: point_sequence): bool =
+    (FORALL (number: nat):
+      fiber(index)(values(number)))
+      AND (FORALL (epsilon_value: posreal):
+        EXISTS (cutoff: nat):
+          FORALL (left_number, right_number: nat):
+            cutoff <= left_number
+              AND cutoff <= right_number
+            IMPLIES
+              distance(index)(
+                values(left_number),
+                values(right_number)) < epsilon_value)
+
+  converges_at(
+      index: Index,
+      values: point_sequence,
+      limit: Value): bool =
+    fiber(index)(limit)
+      AND (FORALL (epsilon_value: posreal):
+        EXISTS (cutoff: nat):
+          FORALL (number: nat):
+            cutoff <= number IMPLIES
+              distance(index)(
+                values(number), limit) < epsilon_value)
+
+  complete_at(index: Index): bool =
+    FORALL (values: point_sequence):
+      cauchy_at(index, values) IMPLIES
+        EXISTS (limit: Value):
+          converges_at(index, values, limit)
+
+  separable_at(index: Index): bool =
+    EXISTS (dense_values: point_sequence):
+      FORALL (value: Value):
+        fiber(index)(value) IMPLIES
+          FORALL (epsilon_value: posreal):
+            EXISTS (number: nat):
+              fiber(index)(dense_values(number))
+                AND distance(index)(
+                  dense_values(number), value) < epsilon_value
+
+  open_ball(
+      index: Index,
+      center: Value,
+      radius: real): point_event =
+    LAMBDA (value: Value):
+      fiber(index)(value)
+        AND distance(index)(value, center) < radius
+
+  metric_open_at(
+      index: Index,
+      event: point_event): bool =
+    point_event_subset(event, fiber_event(index))
+      AND FORALL (value: Value):
+        fiber(index)(value) AND event(value) IMPLIES
+          EXISTS (epsilon_value: posreal):
+            point_event_subset(
+              open_ball(index, value, epsilon_value),
+              event)
+
+  generated_borel_sigma_at(
+      index: Index,
+      Sigma: point_sigma_algebra): bool =
+    is_point_sigma_algebra(index, Sigma)
+      AND (FORALL (event: point_event):
+        metric_open_at(index, event) IMPLIES Sigma(event))
+      AND (FORALL (other: point_sigma_algebra):
+        (is_point_sigma_algebra(index, other)
+          AND (FORALL (event: point_event):
+            metric_open_at(index, event) IMPLIES other(event)))
+        IMPLIES
+          FORALL (event: point_event):
+            Sigma(event) IMPLIES other(event))
+
+  polish_borel_family: bool =
+    FORALL (index: Index):
+      metric_space_at(index)
+        AND complete_at(index)
+        AND separable_at(index)
+        AND generated_borel_sigma_at(
+          index, fiber_sigma(index))
+
+  valid_on(
+      indices: finite_index_set,
+      value: assignment): bool =
+    FORALL (index: Index):
+      indices(index) IMPLIES fiber(index)(value(index))
+
+  valid_path(value: assignment): bool =
+    FORALL (index: Index):
+      fiber(index)(value(index))
+
+  finite_domain(
+      indices: finite_index_set): assignment_event =
+    LAMBDA (value: assignment):
+      valid_on(indices, value)
+
+  full_domain: assignment_event =
+    LAMBDA (value: assignment):
+      valid_path(value)
+
+  empty_assignment_event: assignment_event =
+    LAMBDA (value: assignment): FALSE
+
+  assignment_event_subset(
+      left, right: assignment_event): bool =
+    FORALL (value: assignment):
+      left(value) IMPLIES right(value)
+
+  assignment_complement(
+      domain, event: assignment_event): assignment_event =
+    LAMBDA (value: assignment):
+      domain(value) AND NOT event(value)
+
+  assignment_countable_union(
+      domain: assignment_event,
+      events: assignment_event_sequence): assignment_event =
+    LAMBDA (value: assignment):
+      domain(value)
+        AND EXISTS (number: nat): events(number)(value)
+
+  assignment_pairwise_disjoint(
+      domain: assignment_event,
+      events: assignment_event_sequence): bool =
+    FORALL (left_number, right_number: nat):
+      left_number /= right_number IMPLIES
+        FORALL (value: assignment):
+          domain(value) IMPLIES
+            NOT (events(left_number)(value)
+              AND events(right_number)(value))
+
+  is_assignment_sigma_algebra(
+      domain: assignment_event,
+      Sigma: assignment_sigma_algebra): bool =
+    (FORALL (event: assignment_event):
+      Sigma(event) IMPLIES
+        assignment_event_subset(event, domain))
+      AND Sigma(domain)
+      AND (FORALL (event: assignment_event):
+        Sigma(event) IMPLIES
+          Sigma(assignment_complement(domain, event)))
+      AND (FORALL (events: assignment_event_sequence):
+        (FORALL (number: nat): Sigma(events(number)))
+          IMPLIES
+            Sigma(assignment_countable_union(domain, events)))
+
+  finite_coordinate_event(
+      indices: finite_index_set,
+      index: Index,
+      event: point_event): assignment_event =
+    LAMBDA (value: assignment):
+      valid_on(indices, value)
+        AND event(value(index))
+
+  full_coordinate_event(
+      index: Index,
+      event: point_event): assignment_event =
+    LAMBDA (value: assignment):
+      valid_path(value)
+        AND event(value(index))
+
+  contains_finite_coordinate_generators(
+      indices: finite_index_set,
+      Sigma: assignment_sigma_algebra): bool =
+    FORALL (index: Index), (event: point_event):
+      indices(index) AND fiber_sigma(index)(event)
+        IMPLIES
+          Sigma(finite_coordinate_event(
+            indices, index, event))
+
+  contains_full_coordinate_generators(
+      Sigma: assignment_sigma_algebra): bool =
+    FORALL (index: Index), (event: point_event):
+      fiber_sigma(index)(event)
+        IMPLIES
+          Sigma(full_coordinate_event(index, event))
+
+  finite_product_sigma(
+      indices: finite_index_set): assignment_sigma_algebra =
+    LAMBDA (event: assignment_event):
+      FORALL (candidate: assignment_sigma_algebra):
+        (is_assignment_sigma_algebra(
+            finite_domain(indices), candidate)
+          AND contains_finite_coordinate_generators(
+            indices, candidate))
+        IMPLIES candidate(event)
+
+  full_product_sigma: assignment_sigma_algebra =
+    LAMBDA (event: assignment_event):
+      FORALL (candidate: assignment_sigma_algebra):
+        (is_assignment_sigma_algebra(
+            full_domain, candidate)
+          AND contains_full_coordinate_generators(candidate))
+        IMPLIES candidate(event)
+
+  is_assignment_measure(
+      domain: assignment_event,
+      Sigma: assignment_sigma_algebra,
+      M: measure_map): bool =
+    is_assignment_sigma_algebra(domain, Sigma)
+      AND measure_value_is_zero(
+        M(empty_assignment_event))
+      AND (FORALL (event: assignment_event):
+        Sigma(event) IMPLIES
+          canonical_measure_value(M(event)))
+      AND (FORALL (events: assignment_event_sequence):
+        ((FORALL (number: nat): Sigma(events(number)))
+          AND assignment_pairwise_disjoint(domain, events))
+        IMPLIES
+          extended_nonnegative_sum(
+            LAMBDA (number: nat):
+              M(events(number)),
+            M(assignment_countable_union(
+              domain, events))))
+
+  is_finite_product_measure(
+      indices: finite_index_set,
+      M: measure_map): bool =
+    is_assignment_measure(
+      finite_domain(indices),
+      finite_product_sigma(indices),
+      M)
+      AND NOT infinite_flag(
+        M(finite_domain(indices)))
+
+  is_full_product_measure(M: measure_map): bool =
+    is_assignment_measure(
+      full_domain,
+      full_product_sigma,
+      M)
+
+  finite_index_subset(
+      smaller, larger: finite_index_set): bool =
+    FORALL (index: Index):
+      smaller(index) IMPLIES larger(index)
+
+  lifted_finite_event(
+      larger: finite_index_set,
+      event: assignment_event): assignment_event =
+    LAMBDA (value: assignment):
+      valid_on(larger, value) AND event(value)
+
+  cylinder_event(
+      event: assignment_event): assignment_event =
+    LAMBDA (value: assignment):
+      valid_path(value) AND event(value)
+
+  is_projective_measure_family(
+      measures: finite_measure_family): bool =
+    (FORALL (indices: finite_index_set):
+      is_finite_product_measure(
+        indices, measures(indices)))
+      AND (FORALL
+          (smaller, larger: finite_index_set),
+          (event: assignment_event):
+        (finite_index_subset(smaller, larger)
+          AND finite_product_sigma(smaller)(event))
+        IMPLIES
+          measures(smaller)(event)
+            = measures(larger)(
+                lifted_finite_event(larger, event)))
+
+  is_projective_limit(
+      M: measure_map,
+      measures: finite_measure_family): bool =
+    is_full_product_measure(M)
+      AND (FORALL
+          (indices: finite_index_set),
+          (event: assignment_event):
+        finite_product_sigma(indices)(event)
+          IMPLIES
+            M(cylinder_event(event))
+              = measures(indices)(event))
+
+  kolmogorov_extension_theorem: bool =
+    polish_borel_family
+      IMPLIES
+        FORALL (measures: finite_measure_family):
+          is_projective_measure_family(measures)
+            IMPLIES
+              EXISTS (M: measure_map):
+                is_projective_limit(M, measures)
+END kolmogorov_extension_theorem_Q3526996

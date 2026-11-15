@@ -1,0 +1,187 @@
+% Statement-only formalization of the VERINA corpus artifact verina_basic_77
+% (verina__pvs__verina_basic_77), catalog title "modify_array_element":
+% updating one entry of a selected inner natural-number array while preserving
+% both array sizes and every unaffected entry. This file contains no proof.
+
+verina_basic_77: THEORY
+BEGIN
+
+  % Finite PVS lists preserve exactly the contents and order of Lean arrays.
+  nat_list_length(
+      values: list[nat]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        nat_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  nat_matrix_length(
+      rows: list[list[nat]]): RECURSIVE nat =
+    CASES rows OF
+      null:
+        0,
+      cons(row, rest):
+        nat_matrix_length(rest) + 1
+    ENDCASES
+  MEASURE rows BY <<
+
+  % Lean Array.get! on natural-number arrays returns zero out of bounds.
+  nat_list_get_bang(
+      index: nat,
+      values: list[nat]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          nat_list_get_bang(index - 1, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  % Lean Array.get! on arrays returns the empty array out of bounds.
+  nat_matrix_get_bang(
+      index: nat,
+      rows: list[list[nat]]): RECURSIVE list[nat] =
+    CASES rows OF
+      null:
+        null[nat],
+      cons(row, rest):
+        IF index = 0 THEN
+          row
+        ELSE
+          nat_matrix_get_bang(index - 1, rest)
+        ENDIF
+    ENDCASES
+  MEASURE rows BY <<
+
+  % These positional replacements are exactly Lean Array.set!: an in-bounds
+  % entry is replaced, and an out-of-bounds update leaves the array unchanged.
+  nat_list_set_bang(
+      index, new_value: nat,
+      values: list[nat]): RECURSIVE list[nat] =
+    CASES values OF
+      null:
+        null[nat],
+      cons(head, tail):
+        IF index = 0 THEN
+          cons(new_value, tail)
+        ELSE
+          cons(
+            head,
+            nat_list_set_bang(
+              index - 1,
+              new_value,
+              tail))
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  nat_matrix_set_bang(
+      index: nat,
+      new_row: list[nat],
+      rows: list[list[nat]]): RECURSIVE list[list[nat]] =
+    CASES rows OF
+      null:
+        null[list[nat]],
+      cons(row, rest):
+        IF index = 0 THEN
+          cons(new_row, rest)
+        ELSE
+          cons(
+            row,
+            nat_matrix_set_bang(
+              index - 1,
+              new_row,
+              rest))
+        ENDIF
+    ENDCASES
+  MEASURE rows BY <<
+
+  modify_array_element_precond(
+      arr: list[list[nat]],
+      index1, index2, val: nat): bool =
+    index1 < nat_matrix_length(arr)
+      AND index2
+        < nat_list_length(
+            nat_matrix_get_bang(index1, arr))
+
+  updateInner(
+      a: list[nat],
+      idx, val: nat): list[nat] =
+    nat_list_set_bang(idx, val, a)
+
+  % The source precondition proof argument is computationally irrelevant.
+  modify_array_element(
+      arr: list[list[nat]],
+      index1, index2, val: nat): list[list[nat]] =
+    LET inner: list[nat] =
+          nat_matrix_get_bang(index1, arr),
+        inner_prime: list[nat] =
+          updateInner(inner, index2, val)
+    IN
+      nat_matrix_set_bang(
+        index1,
+        inner_prime,
+        arr)
+
+  % The source proof argument to the postcondition is logically irrelevant.
+  modify_array_element_postcond(
+      arr: list[list[nat]],
+      index1, index2, val: nat,
+      result: list[list[nat]]): bool =
+    nat_matrix_length(result) = nat_matrix_length(arr)
+      AND nat_list_length(
+            nat_matrix_get_bang(index1, result))
+          = nat_list_length(
+              nat_matrix_get_bang(index1, arr))
+      AND
+        (FORALL (i: nat):
+          (i < nat_matrix_length(arr)
+            AND i /= index1)
+          IMPLIES
+            nat_matrix_get_bang(i, result)
+              = nat_matrix_get_bang(i, arr))
+      AND
+        (FORALL (j: nat):
+          (j < nat_list_length(
+                 nat_matrix_get_bang(index1, arr))
+            AND j /= index2)
+          IMPLIES
+            nat_list_get_bang(
+              j,
+              nat_matrix_get_bang(index1, result))
+              = nat_list_get_bang(
+                  j,
+                  nat_matrix_get_bang(index1, arr)))
+      AND nat_list_get_bang(
+            index2,
+            nat_matrix_get_bang(index1, result))
+          = val
+
+  modify_array_element_spec_satisfied: bool =
+    FORALL (
+        arr: list[list[nat]],
+        index1, index2, val: nat):
+      modify_array_element_precond(
+        arr,
+        index1,
+        index2,
+        val)
+        IMPLIES
+          modify_array_element_postcond(
+            arr,
+            index1,
+            index2,
+            val,
+            modify_array_element(
+              arr,
+              index1,
+              index2,
+              val))
+
+END verina_basic_77

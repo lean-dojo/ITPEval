@@ -1,0 +1,88 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2016_b5:
+% the functions from (1, infinity) to itself preserving the stated power
+% bounds are exactly the positive real-power functions. This file contains
+% no proof.
+
+putnam_2016_b5: THEORY
+BEGIN
+  above_one: TYPE = {x: real | x > 1}
+  admissible_function: TYPE = [above_one -> above_one]
+  real_sequence: TYPE = [nat -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  nat_factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * nat_factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  exponential_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        exponential_partial(x, count - 1)
+          + safe_div(
+              x ^ index,
+              nat_factorial(index) :: real)
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  real_exponential(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat):
+            exponential_partial(x, count),
+          value))
+
+  natural_log(x: real): real =
+    IF x > 0 THEN
+      epsilon(
+        LAMBDA (value: real):
+          real_exponential(value) = x)
+    ELSE
+      0
+    ENDIF
+
+  real_power(base, exponent: real): real =
+    IF base > 0 THEN
+      real_exponential(exponent * natural_log(base))
+    ELSIF base = 0 AND exponent = 0 THEN
+      1
+    ELSE
+      0
+    ENDIF
+
+  satisfies_power_bounds(f: admissible_function): bool =
+    FORALL (x, y: above_one):
+      (x ^ 2 <= y AND y <= x ^ 3)
+        IMPLIES
+          (f(x) ^ 2 <= f(y) AND f(y) <= f(x) ^ 3)
+
+  positive_real_power_function(f: admissible_function): bool =
+    EXISTS (c: real):
+      c > 0
+        AND FORALL (x: above_one):
+          f(x) = real_power(x, c)
+
+  putnam_2016_b5: bool =
+    FORALL (f: admissible_function):
+      satisfies_power_bounds(f)
+        IFF positive_real_power_function(f)
+END putnam_2016_b5

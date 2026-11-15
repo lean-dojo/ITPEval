@@ -1,0 +1,186 @@
+% Statement-only formalization of the VERINA corpus artifact verina_basic_20,
+% catalog title "uniqueProduct": multiplying each distinct integer in a finite
+% array exactly once via the source hash-set scan, with its duplicate-erasure
+% fold correctness contract. This file contains no proof.
+
+verina_basic_20: THEORY
+BEGIN
+
+  % Finite PVS lists preserve the exact contents and order of Lean arrays.
+  int_list_length(values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        int_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  % Lean's Array.get! on integer arrays returns zero outside the array. The
+  % executable loop calls this accessor only at indices below the array size.
+  int_list_get_bang(
+      index: nat,
+      values: list[int]): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          int_list_get_bang(index - 1, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  int_member(
+      value: int,
+      values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        FALSE,
+      cons(head, tail):
+        head = value OR int_member(value, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  % The Lean HashSet is observed only through membership and insertion.
+  % A duplicate-free list is therefore an exact extensional representation.
+  hashset_insert(
+      value: int,
+      state: list[int]): list[int] =
+    IF int_member(value, state) THEN
+      state
+    ELSE
+      cons(value, state)
+    ENDIF
+
+  % Lean natural-number subtraction is truncated at zero.
+  nat_subtract(first, second: nat): nat =
+    IF first >= second THEN first - second ELSE 0 ENDIF
+
+  uniqueProduct_precond(arr: list[int]): bool =
+    TRUE
+
+  uniqueProduct_loop_steps(
+      arr: list[int],
+      i: nat,
+      seen: list[int],
+      running_product: int,
+      remaining: nat): RECURSIVE int =
+    IF remaining = 0 THEN
+      running_product
+    ELSE
+      LET x: int = int_list_get_bang(i, arr)
+      IN
+        IF int_member(x, seen) THEN
+          uniqueProduct_loop_steps(
+            arr,
+            i + 1,
+            seen,
+            running_product,
+            remaining - 1)
+        ELSE
+          uniqueProduct_loop_steps(
+            arr,
+            i + 1,
+            hashset_insert(x, seen),
+            running_product * x,
+            remaining - 1)
+        ENDIF
+    ENDIF
+  MEASURE remaining
+
+  % This is the exact proof-erased local loop for arbitrary starting index:
+  % it performs one step for every remaining in-bounds array entry.
+  uniqueProduct_loop(
+      arr: list[int],
+      i: nat,
+      seen: list[int],
+      running_product: int): int =
+    uniqueProduct_loop_steps(
+      arr,
+      i,
+      seen,
+      running_product,
+      nat_subtract(int_list_length(arr), i))
+
+  % The source precondition proof argument is computationally irrelevant.
+  uniqueProduct(arr: list[int]): int =
+    uniqueProduct_loop(
+      arr,
+      0,
+      null[int],
+      1)
+
+  reverse_int_list_acc(
+      values, accumulator: list[int]): RECURSIVE list[int] =
+    CASES values OF
+      null:
+        accumulator,
+      cons(head, tail):
+        reverse_int_list_acc(
+          tail,
+          cons(head, accumulator))
+    ENDCASES
+  MEASURE values BY <<
+
+  reverse_int_list(values: list[int]): list[int] =
+    reverse_int_list_acc(values, null[int])
+
+  % Lean List.eraseDups specialized to integer equality: retain each first
+  % occurrence while scanning left to right, then restore source order.
+  eraseDups_loop(
+      remaining, seen_reversed: list[int]):
+        RECURSIVE list[int] =
+    CASES remaining OF
+      null:
+        reverse_int_list(seen_reversed),
+      cons(head, tail):
+        IF int_member(head, seen_reversed) THEN
+          eraseDups_loop(tail, seen_reversed)
+        ELSE
+          eraseDups_loop(
+            tail,
+            cons(head, seen_reversed))
+        ENDIF
+    ENDCASES
+  MEASURE remaining BY <<
+
+  eraseDups(values: list[int]): list[int] =
+    eraseDups_loop(values, null[int])
+
+  % This is Lean's left fold with integer multiplication and initial value 1.
+  int_product_fold_left(
+      values: list[int],
+      accumulator: int): RECURSIVE int =
+    CASES values OF
+      null:
+        accumulator,
+      cons(head, tail):
+        int_product_fold_left(
+          tail,
+          accumulator * head)
+    ENDCASES
+  MEASURE values BY <<
+
+  uniqueProduct_postcond(
+      arr: list[int],
+      result: int): bool =
+    LET expected: int =
+          int_product_fold_left(
+            eraseDups(arr),
+            1)
+    IN
+      result - expected = 0
+        AND expected - result = 0
+
+  uniqueProduct_spec_satisfied: bool =
+    FORALL (arr: list[int]):
+      uniqueProduct_precond(arr)
+        IMPLIES
+          uniqueProduct_postcond(
+            arr,
+            uniqueProduct(arr))
+
+END verina_basic_20

@@ -1,0 +1,100 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1976_b1:
+% the normalized sum of the differences floor(2n/k) - 2 floor(n/k)
+% converges to ln(4) - 1. This file contains no proof.
+
+putnam_1976_b1: THEORY
+BEGIN
+  real_sequence: TYPE = [nat -> real]
+  solution_pair: TYPE = [# first: nat, second: nat #]
+
+  putnam_1976_b1_solution: solution_pair =
+    (# first := 4, second := 1 #)
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  nat_factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * nat_factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  exponential_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        exponential_partial(x, count - 1)
+          + safe_div(
+              x ^ index,
+              nat_factorial(index) :: real)
+    ENDIF
+  MEASURE count
+
+  real_exponential(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat):
+            exponential_partial(x, count),
+          value))
+
+  natural_log(x: real): real =
+    IF x > 0 THEN
+      epsilon(
+        LAMBDA (value: real):
+          real_exponential(value) = x)
+    ELSE
+      0
+    ENDIF
+
+  is_floor(x: real, z: int): bool =
+    (z :: real) <= x
+      AND x < ((z + 1) :: real)
+
+  floor_real(x: real): int =
+    epsilon(
+      LAMBDA (z: int):
+        is_floor(x, z))
+
+  floor_difference_sum(n, count: nat): RECURSIVE int =
+    IF count = 0 THEN
+      0
+    ELSE
+      floor_difference_sum(n, count - 1)
+        + floor_real(
+            safe_div(
+              2 * (n :: real),
+              count :: real))
+        - 2 * floor_real(
+            safe_div(
+              n :: real,
+              count :: real))
+    ENDIF
+  MEASURE count
+
+  normalized_floor_sum(n: nat): real =
+    safe_div(
+      floor_difference_sum(n, n) :: real,
+      n :: real)
+
+  putnam_1976_b1: bool =
+    converges_to(
+      normalized_floor_sum,
+      natural_log(
+        first(putnam_1976_b1_solution) :: real)
+        - (second(putnam_1976_b1_solution) :: real))
+END putnam_1976_b1

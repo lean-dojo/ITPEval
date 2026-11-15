@@ -1,0 +1,270 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/sumrange_CumulativeTree_query_auxqtvc: the cumulative-tree range-query
+% verification condition for recursive-call applicability and correctness of
+% the returned range sum. This file contains no proof.
+
+sumrange_CumulativeTree_query_auxqtvc: THEORY
+BEGIN
+
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  nth_default(values: list[int], index: nat): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          nth_default(tail, index - 1)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  sum_from(
+      values: list[int],
+      start, count: nat): RECURSIVE int =
+    IF count = 0 THEN
+      0
+    ELSE
+      nth_default(values, start)
+        + sum_from(values, start + 1, count - 1)
+    ENDIF
+  MEASURE count
+
+  array_sum(
+      values: list[int],
+      lower, upper: int): int =
+    sum_from(
+      values,
+      int_to_nat(lower),
+      int_to_nat(upper - lower))
+
+  why3_computer_div(numerator, denominator: int): int =
+    IF denominator = 0 THEN
+      0
+    ELSIF numerator * denominator >= 0 THEN
+      floor((numerator :: real) / (denominator :: real))
+    ELSE
+      -floor(-((numerator :: real) / (denominator :: real)))
+    ENDIF
+
+  indexes: DATATYPE
+  BEGIN
+    mk_indexes(
+      low: int,
+      high: int,
+      isum: int): mk_indexes?
+  END indexes
+
+  tree: DATATYPE
+  BEGIN
+    Leaf(leaf_indexes: indexes): Leaf?
+    Node(
+      node_indexes: indexes,
+      left_tree: tree,
+      right_tree: tree): Node?
+  END tree
+
+  indexes1(current: tree): indexes =
+    CASES current OF
+      Leaf(ind):
+        ind,
+      Node(ind, left, right):
+        ind
+    ENDCASES
+
+  is_indexes_for(
+      ind: indexes,
+      values: list[int],
+      lower, upper: int): bool =
+    low(ind) = lower
+      AND high(ind) = upper
+      AND 0 <= lower
+      AND lower < upper
+      AND upper <= length(values)
+      AND isum(ind) = array_sum(values, lower, upper)
+
+  is_tree_for(
+      current: tree,
+      values: list[int],
+      lower, upper: int): RECURSIVE bool =
+    CASES current OF
+      Leaf(ind):
+        is_indexes_for(ind, values, lower, upper)
+          AND upper = lower + 1,
+      Node(ind, left, right):
+        is_indexes_for(ind, values, lower, upper)
+          AND lower = low(indexes1(left))
+          AND upper = high(indexes1(right))
+          AND
+            (LET middle: int = high(indexes1(left))
+             IN
+               middle = low(indexes1(right))
+                 AND lower < middle
+                 AND middle < upper
+                 AND middle
+                       = why3_computer_div(lower + upper, 2)
+                 AND is_tree_for(
+                       left, values, lower, middle)
+                 AND is_tree_for(
+                       right, values, middle, upper))
+    ENDCASES
+  MEASURE current BY <<
+
+  child_of(parent, child: tree): bool =
+    CASES parent OF
+      Leaf(ind):
+        FALSE,
+      Node(ind, left, right):
+        left = child OR right = child
+    ENDCASES
+
+  recursive_call_precondition(
+      parent, child: tree,
+      values: list[int],
+      lower, upper: int): bool =
+    child_of(parent, child)
+      AND
+    is_tree_for(
+      child,
+      values,
+      low(indexes1(child)),
+      high(indexes1(child)))
+      AND 0 <= low(indexes1(child))
+      AND low(indexes1(child)) <= lower
+      AND lower < upper
+      AND upper <= high(indexes1(child))
+      AND high(indexes1(child)) <= length(values)
+
+  node_recursive_obligation(
+      current: tree,
+      ind: indexes,
+      left, right: tree,
+      values: list[int],
+      lower, upper: int): bool =
+    FORALL (o1: bool):
+      (IF lower = low(ind) THEN
+         o1 =
+           (IF upper = high(ind) THEN TRUE ELSE FALSE ENDIF)
+       ELSE
+         o1 = FALSE
+       ENDIF)
+        IMPLIES
+          NOT (o1 = TRUE)
+            IMPLIES
+              (LET middle: int = high(indexes1(left))
+               IN
+                 IF upper <= middle THEN
+                   recursive_call_precondition(
+                     current,
+                     left,
+                     values,
+                     lower,
+                     upper)
+                 ELSIF middle <= lower THEN
+                   recursive_call_precondition(
+                     current,
+                     right,
+                     values,
+                     lower,
+                     upper)
+                 ELSE
+                   recursive_call_precondition(
+                     current,
+                     right,
+                     values,
+                     middle,
+                     upper)
+                     AND
+                   recursive_call_precondition(
+                     current,
+                     left,
+                     values,
+                     lower,
+                     middle)
+                 ENDIF)
+
+  query_result_antecedent(
+      current: tree,
+      values: list[int],
+      lower, upper, result: int): bool =
+    CASES current OF
+      Leaf(ind):
+        result = isum(ind),
+      Node(ind, left, right):
+        EXISTS (o1: bool):
+          (IF lower = low(ind) THEN
+             o1 =
+               (IF upper = high(ind) THEN TRUE ELSE FALSE ENDIF)
+           ELSE
+             o1 = FALSE
+           ENDIF)
+            AND
+          (IF o1 = TRUE THEN
+             result = isum(ind)
+           ELSE
+             LET middle: int = high(indexes1(left))
+             IN
+               IF upper <= middle THEN
+                 result = array_sum(values, lower, upper)
+               ELSIF middle <= lower THEN
+                 result = array_sum(values, lower, upper)
+               ELSE
+                 result =
+                   array_sum(values, lower, middle)
+                     + array_sum(values, middle, upper)
+               ENDIF
+           ENDIF)
+    ENDCASES
+
+  query_result_correct(
+      current: tree,
+      values: list[int],
+      lower, upper: int): bool =
+    FORALL (result: int):
+      query_result_antecedent(
+        current, values, lower, upper, result)
+        IMPLIES
+          result = array_sum(values, lower, upper)
+
+  query_aux_vc: bool =
+    FORALL
+      (current: tree),
+      (values: list[int]),
+      (lower, upper: int):
+      is_tree_for(
+        current,
+        values,
+        low(indexes1(current)),
+        high(indexes1(current)))
+        IMPLIES
+      0 <= low(indexes1(current))
+        IMPLIES
+      low(indexes1(current)) <= lower
+        IMPLIES
+      lower < upper
+        IMPLIES
+      upper <= high(indexes1(current))
+        IMPLIES
+      high(indexes1(current)) <= length(values)
+        IMPLIES
+          (CASES current OF
+             Leaf(ind):
+               TRUE,
+             Node(ind, left, right):
+               node_recursive_obligation(
+                 current,
+                 ind,
+                 left,
+                 right,
+                 values,
+                 lower,
+                 upper)
+           ENDCASES)
+            AND
+          query_result_correct(
+            current, values, lower, upper)
+
+END sumrange_CumulativeTree_query_auxqtvc

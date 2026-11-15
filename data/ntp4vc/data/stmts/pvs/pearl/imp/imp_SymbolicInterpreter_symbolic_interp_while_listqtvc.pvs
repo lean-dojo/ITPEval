@@ -1,0 +1,730 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/imp/imp_SymbolicInterpreter_symbolic_interp_while_listqtvc: the
+% symbolic-interpreter while-loop list verification condition, relating
+% finite sets of symbolic outcomes to bounded concrete IMP while executions
+% with state-extension, soundness, completeness, and list-measure
+% obligations. This file contains no proof.
+
+imp_SymbolicInterpreter_symbolic_interp_while_listqtvc[
+  program_var: TYPE+,
+  svar: TYPE+
+]: THEORY
+BEGIN
+
+  IMPORTING finite_sets[svar]
+
+  int_option: DATATYPE
+  BEGIN
+    NoInt: NoInt?
+    SomeInt(int_value: int): SomeInt?
+  END int_option
+
+  svar_option: DATATYPE
+  BEGIN
+    NoSvar: NoSvar?
+    SomeSvar(svar_value: svar): SomeSvar?
+  END svar_option
+
+  expr: DATATYPE
+  BEGIN
+    Elit(literal_value: int): Elit?
+    Evar(variable_value: program_var): Evar?
+    Esub(left_expression, right_expression: expr): Esub?
+  END expr
+
+  cmd: DATATYPE
+  BEGIN
+    Cskip: Cskip?
+    Cassign(assigned_variable: program_var, assigned_expression: expr):
+      Cassign?
+    Cseq(first_command, second_command: cmd): Cseq?
+    Cif(test_expression: expr, then_command, else_command: cmd): Cif?
+    Cwhile(test_expression: expr, loop_body: cmd): Cwhile?
+  END cmd
+
+  expr_behaviour: DATATYPE
+  BEGIN
+    Enormal(normal_value: int): Enormal?
+    Eunbound_var: Eunbound_var?
+  END expr_behaviour
+
+  behavior: DATATYPE
+  BEGIN
+    Cnormal: Cnormal?
+    Cunbound_var: Cunbound_var?
+    Cloop_limit: Cloop_limit?
+  END behavior
+
+  environment: TYPE = [program_var -> int_option]
+
+  eval_expr(
+      env: environment,
+      expression: expr): RECURSIVE expr_behaviour =
+    CASES expression OF
+      Elit(n):
+        Enormal(n),
+      Evar(x):
+        CASES env(x) OF
+          NoInt:
+            Eunbound_var,
+          SomeInt(n):
+            Enormal(n)
+        ENDCASES,
+      Esub(e1, e2):
+        CASES eval_expr(env, e1) OF
+          Eunbound_var:
+            Eunbound_var,
+          Enormal(n1):
+            CASES eval_expr(env, e2) OF
+              Eunbound_var:
+                Eunbound_var,
+              Enormal(n2):
+                Enormal(n1 - n2)
+            ENDCASES
+        ENDCASES
+    ENDCASES
+  MEASURE expression BY <<
+
+  update_environment(
+      env: environment,
+      variable: program_var,
+      value: int): environment =
+    LAMBDA (x: program_var):
+      IF x = variable THEN SomeInt(value) ELSE env(x) ENDIF
+
+  execution_judgment: DATATYPE
+  BEGIN
+    CmdJudgment(
+      command_limit: int,
+      command_start: environment,
+      executed_command: cmd,
+      command_end: environment,
+      command_behavior: behavior): CmdJudgment?
+    WhileJudgment(
+      while_limit, while_counter: int,
+      while_start: environment,
+      while_test: expr,
+      while_body: cmd,
+      while_end: environment,
+      while_behavior: behavior): WhileJudgment?
+  END execution_judgment
+
+  execution_derivation: DATATYPE
+  BEGIN
+    DSkip(skip_limit: int, skip_environment: environment): DSkip?
+    DAssign(
+      assign_limit: int,
+      assign_environment: environment,
+      assign_expression: expr,
+      assign_value: int,
+      assign_variable: program_var): DAssign?
+    DAssignError(
+      assign_error_limit: int,
+      assign_error_environment: environment,
+      assign_error_expression: expr,
+      assign_error_variable: program_var): DAssignError?
+    DSeq(
+      seq_limit: int,
+      seq_environment1: environment,
+      seq_command1: cmd,
+      seq_environment2: environment,
+      seq_command2: cmd,
+      seq_environment3: environment,
+      seq_behavior: behavior,
+      seq_derivation1, seq_derivation2: execution_derivation): DSeq?
+    DSeqError(
+      seq_error_limit: int,
+      seq_error_environment1: environment,
+      seq_error_command1: cmd,
+      seq_error_environment2: environment,
+      seq_error_behavior: behavior,
+      seq_error_command2: cmd,
+      seq_error_derivation: execution_derivation): DSeqError?
+    DIfFalse(
+      if_false_limit: int,
+      if_false_environment: environment,
+      if_false_expression: expr,
+      if_false_then, if_false_else: cmd,
+      if_false_end: environment,
+      if_false_behavior: behavior,
+      if_false_derivation: execution_derivation): DIfFalse?
+    DIfTrue(
+      if_true_limit: int,
+      if_true_environment: environment,
+      if_true_expression: expr,
+      if_true_value: int,
+      if_true_then, if_true_else: cmd,
+      if_true_end: environment,
+      if_true_behavior: behavior,
+      if_true_derivation: execution_derivation): DIfTrue?
+    DIfError(
+      if_error_limit: int,
+      if_error_environment: environment,
+      if_error_expression: expr,
+      if_error_then, if_error_else: cmd): DIfError?
+    DWhileCommand(
+      while_command_limit: int,
+      while_command_environment: environment,
+      while_command_expression: expr,
+      while_command_body: cmd,
+      while_command_end: environment,
+      while_command_behavior: behavior,
+      while_command_derivation: execution_derivation): DWhileCommand?
+    DWhileOverflow(
+      overflow_limit, overflow_counter: int,
+      overflow_environment: environment,
+      overflow_expression: expr,
+      overflow_body: cmd): DWhileOverflow?
+    DWhileFalse(
+      while_false_limit, while_false_counter: int,
+      while_false_environment: environment,
+      while_false_expression: expr,
+      while_false_body: cmd): DWhileFalse?
+    DWhileTestError(
+      test_error_limit, test_error_counter: int,
+      test_error_environment: environment,
+      test_error_expression: expr,
+      test_error_body: cmd): DWhileTestError?
+    DWhileBodyError(
+      body_error_limit, body_error_counter: int,
+      body_error_environment1: environment,
+      body_error_expression: expr,
+      body_error_value: int,
+      body_error_command: cmd,
+      body_error_environment2: environment,
+      body_error_behavior: behavior,
+      body_error_derivation: execution_derivation): DWhileBodyError?
+    DWhileLoop(
+      loop_limit, loop_counter: int,
+      loop_environment1: environment,
+      loop_expression: expr,
+      loop_value: int,
+      loop_command: cmd,
+      loop_environment2, loop_environment3: environment,
+      loop_behavior: behavior,
+      loop_command_derivation,
+      loop_continuation_derivation: execution_derivation): DWhileLoop?
+  END execution_derivation
+
+  derivation_judgment(
+      derivation: execution_derivation):
+      RECURSIVE execution_judgment =
+    CASES derivation OF
+      DSkip(limit, env):
+        CmdJudgment(limit, env, Cskip, env, Cnormal),
+      DAssign(limit, env, e, n, variable):
+        CmdJudgment(
+          limit,
+          env,
+          Cassign(variable, e),
+          update_environment(env, variable, n),
+          Cnormal),
+      DAssignError(limit, env, e, variable):
+        CmdJudgment(
+          limit, env, Cassign(variable, e), env, Cunbound_var),
+      DSeq(limit, env1, c1, env2, c2, env3, bhv, d1, d2):
+        CmdJudgment(limit, env1, Cseq(c1, c2), env3, bhv),
+      DSeqError(limit, env1, c1, env2, bhv, c2, d):
+        CmdJudgment(limit, env1, Cseq(c1, c2), env2, bhv),
+      DIfFalse(limit, env, e, c1, c2, env2, bhv, d):
+        CmdJudgment(limit, env, Cif(e, c1, c2), env2, bhv),
+      DIfTrue(limit, env, e, n, c1, c2, env2, bhv, d):
+        CmdJudgment(limit, env, Cif(e, c1, c2), env2, bhv),
+      DIfError(limit, env, e, c1, c2):
+        CmdJudgment(limit, env, Cif(e, c1, c2), env, Cunbound_var),
+      DWhileCommand(limit, env, e, c, env2, bhv, d):
+        CmdJudgment(limit, env, Cwhile(e, c), env2, bhv),
+      DWhileOverflow(limit, counter, env, e, c):
+        WhileJudgment(
+          limit, counter, env, e, c, env, Cloop_limit),
+      DWhileFalse(limit, counter, env, e, c):
+        WhileJudgment(limit, counter, env, e, c, env, Cnormal),
+      DWhileTestError(limit, counter, env, e, c):
+        WhileJudgment(
+          limit, counter, env, e, c, env, Cunbound_var),
+      DWhileBodyError(limit, counter, env1, e, n, c, env2, bhv, d):
+        WhileJudgment(limit, counter, env1, e, c, env2, bhv),
+      DWhileLoop(
+          limit, counter, env1, e, n, c, env2, env3, bhv, d1, d2):
+        WhileJudgment(limit, counter, env1, e, c, env3, bhv)
+    ENDCASES
+  MEASURE derivation BY <<
+
+  valid_derivation(
+      derivation: execution_derivation): RECURSIVE bool =
+    CASES derivation OF
+      DSkip(limit, env):
+        TRUE,
+      DAssign(limit, env, e, n, variable):
+        eval_expr(env, e) = Enormal(n),
+      DAssignError(limit, env, e, variable):
+        eval_expr(env, e) = Eunbound_var,
+      DSeq(limit, env1, c1, env2, c2, env3, bhv, d1, d2):
+        valid_derivation(d1)
+          AND derivation_judgment(d1)
+            = CmdJudgment(limit, env1, c1, env2, Cnormal)
+          AND valid_derivation(d2)
+          AND derivation_judgment(d2)
+            = CmdJudgment(limit, env2, c2, env3, bhv),
+      DSeqError(limit, env1, c1, env2, bhv, c2, d):
+        valid_derivation(d)
+          AND derivation_judgment(d)
+            = CmdJudgment(limit, env1, c1, env2, bhv)
+          AND bhv /= Cnormal,
+      DIfFalse(limit, env, e, c1, c2, env2, bhv, d):
+        eval_expr(env, e) = Enormal(0)
+          AND valid_derivation(d)
+          AND derivation_judgment(d)
+            = CmdJudgment(limit, env, c2, env2, bhv),
+      DIfTrue(limit, env, e, n, c1, c2, env2, bhv, d):
+        n /= 0
+          AND eval_expr(env, e) = Enormal(n)
+          AND valid_derivation(d)
+          AND derivation_judgment(d)
+            = CmdJudgment(limit, env, c1, env2, bhv),
+      DIfError(limit, env, e, c1, c2):
+        eval_expr(env, e) = Eunbound_var,
+      DWhileCommand(limit, env, e, c, env2, bhv, d):
+        valid_derivation(d)
+          AND derivation_judgment(d)
+            = WhileJudgment(limit, 0, env, e, c, env2, bhv),
+      DWhileOverflow(limit, counter, env, e, c):
+        limit <= counter,
+      DWhileFalse(limit, counter, env, e, c):
+        counter < limit
+          AND eval_expr(env, e) = Enormal(0),
+      DWhileTestError(limit, counter, env, e, c):
+        counter < limit
+          AND eval_expr(env, e) = Eunbound_var,
+      DWhileBodyError(limit, counter, env1, e, n, c, env2, bhv, d):
+        counter < limit
+          AND eval_expr(env1, e) = Enormal(n)
+          AND n /= 0
+          AND valid_derivation(d)
+          AND derivation_judgment(d)
+            = CmdJudgment(limit, env1, c, env2, bhv)
+          AND bhv /= Cnormal,
+      DWhileLoop(
+          limit, counter, env1, e, n, c, env2, env3, bhv, d1, d2):
+        counter < limit
+          AND eval_expr(env1, e) = Enormal(n)
+          AND n /= 0
+          AND valid_derivation(d1)
+          AND derivation_judgment(d1)
+            = CmdJudgment(limit, env1, c, env2, Cnormal)
+          AND valid_derivation(d2)
+          AND derivation_judgment(d2)
+            = WhileJudgment(
+                limit, counter + 1, env2, e, c, env3, bhv)
+    ENDCASES
+  MEASURE derivation BY <<
+
+  exec_cmd(
+      limit: int,
+      env1: environment,
+      command: cmd,
+      env2: environment,
+      bhv: behavior): bool =
+    EXISTS (derivation: execution_derivation):
+      valid_derivation(derivation)
+        AND derivation_judgment(derivation)
+          = CmdJudgment(limit, env1, command, env2, bhv)
+
+  exec_while(
+      limit, counter: int,
+      env1: environment,
+      test: expr,
+      body: cmd,
+      env2: environment,
+      bhv: behavior): bool =
+    EXISTS (derivation: execution_derivation):
+      valid_derivation(derivation)
+        AND derivation_judgment(derivation)
+          = WhileJudgment(
+              limit, counter, env1, test, body, env2, bhv)
+
+  symbolic_expr: DATATYPE
+  BEGIN
+    Slit(symbolic_literal: int): Slit?
+    Svar(symbolic_variable: svar): Svar?
+    Ssub(
+      left_symbolic_expression,
+      right_symbolic_expression: symbolic_expr): Ssub?
+  END symbolic_expr
+
+  constraint_value: DATATYPE
+  BEGIN
+    Ctrue: Ctrue?
+    Cfalse: Cfalse?
+    Ceq(left_equal, right_equal: symbolic_expr): Ceq?
+    Cneq(left_unequal, right_unequal: symbolic_expr): Cneq?
+    Cconj(left_constraint, right_constraint: constraint_value): Cconj?
+    Cexists(bound_variable: svar, existential_body: constraint_value):
+      Cexists?
+  END constraint_value
+
+  interp_symbolic_expr(
+      rho: [svar -> int],
+      expression: symbolic_expr): RECURSIVE int =
+    CASES expression OF
+      Slit(n):
+        n,
+      Svar(variable):
+        rho(variable),
+      Ssub(e1, e2):
+        interp_symbolic_expr(rho, e1)
+          - interp_symbolic_expr(rho, e2)
+    ENDCASES
+  MEASURE expression BY <<
+
+  is_solution(
+      rho: [svar -> int],
+      constraint: constraint_value): RECURSIVE bool =
+    CASES constraint OF
+      Ctrue:
+        TRUE,
+      Cfalse:
+        FALSE,
+      Ceq(e1, e2):
+        interp_symbolic_expr(rho, e1)
+          = interp_symbolic_expr(rho, e2),
+      Cneq(e1, e2):
+        interp_symbolic_expr(rho, e1)
+          /= interp_symbolic_expr(rho, e2),
+      Cconj(c1, c2):
+        is_solution(rho, c1) AND is_solution(rho, c2),
+      Cexists(variable, body):
+        is_solution(rho, body)
+    ENDCASES
+  MEASURE constraint BY <<
+
+  vars_in_symbolic_expr(
+      expression: symbolic_expr): RECURSIVE finite_set[svar] =
+    CASES expression OF
+      Slit(n):
+        emptyset[svar],
+      Svar(variable):
+        add(variable, emptyset[svar]),
+      Ssub(e1, e2):
+        union(
+          vars_in_symbolic_expr(e1),
+          vars_in_symbolic_expr(e2))
+    ENDCASES
+  MEASURE expression BY <<
+
+  vars_in_constraint(
+      constraint: constraint_value): RECURSIVE finite_set[svar] =
+    CASES constraint OF
+      Ctrue:
+        emptyset[svar],
+      Cfalse:
+        emptyset[svar],
+      Ceq(e1, e2):
+        union(
+          vars_in_symbolic_expr(e1),
+          vars_in_symbolic_expr(e2)),
+      Cneq(e1, e2):
+        union(
+          vars_in_symbolic_expr(e1),
+          vars_in_symbolic_expr(e2)),
+      Cconj(c1, c2):
+        union(vars_in_constraint(c1), vars_in_constraint(c2)),
+      Cexists(variable, body):
+        add(variable, vars_in_constraint(body))
+    ENDCASES
+  MEASURE constraint BY <<
+
+  raw_sym_state: TYPE =
+    [# state_sigma: [program_var -> svar_option],
+       state_constraint: constraint_value,
+       state_rho: [svar -> int],
+       state_vars: finite_set[svar] #]
+
+  state_invariant(state: raw_sym_state): bool =
+    subset?(
+      vars_in_constraint(state_constraint(state)),
+      state_vars(state))
+      AND
+    (FORALL (x: program_var), (variable: svar):
+      state_sigma(state)(x) = SomeSvar(variable)
+        IMPLIES state_vars(state)(variable))
+
+  sym_state: TYPE =
+    {state: raw_sym_state | state_invariant(state)}
+
+  IMPORTING finite_sets[sym_state]
+
+  compose(
+      rho: [svar -> int],
+      sigma: [program_var -> svar_option]): environment =
+    LAMBDA (x: program_var):
+      CASES sigma(x) OF
+        NoSvar:
+          NoInt,
+        SomeSvar(variable):
+          SomeInt(rho(variable))
+      ENDCASES
+
+  state_extends(state, extended: sym_state): bool =
+    subset?(state_vars(state), state_vars(extended))
+      AND
+    (FORALL (variable: svar):
+      state_vars(state)(variable)
+        IMPLIES
+          state_rho(state)(variable)
+            = state_rho(extended)(variable))
+
+  result_sets: TYPE =
+    [# normals: finite_set[sym_state],
+       unbounds: finite_set[sym_state],
+       limits: finite_set[sym_state] #]
+
+  result_member(
+      bhv: behavior,
+      state: sym_state,
+      results: result_sets): bool =
+    CASES bhv OF
+      Cnormal:
+        normals(results)(state),
+      Cunbound_var:
+        unbounds(results)(state),
+      Cloop_limit:
+        limits(results)(state)
+    ENDCASES
+
+  results_extend(state: sym_state, results: result_sets): bool =
+    FORALL (state2: sym_state):
+      (normals(results)(state2)
+        OR unbounds(results)(state2)
+        OR limits(results)(state2))
+        IMPLIES state_extends(state, state2)
+
+  while_sound_for_state(
+      limit, counter: int,
+      test: expr,
+      body: cmd,
+      state: sym_state,
+      results: result_sets): bool =
+    is_solution(state_rho(state), state_constraint(state))
+      IMPLIES
+    (FORALL (gamma2: environment), (bhv: behavior):
+      exec_while(
+        limit,
+        counter,
+        compose(state_rho(state), state_sigma(state)),
+        test,
+        body,
+        gamma2,
+        bhv)
+        IMPLIES
+      (EXISTS (state2: sym_state):
+        result_member(bhv, state2, results)
+          AND is_solution(
+                state_rho(state2), state_constraint(state2))
+          AND gamma2
+            = compose(state_rho(state2), state_sigma(state2))))
+
+  while_complete_for_state(
+      limit, counter: int,
+      test: expr,
+      body: cmd,
+      state: sym_state,
+      results: result_sets): bool =
+    FORALL (bhv: behavior), (state2: sym_state):
+      result_member(bhv, state2, results)
+        IMPLIES
+      is_solution(state_rho(state2), state_constraint(state2))
+        IMPLIES
+      is_solution(state_rho(state), state_constraint(state))
+        AND
+      exec_while(
+        limit,
+        counter,
+        compose(state_rho(state), state_sigma(state)),
+        test,
+        body,
+        compose(state_rho(state2), state_sigma(state2)),
+        bhv)
+
+  while_state_spec(
+      limit, counter: int,
+      test: expr,
+      body: cmd,
+      state: sym_state,
+      results: result_sets): bool =
+    results_extend(state, results)
+      AND while_sound_for_state(
+            limit, counter, test, body, state, results)
+      AND while_complete_for_state(
+            limit, counter, test, body, state, results)
+
+  list_state_set(
+      states: list[sym_state]): RECURSIVE finite_set[sym_state] =
+    CASES states OF
+      null:
+        emptyset[sym_state],
+      cons(state, rest):
+        add(state, list_state_set(rest))
+    ENDCASES
+  MEASURE states BY <<
+
+  while_list_result_spec(
+      limit, counter: int,
+      test: expr,
+      body: cmd,
+      states: list[sym_state],
+      results: result_sets): bool =
+    (FORALL (state2: sym_state):
+      (normals(results)(state2)
+        OR unbounds(results)(state2)
+        OR limits(results)(state2))
+        IMPLIES
+      (EXISTS (state: sym_state):
+        list_state_set(states)(state)
+          AND state_extends(state, state2)))
+      AND
+    (FORALL (state: sym_state):
+      list_state_set(states)(state)
+        IMPLIES
+      is_solution(state_rho(state), state_constraint(state))
+        IMPLIES
+      (FORALL (gamma2: environment), (bhv: behavior):
+        exec_while(
+          limit,
+          counter,
+          compose(state_rho(state), state_sigma(state)),
+          test,
+          body,
+          gamma2,
+          bhv)
+          IMPLIES
+        (EXISTS (state2: sym_state):
+          result_member(bhv, state2, results)
+            AND is_solution(
+                  state_rho(state2), state_constraint(state2))
+            AND gamma2
+              = compose(state_rho(state2), state_sigma(state2)))))
+      AND
+    (FORALL (bhv: behavior), (state2: sym_state):
+      result_member(bhv, state2, results)
+        IMPLIES
+      is_solution(state_rho(state2), state_constraint(state2))
+        IMPLIES
+      (EXISTS (state: sym_state):
+        list_state_set(states)(state)
+          AND is_solution(
+                state_rho(state), state_constraint(state))
+          AND exec_while(
+                limit,
+                counter,
+                compose(state_rho(state), state_sigma(state)),
+                test,
+                body,
+                compose(state_rho(state2), state_sigma(state2)),
+                bhv)))
+
+  empty_results(results: result_sets): bool =
+    (limits(results) = emptyset[sym_state]
+      AND (card(limits(results)) :: int) = 0)
+      AND
+    (unbounds(results) = emptyset[sym_state]
+      AND (card(unbounds(results)) :: int) = 0)
+      AND
+    normals(results) = emptyset[sym_state]
+      AND (card(normals(results)) :: int) = 0
+
+  result_union(
+      whole, first, second: result_sets): bool =
+    limits(whole) = union(limits(first), limits(second))
+      AND unbounds(whole)
+        = union(unbounds(first), unbounds(second))
+      AND normals(whole)
+        = union(normals(first), normals(second))
+
+  while_input_premise(
+      limit, counter: int,
+      test: expr,
+      body: cmd,
+      states: list[sym_state],
+      results: result_sets): bool =
+    CASES states OF
+      null:
+        empty_results(results),
+      cons(state, rest):
+        EXISTS (first_results, remaining_results: result_sets):
+          while_state_spec(
+            limit, counter, test, body, state, first_results)
+            AND while_list_result_spec(
+                  limit,
+                  counter,
+                  test,
+                  body,
+                  rest,
+                  remaining_results)
+            AND result_union(
+                  results, first_results, remaining_results)
+    ENDCASES
+
+  while_head_measure_spec(
+      limit, counter: int,
+      test: expr,
+      body: cmd,
+      whole: list[sym_state],
+      state: sym_state,
+      rest: list[sym_state],
+      results: result_sets): bool =
+    while_state_spec(
+      limit, counter, test, body, state, results)
+      IMPLIES
+    ((0 <= (length(whole) :: int)
+        AND length(rest) < length(whole))
+      AND 0 <= counter
+      AND counter <= limit)
+
+  while_head_condition(
+      limit, counter: int,
+      states: list[sym_state],
+      test: expr,
+      body: cmd): bool =
+    CASES states OF
+      null:
+        TRUE,
+      cons(state, rest):
+        (((0 <= (length(states) :: int)
+            AND 0 < (length(states) :: int))
+          AND 0 <= counter
+          AND counter <= limit)
+          AND
+        (FORALL (results: result_sets):
+          while_head_measure_spec(
+            limit,
+            counter,
+            test,
+            body,
+            states,
+            state,
+            rest,
+            results)))
+    ENDCASES
+
+  symbolic_interp_while_list_vc: bool =
+    FORALL
+      (limit: int),
+      (counter: int),
+      (states: list[sym_state]),
+      (test: expr),
+      (body: cmd):
+        0 <= counter
+          AND counter <= limit
+          IMPLIES
+        while_head_condition(
+          limit, counter, states, test, body)
+          AND
+        (FORALL (results: result_sets):
+          while_input_premise(
+            limit, counter, test, body, states, results)
+            IMPLIES
+          while_list_result_spec(
+            limit, counter, test, body, states, results))
+
+END imp_SymbolicInterpreter_symbolic_interp_while_listqtvc

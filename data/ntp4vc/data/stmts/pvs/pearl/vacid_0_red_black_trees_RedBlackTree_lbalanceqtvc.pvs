@@ -1,0 +1,275 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/vacid_0_red_black_trees_RedBlackTree_lbalanceqtvc: the left-balance
+% verification condition for binary-search ordering, red-black black height,
+% and key-value membership preservation. This file contains no proof.
+
+vacid_0_red_black_trees_RedBlackTree_lbalanceqtvc[
+  key: TYPE+,
+  value: TYPE+
+]: THEORY
+BEGIN
+
+  color: DATATYPE
+  BEGIN
+    Red: Red?
+    Black: Black?
+  END color
+
+  tree: DATATYPE
+  BEGIN
+    Leaf: Leaf?
+    Node(
+      node_color: color,
+      left_subtree: tree,
+      node_key: int,
+      node_value: int,
+      right_subtree: tree): Node?
+  END tree
+
+  memt(values: tree, searched_key, searched_value: int):
+      RECURSIVE bool =
+    CASES values OF
+      Leaf:
+        FALSE,
+      Node(c, left, stored_key, stored_value, right):
+        (searched_key = stored_key
+          AND searched_value = stored_value)
+          OR memt(left, searched_key, searched_value)
+          OR memt(right, searched_key, searched_value)
+    ENDCASES
+  MEASURE values BY <<
+
+  lt_tree(bound: int, values: tree): bool =
+    FORALL (stored_key, stored_value: int):
+      memt(values, stored_key, stored_value)
+        IMPLIES stored_key < bound
+
+  gt_tree(bound: int, values: tree): bool =
+    FORALL (stored_key, stored_value: int):
+      memt(values, stored_key, stored_value)
+        IMPLIES bound < stored_key
+
+  bst(values: tree): RECURSIVE bool =
+    CASES values OF
+      Leaf:
+        TRUE,
+      Node(c, left, stored_key, stored_value, right):
+        bst(left)
+          AND bst(right)
+          AND lt_tree(stored_key, left)
+          AND gt_tree(stored_key, right)
+    ENDCASES
+  MEASURE values BY <<
+
+  is_not_red(values: tree): bool =
+    CASES values OF
+      Leaf:
+        TRUE,
+      Node(c, left, stored_key, stored_value, right):
+        IF c = Red THEN FALSE ELSE TRUE ENDIF
+    ENDCASES
+
+  rbtree(black_height: int, values: tree): RECURSIVE bool =
+    CASES values OF
+      Leaf:
+        black_height = 0,
+      Node(c, left, stored_key, stored_value, right):
+        IF c = Red THEN
+          rbtree(black_height, left)
+            AND rbtree(black_height, right)
+            AND is_not_red(left)
+            AND is_not_red(right)
+        ELSE
+          rbtree(black_height - 1, left)
+            AND rbtree(black_height - 1, right)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  almost_rbtree(black_height: int, values: tree): bool =
+    CASES values OF
+      Leaf:
+        black_height = 0,
+      Node(c, left, stored_key, stored_value, right):
+        IF c = Red THEN
+          rbtree(black_height, left)
+            AND rbtree(black_height, right)
+        ELSE
+          rbtree(black_height - 1, left)
+            AND rbtree(black_height - 1, right)
+        ENDIF
+    ENDCASES
+
+  right_red_balance_result(
+      original_left, left_left, left_right: tree,
+      left_key, left_value: int,
+      inserted_key, inserted_value: int,
+      right: tree,
+      result: tree): bool =
+    CASES left_right OF
+      Leaf:
+        result =
+          Node(
+            Black,
+            original_left,
+            inserted_key,
+            inserted_value,
+            right),
+      Node(right_color, middle, middle_key, middle_value, far_right):
+        IF right_color = Red THEN
+          result =
+            Node(
+              Red,
+              Node(
+                Black,
+                left_left,
+                left_key,
+                left_value,
+                middle),
+              middle_key,
+              middle_value,
+              Node(
+                Black,
+                far_right,
+                inserted_key,
+                inserted_value,
+                right))
+        ELSE
+          result =
+            Node(
+              Black,
+              original_left,
+              inserted_key,
+              inserted_value,
+              right)
+        ENDIF
+    ENDCASES
+
+  lbalance_result(
+      inserted_key: int,
+      left, right: tree,
+      inserted_value: int,
+      result: tree): bool =
+    CASES left OF
+      Leaf:
+        result =
+          Node(
+            Black,
+            left,
+            inserted_key,
+            inserted_value,
+            right),
+      Node(left_color, left_left, left_key, left_value, left_right):
+        IF left_color = Red THEN
+          CASES left_left OF
+            Leaf:
+              right_red_balance_result(
+                left,
+                left_left,
+                left_right,
+                left_key,
+                left_value,
+                inserted_key,
+                inserted_value,
+                right,
+                result),
+            Node(
+                inner_color,
+                far_left,
+                inner_key,
+                inner_value,
+                middle):
+              IF inner_color = Red THEN
+                result =
+                  Node(
+                    Red,
+                    Node(
+                      Black,
+                      far_left,
+                      inner_key,
+                      inner_value,
+                      middle),
+                    left_key,
+                    left_value,
+                    Node(
+                      Black,
+                      left_right,
+                      inserted_key,
+                      inserted_value,
+                      right))
+              ELSE
+                right_red_balance_result(
+                  left,
+                  left_left,
+                  left_right,
+                  left_key,
+                  left_value,
+                  inserted_key,
+                  inserted_value,
+                  right,
+                  result)
+              ENDIF
+          ENDCASES
+        ELSE
+          result =
+            Node(
+              Black,
+              left,
+              inserted_key,
+              inserted_value,
+              right)
+        ENDIF
+    ENDCASES
+
+  lbalance_postcondition(
+      inserted_key: int,
+      left, right: tree,
+      inserted_value: int,
+      result: tree): bool =
+    bst(result)
+      AND
+    (FORALL (black_height: int):
+      almost_rbtree(black_height, left)
+        IMPLIES
+      rbtree(black_height, right)
+        IMPLIES
+      rbtree(black_height + 1, result))
+      AND
+    (FORALL (searched_key, searched_value: int):
+      memt(result, searched_key, searched_value)
+        IFF
+      IF searched_key = inserted_key THEN
+        searched_value = inserted_value
+      ELSE
+        memt(left, searched_key, searched_value)
+          OR memt(right, searched_key, searched_value)
+      ENDIF)
+
+  lbalance_vc: bool =
+    FORALL
+        (inserted_key: int),
+        (left, right: tree),
+        (inserted_value: int):
+      (lt_tree(inserted_key, left)
+        AND gt_tree(inserted_key, right)
+        AND bst(left)
+        AND bst(right))
+      IMPLIES
+        (TRUE
+          AND
+        (FORALL (result: tree):
+          lbalance_result(
+            inserted_key,
+            left,
+            right,
+            inserted_value,
+            result)
+          IMPLIES
+            lbalance_postcondition(
+              inserted_key,
+              left,
+              right,
+              inserted_value,
+              result)))
+
+END vacid_0_red_black_trees_RedBlackTree_lbalanceqtvc

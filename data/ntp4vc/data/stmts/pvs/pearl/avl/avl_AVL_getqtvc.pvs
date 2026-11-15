@@ -1,0 +1,577 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/avl/avl_AVL_getqtvc: an AVL-tree get verification condition for
+% selector-guided splitting of inorder sequences. This file contains no proof.
+
+avl_AVL_getqtvc[
+  node_value: TYPE+,
+  tree_value: TYPE+,
+  summary_value: TYPE+,
+  selector_value: TYPE+
+]: THEORY
+BEGIN
+  model: TYPE = [# seq: list[node_value], hgt: int #]
+
+  avl_tree: DATATYPE
+  BEGIN
+    Empty: Empty?
+    Node(
+      tree_left: avl_tree,
+      tree_datum: node_value,
+      tree_right: avl_tree,
+      tree_height: nat,
+      tree_summary: summary_value): Node?
+  END avl_tree
+
+  view: DATATYPE
+  BEGIN
+    AEmpty: AEmpty?
+    ANode(
+      view_left: tree_value,
+      view_datum: node_value,
+      view_right: tree_value,
+      view_height: nat,
+      view_summary: summary_value): ANode?
+  END view
+
+  option_value: DATATYPE
+  BEGIN
+    NoMiddle: NoMiddle?
+    SomeMiddle(option_datum: node_value): SomeMiddle?
+  END option_value
+
+  selection_split: TYPE =
+    [# split_left: list[node_value],
+       split_middle: option_value,
+       split_right: list[node_value] #]
+
+  selector_part: DATATYPE
+  BEGIN
+    Here: Here?
+    Left(left_selector: selector_value): Left?
+    Right(right_selector: selector_value): Right?
+  END selector_part
+
+  empty_split: selection_split =
+    (# split_left := null,
+       split_middle := NoMiddle,
+       split_right := null #)
+
+  node_model(
+      left_values: list[node_value],
+      datum: node_value,
+      right_values: list[node_value]): list[node_value] =
+    append(left_values, cons(datum, right_values))
+
+  option_to_sequence(option: option_value): list[node_value] =
+    CASES option OF
+      NoMiddle: null,
+      SomeMiddle(datum): cons(datum, null)
+    ENDCASES
+
+  rebuild(parts: selection_split): list[node_value] =
+    append(
+      append(
+        split_left(parts),
+        option_to_sequence(split_middle(parts))),
+      split_right(parts))
+
+  left_extend(
+      left_values: list[node_value],
+      datum: node_value,
+      parts: selection_split): selection_split =
+    (# split_left :=
+         append(
+           left_values,
+           cons(datum, split_left(parts))),
+       split_middle := split_middle(parts),
+       split_right := split_right(parts) #)
+
+  right_extend(
+      parts: selection_split,
+      datum: node_value,
+      right_values: list[node_value]): selection_split =
+    (# split_left := split_left(parts),
+       split_middle := split_middle(parts),
+       split_right :=
+         append(
+           split_right(parts),
+           cons(datum, right_values)) #)
+
+  seq_model(represented_tree: avl_tree):
+      RECURSIVE list[node_value] =
+    CASES represented_tree OF
+      Empty:
+        null,
+      Node(left_tree, datum, right_tree, height, summary):
+        node_model(
+          seq_model(left_tree),
+          datum,
+          seq_model(right_tree))
+    ENDCASES
+  MEASURE represented_tree BY <<
+
+  real_height(represented_tree: avl_tree): RECURSIVE int =
+    CASES represented_tree OF
+      Empty:
+        0,
+      Node(left_tree, datum, right_tree, height, summary):
+        1
+          + (IF real_height(left_tree) < real_height(right_tree)
+             THEN real_height(right_tree)
+             ELSE real_height(left_tree)
+             ENDIF)
+    ENDCASES
+  MEASURE represented_tree BY <<
+
+  balanced(
+      represented_tree: avl_tree,
+      balancing: nat,
+      agg: [[node_value -> summary_value],
+            list[node_value] -> summary_value],
+      measure_closure: [node_value -> summary_value]):
+      RECURSIVE bool =
+    CASES represented_tree OF
+      Empty:
+        TRUE,
+      Node(left_tree, datum, right_tree, height, summary):
+        (height :: int) = real_height(represented_tree)
+          AND summary =
+                agg(measure_closure, seq_model(represented_tree))
+          AND
+            -(balancing :: int)
+              <= real_height(right_tree) - real_height(left_tree)
+          AND
+            real_height(right_tree) - real_height(left_tree)
+              <= (balancing :: int)
+          AND balanced(
+                left_tree, balancing, agg, measure_closure)
+          AND balanced(
+                right_tree, balancing, agg, measure_closure)
+    ENDCASES
+  MEASURE represented_tree BY <<
+
+  associative(
+      op: [summary_value, summary_value -> summary_value]): bool =
+    FORALL (a, b, c: summary_value):
+      op(a, op(b, c)) = op(op(a, b), c)
+
+  neutral_laws(
+      zero: summary_value,
+      op: [summary_value, summary_value -> summary_value]): bool =
+    FORALL (x: summary_value):
+      op(x, zero) = x AND x = op(zero, x)
+
+  aggregate_laws(
+      zero: summary_value,
+      op: [summary_value, summary_value -> summary_value],
+      agg: [[node_value -> summary_value],
+            list[node_value] -> summary_value]): bool =
+    (FORALL (f: [node_value -> summary_value]):
+      agg(f, null) = zero)
+      AND
+    (FORALL (f: [node_value -> summary_value]),
+            (datum: node_value):
+      agg(f, cons(datum, null)) = f(datum))
+      AND
+    (FORALL (f: [node_value -> summary_value]),
+            (left_values, right_values: list[node_value]):
+      agg(f, append(left_values, right_values))
+        = op(agg(f, left_values), agg(f, right_values)))
+
+  representation_invariant(
+      repr: [tree_value -> avl_tree],
+      m1: [tree_value -> model],
+      balancing: nat,
+      agg: [[node_value -> summary_value],
+            list[node_value] -> summary_value],
+      measure_closure: [node_value -> summary_value]): bool =
+    FORALL (self: tree_value):
+      balanced(
+        repr(self), balancing, agg, measure_closure)
+        AND seq(m1(self)) = seq_model(repr(self))
+        AND hgt(m1(self)) = real_height(repr(self))
+
+  representation_injective(
+      repr: [tree_value -> avl_tree],
+      m1: [tree_value -> model]): bool =
+    FORALL (left_tree, right_tree: tree_value):
+      (repr(left_tree) = repr(right_tree)
+        AND m1(left_tree) = m1(right_tree))
+      IMPLIES left_tree = right_tree
+
+  selection_empty_law(
+      selected:
+        [selector_value, selection_split -> bool],
+      selection_possible:
+        [selector_value, list[node_value] -> bool]): bool =
+    FORALL (selector: selector_value):
+      selection_possible(selector, null)
+        IMPLIES selected(selector, empty_split)
+
+  background_assumptions(
+      zero: summary_value,
+      op: [summary_value, summary_value -> summary_value],
+      agg: [[node_value -> summary_value],
+            list[node_value] -> summary_value],
+      element_measure: [node_value -> summary_value],
+      balancing: nat,
+      measure_closure: [node_value -> summary_value],
+      repr: [tree_value -> avl_tree],
+      m1: [tree_value -> model],
+      selected:
+        [selector_value, selection_split -> bool],
+      selection_possible:
+        [selector_value, list[node_value] -> bool]): bool =
+    associative(op)
+      AND neutral_laws(zero, op)
+      AND aggregate_laws(zero, op, agg)
+      AND 0 < balancing
+      AND
+        (FORALL (datum: node_value):
+          measure_closure(datum) = element_measure(datum))
+      AND
+        representation_invariant(
+          repr, m1, balancing, agg, measure_closure)
+      AND representation_injective(repr, m1)
+      AND selection_empty_law(selected, selection_possible)
+
+  sequence_of(
+      tree: tree_value,
+      m1: [tree_value -> model]): list[node_value] =
+    seq(m1(tree))
+
+  height_of(
+      tree: tree_value,
+      m1: [tree_value -> model]): int =
+    hgt(m1(tree))
+
+  height_balance(
+      left_tree, right_tree: tree_value,
+      balancing: nat,
+      m1: [tree_value -> model]): bool =
+    LET difference: int =
+      height_of(left_tree, m1) - height_of(right_tree, m1)
+    IN
+      -(balancing :: int) <= difference
+        AND difference <= (balancing :: int)
+
+  view_fact(
+      tree_view: view,
+      subject: tree_value,
+      balancing: nat,
+      agg: [[node_value -> summary_value],
+            list[node_value] -> summary_value],
+      measure_closure: [node_value -> summary_value],
+      m1: [tree_value -> model]): bool =
+    CASES tree_view OF
+      AEmpty:
+        height_of(subject, m1) = 0
+          AND sequence_of(subject, m1) = null,
+      ANode(left_tree, datum, right_tree, height, summary):
+        sequence_of(subject, m1)
+            = node_model(
+                sequence_of(left_tree, m1),
+                datum,
+                sequence_of(right_tree, m1))
+          AND summary =
+                agg(measure_closure, sequence_of(subject, m1))
+          AND height_balance(
+                left_tree, right_tree, balancing, m1)
+          AND height_of(subject, m1) = (height :: int)
+          AND
+            (height :: int)
+              = 1
+                  + (IF height_of(left_tree, m1)
+                         < height_of(right_tree, m1)
+                     THEN height_of(right_tree, m1)
+                     ELSE height_of(left_tree, m1)
+                     ENDIF)
+    ENDCASES
+
+  middle_matches(
+      option: option_value,
+      parts: selection_split): bool =
+    split_middle(parts) = option
+
+  dispatch_premise(
+      branch: selector_part,
+      selector: selector_value,
+      left_values: list[node_value],
+      datum: node_value,
+      right_values: list[node_value],
+      selected:
+        [selector_value, selection_split -> bool],
+      selection_possible:
+        [selector_value, list[node_value] -> bool]): bool =
+    CASES branch OF
+      Here:
+        selected(
+          selector,
+          (# split_left := left_values,
+             split_middle := SomeMiddle(datum),
+             split_right := right_values #)),
+      Left(subselector):
+        selection_possible(subselector, left_values)
+          AND
+            (FORALL (parts: selection_split):
+              (selected(subselector, parts)
+                AND rebuild(parts) = left_values)
+              IMPLIES
+                selected(
+                  selector,
+                  right_extend(parts, datum, right_values))),
+      Right(subselector):
+        selection_possible(subselector, right_values)
+          AND
+            (FORALL (parts: selection_split):
+              (selected(subselector, parts)
+                AND rebuild(parts) = right_values)
+              IMPLIES
+                selected(
+                  selector,
+                  left_extend(left_values, datum, parts)))
+    ENDCASES
+
+  left_dispatch_conclusion(
+      selector, subselector: selector_value,
+      subject, left_tree: tree_value,
+      datum: node_value,
+      right_tree: tree_value,
+      selected:
+        [selector_value, selection_split -> bool],
+      selection_possible:
+        [selector_value, list[node_value] -> bool],
+      m1: [tree_value -> model]): bool =
+    ((0 <= height_of(subject, m1)
+        AND height_of(left_tree, m1) < height_of(subject, m1))
+      AND
+        selection_possible(
+          subselector, sequence_of(left_tree, m1)))
+      AND
+        (FORALL
+          (parts: selection_split),
+          (chosen_middle: option_value):
+            ((selected(subselector, parts)
+                AND rebuild(parts) = sequence_of(left_tree, m1))
+              AND middle_matches(chosen_middle, parts))
+            IMPLIES
+              ((selected(
+                  selector,
+                  right_extend(
+                    parts,
+                    datum,
+                    sequence_of(right_tree, m1)))
+                AND
+                  rebuild(
+                    right_extend(
+                      parts,
+                      datum,
+                      sequence_of(right_tree, m1)))
+                    = sequence_of(subject, m1))
+                AND
+                  middle_matches(
+                    chosen_middle,
+                    right_extend(
+                      parts,
+                      datum,
+                      sequence_of(right_tree, m1)))))
+
+  right_dispatch_conclusion(
+      selector, subselector: selector_value,
+      subject, left_tree: tree_value,
+      datum: node_value,
+      right_tree: tree_value,
+      selected:
+        [selector_value, selection_split -> bool],
+      selection_possible:
+        [selector_value, list[node_value] -> bool],
+      m1: [tree_value -> model]): bool =
+    ((0 <= height_of(subject, m1)
+        AND height_of(right_tree, m1) < height_of(subject, m1))
+      AND
+        selection_possible(
+          subselector, sequence_of(right_tree, m1)))
+      AND
+        (FORALL
+          (parts: selection_split),
+          (chosen_middle: option_value):
+            ((selected(subselector, parts)
+                AND rebuild(parts) = sequence_of(right_tree, m1))
+              AND middle_matches(chosen_middle, parts))
+            IMPLIES
+              ((selected(
+                  selector,
+                  left_extend(
+                    sequence_of(left_tree, m1),
+                    datum,
+                    parts))
+                AND
+                  rebuild(
+                    left_extend(
+                      sequence_of(left_tree, m1),
+                      datum,
+                      parts))
+                    = sequence_of(subject, m1))
+                AND
+                  middle_matches(
+                    chosen_middle,
+                    left_extend(
+                      sequence_of(left_tree, m1),
+                      datum,
+                      parts))))
+
+  here_dispatch_conclusion(
+      selector: selector_value,
+      subject, left_tree: tree_value,
+      datum: node_value,
+      right_tree: tree_value,
+      selected:
+        [selector_value, selection_split -> bool],
+      m1: [tree_value -> model]): bool =
+    (selected(
+       selector,
+       (# split_left := sequence_of(left_tree, m1),
+          split_middle := SomeMiddle(datum),
+          split_right := sequence_of(right_tree, m1) #))
+      AND
+        rebuild(
+          (# split_left := sequence_of(left_tree, m1),
+             split_middle := SomeMiddle(datum),
+             split_right := sequence_of(right_tree, m1) #))
+          = sequence_of(subject, m1))
+      AND
+        split_middle(
+          (# split_left := sequence_of(left_tree, m1),
+             split_middle := SomeMiddle(datum),
+             split_right := sequence_of(right_tree, m1) #))
+          = SomeMiddle(datum)
+
+  dispatch_conclusion(
+      branch: selector_part,
+      selector: selector_value,
+      subject, left_tree: tree_value,
+      datum: node_value,
+      right_tree: tree_value,
+      selected:
+        [selector_value, selection_split -> bool],
+      selection_possible:
+        [selector_value, list[node_value] -> bool],
+      m1: [tree_value -> model]): bool =
+    CASES branch OF
+      Here:
+        here_dispatch_conclusion(
+          selector, subject, left_tree, datum, right_tree,
+          selected, m1),
+      Left(subselector):
+        left_dispatch_conclusion(
+          selector, subselector, subject, left_tree, datum,
+          right_tree, selected, selection_possible, m1),
+      Right(subselector):
+        right_dispatch_conclusion(
+          selector, subselector, subject, left_tree, datum,
+          right_tree, selected, selection_possible, m1)
+    ENDCASES
+
+  empty_conclusion(
+      selector: selector_value,
+      subject: tree_value,
+      selected:
+        [selector_value, selection_split -> bool],
+      m1: [tree_value -> model]): bool =
+    (selected(selector, empty_split)
+      AND rebuild(empty_split) = sequence_of(subject, m1))
+      AND split_middle(empty_split) = NoMiddle
+
+  node_conclusion(
+      selector: selector_value,
+      subject, left_tree: tree_value,
+      datum: node_value,
+      right_tree: tree_value,
+      agg: [[node_value -> summary_value],
+            list[node_value] -> summary_value],
+      measure_closure: [node_value -> summary_value],
+      selected:
+        [selector_value, selection_split -> bool],
+      selection_possible:
+        [selector_value, list[node_value] -> bool],
+      m1: [tree_value -> model]): bool =
+    LET right_values: list[node_value] =
+          sequence_of(right_tree, m1),
+        left_values: list[node_value] =
+          sequence_of(left_tree, m1)
+    IN
+      (selection_possible(
+         selector,
+         node_model(left_values, datum, right_values))
+        AND
+          agg(measure_closure, sequence_of(left_tree, m1))
+            = agg(measure_closure, left_values)
+        AND
+          agg(measure_closure, sequence_of(right_tree, m1))
+            = agg(measure_closure, right_values))
+      AND
+        (FORALL (branch: selector_part):
+          dispatch_premise(
+            branch, selector, left_values, datum, right_values,
+            selected, selection_possible)
+          IMPLIES
+            dispatch_conclusion(
+              branch, selector, subject, left_tree, datum,
+              right_tree, selected, selection_possible, m1))
+
+  conclusion(
+      tree_view: view,
+      selector: selector_value,
+      subject: tree_value,
+      agg: [[node_value -> summary_value],
+            list[node_value] -> summary_value],
+      measure_closure: [node_value -> summary_value],
+      selected:
+        [selector_value, selection_split -> bool],
+      selection_possible:
+        [selector_value, list[node_value] -> bool],
+      m1: [tree_value -> model]): bool =
+    CASES tree_view OF
+      AEmpty:
+        empty_conclusion(selector, subject, selected, m1),
+      ANode(left_tree, datum, right_tree, height, summary):
+        node_conclusion(
+          selector, subject, left_tree, datum, right_tree,
+          agg, measure_closure, selected, selection_possible, m1)
+    ENDCASES
+
+  get_vc: bool =
+    FORALL
+      (zero: summary_value),
+      (op: [summary_value, summary_value -> summary_value]),
+      (agg: [[node_value -> summary_value],
+             list[node_value] -> summary_value]),
+      (element_measure: [node_value -> summary_value]),
+      (balancing: nat),
+      (measure_closure: [node_value -> summary_value]),
+      (repr: [tree_value -> avl_tree]),
+      (m1: [tree_value -> model]),
+      (selected:
+        [selector_value, selection_split -> bool]),
+      (selection_possible:
+        [selector_value, list[node_value] -> bool]),
+      (selector: selector_value),
+      (subject: tree_value),
+      (tree_view: view):
+        background_assumptions(
+          zero, op, agg, element_measure, balancing,
+          measure_closure, repr, m1,
+          selected, selection_possible)
+        IMPLIES
+          (selection_possible(
+             selector, sequence_of(subject, m1))
+            IMPLIES
+              (view_fact(
+                 tree_view, subject, balancing,
+                 agg, measure_closure, m1)
+                IMPLIES
+                  conclusion(
+                    tree_view, selector, subject,
+                    agg, measure_closure, selected,
+                    selection_possible, m1)))
+END avl_AVL_getqtvc

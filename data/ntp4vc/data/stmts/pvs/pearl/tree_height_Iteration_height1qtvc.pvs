@@ -1,0 +1,237 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/tree_height_Iteration_height1qtvc: the loop verification condition
+% for continuation-based binary-tree height computation, including invariant
+% preservation, termination decrease, and final-result extraction. This file
+% contains no proof.
+
+tree_height_Iteration_height1qtvc[
+    Element: TYPE+]: THEORY
+BEGIN
+
+  tree: DATATYPE
+  BEGIN
+    Empty: Empty?
+    Node(
+      left_subtree: tree,
+      root_element: Element,
+      right_subtree: tree): Node?
+  END tree
+
+  cont: DATATYPE
+  BEGIN
+    Id: Id?
+    Kleft(
+      pending_right_subtree: tree,
+      next_continuation: cont): Kleft?
+    Kright(
+      saved_left_height: int,
+      next_continuation: cont): Kright?
+  END cont
+
+  what: DATATYPE
+  BEGIN
+    Argument(argument_tree: tree): Argument?
+    Result(result_value: int): Result?
+  END what
+
+  int_max(left, right: int): int =
+    IF left <= right THEN right ELSE left ENDIF
+
+  tree_size(value: tree): RECURSIVE int =
+    CASES value OF
+      Empty:
+        0,
+      Node(left, root, right):
+        1 + tree_size(left) + tree_size(right)
+    ENDCASES
+  MEASURE value BY <<
+
+  tree_height(value: tree): RECURSIVE int =
+    CASES value OF
+      Empty:
+        0,
+      Node(left, root, right):
+        1 + int_max(tree_height(left), tree_height(right))
+    ENDCASES
+  MEASURE value BY <<
+
+  is_id(continuation: cont): bool =
+    CASES continuation OF
+      Id:
+        TRUE,
+      Kleft(right, next):
+        FALSE,
+      Kright(left_height, next):
+        FALSE
+    ENDCASES
+
+  is_result(work: what): bool =
+    CASES work OF
+      Argument(value):
+        FALSE,
+      Result(value):
+        TRUE
+    ENDCASES
+
+  evalk(continuation: cont, value: int): RECURSIVE int =
+    CASES continuation OF
+      Id:
+        value,
+      Kleft(left, next):
+        evalk(next, 1 + int_max(tree_height(left), value)),
+      Kright(left_height, next):
+        evalk(next, 1 + int_max(left_height, value))
+    ENDCASES
+  MEASURE continuation BY <<
+
+  evalw(work: what): int =
+    CASES work OF
+      Argument(value):
+        tree_height(value),
+      Result(value):
+        value
+    ENDCASES
+
+  sizek(continuation: cont): RECURSIVE int =
+    CASES continuation OF
+      Id:
+        0,
+      Kleft(value, next):
+        3 + 4 * tree_size(value) + sizek(next),
+      Kright(value, next):
+        1 + sizek(next)
+    ENDCASES
+  MEASURE continuation BY <<
+
+  sizew(work: what): int =
+    CASES work OF
+      Argument(value):
+        1 + 4 * tree_size(value),
+      Result(value):
+        0
+    ENDCASES
+
+  work_size(continuation: cont, work: what): int =
+    sizek(continuation) + sizew(work)
+
+  transition_obligation(
+      original_tree: tree,
+      continuation: cont,
+      work: what,
+      next_continuation: cont,
+      next_work: what): bool =
+    (0 <= work_size(continuation, work)
+      AND
+     work_size(next_continuation, next_work)
+       < work_size(continuation, work))
+      AND
+    evalk(next_continuation, evalw(next_work))
+      = tree_height(original_tree)
+
+  argument_step_obligation(
+      original_tree: tree,
+      continuation: cont,
+      work: what,
+      argument: tree): bool =
+    CASES argument OF
+      Empty:
+        transition_obligation(
+          original_tree,
+          continuation,
+          work,
+          continuation,
+          Result(0)),
+      Node(left, root, right):
+        transition_obligation(
+          original_tree,
+          continuation,
+          work,
+          Kleft(right, continuation),
+          Argument(left))
+    ENDCASES
+
+  step_obligation(
+      original_tree: tree,
+      continuation: cont,
+      work: what): bool =
+    CASES continuation OF
+      Id:
+        CASES work OF
+          Argument(value):
+            argument_step_obligation(
+              original_tree, continuation, work, value),
+          Result(value):
+            FALSE
+        ENDCASES,
+      Kleft(pending_right, next):
+        CASES work OF
+          Argument(value):
+            argument_step_obligation(
+              original_tree, continuation, work, value),
+          Result(value):
+            transition_obligation(
+              original_tree,
+              continuation,
+              work,
+              Kright(value, next),
+              Argument(pending_right))
+        ENDCASES,
+      Kright(saved_left, next):
+        CASES work OF
+          Argument(value):
+            argument_step_obligation(
+              original_tree, continuation, work, value),
+          Result(value):
+            transition_obligation(
+              original_tree,
+              continuation,
+              work,
+              next,
+              Result(1 + int_max(saved_left, value)))
+        ENDCASES
+    ENDCASES
+
+  result_value_premise(
+      work: what,
+      result: int): bool =
+    CASES work OF
+      Argument(value):
+        FALSE,
+      Result(value):
+        result = value
+    ENDCASES
+
+  final_obligation(
+      original_tree: tree,
+      work: what): bool =
+    is_result(work)
+      AND
+    (FORALL (result: int):
+      result_value_premise(work, result)
+        IMPLIES result = tree_height(original_tree))
+
+  height1_vc: bool =
+    FORALL (original_tree: tree):
+      evalk(Id, evalw(Argument(original_tree)))
+        = tree_height(original_tree)
+      AND
+      (FORALL (continuation: cont), (work: what):
+        evalk(continuation, evalw(work))
+          = tree_height(original_tree)
+        IMPLIES
+        (FORALL (o1: bool):
+          (IF is_id(continuation) THEN
+             o1 =
+               (IF is_result(work) THEN TRUE ELSE FALSE ENDIF)
+           ELSE
+             o1 = FALSE
+           ENDIF)
+          IMPLIES
+          (IF NOT (o1 = TRUE) THEN
+             step_obligation(
+               original_tree, continuation, work)
+           ELSE
+             final_obligation(original_tree, work)
+           ENDIF)))
+
+END tree_height_Iteration_height1qtvc

@@ -1,0 +1,173 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/linked_list_rev_InPlaceRev_in_place_reverseqtvc: the linked-list
+% in-place reversal verification condition for initialization and preservation
+% of disjoint list segments and the reversed list. This file contains no proof.
+
+linked_list_rev_InPlaceRev_in_place_reverseqtvc[
+  loc: TYPE+,
+  null_loc: loc,
+  eq_loc: [loc, loc -> bool]
+]: THEORY
+BEGIN
+
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  nth_loc(values: list[loc], index: int): RECURSIVE loc =
+    CASES values OF
+      null:
+        null_loc,
+      cons(head, tail):
+        IF int_to_nat(index) = 0 THEN
+          head
+        ELSE
+          nth_loc(tail, int_to_nat(index) - 1)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  list_reverse(values: list[loc]): RECURSIVE list[loc] =
+    CASES values OF
+      null:
+        null,
+      cons(head, tail):
+        append(list_reverse(tail), cons(head, null))
+    ENDCASES
+  MEASURE values BY <<
+
+  eq_loc_specification: bool =
+    FORALL (left, right: loc):
+      (eq_loc(left, right) = TRUE) <=> (left = right)
+
+  disjoint(left, right: list[loc]): bool =
+    FORALL (i1: int):
+      (0 <= i1 AND i1 < length(left))
+        IMPLIES
+          (FORALL (i2: int):
+            (0 <= i2 AND i2 < length(right))
+              IMPLIES
+                nth_loc(left, i1) /= nth_loc(right, i2))
+
+  list_seg(
+      next1: [loc -> loc],
+      p: loc,
+      values: list[loc],
+      q: loc): bool =
+    LET n: int = length(values) IN
+      (FORALL (i: int):
+        (0 <= i AND i < n)
+          IMPLIES nth_loc(values, i) /= null_loc)
+      AND
+      ((p = q AND n = 0)
+        OR
+       (1 <= n
+         AND nth_loc(values, 0) = p
+         AND next1(nth_loc(values, n - 1)) = q
+         AND
+           (FORALL (i: int):
+             (0 <= i AND i < n - 1)
+               IMPLIES
+                 next1(nth_loc(values, i))
+                   = nth_loc(values, i + 1))))
+
+  update_next(
+      next1: [loc -> loc],
+      point, value: loc): [loc -> loc] =
+    next1 WITH [(point) := value]
+
+  tail_matches(values, expected: list[loc]): bool =
+    CASES values OF
+      null:
+        FALSE,
+      cons(ignored, tail):
+        tail = expected
+    ENDCASES
+
+  reversal_branch(
+      original: list[loc],
+      rM: list[loc],
+      r: loc,
+      pM: list[loc],
+      p: loc,
+      next1: [loc -> loc]): bool =
+    CASES pM OF
+      null:
+        FALSE,
+      cons(head, tail):
+        p /= null_loc
+          AND tail_matches(pM, tail)
+          AND
+            list_seg(
+              update_next(next1, p, r),
+              next1(p),
+              tail,
+              null_loc)
+          AND
+            list_seg(
+              update_next(next1, p, r),
+              p,
+              cons(head, rM),
+              null_loc)
+          AND disjoint(tail, cons(head, rM))
+          AND
+            append(list_reverse(tail), cons(head, rM))
+              = list_reverse(original)
+    ENDCASES
+
+  reversal_step(
+      original: list[loc],
+      rM: list[loc],
+      r: loc,
+      pM: list[loc],
+      p: loc,
+      next1: [loc -> loc]): bool =
+    (list_seg(next1, p, pM, null_loc)
+      AND list_seg(next1, r, rM, null_loc)
+      AND disjoint(pM, rM)
+      AND append(list_reverse(pM), rM) = list_reverse(original))
+    IMPLIES
+      (LET o1: loc = null_loc,
+           o2: bool = eq_loc(p, o1)
+       IN
+         ((o2 = TRUE) <=> (p = o1))
+           IMPLIES
+             (IF NOT (o2 = TRUE) THEN
+                reversal_branch(original, rM, r, pM, p, next1)
+              ELSE
+                list_seg(
+                  next1,
+                  r,
+                  list_reverse(original),
+                  null_loc)
+              ENDIF))
+
+  in_place_reverse_vc: bool =
+    eq_loc_specification
+      IMPLIES
+        FORALL
+            (next1: [loc -> loc]),
+            (l: loc),
+            (lM: list[loc]):
+          list_seg(next1, l, lM, null_loc)
+            IMPLIES
+              (list_seg(next1, l, lM, null_loc)
+                AND list_seg(next1, null_loc, null, null_loc)
+                AND disjoint(lM, null)
+                AND append(list_reverse(lM), null)
+                      = list_reverse(lM)
+                AND
+                  (FORALL
+                      (rM: list[loc]),
+                      (r: loc),
+                      (pM: list[loc]),
+                      (p: loc),
+                      (next2: [loc -> loc]):
+                    reversal_step(
+                      lM,
+                      rM,
+                      r,
+                      pM,
+                      p,
+                      next2)))
+
+END linked_list_rev_InPlaceRev_in_place_reverseqtvc

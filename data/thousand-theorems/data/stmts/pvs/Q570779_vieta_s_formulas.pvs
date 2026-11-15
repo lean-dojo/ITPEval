@@ -1,0 +1,145 @@
+% Statement-only formalization of the Thousand Theorems artifact Q570779,
+% "Vieta's formulas": over every commutative semiring, the product indexed by
+% a finite multiset of the linear polynomials X + C(r) equals the sum of its
+% elementary symmetric functions times descending powers of X. This file
+% contains no proof.
+
+Q570779_vieta_s_formulas[
+  R: TYPE+,
+  zeroR: R,
+  oneR: R,
+  addR: [R, R -> R],
+  mulR: [R, R -> R]
+]: THEORY
+BEGIN
+  polynomial: TYPE = [nat -> R]
+
+  list_length(xs: list[R]): RECURSIVE nat =
+    CASES xs OF
+      null: 0,
+      cons(a, ys): list_length(ys) + 1
+    ENDCASES
+  MEASURE xs BY <<
+
+  nat_sub(n, m: nat): nat =
+    IF m <= n THEN n - m ELSE 0 ENDIF
+
+  poly_zero: polynomial =
+    LAMBDA (degree: nat): zeroR
+
+  poly_one: polynomial =
+    LAMBDA (degree: nat):
+      IF degree = 0 THEN oneR ELSE zeroR ENDIF
+
+  X: polynomial =
+    LAMBDA (degree: nat):
+      IF degree = 1 THEN oneR ELSE zeroR ENDIF
+
+  C(value: R): polynomial =
+    LAMBDA (degree: nat):
+      IF degree = 0 THEN value ELSE zeroR ENDIF
+
+  poly_add(left, right: polynomial): polynomial =
+    LAMBDA (degree: nat):
+      addR(left(degree), right(degree))
+
+  convolution_sum(
+      left, right: polynomial,
+      degree, count: nat): RECURSIVE R =
+    IF count = 0 THEN
+      zeroR
+    ELSE
+      LET index: nat = count - 1 IN
+        addR(
+          convolution_sum(left, right, degree, count - 1),
+          mulR(left(index), right(nat_sub(degree, index))))
+    ENDIF
+  MEASURE count
+
+  poly_mul(left, right: polynomial): polynomial =
+    LAMBDA (degree: nat):
+      convolution_sum(left, right, degree, degree + 1)
+
+  poly_power(
+      value: polynomial,
+      exponent: nat): RECURSIVE polynomial =
+    IF exponent = 0 THEN
+      poly_one
+    ELSE
+      poly_mul(poly_power(value, exponent - 1), value)
+    ENDIF
+  MEASURE exponent
+
+  linear_factor(value: R): polynomial =
+    poly_add(X, C(value))
+
+  product_linear_factors(
+      values: list[R]): RECURSIVE polynomial =
+    CASES values OF
+      null: poly_one,
+      cons(value, tail):
+        poly_mul(linear_factor(value), product_linear_factors(tail))
+    ENDCASES
+  MEASURE values BY <<
+
+  elementary_symmetric(
+      values: list[R],
+      degree: nat): RECURSIVE R =
+    IF degree = 0 THEN
+      oneR
+    ELSE
+      CASES values OF
+        null: zeroR,
+        cons(value, tail):
+          addR(
+            elementary_symmetric(tail, degree),
+            mulR(
+              value,
+              elementary_symmetric(tail, degree - 1)))
+      ENDCASES
+    ENDIF
+  MEASURE values BY <<
+
+  vieta_sum(values: list[R], count: nat): RECURSIVE polynomial =
+    IF count = 0 THEN
+      poly_zero
+    ELSE
+      LET degree: nat = count - 1 IN
+        poly_add(
+          vieta_sum(values, count - 1),
+          poly_mul(
+            C(elementary_symmetric(values, degree)),
+            poly_power(
+              X,
+              nat_sub(list_length(values), degree))))
+    ENDIF
+  MEASURE count
+
+  commutative_semiring_laws: bool =
+    (FORALL (a, b, c: R):
+      addR(addR(a, b), c) = addR(a, addR(b, c)))
+      AND (FORALL (a, b: R):
+        addR(a, b) = addR(b, a))
+      AND (FORALL (a: R):
+        addR(zeroR, a) = a AND addR(a, zeroR) = a)
+      AND (FORALL (a, b, c: R):
+        mulR(mulR(a, b), c) = mulR(a, mulR(b, c)))
+      AND (FORALL (a, b: R):
+        mulR(a, b) = mulR(b, a))
+      AND (FORALL (a: R):
+        mulR(oneR, a) = a AND mulR(a, oneR) = a)
+      AND (FORALL (a, b, c: R):
+        mulR(a, addR(b, c)) =
+          addR(mulR(a, b), mulR(a, c)))
+      AND (FORALL (a, b, c: R):
+        mulR(addR(a, b), c) =
+          addR(mulR(a, c), mulR(b, c)))
+      AND (FORALL (a: R):
+        mulR(zeroR, a) = zeroR AND mulR(a, zeroR) = zeroR)
+
+  Multiset_prod_X_add_C_eq_sum_esymm: bool =
+    commutative_semiring_laws IMPLIES
+      (FORALL (values: list[R]):
+        product_linear_factors(values) =
+          vieta_sum(values, list_length(values) + 1))
+END Q570779_vieta_s_formulas

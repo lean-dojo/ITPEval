@@ -1,0 +1,170 @@
+% Statement-only formalization of PutnamBench artifact putnam_1979_b2:
+% the punctured limit at zero of a real-power integral mean on the unit
+% interval for 0 < a < b. This file contains no proof.
+
+putnam_1979_b2: THEORY
+BEGIN
+  real_function: TYPE = [real -> real]
+  real_sequence: TYPE = [nat -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  nat_factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * nat_factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  exponential_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        exponential_partial(x, count - 1)
+          + safe_div(
+              x ^ index,
+              nat_factorial(index) :: real)
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  real_exponential(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat):
+            exponential_partial(x, count),
+          value))
+
+  natural_log(x: real): real =
+    IF x > 0 THEN
+      epsilon(
+        LAMBDA (value: real):
+          real_exponential(value) = x)
+    ELSE
+      0
+    ENDIF
+
+  real_power(base, exponent: real): real =
+    IF base > 0 THEN
+      real_exponential(exponent * natural_log(base))
+    ELSIF base = 0 AND exponent = 0 THEN
+      1
+    ELSE
+      0
+    ENDIF
+
+  valid_partition(
+      points: real_sequence,
+      count: nat): bool =
+    count > 0
+      AND points(0) = 0
+      AND points(count) = 1
+      AND FORALL (index: nat):
+        index < count IMPLIES
+          points(index) < points(index + 1)
+
+  valid_tags(
+      points, tags: real_sequence,
+      count: nat): bool =
+    FORALL (index: nat):
+      index < count IMPLIES
+        points(index) <= tags(index)
+          AND tags(index) <= points(index + 1)
+
+  mesh_less_than(
+      points: real_sequence,
+      count: nat,
+      bound: real): bool =
+    FORALL (index: nat):
+      index < count IMPLIES
+        points(index + 1) - points(index) < bound
+
+  riemann_sum(
+      f: real_function,
+      points, tags: real_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      riemann_sum(f, points, tags, count - 1)
+        + f(tags(count - 1))
+            * (points(count) - points(count - 1))
+    ENDIF
+  MEASURE count
+
+  has_unit_interval_integral(
+      f: real_function,
+      integral_value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (mesh_bound: posreal):
+        FORALL
+            (points, tags: real_sequence),
+            (count: nat):
+          (valid_partition(points, count)
+            AND valid_tags(points, tags, count)
+            AND mesh_less_than(
+              points, count, mesh_bound))
+          IMPLIES
+            abs(
+              riemann_sum(f, points, tags, count)
+                - integral_value)
+              < epsilon_value
+
+  unit_interval_integral(f: real_function): real =
+    IF EXISTS (integral_value: real):
+        has_unit_interval_integral(f, integral_value)
+    THEN
+      epsilon(
+        LAMBDA (integral_value: real):
+          has_unit_interval_integral(
+            f, integral_value))
+    ELSE
+      0
+    ENDIF
+
+  tends_to_at(f: real_function, limit, point: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (delta: posreal):
+        FORALL (x: real):
+          (0 < abs(x - point) AND abs(x - point) < delta)
+            IMPLIES abs(f(x) - limit) < epsilon_value
+
+  integral_mean(a, b, t: real): real =
+    real_power(
+      unit_interval_integral(
+        LAMBDA (x: real):
+          real_power(b * x + a * (1 - x), t)),
+      safe_div(1, t))
+
+  putnam_1979_b2_solution(a, b: real): real =
+    safe_div(
+      real_exponential(
+        safe_div(b, b - a) * natural_log(b)),
+      real_exponential(1)
+        * real_exponential(
+            safe_div(a, b - a) * natural_log(a)))
+
+  putnam_1979_b2: bool =
+    FORALL (a, b: real):
+      (0 < a AND a < b)
+      IMPLIES
+        tends_to_at(
+          LAMBDA (t: real):
+            integral_mean(a, b, t),
+          putnam_1979_b2_solution(a, b),
+          0)
+END putnam_1979_b2

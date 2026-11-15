@@ -1,0 +1,215 @@
+% Statement-only formalization of the VERINA corpus artifact verina_basic_52,
+% catalog title "BubbleSort": the exact bubble-sort array computation produces
+% a nondecreasing permutation of every finite integer input array. This file
+% contains no proof.
+
+verina_basic_52: THEORY
+BEGIN
+
+  % Finite PVS lists preserve exactly the contents and order of Lean arrays.
+  int_list_length(
+      values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        int_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  % Lean Array.get! on integer arrays returns zero outside the array.
+  int_list_get_bang(
+      index: nat,
+      values: list[int]): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          int_list_get_bang(index - 1, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  % Lean Array.set! replaces an in-bounds entry and leaves an out-of-bounds
+  % array unchanged.
+  int_list_set_bang(
+      index: nat,
+      new_value: int,
+      values: list[int]): RECURSIVE list[int] =
+    CASES values OF
+      null:
+        null[int],
+      cons(head, tail):
+        IF index = 0 THEN
+          cons(new_value, tail)
+        ELSE
+          cons(
+            head,
+            int_list_set_bang(
+              index - 1,
+              new_value,
+              tail))
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  nat_subtract(first, second: nat): nat =
+    IF first >= second THEN first - second ELSE 0 ENDIF
+
+  BubbleSort_precond(a: list[int]): bool =
+    TRUE
+
+  swap(
+      a: list[int],
+      i, j: nat): list[int] =
+    LET temp: int =
+          int_list_get_bang(i, a),
+        first_update: list[int] =
+          int_list_set_bang(
+            i,
+            int_list_get_bang(j, a),
+            a)
+    IN
+      int_list_set_bang(
+        j,
+        temp,
+        first_update)
+
+  % Starting bubbleInner_fuel with i - j fuel makes the fuel-zero branch
+  % unreachable while j < i, so this is exactly the source inner loop.
+  bubbleInner_fuel(
+      j, i: nat,
+      a: list[int],
+      fuel: nat): RECURSIVE list[int] =
+    IF j < i THEN
+      IF fuel = 0 THEN
+        a
+      ELSE
+        LET updated: list[int] =
+              IF int_list_get_bang(j, a)
+                   > int_list_get_bang(j + 1, a)
+              THEN
+                swap(a, j, j + 1)
+              ELSE
+                a
+              ENDIF
+        IN
+          bubbleInner_fuel(
+            j + 1,
+            i,
+            updated,
+            fuel - 1)
+      ENDIF
+    ELSE
+      a
+    ENDIF
+  MEASURE fuel
+
+  bubbleInner(
+      j, i: nat,
+      a: list[int]): list[int] =
+    bubbleInner_fuel(
+      j,
+      i,
+      a,
+      nat_subtract(i, j))
+
+  % Starting bubbleOuter_fuel with i fuel makes its fuel-zero branch
+  % unreachable while i > 0, preserving the exact source outer loop.
+  bubbleOuter_fuel(
+      i: nat,
+      a: list[int],
+      fuel: nat): RECURSIVE list[int] =
+    IF i > 0 THEN
+      IF fuel = 0 THEN
+        a
+      ELSE
+        LET updated: list[int] =
+              bubbleInner(0, i, a)
+        IN
+          bubbleOuter_fuel(
+            nat_subtract(i, 1),
+            updated,
+            fuel - 1)
+      ENDIF
+    ELSE
+      a
+    ENDIF
+  MEASURE fuel
+
+  bubbleOuter(
+      i: nat,
+      a: list[int]): list[int] =
+    bubbleOuter_fuel(i, a, i)
+
+  % The source precondition proof argument is computationally irrelevant.
+  BubbleSort(a: list[int]): list[int] =
+    IF int_list_length(a) = 0 THEN
+      a
+    ELSE
+      bubbleOuter(
+        nat_subtract(int_list_length(a), 1),
+        a)
+    ENDIF
+
+  int_list_all_at_least(
+      lower: int,
+      values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        lower <= head
+          AND int_list_all_at_least(lower, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  % This is Lean List.Pairwise (fun first later => first <= later).
+  int_list_pairwise_nondecreasing(
+      values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        int_list_all_at_least(head, tail)
+          AND int_list_pairwise_nondecreasing(tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  int_list_count(
+      value: int,
+      values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        (IF head = value THEN 1 ELSE 0 ENDIF)
+          + int_list_count(value, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  % For finite integer lists, equality of every value's multiplicity is
+  % equivalent to Lean List.isPerm.
+  int_lists_are_permutations(
+      first, second: list[int]): bool =
+    FORALL (value: int):
+      int_list_count(value, first)
+        = int_list_count(value, second)
+
+  BubbleSort_postcond(
+      a, result: list[int]): bool =
+    int_list_pairwise_nondecreasing(result)
+      AND int_lists_are_permutations(result, a)
+
+  BubbleSort_spec_satisfied: bool =
+    FORALL (a: list[int]):
+      BubbleSort_precond(a)
+        IMPLIES
+          BubbleSort_postcond(
+            a,
+            BubbleSort(a))
+
+END verina_basic_52

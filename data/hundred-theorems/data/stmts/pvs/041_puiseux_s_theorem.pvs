@@ -1,0 +1,309 @@
+% Statement-only formalization of "Puiseux's Theorem" from Hundred Theorems
+% item 041. This file contains no proof.
+
+hundred_theorems_041: THEORY
+BEGIN
+  coefficient: TYPE+
+
+  coefficient_zero, coefficient_one: coefficient
+  coefficient_add, coefficient_multiply:
+    [coefficient, coefficient -> coefficient]
+  coefficient_negate, coefficient_inverse:
+    [coefficient -> coefficient]
+
+  coefficient_field_axioms: bool =
+    NOT (coefficient_zero = coefficient_one)
+      AND (FORALL (x, y, z: coefficient):
+        coefficient_add(coefficient_add(x, y), z)
+          = coefficient_add(x, coefficient_add(y, z)))
+      AND (FORALL (x, y: coefficient):
+        coefficient_add(x, y) = coefficient_add(y, x))
+      AND (FORALL (x: coefficient):
+        coefficient_add(x, coefficient_zero) = x)
+      AND (FORALL (x: coefficient):
+        coefficient_add(x, coefficient_negate(x)) = coefficient_zero)
+      AND (FORALL (x, y, z: coefficient):
+        coefficient_multiply(coefficient_multiply(x, y), z)
+          = coefficient_multiply(x, coefficient_multiply(y, z)))
+      AND (FORALL (x, y: coefficient):
+        coefficient_multiply(x, y) = coefficient_multiply(y, x))
+      AND (FORALL (x: coefficient):
+        coefficient_multiply(x, coefficient_one) = x)
+      AND (FORALL (x, y, z: coefficient):
+        coefficient_multiply(x, coefficient_add(y, z))
+          = coefficient_add(
+              coefficient_multiply(x, y),
+              coefficient_multiply(x, z)))
+      AND (FORALL (x: coefficient):
+        NOT (x = coefficient_zero)
+          IMPLIES
+            coefficient_multiply(x, coefficient_inverse(x))
+              = coefficient_one)
+
+  natural_coefficient(n: nat): RECURSIVE coefficient =
+    IF n = 0 THEN
+      coefficient_zero
+    ELSE
+      coefficient_add(natural_coefficient(n - 1), coefficient_one)
+    ENDIF
+  MEASURE n
+
+  coefficient_characteristic_zero: bool =
+    FORALL (n: nat):
+      0 < n IMPLIES NOT (natural_coefficient(n) = coefficient_zero)
+
+  coefficient_power(x: coefficient, exponent: nat):
+      RECURSIVE coefficient =
+    IF exponent = 0 THEN
+      coefficient_one
+    ELSE
+      coefficient_multiply(
+        coefficient_power(x, exponent - 1),
+        x)
+    ENDIF
+  MEASURE exponent
+
+  coefficient_polynomial_value(
+      coefficients: [nat -> coefficient],
+      x: coefficient,
+      count: nat): RECURSIVE coefficient =
+    IF count = 0 THEN
+      coefficient_zero
+    ELSE
+      LET k: nat = count - 1 IN
+        coefficient_add(
+          coefficient_polynomial_value(coefficients, x, count - 1),
+          coefficient_multiply(
+            coefficients(k),
+            coefficient_power(x, k)))
+    ENDIF
+  MEASURE count
+
+  coefficient_algebraically_closed: bool =
+    FORALL (coefficients: [nat -> coefficient]), (degree: nat):
+      (0 < degree
+        AND NOT (coefficients(degree) = coefficient_zero))
+      IMPLIES
+        EXISTS (root: coefficient):
+          coefficient_polynomial_value(
+            coefficients,
+            root,
+            degree + 1)
+            = coefficient_zero
+
+  puiseux_series: TYPE = [rat -> coefficient]
+
+  supported_on_grid_above(
+      series: puiseux_series,
+      denominator: posnat,
+      lower_index: int): bool =
+    FORALL (exponent: rat):
+      NOT (series(exponent) = coefficient_zero)
+        IMPLIES
+          EXISTS (index: int):
+            lower_index <= index
+              AND exponent
+                = (index :: rat) / (denominator :: rat)
+
+  is_puiseux_series(series: puiseux_series): bool =
+    EXISTS (denominator: posnat), (lower_index: int):
+      supported_on_grid_above(series, denominator, lower_index)
+
+  zero_series: puiseux_series =
+    LAMBDA (exponent: rat): coefficient_zero
+
+  one_series: puiseux_series =
+    LAMBDA (exponent: rat):
+      IF exponent = 0 THEN coefficient_one ELSE coefficient_zero ENDIF
+
+  series_add(left, right: puiseux_series): puiseux_series =
+    LAMBDA (exponent: rat):
+      coefficient_add(left(exponent), right(exponent))
+
+  series_negate(series: puiseux_series): puiseux_series =
+    LAMBDA (exponent: rat):
+      coefficient_negate(series(exponent))
+
+  series_multiply:
+    [puiseux_series, puiseux_series -> puiseux_series]
+
+  coefficient_sum(
+      values: [nat -> coefficient],
+      count: nat): RECURSIVE coefficient =
+    IF count = 0 THEN
+      coefficient_zero
+    ELSE
+      coefficient_add(
+        coefficient_sum(values, count - 1),
+        values(count - 1))
+    ENDIF
+  MEASURE count
+
+  is_convolution_coefficient(
+      left, right: puiseux_series,
+      denominator: posnat,
+      left_lower, right_lower, total_index: int,
+      value: coefficient): bool =
+    EXISTS (count: nat):
+      (((total_index - right_lower < left_lower) AND count = 0)
+        OR
+        (left_lower <= total_index - right_lower
+          AND count
+            = total_index - right_lower - left_lower + 1))
+      AND value
+        = coefficient_sum(
+            LAMBDA (offset: nat):
+              coefficient_multiply(
+                left(
+                  ((left_lower + offset) :: rat)
+                    / (denominator :: rat)),
+                right(
+                  ((total_index - left_lower - offset) :: rat)
+                    / (denominator :: rat))),
+            count)
+
+  is_cauchy_product(
+      left, right, product: puiseux_series): bool =
+    FORALL (denominator: posnat),
+        (left_lower, right_lower: int):
+      (supported_on_grid_above(left, denominator, left_lower)
+        AND supported_on_grid_above(right, denominator, right_lower))
+      IMPLIES
+        ((FORALL (total_index: int):
+          is_convolution_coefficient(
+            left,
+            right,
+            denominator,
+            left_lower,
+            right_lower,
+            total_index,
+            product(
+              (total_index :: rat) / (denominator :: rat))))
+        AND
+        (FORALL (exponent: rat):
+          (FORALL (index: int):
+            NOT (exponent
+              = (index :: rat) / (denominator :: rat)))
+          IMPLIES product(exponent) = coefficient_zero))
+
+  series_multiplication_is_cauchy: bool =
+    FORALL (left, right: puiseux_series):
+      (is_puiseux_series(left) AND is_puiseux_series(right))
+      IMPLIES
+        is_cauchy_product(
+          left,
+          right,
+          series_multiply(left, right))
+
+  puiseux_field_axioms: bool =
+    is_puiseux_series(zero_series)
+      AND is_puiseux_series(one_series)
+      AND NOT (zero_series = one_series)
+      AND (FORALL (x, y: puiseux_series):
+        (is_puiseux_series(x) AND is_puiseux_series(y))
+        IMPLIES
+          (is_puiseux_series(series_add(x, y))
+            AND is_puiseux_series(series_multiply(x, y))))
+      AND (FORALL (x: puiseux_series):
+        is_puiseux_series(x)
+        IMPLIES is_puiseux_series(series_negate(x)))
+      AND (FORALL (x, y, z: puiseux_series):
+        (is_puiseux_series(x)
+          AND is_puiseux_series(y)
+          AND is_puiseux_series(z))
+        IMPLIES
+          series_add(series_add(x, y), z)
+            = series_add(x, series_add(y, z)))
+      AND (FORALL (x, y: puiseux_series):
+        (is_puiseux_series(x) AND is_puiseux_series(y))
+        IMPLIES series_add(x, y) = series_add(y, x))
+      AND (FORALL (x: puiseux_series):
+        is_puiseux_series(x)
+        IMPLIES series_add(x, zero_series) = x)
+      AND (FORALL (x: puiseux_series):
+        is_puiseux_series(x)
+        IMPLIES series_add(x, series_negate(x)) = zero_series)
+      AND (FORALL (x, y, z: puiseux_series):
+        (is_puiseux_series(x)
+          AND is_puiseux_series(y)
+          AND is_puiseux_series(z))
+        IMPLIES
+          series_multiply(series_multiply(x, y), z)
+            = series_multiply(x, series_multiply(y, z)))
+      AND (FORALL (x, y: puiseux_series):
+        (is_puiseux_series(x) AND is_puiseux_series(y))
+        IMPLIES series_multiply(x, y) = series_multiply(y, x))
+      AND (FORALL (x: puiseux_series):
+        is_puiseux_series(x)
+        IMPLIES series_multiply(x, one_series) = x)
+      AND (FORALL (x, y, z: puiseux_series):
+        (is_puiseux_series(x)
+          AND is_puiseux_series(y)
+          AND is_puiseux_series(z))
+        IMPLIES
+          series_multiply(x, series_add(y, z))
+            = series_add(
+                series_multiply(x, y),
+                series_multiply(x, z)))
+      AND (FORALL (x: puiseux_series):
+        (is_puiseux_series(x) AND NOT (x = zero_series))
+        IMPLIES
+          EXISTS (inverse: puiseux_series):
+            is_puiseux_series(inverse)
+              AND series_multiply(x, inverse) = one_series)
+
+  series_power(
+      series: puiseux_series,
+      exponent: nat): RECURSIVE puiseux_series =
+    IF exponent = 0 THEN
+      one_series
+    ELSE
+      series_multiply(
+        series_power(series, exponent - 1),
+        series)
+    ENDIF
+  MEASURE exponent
+
+  series_polynomial_value(
+      coefficients: [nat -> puiseux_series],
+      value: puiseux_series,
+      count: nat): RECURSIVE puiseux_series =
+    IF count = 0 THEN
+      zero_series
+    ELSE
+      LET k: nat = count - 1 IN
+        series_add(
+          series_polynomial_value(coefficients, value, count - 1),
+          series_multiply(
+            coefficients(k),
+            series_power(value, k)))
+    ENDIF
+  MEASURE count
+
+  positive_degree_puiseux_polynomial(
+      coefficients: [nat -> puiseux_series],
+      degree: nat): bool =
+    0 < degree
+      AND (FORALL (index: nat):
+        index <= degree
+          IMPLIES is_puiseux_series(coefficients(index)))
+      AND NOT (coefficients(degree) = zero_series)
+
+  puiseux_s_theorem: bool =
+    (coefficient_field_axioms
+      AND coefficient_characteristic_zero
+      AND coefficient_algebraically_closed
+      AND series_multiplication_is_cauchy
+      AND puiseux_field_axioms)
+    IMPLIES
+      FORALL (coefficients: [nat -> puiseux_series]), (degree: nat):
+        positive_degree_puiseux_polynomial(coefficients, degree)
+        IMPLIES
+          EXISTS (root: puiseux_series):
+            is_puiseux_series(root)
+              AND series_polynomial_value(
+                coefficients,
+                root,
+                degree + 1)
+                = zero_series
+END hundred_theorems_041

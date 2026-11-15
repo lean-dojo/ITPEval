@@ -1,0 +1,93 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1975_b6:
+% two strict real-power bounds for the harmonic partial sums. This file
+% contains no proof.
+
+putnam_1975_b6: THEORY
+BEGIN
+  real_sequence: TYPE = [nat -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  nat_factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * nat_factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  exponential_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        exponential_partial(x, count - 1)
+          + safe_div(
+              x ^ index,
+              nat_factorial(index) :: real)
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  real_exponential(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat):
+            exponential_partial(x, count),
+          value))
+
+  natural_log(x: real): real =
+    IF x > 0 THEN
+      epsilon(
+        LAMBDA (value: real):
+          real_exponential(value) = x)
+    ELSE
+      0
+    ENDIF
+
+  real_power(base, exponent: real): real =
+    IF base > 0 THEN
+      real_exponential(exponent * natural_log(base))
+    ELSIF base = 0 AND exponent = 0 THEN
+      1
+    ELSE
+      0
+    ENDIF
+
+  harmonic_sum(n: nat): RECURSIVE real =
+    IF n = 0 THEN
+      0
+    ELSE
+      harmonic_sum(n - 1) + safe_div(1, n :: real)
+    ENDIF
+  MEASURE n
+
+  putnam_1975_b6: bool =
+    (FORALL (n: nat):
+      n > 1 IMPLIES
+        (n :: real)
+            * real_power(
+                (n + 1) :: real,
+                safe_div(1, n :: real))
+          < (n :: real) + harmonic_sum(n))
+      AND
+    (FORALL (n: nat):
+      n > 2 IMPLIES
+        ((n :: real) - 1)
+            * real_power(
+                n :: real,
+                safe_div(-1, (n :: real) - 1))
+          < (n :: real) - harmonic_sum(n))
+END putnam_1975_b6

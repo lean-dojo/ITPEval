@@ -1,0 +1,408 @@
+% Statement-only formalization of Hundred Theorems artifact 076, "Fourier Series":
+% every real Lebesgue-square-integrable function on [-pi, pi] is the L2 limit
+% of its Fourier partial sums in the normalized sine-cosine basis.
+% This file contains no proof.
+
+fourier_series_076: THEORY
+BEGIN
+  real_function: TYPE = [real -> real]
+  real_set: TYPE = [real -> bool]
+  real_sequence: TYPE = [nat -> real]
+  real_set_sequence: TYPE = [nat -> real_set]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  alternating_sign(index: nat): RECURSIVE real =
+    IF index = 0 THEN
+      1
+    ELSE
+      -alternating_sign(index - 1)
+    ENDIF
+  MEASURE index
+
+  finite_sum(values: real_sequence, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      finite_sum(values, count - 1) + values(count - 1)
+    ENDIF
+  MEASURE count
+
+  converges_to(values: real_sequence, limit: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (count: nat):
+          cutoff <= count IMPLIES
+            abs(values(count) - limit) < epsilon_value
+
+  sine_partial_sum(count: nat, x: real): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        sine_partial_sum(count - 1, x)
+          + safe_div(
+              alternating_sign(index) * x ^ (2 * index + 1),
+              factorial(2 * index + 1) :: real)
+    ENDIF
+  MEASURE count
+
+  cosine_partial_sum(count: nat, x: real): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        cosine_partial_sum(count - 1, x)
+          + safe_div(
+              alternating_sign(index) * x ^ (2 * index),
+              factorial(2 * index) :: real)
+    ENDIF
+  MEASURE count
+
+  sine(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat): sine_partial_sum(count, x),
+          value))
+
+  cosine(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat): cosine_partial_sum(count, x),
+          value))
+
+  is_pi(value: real): bool =
+    2 < value
+      AND value < 4
+      AND cosine(value / 2) = 0
+
+  pi: real =
+    epsilon(LAMBDA (value: real): is_pi(value))
+
+  nonnegative_square_root(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        value >= 0 AND value * value = x)
+
+  closed_interval: real_set =
+    LAMBDA (x: real):
+      -pi <= x AND x <= pi
+
+  interval_length(left_endpoint, right_endpoint: real): real =
+    IF left_endpoint < right_endpoint THEN
+      right_endpoint - left_endpoint
+    ELSE
+      0
+    ENDIF
+
+  open_interval_cover(
+      covered: real_set,
+      left_endpoints, right_endpoints: real_sequence): bool =
+    FORALL (x: real):
+      covered(x) IMPLIES
+        EXISTS (index: nat):
+          left_endpoints(index) < x
+            AND x < right_endpoints(index)
+
+  cover_partial_length(
+      left_endpoints, right_endpoints: real_sequence,
+      count: nat): real =
+    finite_sum(
+      LAMBDA (index: nat):
+        interval_length(
+          left_endpoints(index),
+          right_endpoints(index)),
+      count)
+
+  cover_has_total_length(
+      left_endpoints, right_endpoints: real_sequence,
+      total: real): bool =
+    converges_to(
+      LAMBDA (count: nat):
+        cover_partial_length(
+          left_endpoints, right_endpoints, count),
+      total)
+
+  has_outer_measure(covered: real_set, measure_value: real): bool =
+    measure_value >= 0
+      AND (FORALL (epsilon_value: posreal):
+        EXISTS
+            (left_endpoints, right_endpoints: real_sequence),
+            (total: real):
+          open_interval_cover(
+            covered, left_endpoints, right_endpoints)
+            AND cover_has_total_length(
+              left_endpoints, right_endpoints, total)
+            AND total < measure_value + epsilon_value)
+      AND (FORALL
+          (left_endpoints, right_endpoints: real_sequence),
+          (total: real):
+        (open_interval_cover(
+            covered, left_endpoints, right_endpoints)
+          AND cover_has_total_length(
+            left_endpoints, right_endpoints, total))
+        IMPLIES measure_value <= total)
+
+  set_intersection(left_set, right_set: real_set): real_set =
+    LAMBDA (x: real):
+      left_set(x) AND right_set(x)
+
+  set_difference(left_set, right_set: real_set): real_set =
+    LAMBDA (x: real):
+      left_set(x) AND NOT right_set(x)
+
+  lebesgue_measurable(measured_set: real_set): bool =
+    FORALL
+        (test_set: real_set),
+        (test_measure, inside_measure, outside_measure: real):
+      (has_outer_measure(test_set, test_measure)
+        AND has_outer_measure(
+          set_intersection(test_set, measured_set),
+          inside_measure)
+        AND has_outer_measure(
+          set_difference(test_set, measured_set),
+          outside_measure))
+      IMPLIES
+        test_measure = inside_measure + outside_measure
+
+  lebesgue_measure(measured_set: real_set): real =
+    epsilon(
+      LAMBDA (measure_value: real):
+        has_outer_measure(measured_set, measure_value))
+
+  interval_sublevel_set(
+      function_value: real_function,
+      bound: real): real_set =
+    LAMBDA (x: real):
+      closed_interval(x) AND function_value(x) <= bound
+
+  measurable_on_interval(function_value: real_function): bool =
+    FORALL (bound: real):
+      lebesgue_measurable(
+        interval_sublevel_set(function_value, bound))
+
+  pairwise_disjoint_below(
+      pieces: real_set_sequence,
+      count: nat): bool =
+    FORALL (left_index, right_index: nat):
+      left_index < count
+        AND right_index < count
+        AND left_index /= right_index
+      IMPLIES
+        FORALL (x: real):
+          NOT (pieces(left_index)(x)
+            AND pieces(right_index)(x))
+
+  simple_value(
+      coefficients: real_sequence,
+      pieces: real_set_sequence,
+      count: nat,
+      x: real): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      simple_value(coefficients, pieces, count - 1, x)
+        + IF pieces(count - 1)(x)
+            THEN coefficients(count - 1)
+          ELSE
+            0
+          ENDIF
+    ENDIF
+  MEASURE count
+
+  simple_integral(
+      coefficients: real_sequence,
+      pieces: real_set_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      simple_integral(coefficients, pieces, count - 1)
+        + coefficients(count - 1)
+            * lebesgue_measure(pieces(count - 1))
+    ENDIF
+  MEASURE count
+
+  nonnegative_simple_minorant(
+      function_value: real_function,
+      coefficients: real_sequence,
+      pieces: real_set_sequence,
+      count: nat): bool =
+    pairwise_disjoint_below(pieces, count)
+      AND (FORALL (index: nat):
+        index < count IMPLIES
+          coefficients(index) >= 0
+            AND lebesgue_measurable(pieces(index))
+            AND (FORALL (x: real):
+              pieces(index)(x) IMPLIES closed_interval(x)))
+      AND (FORALL (x: real):
+        closed_interval(x) IMPLIES
+          0 <= simple_value(
+            coefficients, pieces, count, x)
+          AND simple_value(
+            coefficients, pieces, count, x)
+              <= function_value(x))
+
+  nonnegative_integral_upper_bound(
+      function_value: real_function,
+      upper_bound: real): bool =
+    FORALL
+        (coefficients: real_sequence),
+        (pieces: real_set_sequence),
+        (count: nat):
+      nonnegative_simple_minorant(
+        function_value, coefficients, pieces, count)
+      IMPLIES
+        simple_integral(coefficients, pieces, count)
+          <= upper_bound
+
+  has_nonnegative_integral(
+      function_value: real_function,
+      integral_value: real): bool =
+    measurable_on_interval(function_value)
+      AND (FORALL (x: real):
+        closed_interval(x) IMPLIES function_value(x) >= 0)
+      AND integral_value >= 0
+      AND nonnegative_integral_upper_bound(
+        function_value, integral_value)
+      AND (FORALL (upper_bound: real):
+        nonnegative_integral_upper_bound(
+          function_value, upper_bound)
+        IMPLIES integral_value <= upper_bound)
+
+  positive_part(function_value: real_function): real_function =
+    LAMBDA (x: real):
+      IF function_value(x) >= 0
+      THEN function_value(x)
+      ELSE 0
+      ENDIF
+
+  negative_part(function_value: real_function): real_function =
+    LAMBDA (x: real):
+      IF function_value(x) <= 0
+      THEN -function_value(x)
+      ELSE 0
+      ENDIF
+
+  has_integral(
+      function_value: real_function,
+      integral_value: real): bool =
+    measurable_on_interval(function_value)
+      AND EXISTS (positive_integral, negative_integral: real):
+        has_nonnegative_integral(
+          positive_part(function_value), positive_integral)
+          AND has_nonnegative_integral(
+            negative_part(function_value), negative_integral)
+          AND integral_value =
+            positive_integral - negative_integral
+
+  integral(function_value: real_function): real =
+    epsilon(
+      LAMBDA (integral_value: real):
+        has_integral(function_value, integral_value))
+
+  square_integrable(function_value: real_function): bool =
+    measurable_on_interval(function_value)
+      AND EXISTS (square_integral: real):
+        has_nonnegative_integral(
+          LAMBDA (x: real):
+            function_value(x) * function_value(x),
+          square_integral)
+
+  squared_l2_integral(function_value: real_function): real =
+    epsilon(
+      LAMBDA (square_integral: real):
+        has_nonnegative_integral(
+          LAMBDA (x: real):
+            function_value(x) * function_value(x),
+          square_integral))
+
+  l2_norm(function_value: real_function): real =
+    nonnegative_square_root(
+      squared_l2_integral(function_value))
+
+  sine_basis_index(index, frequency: nat): bool =
+    index = 2 * frequency + 1
+
+  cosine_basis_index(index, frequency: nat): bool =
+    index = 2 * frequency + 2
+
+  trigonometric_basis(index: nat, x: real): real =
+    IF index = 0 THEN
+      safe_div(1, nonnegative_square_root(2 * pi))
+    ELSIF EXISTS (frequency: nat):
+        sine_basis_index(index, frequency) THEN
+      LET frequency: nat =
+        epsilon(
+          LAMBDA (candidate: nat):
+            sine_basis_index(index, candidate))
+      IN
+        safe_div(
+          sine(((frequency + 1) :: real) * x),
+          nonnegative_square_root(pi))
+    ELSE
+      LET frequency: nat =
+        epsilon(
+          LAMBDA (candidate: nat):
+            cosine_basis_index(index, candidate))
+      IN
+        safe_div(
+          cosine(((frequency + 1) :: real) * x),
+          nonnegative_square_root(pi))
+    ENDIF
+
+  fourier_coefficient(
+      function_value: real_function,
+      index: nat): real =
+    integral(
+      LAMBDA (x: real):
+        trigonometric_basis(index, x)
+          * function_value(x))
+
+  fourier_partial_sum(
+      function_value: real_function,
+      count: nat,
+      x: real): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      fourier_partial_sum(
+        function_value, count - 1, x)
+        + fourier_coefficient(
+            function_value, count - 1)
+            * trigonometric_basis(count - 1, x)
+    ENDIF
+  MEASURE count
+
+  fourier_series: bool =
+    FORALL (function_value: real_function):
+      square_integrable(function_value)
+      IMPLIES
+        FORALL (epsilon_value: posreal):
+          EXISTS (cutoff: nat):
+            FORALL (index: nat):
+              cutoff <= index IMPLIES
+                l2_norm(
+                  LAMBDA (x: real):
+                    function_value(x)
+                      - fourier_partial_sum(
+                          function_value,
+                          index + 1,
+                          x))
+                  < epsilon_value
+END fourier_series_076

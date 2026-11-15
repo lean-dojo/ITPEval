@@ -1,0 +1,57 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2013_a2:
+% the least terminal elements of increasing integer sequences whose products
+% with positive nonsquares are squares define an injective function. This file contains no proof.
+
+putnam_2013_a2: THEORY
+BEGIN
+  integer_sequence: TYPE = [nat -> int]
+
+  positive_nonsquare(n: int): bool =
+    n > 0
+      AND NOT EXISTS (m: int): m * m = n
+
+  prefix_product(
+      values: integer_sequence,
+      count: nat): RECURSIVE int =
+    IF count = 0 THEN
+      1
+    ELSE
+      prefix_product(values, count - 1) * values(count - 1)
+    ENDIF
+  MEASURE count
+
+  strictly_increasing_prefix(
+      values: integer_sequence,
+      count: nat): bool =
+    FORALL (i: nat):
+      i + 1 < count IMPLIES values(i) < values(i + 1)
+
+  terminal_candidate(n, terminal: int): bool =
+    EXISTS (count: nat), (values: integer_sequence):
+      count > 0
+        AND n < values(0)
+        AND (EXISTS (square_root: int):
+          square_root * square_root
+            = n * prefix_product(values, count))
+        AND strictly_increasing_prefix(values, count)
+        AND terminal = values(count - 1)
+
+  is_minimum_terminal(
+      n, terminal: int): bool =
+    terminal_candidate(n, terminal)
+      AND (FORALL (other: int):
+        terminal_candidate(n, other) IMPLIES terminal <= other)
+
+  injective_on_positive_nonsquares(f: [int -> int]): bool =
+    FORALL (left, right: int):
+      (positive_nonsquare(left)
+        AND positive_nonsquare(right)
+        AND f(left) = f(right))
+      IMPLIES left = right
+
+  putnam_2013_a2: bool =
+    FORALL (f: [int -> int]):
+      (FORALL (n: int):
+        positive_nonsquare(n) IMPLIES is_minimum_terminal(n, f(n)))
+      IMPLIES injective_on_positive_nonsquares(f)
+END putnam_2013_a2

@@ -1,0 +1,84 @@
+% Statement-only formalization of "Brouwer Fixed Point Theorem" from Hundred Theorems item 036.
+% This file contains no proof.
+
+% Hundred Theorems item 036, "Brouwer Fixed Point Theorem": every continuous
+% self-map of a nonempty compact convex subset of a finite-dimensional real
+% vector space has a fixed point. This statement-only encoding contains no proof.
+
+brouwer_fixed_point_theorem_036[N: posnat]: THEORY
+BEGIN
+  coordinate: TYPE = below(N)
+  vector: TYPE = [coordinate -> real]
+  region: TYPE = [vector -> bool]
+  vector_map: TYPE = [vector -> vector]
+  vector_sequence: TYPE = [nat -> vector]
+  index_sequence: TYPE = [nat -> nat]
+
+  coordinate_close(x, y: vector, epsilon: real): bool =
+    FORALL (i: coordinate):
+      abs(x(i) - y(i)) < epsilon
+
+  converges(sequence: vector_sequence, limit: vector): bool =
+    FORALL (epsilon: real):
+      epsilon > 0 IMPLIES
+        EXISTS (cutoff: nat):
+          FORALL (k: nat):
+            cutoff <= k
+              IMPLIES coordinate_close(sequence(k), limit, epsilon)
+
+  strictly_increasing(indices: index_sequence): bool =
+    FORALL (k: nat):
+      indices(k) < indices(k + 1)
+
+  compact_region(S: region): bool =
+    FORALL (sequence: vector_sequence):
+      (FORALL (k: nat): S(sequence(k)))
+        IMPLIES
+          EXISTS (limit: vector), (indices: index_sequence):
+            S(limit)
+              AND strictly_increasing(indices)
+              AND converges(
+                    LAMBDA (k: nat): sequence(indices(k)),
+                    limit)
+
+  affine_combination(t: real, x, y: vector): vector =
+    LAMBDA (i: coordinate):
+      t * x(i) + (1 - t) * y(i)
+
+  convex_region(S: region): bool =
+    FORALL (x, y: vector), (t: real):
+      (S(x)
+        AND S(y)
+        AND 0 <= t
+        AND t <= 1)
+      IMPLIES S(affine_combination(t, x, y))
+
+  continuous_on(f: vector_map, S: region): bool =
+    FORALL (x: vector):
+      S(x) IMPLIES
+        FORALL (epsilon: real):
+          epsilon > 0 IMPLIES
+            EXISTS (delta: real):
+              delta > 0
+                AND FORALL (y: vector):
+                  (S(y) AND coordinate_close(x, y, delta))
+                    IMPLIES coordinate_close(f(x), f(y), epsilon)
+
+  maps_into(f: vector_map, S: region): bool =
+    FORALL (x: vector):
+      S(x) IMPLIES S(f(x))
+
+  nonempty_region(S: region): bool =
+    EXISTS (x: vector): S(x)
+
+  brouwer_fixed_point_theorem: bool =
+    FORALL (S: region), (f: vector_map):
+      (compact_region(S)
+        AND convex_region(S)
+        AND nonempty_region(S)
+        AND continuous_on(f, S)
+        AND maps_into(f, S))
+      IMPLIES
+        EXISTS (x: vector):
+          S(x) AND f(x) = x
+END brouwer_fixed_point_theorem_036

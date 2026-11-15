@@ -1,0 +1,141 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% frama_c/standard_algorithms/inner_product/inner_product_Why3_ide_VCinner_product_assert_rte_signed_overflow_3_goal10:
+% an inner-product verification condition asserting that the next signed
+% 32-bit accumulator value does not underflow, under the source recurrence,
+% bounds, memory-validity, allocation-linking, and region assumptions.
+% This file contains no proof.
+
+inner_product_Why3_ide_VCinner_product_assert_rte_signed_overflow_3_goal10: THEORY
+BEGIN
+  addr: TYPE = [# base: int, offset: int #]
+  integer_memory: TYPE = [addr -> int]
+  allocation_table: TYPE = [int -> int]
+  integer_conversion: TYPE = [int -> int]
+  innerproduct_function:
+    TYPE = [integer_memory, addr, addr, int, int -> int]
+
+  shift(p: addr, k: int): addr =
+    (# base := base(p), offset := offset(p) + k #)
+
+  is_uint32(value: int): bool =
+    0 <= value AND value < 4294967296
+
+  is_sint32(value: int): bool =
+    -2147483648 <= value AND value < 2147483648
+
+  sint32_conversion_axioms(to_sint32: integer_conversion): bool =
+    (FORALL (value: int): is_sint32(to_sint32(value)))
+      AND
+    (FORALL (value: int):
+      is_sint32(value) IMPLIES to_sint32(value) = value)
+
+  valid_rd(malloc: allocation_table, p: addr, size: int): bool =
+    0 < size IMPLIES
+      base(p) /= 0
+        AND 0 <= offset(p)
+        AND offset(p) + size <= malloc(base(p))
+
+  p_unchanged_1(
+      original, updated: integer_memory,
+      start: addr,
+      lower, upper: int): bool =
+    FORALL (index: int):
+      lower <= index IMPLIES
+      index < upper IMPLIES
+      updated(shift(start, index)) = original(shift(start, index))
+
+  innerproduct_axioms(
+      l_innerproduct: innerproduct_function): bool =
+    (FORALL
+      (n, init_0: int),
+      (mint_0: integer_memory),
+      (a, b: addr):
+        n <= 0 IMPLIES
+        is_sint32(init_0) IMPLIES
+        l_innerproduct(mint_0, a, b, n, init_0) = init_0)
+      AND
+    (FORALL
+      (n, init_0: int),
+      (mint_0: integer_memory),
+      (a, b: addr):
+        0 < n IMPLIES
+        is_sint32(init_0) IMPLIES
+        l_innerproduct(mint_0, a, b, n - 1, init_0)
+            + mint_0(shift(a, n - 1)) * mint_0(shift(b, n - 1))
+          = l_innerproduct(mint_0, a, b, n, init_0))
+      AND
+    (FORALL
+      (init_0: int),
+      (mint_0, mint_1: integer_memory),
+      (a: addr),
+      (n: int),
+      (b: addr):
+        is_sint32(init_0) IMPLIES
+        p_unchanged_1(mint_0, mint_1, a, 0, n) IMPLIES
+        p_unchanged_1(mint_0, mint_1, b, 0, n) IMPLIES
+        l_innerproduct(mint_1, a, b, n, init_0)
+          = l_innerproduct(mint_0, a, b, n, init_0))
+
+  p_productbounds(
+      mint_0: integer_memory,
+      a, b: addr,
+      n: int): bool =
+    FORALL (index: int):
+      0 <= index IMPLIES
+      index < n IMPLIES
+      -2147483648
+        <= mint_0(shift(a, index)) * mint_0(shift(b, index))
+        AND mint_0(shift(a, index)) * mint_0(shift(b, index))
+          <= 2147483647
+
+  p_innerproductbounds(
+      l_innerproduct: innerproduct_function,
+      mint_0: integer_memory,
+      a, b: addr,
+      n, init_0: int): bool =
+    FORALL (index: int):
+      index <= n IMPLIES
+      0 <= index IMPLIES
+      -2147483648
+        <= l_innerproduct(mint_0, a, b, index, init_0)
+        AND l_innerproduct(mint_0, a, b, index, init_0)
+          <= 2147483647
+
+  goal10: bool =
+    FORALL
+      (region: [int -> int]),
+      (linked: [allocation_table -> bool]),
+      (to_sint32: integer_conversion),
+      (l_innerproduct: innerproduct_function),
+      (t_1: integer_memory),
+      (a: addr),
+      (i_2: int),
+      (a_1: addr),
+      (i_1, i: int),
+      (t: allocation_table):
+        sint32_conversion_axioms(to_sint32) IMPLIES
+        innerproduct_axioms(l_innerproduct) IMPLIES
+        LET x: int = t_1(shift(a, i_2)) IN
+        LET x_1: int = t_1(shift(a_1, i_2)) IN
+        LET x_2: int =
+          l_innerproduct(t_1, a_1, a, i_2, i_1)
+        IN
+          i_2 <= i IMPLIES
+          0 <= i_2 IMPLIES
+          i_2 < i IMPLIES
+          region(base(a)) <= 0 IMPLIES
+          region(base(a_1)) <= 0 IMPLIES
+          linked(t) IMPLIES
+          is_uint32(i) IMPLIES
+          is_uint32(i_2) IMPLIES
+          is_sint32(i_1) IMPLIES
+          p_productbounds(t_1, a_1, a, i) IMPLIES
+          is_sint32(x) IMPLIES
+          is_sint32(x_1) IMPLIES
+          p_innerproductbounds(
+            l_innerproduct, t_1, a_1, a, i, i_1) IMPLIES
+          valid_rd(t, shift(a, 0), i) IMPLIES
+          valid_rd(t, shift(a_1, 0), i) IMPLIES
+          is_sint32(x_2) IMPLIES
+          -2147483648 <= x_2 + to_sint32(x * x_1)
+END inner_product_Why3_ide_VCinner_product_assert_rte_signed_overflow_3_goal10

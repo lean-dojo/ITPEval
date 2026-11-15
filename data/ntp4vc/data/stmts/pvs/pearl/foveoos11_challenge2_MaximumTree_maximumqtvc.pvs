@@ -1,0 +1,133 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/foveoos11_challenge2_MaximumTree_maximumqtvc: the verification
+% condition for computing the maximum integer label of a nonempty binary tree,
+% including recursive size obligations and greatest-element correctness.
+% This file contains no proof.
+
+foveoos11_challenge2_MaximumTree_maximumqtvc: THEORY
+BEGIN
+
+  tree: DATATYPE
+  BEGIN
+    Empty: Empty?
+    Node(
+      left_subtree: tree,
+      root_value: int,
+      right_subtree: tree): Node?
+  END tree
+
+  tree_size(values: tree): RECURSIVE int =
+    CASES values OF
+      Empty:
+        0,
+      Node(left, value, right):
+        1 + tree_size(left) + tree_size(right)
+    ENDCASES
+  MEASURE values BY <<
+
+  tree_mem(element: int, values: tree): RECURSIVE bool =
+    CASES values OF
+      Empty:
+        FALSE,
+      Node(left, value, right):
+        tree_mem(element, left)
+          OR element = value
+          OR tree_mem(element, right)
+    ENDCASES
+  MEASURE values BY <<
+
+  int_max(x, y: int): int =
+    IF x < y THEN y ELSE x ENDIF
+
+  maximum_member(candidate: int, values: tree): bool =
+    tree_mem(candidate, values)
+      AND
+    (FORALL (x: int):
+      tree_mem(x, values) IMPLIES x <= candidate)
+
+  structural_obligations(values: tree): bool =
+    CASES values OF
+      Empty:
+        FALSE,
+      Node(left, value, right):
+        IF Empty?(left) THEN
+          IF Empty?(right) THEN
+            TRUE
+          ELSE
+            ((0 <= tree_size(values)
+                AND tree_size(right) < tree_size(values))
+              AND NOT Empty?(right))
+          ENDIF
+        ELSE
+          IF Empty?(right) THEN
+            ((0 <= tree_size(values)
+                AND tree_size(left) < tree_size(values))
+              AND NOT Empty?(left))
+          ELSE
+            (((0 <= tree_size(values)
+                AND tree_size(right) < tree_size(values))
+              AND NOT Empty?(right))
+              AND
+            (FORALL (right_maximum: int):
+              maximum_member(right_maximum, right)
+                IMPLIES
+                  ((0 <= tree_size(values)
+                      AND tree_size(left) < tree_size(values))
+                    AND NOT Empty?(left))))
+          ENDIF
+        ENDIF
+    ENDCASES
+
+  result_antecedent(
+      values: tree,
+      result: int): bool =
+    CASES values OF
+      Empty:
+        FALSE,
+      Node(left, value, right):
+        IF Empty?(left) THEN
+          IF Empty?(right) THEN
+            result = value
+          ELSE
+            EXISTS (right_maximum: int):
+              maximum_member(right_maximum, right)
+                AND result = int_max(right_maximum, value)
+          ENDIF
+        ELSE
+          IF Empty?(right) THEN
+            EXISTS (left_maximum: int):
+              maximum_member(left_maximum, left)
+                AND result = int_max(left_maximum, value)
+          ELSE
+            EXISTS (right_maximum: int):
+              maximum_member(right_maximum, right)
+                AND
+              (EXISTS (left_maximum: int):
+                maximum_member(left_maximum, left)
+                  AND result =
+                    int_max(
+                      left_maximum,
+                      int_max(value, right_maximum)))
+          ENDIF
+        ENDIF
+    ENDCASES
+
+  result_postcondition(
+      values: tree,
+      result: int): bool =
+    tree_mem(result, values)
+      AND
+    (FORALL (x: int):
+      tree_mem(x, values) IMPLIES x <= result)
+
+  maximum_vc: bool =
+    FORALL (values: tree):
+      NOT Empty?(values)
+        IMPLIES
+          (structural_obligations(values)
+            AND
+          (FORALL (result: int):
+            result_antecedent(values, result)
+              IMPLIES result_postcondition(values, result)))
+
+END foveoos11_challenge2_MaximumTree_maximumqtvc

@@ -1,0 +1,66 @@
+% Statement-only formalization of PutnamBench artifact putnam_1975_b2:
+% countably many open slabs in three-dimensional Euclidean space with positive
+% thicknesses having a convergent sum cannot cover the space. This file contains no proof.
+
+putnam_1975_b2: THEORY
+BEGIN
+  point: TYPE =
+    [# x_coord: real, y_coord: real, z_coord: real #]
+  point_set: TYPE = [point -> bool]
+  point_sequence: TYPE = [nat -> point]
+  real_sequence: TYPE = [nat -> real]
+
+  dot_product(p, q: point): real =
+    x_coord(p) * x_coord(q)
+      + y_coord(p) * y_coord(q)
+      + z_coord(p) * z_coord(q)
+
+  squared_norm(p: point): real =
+    dot_product(p, p)
+
+  slab(
+      normal: point,
+      offset, thickness: real): point_set =
+    LAMBDA (p: point):
+      offset < dot_product(normal, p)
+        AND dot_product(normal, p) < offset + thickness
+
+  partial_sum(values: real_sequence, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      partial_sum(values, count - 1) + values(count - 1)
+    ENDIF
+  MEASURE count
+
+  series_converges(values: real_sequence): bool =
+    EXISTS (total: real):
+      FORALL (epsilon_value: posreal):
+        EXISTS (cutoff: nat):
+          FORALL (count: nat):
+            cutoff <= count IMPLIES
+              abs(partial_sum(values, count) - total) < epsilon_value
+
+  unit_normals(normals: point_sequence): bool =
+    FORALL (index: nat):
+      squared_norm(normals(index)) = 1
+
+  positive_thicknesses(thicknesses: real_sequence): bool =
+    FORALL (index: nat):
+      thicknesses(index) > 0
+
+  putnam_1975_b2: bool =
+    FORALL
+        (normals: point_sequence),
+        (offsets, thicknesses: real_sequence):
+      (unit_normals(normals)
+        AND positive_thicknesses(thicknesses)
+        AND series_converges(thicknesses))
+      IMPLIES
+        EXISTS (p: point):
+          FORALL (index: nat):
+            NOT slab(
+              normals(index),
+              offsets(index),
+              thicknesses(index))(p)
+END putnam_1975_b2

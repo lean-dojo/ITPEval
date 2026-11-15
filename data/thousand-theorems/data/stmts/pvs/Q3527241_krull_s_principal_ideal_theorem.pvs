@@ -1,0 +1,115 @@
+% Statement-only formalization of the thousand-theorems corpus artifact Q3527241
+% (thousand-theorems__pvs__Q3527241), "Krull's principal ideal theorem": in a
+% commutative Noetherian ring, every prime ideal minimal over a principal ideal
+% has height at most one. This file contains no proof.
+
+Q3527241_krull_s_principal_ideal_theorem[
+  R: TYPE+,
+  zero, one: R,
+  neg: [R -> R],
+  add, mul: [R, R -> R]
+]: THEORY
+BEGIN
+
+  IMPORTING finite_sets[R]
+
+  ideal: TYPE = [R -> bool]
+
+  commutative_ring_laws: bool =
+    (FORALL (x, y, z: R):
+      add(add(x, y), z) = add(x, add(y, z)))
+      AND (FORALL (x, y: R):
+        add(x, y) = add(y, x))
+      AND (FORALL (x: R):
+        add(zero, x) = x
+          AND add(x, zero) = x)
+      AND (FORALL (x: R):
+        add(neg(x), x) = zero
+          AND add(x, neg(x)) = zero)
+      AND (FORALL (x, y, z: R):
+        mul(mul(x, y), z) = mul(x, mul(y, z)))
+      AND (FORALL (x, y: R):
+        mul(x, y) = mul(y, x))
+      AND (FORALL (x: R):
+        mul(one, x) = x
+          AND mul(x, one) = x)
+      AND (FORALL (x, y, z: R):
+        mul(x, add(y, z)) =
+          add(mul(x, y), mul(x, z)))
+      AND (FORALL (x, y, z: R):
+        mul(add(x, y), z) =
+          add(mul(x, z), mul(y, z)))
+
+  is_ideal(I: ideal): bool =
+    I(zero)
+      AND (FORALL (x, y: R):
+        I(x) AND I(y) IMPLIES I(add(x, y)))
+      AND (FORALL (x: R):
+        I(x) IMPLIES I(neg(x)))
+      AND (FORALL (a, x: R):
+        I(x) IMPLIES I(mul(a, x)))
+
+  ideal_subset(I, J: ideal): bool =
+    FORALL (x: R):
+      I(x) IMPLIES J(x)
+
+  strict_ideal_subset(I, J: ideal): bool =
+    ideal_subset(I, J)
+      AND NOT ideal_subset(J, I)
+
+  generated_by(generators: finite_set[R], I: ideal): bool =
+    is_ideal(I)
+      AND (FORALL (x: R):
+        member(x, generators) IMPLIES I(x))
+      AND (FORALL (J: ideal):
+        is_ideal(J)
+          AND (FORALL (x: R):
+            member(x, generators) IMPLIES J(x))
+          IMPLIES ideal_subset(I, J))
+
+  noetherian_ring: bool =
+    FORALL (I: ideal):
+      is_ideal(I)
+        IMPLIES
+          EXISTS (generators: finite_set[R]):
+            generated_by(generators, I)
+
+  is_principal(I: ideal): bool =
+    is_ideal(I)
+      AND EXISTS (generator: R):
+        FORALL (x: R):
+          I(x) IFF
+            EXISTS (coefficient: R):
+              x = mul(coefficient, generator)
+
+  is_prime(P: ideal): bool =
+    is_ideal(P)
+      AND NOT P(one)
+      AND (FORALL (x, y: R):
+        P(mul(x, y)) IMPLIES P(x) OR P(y))
+
+  minimal_prime_over(P, I: ideal): bool =
+    is_prime(P)
+      AND ideal_subset(I, P)
+      AND (FORALL (Q: ideal):
+        is_prime(Q)
+          AND ideal_subset(I, Q)
+          AND ideal_subset(Q, P)
+          IMPLIES ideal_subset(P, Q))
+
+  height_at_most_one(P: ideal): bool =
+    NOT EXISTS (Q0, Q1: ideal):
+      is_prime(Q0)
+        AND is_prime(Q1)
+        AND strict_ideal_subset(Q0, Q1)
+        AND strict_ideal_subset(Q1, P)
+
+  krulls_principal_ideal_theorem: bool =
+    (commutative_ring_laws AND noetherian_ring)
+      IMPLIES
+        FORALL (I, P: ideal):
+          is_principal(I)
+            AND minimal_prime_over(P, I)
+            IMPLIES height_at_most_one(P)
+
+END Q3527241_krull_s_principal_ideal_theorem

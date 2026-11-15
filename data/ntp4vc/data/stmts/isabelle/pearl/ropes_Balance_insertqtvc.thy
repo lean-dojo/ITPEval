@@ -1,0 +1,35 @@
+theory ropes_Balance_insertqtvc
+  imports "NTP4Verif.NTP4Verif" "Why3STD.Ref_Ref" "Why3STD.int_Fibonacci" "./ropes_MyString" "./ropes_Rope"
+begin
+consts max :: "int"
+axiomatization where max'def:   "(2 :: int) \<le> max"
+consts string_of_array :: "rope list \<Rightarrow> int \<Rightarrow> int \<Rightarrow> char_string"
+axiomatization where string_of_array_empty:   "infix_eqeq (string_of_array q l l) ropes_MyString.empty"
+ if "(0 :: int) \<le> l"
+ and "l \<le> int (List.length q)"
+  for l :: "int"
+  and q :: "rope list"
+axiomatization where string_of_array_concat_left:   "infix_eqeq (string_of_array q l u) (app (string_of_array q (l + (1 :: int)) u) (string (q ! nat l)))"
+ if "(0 :: int) \<le> l"
+ and "l < u"
+ and "u \<le> int (List.length q)"
+  for l :: "int"
+  and u :: "int"
+  and q :: "rope list"
+definition string_of_queue :: "rope list \<Rightarrow> char_string"
+  where "string_of_queue q = string_of_array q (2 :: int) (int (List.length q))" for q
+theorem insert'vc:
+  fixes i :: "int"
+  fixes q :: "rope list"
+  fixes r :: "rope"
+  assumes fact0: "(2 :: int) \<le> i"
+  assumes fact1: "i < int (List.length q)"
+  assumes fact2: "int (List.length q) = max + (1 :: int)"
+  assumes fact3: "inv r"
+  assumes fact4: "\<forall>(j :: int). (2 :: int) \<le> j \<and> j \<le> max \<longrightarrow> inv (q ! nat j)"
+  assumes fact5: "ropes_MyString.length (string_of_array q i (max + (1 :: int))) + ropes_Rope.length r < fib (max + (1 :: int))"
+  shows "(0 :: int) \<le> i"
+  and "i < int (List.length q)"
+  and "let o1 :: rope = q ! nat i in (inv o1 \<and> inv r) \<and> (\<forall>(r' :: rope). inv r' \<and> infix_eqeq (string r') (app (string o1) (string r)) \<longrightarrow> (let o2 :: int = i + (1 :: int) in (0 :: int) \<le> o2 \<and> (if ropes_Rope.length r' < fib o2 then ((0 :: int) \<le> i \<and> i < int (List.length q)) \<and> (List.length (q[nat i := r']) = List.length q \<longrightarrow> nth (q[nat i := r']) o nat = (nth q o nat)(i := r') \<longrightarrow> (\<forall>(j :: int). (2 :: int) \<le> j \<and> j \<le> max \<longrightarrow> inv (q[nat i := r'] ! nat j)) \<and> (\<forall>(j :: int). (2 :: int) \<le> j \<and> j < i \<longrightarrow> q[nat i := r'] ! nat j = q ! nat j) \<and> infix_eqeq (string_of_array (q[nat i := r']) i (max + (1 :: int))) (app (string_of_array q i (max + (1 :: int))) (string r))) else let o3 :: rope = Emp in ((0 :: int) \<le> i \<and> i < int (List.length q)) \<and> (List.length (q[nat i := o3]) = List.length q \<longrightarrow> nth (q[nat i := o3]) o nat = (nth q o nat)(i := o3) \<longrightarrow> (let o4 :: int = i + (1 :: int) in (((0 :: int) \<le> max - i \<and> max - o4 < max - i) \<and> ((2 :: int) \<le> o4 \<and> o4 < int (List.length (q[nat i := o3])) \<and> int (List.length (q[nat i := o3])) = max + (1 :: int)) \<and> inv r' \<and> (\<forall>(j :: int). (2 :: int) \<le> j \<and> j \<le> max \<longrightarrow> inv (q[nat i := o3] ! nat j)) \<and> ropes_MyString.length (string_of_array (q[nat i := o3]) o4 (max + (1 :: int))) + ropes_Rope.length r' < fib (max + (1 :: int))) \<and> (\<forall>(q1 :: rope list). List.length q1 = List.length (q[nat i := o3]) \<longrightarrow> (\<forall>(j :: int). (2 :: int) \<le> j \<and> j \<le> max \<longrightarrow> inv (q1 ! nat j)) \<and> (\<forall>(j :: int). (2 :: int) \<le> j \<and> j < o4 \<longrightarrow> q1 ! nat j = q[nat i := o3] ! nat j) \<and> infix_eqeq (string_of_array q1 o4 (max + (1 :: int))) (app (string_of_array (q[nat i := o3]) o4 (max + (1 :: int))) (string r')) \<longrightarrow> (\<forall>(j :: int). (2 :: int) \<le> j \<and> j \<le> max \<longrightarrow> inv (q1 ! nat j)) \<and> (\<forall>(j :: int). (2 :: int) \<le> j \<and> j < i \<longrightarrow> q1 ! nat j = q ! nat j) \<and> infix_eqeq (string_of_array q1 i (max + (1 :: int))) (app (string_of_array q i (max + (1 :: int))) (string r))))))))"
+  sorry
+end

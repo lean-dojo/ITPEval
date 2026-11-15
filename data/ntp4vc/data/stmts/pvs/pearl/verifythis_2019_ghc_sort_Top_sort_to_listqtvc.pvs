@@ -1,0 +1,252 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/verifythis_2019_ghc_sort_Top_sort_to_listqtvc: the verification
+% condition carrying monotonic cutpoints through sorted segment lists to a
+% sorted, occurrence-preserving, equal-length GHC sort result. This file
+% contains no proof.
+
+verifythis_2019_ghc_sort_Top_sort_to_listqtvc: THEORY
+BEGIN
+
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  list_length(values: list[int]): int =
+    length(values)
+
+  nth_default(values: list[int], index: nat): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          nth_default(tail, index - 1)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  list_reverse(values: list[int]): RECURSIVE list[int] =
+    CASES values OF
+      null:
+        null,
+      cons(head, tail):
+        append(list_reverse(tail), cons(head, null))
+    ENDCASES
+  MEASURE values BY <<
+
+  list_member(value: int, values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        FALSE,
+      cons(head, tail):
+        head = value OR list_member(value, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  list_of_lists_member(
+      value: list[int],
+      values: list[list[int]]): RECURSIVE bool =
+    CASES values OF
+      null:
+        FALSE,
+      cons(head, tail):
+        head = value OR list_of_lists_member(value, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  list_occurrences(value: int, values: list[int]): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        (IF head = value THEN 1 ELSE 0 ENDIF)
+          + list_occurrences(value, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  flatten(lists: list[list[int]]): RECURSIVE list[int] =
+    CASES lists OF
+      null:
+        null,
+      cons(head, tail):
+        append(head, flatten(tail))
+    ENDCASES
+  MEASURE lists BY <<
+
+  nondecreasing(values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        CASES tail OF
+          null:
+            TRUE,
+          cons(next, rest):
+            head <= next AND nondecreasing(tail)
+        ENDCASES
+    ENDCASES
+  MEASURE values BY <<
+
+  list_permutation(left, right: list[int]): bool =
+    list_length(left) = list_length(right)
+      AND
+    (FORALL (value: int):
+      list_occurrences(value, left)
+        = list_occurrences(value, right))
+
+  interval_occurrences_span(
+      value: int,
+      values: list[int],
+      lower: int,
+      span: nat): RECURSIVE int =
+    IF span = 0 THEN
+      0
+    ELSE
+      (IF nth_default(values, int_to_nat(lower)) = value
+       THEN 1
+       ELSE 0
+       ENDIF)
+        + interval_occurrences_span(
+            value, values, lower + 1, span - 1)
+    ENDIF
+  MEASURE span
+
+  interval_occurrences(
+      value: int,
+      values: list[int],
+      lower, upper: int): int =
+    interval_occurrences_span(
+      value,
+      values,
+      lower,
+      int_to_nat(upper - lower))
+
+  % The Why3 record is uniquely determined by its list field because its
+  % invariant fixes the ghost sequence to the reverse of that list.
+  list_seq: TYPE = list[int]
+
+  list_of(self: list_seq): list[int] =
+    self
+
+  seq_of(self: list_seq): list[int] =
+    list_reverse(self)
+
+  first_cutpoint(cutpoints: list_seq): int =
+    nth_default(seq_of(cutpoints), 0)
+
+  last_cutpoint(cutpoints: list_seq): int =
+    nth_default(
+      seq_of(cutpoints),
+      int_to_nat(list_length(seq_of(cutpoints)) - 1))
+
+  array_value(values: list[int], index: int): int =
+    nth_default(values, int_to_nat(index))
+
+  cutpoint_bounds(cutpoints: list_seq, upper: int): bool =
+    FORALL (value: int):
+      list_member(value, list_of(cutpoints))
+        IMPLIES (0 <= value AND value <= upper)
+
+  monotonic_segment(
+      values: list[int],
+      lower, upper: int): bool =
+    (FORALL (z1, z2: int):
+      (lower <= z1 AND z1 < z2 AND z2 < upper)
+        IMPLIES
+          array_value(values, z1) < array_value(values, z2))
+      OR
+    (FORALL (z1, z2: int):
+      (lower <= z1 AND z1 < z2 AND z2 < upper)
+        IMPLIES
+          array_value(values, z2) <= array_value(values, z1))
+
+  all_segments_monotonic(
+      values: list[int],
+      cutpoints: list_seq): bool =
+    FORALL (k: int):
+      (0 <= k AND k < list_length(seq_of(cutpoints)) - 1)
+        IMPLIES
+          monotonic_segment(
+            values,
+            nth_default(seq_of(cutpoints), int_to_nat(k)),
+            nth_default(seq_of(cutpoints), int_to_nat(k + 1)))
+
+  cut_sequence_nondecreasing(cutpoints: list_seq): bool =
+    FORALL (i, j: int):
+      (0 <= i
+        AND i < j
+        AND j < list_length(seq_of(cutpoints)))
+        IMPLIES
+          nth_default(seq_of(cutpoints), int_to_nat(i))
+            <= nth_default(seq_of(cutpoints), int_to_nat(j))
+
+  cutpoint_contract(
+      values: list[int],
+      cutpoints: list_seq): bool =
+    first_cutpoint(cutpoints) = 0
+      AND last_cutpoint(cutpoints) = list_length(values)
+      AND 2 <= list_length(list_of(cutpoints))
+      AND cutpoint_bounds(cutpoints, list_length(values))
+      AND all_segments_monotonic(values, cutpoints)
+      AND cut_sequence_nondecreasing(cutpoints)
+
+  sorted_lists_contract(
+      values: list[int],
+      cutpoints: list_seq,
+      lists: list[list[int]]): bool =
+    (FORALL (segment_list: list[int]):
+      list_of_lists_member(segment_list, lists)
+        IMPLIES nondecreasing(segment_list))
+      AND
+    (FORALL (value: int):
+      list_occurrences(value, flatten(lists))
+        =
+      interval_occurrences(
+        value,
+        values,
+        first_cutpoint(cutpoints),
+        last_cutpoint(cutpoints)))
+
+  result_contract(
+      values: list[int],
+      result: list[int]): bool =
+    nondecreasing(result)
+      AND
+    (FORALL (value: int):
+      interval_occurrences(
+        value, values, 0, list_length(values))
+        = list_occurrences(value, result))
+      AND list_length(result) = list_length(values)
+
+  after_cutpoints(
+      values: list[int],
+      cutpoints: list_seq): bool =
+    0 < list_length(list_of(cutpoints))
+      AND cut_sequence_nondecreasing(cutpoints)
+      AND cutpoint_bounds(cutpoints, list_length(values))
+      AND all_segments_monotonic(values, cutpoints)
+      AND
+    (FORALL (lists: list[list[int]]):
+      sorted_lists_contract(values, cutpoints, lists)
+        IMPLIES
+          (FORALL (segment_list: list[int]):
+            list_of_lists_member(segment_list, lists)
+              IMPLIES nondecreasing(segment_list))
+            AND
+          (FORALL (result: list[int]):
+            (nondecreasing(result)
+              AND list_permutation(result, flatten(lists)))
+              IMPLIES result_contract(values, result)))
+
+  sort_to_list_vc: bool =
+    FORALL (values: list[int]):
+      0 < list_length(values)
+        IMPLIES
+          (0 < list_length(values)
+            AND
+           (FORALL (cutpoints: list_seq):
+             cutpoint_contract(values, cutpoints)
+               IMPLIES after_cutpoints(values, cutpoints)))
+
+END verifythis_2019_ghc_sort_Top_sort_to_listqtvc

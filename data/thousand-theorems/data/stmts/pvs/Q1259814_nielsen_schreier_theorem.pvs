@@ -1,0 +1,103 @@
+% Statement-only formalization of the thousand-theorems corpus artifact Q1259814,
+% "Nielsen-Schreier theorem": every subgroup of an arbitrary free group is free,
+% expressed through unique reduced words over an internal basis. This file contains no proof.
+
+Q1259814_nielsen_schreier_theorem[
+  G: TYPE+,
+  mul: [G, G -> G],
+  inv: [G -> G],
+  one: G
+]: THEORY
+BEGIN
+
+  element_set: TYPE = [G -> bool]
+  signed_generator: TYPE =
+    [# generator: G, inverted: bool #]
+  word: TYPE = list[signed_generator]
+
+  group_laws: bool =
+    (FORALL (x, y, z: G):
+      mul(mul(x, y), z) = mul(x, mul(y, z)))
+      AND (FORALL (x: G):
+        mul(one, x) = x
+          AND mul(x, one) = x)
+      AND (FORALL (x: G):
+        mul(inv(x), x) = one
+          AND mul(x, inv(x)) = one)
+
+  is_subgroup(carrier: element_set): bool =
+    carrier(one)
+      AND (FORALL (x, y: G):
+        carrier(x) AND carrier(y) IMPLIES
+          carrier(mul(x, y)))
+      AND (FORALL (x: G):
+        carrier(x) IMPLIES carrier(inv(x)))
+
+  letter_value(letter: signed_generator): G =
+    IF inverted(letter) THEN
+      inv(generator(letter))
+    ELSE
+      generator(letter)
+    ENDIF
+
+  evaluate(letters: word): RECURSIVE G =
+    CASES letters OF
+      null: one,
+      cons(letter, tail):
+        mul(letter_value(letter), evaluate(tail))
+    ENDCASES
+  MEASURE letters BY <<
+
+  word_over(
+      basis: element_set,
+      letters: word): RECURSIVE bool =
+    CASES letters OF
+      null: TRUE,
+      cons(letter, tail):
+        basis(generator(letter))
+          AND word_over(basis, tail)
+    ENDCASES
+  MEASURE letters BY <<
+
+  reduced(letters: word): RECURSIVE bool =
+    CASES letters OF
+      null: TRUE,
+      cons(first, tail):
+        CASES tail OF
+          null: TRUE,
+          cons(second, rest):
+            NOT (generator(first) = generator(second)
+              AND inverted(first) /= inverted(second))
+              AND reduced(tail)
+        ENDCASES
+    ENDCASES
+  MEASURE letters BY <<
+
+  is_free_on(carrier: element_set): bool =
+    EXISTS (basis: element_set):
+      (FORALL (generator_value: G):
+        basis(generator_value) IMPLIES carrier(generator_value))
+        AND (FORALL (x: G):
+          carrier(x) IMPLIES
+            EXISTS (normal_form: word):
+              word_over(basis, normal_form)
+                AND reduced(normal_form)
+                AND evaluate(normal_form) = x)
+        AND (FORALL (left, right: word):
+          (word_over(basis, left)
+            AND reduced(left)
+            AND word_over(basis, right)
+            AND reduced(right)
+            AND evaluate(left) = evaluate(right))
+            IMPLIES left = right)
+
+  full_carrier: element_set =
+    LAMBDA (x: G): TRUE
+
+  subgroupIsFreeOfIsFree: bool =
+    (group_laws AND is_free_on(full_carrier))
+      IMPLIES
+        (FORALL (subgroup: element_set):
+          is_subgroup(subgroup) IMPLIES is_free_on(subgroup))
+
+END Q1259814_nielsen_schreier_theorem

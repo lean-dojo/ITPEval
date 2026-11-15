@@ -1,0 +1,368 @@
+% Statement-only formalization of the Thousand Theorems corpus artifact Q1191709,
+% "Egorov's theorem": strongly measurable functions converging almost everywhere on a
+% measurable set of finite measure converge uniformly outside a measurable subset of
+% arbitrarily small measure. This file contains no proof.
+
+egorov_s_theorem_Q1191709[
+  A: TYPE,
+  B: TYPE,
+  I: TYPE+
+]: THEORY
+BEGIN
+  event: TYPE = [A -> bool]
+  event_sequence: TYPE = [nat -> event]
+  sigma_algebra: TYPE = [event -> bool]
+
+  ennreal: TYPE =
+    [# infinite_flag: bool, finite_part: real #]
+  ennreal_sequence: TYPE = [nat -> ennreal]
+  measure_map: TYPE = [event -> ennreal]
+
+  b_function: TYPE = [A -> B]
+  indexed_functions: TYPE = [I -> b_function]
+  function_sequence: TYPE = [nat -> b_function]
+  indexed_values: TYPE = [I -> B]
+  value_sequence: TYPE = [nat -> B]
+  extended_distance: TYPE = [B, B -> ennreal]
+  index_order: TYPE = [I, I -> bool]
+  index_join: TYPE = [I, I -> I]
+
+  zero_ennreal: ennreal =
+    (# infinite_flag := FALSE, finite_part := 0 #)
+
+  infinite_ennreal: ennreal =
+    (# infinite_flag := TRUE, finite_part := 0 #)
+
+  finite_ennreal(value: real): ennreal =
+    (# infinite_flag := FALSE, finite_part := value #)
+
+  canonical_ennreal(value: ennreal): bool =
+    IF infinite_flag(value) THEN
+      finite_part(value) = 0
+    ELSE
+      finite_part(value) >= 0
+    ENDIF
+
+  ennreal_is_zero(value: ennreal): bool =
+    NOT infinite_flag(value)
+      AND finite_part(value) = 0
+
+  ennreal_le(left, right: ennreal): bool =
+    canonical_ennreal(left)
+      AND canonical_ennreal(right)
+      AND IF infinite_flag(right) THEN
+        TRUE
+      ELSIF infinite_flag(left) THEN
+        FALSE
+      ELSE
+        finite_part(left) <= finite_part(right)
+      ENDIF
+
+  ennreal_add(left, right: ennreal): ennreal =
+    IF infinite_flag(left) OR infinite_flag(right) THEN
+      infinite_ennreal
+    ELSE
+      finite_ennreal(
+        finite_part(left) + finite_part(right))
+    ENDIF
+
+  edist_lt_real(value: ennreal, radius: real): bool =
+    canonical_ennreal(value)
+      AND NOT infinite_flag(value)
+      AND finite_part(value) < radius
+
+  empty_event: event =
+    LAMBDA (x: A): FALSE
+
+  full_event: event =
+    LAMBDA (x: A): TRUE
+
+  event_complement(E: event): event =
+    LAMBDA (x: A): NOT E(x)
+
+  event_intersection(E, F: event): event =
+    LAMBDA (x: A): E(x) AND F(x)
+
+  event_difference(E, F: event): event =
+    LAMBDA (x: A): E(x) AND NOT F(x)
+
+  countable_union(events: event_sequence): event =
+    LAMBDA (x: A):
+      EXISTS (index: nat): events(index)(x)
+
+  event_subset(E, F: event): bool =
+    FORALL (x: A):
+      E(x) IMPLIES F(x)
+
+  pairwise_disjoint(events: event_sequence): bool =
+    FORALL (left_index, right_index: nat):
+      left_index /= right_index IMPLIES
+        FORALL (x: A):
+          NOT (events(left_index)(x)
+            AND events(right_index)(x))
+
+  finite_real_sum(values: [nat -> real], count: nat):
+      RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      finite_real_sum(values, count - 1)
+        + values(count - 1)
+    ENDIF
+  MEASURE count
+
+  converges_to_real(values: [nat -> real], limit: real): bool =
+    FORALL (radius: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(values(index) - limit) < radius
+
+  unbounded_above(values: [nat -> real]): bool =
+    FORALL (bound: real):
+      EXISTS (index: nat):
+        bound < values(index)
+
+  partial_ennreal_sum(
+      values: ennreal_sequence,
+      count: nat): real =
+    finite_real_sum(
+      LAMBDA (index: nat):
+        finite_part(values(index)),
+      count)
+
+  extended_nonnegative_sum(
+      values: ennreal_sequence,
+      total: ennreal): bool =
+    canonical_ennreal(total)
+      AND (FORALL (index: nat):
+        canonical_ennreal(values(index)))
+      AND IF infinite_flag(total) THEN
+        (EXISTS (index: nat):
+          infinite_flag(values(index)))
+          OR ((FORALL (index: nat):
+                NOT infinite_flag(values(index)))
+            AND unbounded_above(
+              LAMBDA (count: nat):
+                partial_ennreal_sum(values, count)))
+      ELSE
+        (FORALL (index: nat):
+          NOT infinite_flag(values(index)))
+          AND converges_to_real(
+            LAMBDA (count: nat):
+              partial_ennreal_sum(values, count),
+            finite_part(total))
+      ENDIF
+
+  is_sigma_algebra(Sigma: sigma_algebra): bool =
+    Sigma(full_event)
+      AND (FORALL (E: event):
+        Sigma(E) IMPLIES Sigma(event_complement(E)))
+      AND (FORALL (events: event_sequence):
+        (FORALL (index: nat): Sigma(events(index)))
+          IMPLIES Sigma(countable_union(events)))
+
+  is_measure(
+      M: measure_map,
+      Sigma: sigma_algebra): bool =
+    is_sigma_algebra(Sigma)
+      AND ennreal_is_zero(M(empty_event))
+      AND (FORALL (E: event):
+        canonical_ennreal(M(E)))
+      AND (FORALL (events: event_sequence):
+        ((FORALL (index: nat): Sigma(events(index)))
+          AND pairwise_disjoint(events))
+        IMPLIES
+          extended_nonnegative_sum(
+            LAMBDA (index: nat): M(events(index)),
+            M(countable_union(events))))
+
+  null_event(
+      M: measure_map,
+      Sigma: sigma_algebra,
+      E: event): bool =
+    EXISTS (measurable_cover: event):
+      Sigma(measurable_cover)
+        AND event_subset(E, measurable_cover)
+        AND ennreal_is_zero(M(measurable_cover))
+
+  almost_everywhere(
+      M: measure_map,
+      Sigma: sigma_algebra,
+      property: [A -> bool]): bool =
+    null_event(
+      M,
+      Sigma,
+      LAMBDA (x: A): NOT property(x))
+
+  measurable_finite_set(
+      M: measure_map,
+      Sigma: sigma_algebra,
+      E: event): bool =
+    Sigma(E)
+      AND canonical_ennreal(M(E))
+      AND NOT infinite_flag(M(E))
+
+  pseudo_emetric_laws(edist: extended_distance): bool =
+    (FORALL (x, y: B):
+      canonical_ennreal(edist(x, y)))
+      AND (FORALL (x: B):
+        ennreal_is_zero(edist(x, x)))
+      AND (FORALL (x, y: B):
+        edist(x, y) = edist(y, x))
+      AND (FORALL (x, y, z: B):
+        ennreal_le(
+          edist(x, z),
+          ennreal_add(edist(x, y), edist(y, z))))
+
+  converges_sequence(
+      values: value_sequence,
+      limit_value: B,
+      edist: extended_distance): bool =
+    FORALL (radius: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            edist_lt_real(
+              edist(values(index), limit_value),
+              radius)
+
+  finite_range(function_value: b_function): bool =
+    EXISTS
+        (bound: nat),
+        (code: [B -> nat]):
+      (FORALL (x: A):
+        code(function_value(x)) < bound)
+        AND (FORALL (x, y: A):
+          code(function_value(x))
+            = code(function_value(y))
+          IMPLIES function_value(x) = function_value(y))
+
+  measurable_simple(
+      Sigma: sigma_algebra,
+      function_value: b_function): bool =
+    finite_range(function_value)
+      AND (FORALL (value: B):
+        Sigma(
+          LAMBDA (x: A):
+            function_value(x) = value))
+
+  strongly_measurable(
+      Sigma: sigma_algebra,
+      edist: extended_distance,
+      function_value: b_function): bool =
+    EXISTS (approximants: function_sequence):
+      (FORALL (index: nat):
+        measurable_simple(
+          Sigma, approximants(index)))
+        AND (FORALL (x: A):
+          converges_sequence(
+            LAMBDA (index: nat):
+              approximants(index)(x),
+            function_value(x),
+            edist))
+
+  partial_order_laws(leq: index_order): bool =
+    (FORALL (i: I): leq(i, i))
+      AND (FORALL (i, j, k: I):
+        leq(i, j) AND leq(j, k) IMPLIES leq(i, k))
+      AND (FORALL (i, j: I):
+        leq(i, j) AND leq(j, i) IMPLIES i = j)
+
+  semilattice_sup_laws(
+      leq: index_order,
+      join: index_join): bool =
+    partial_order_laws(leq)
+      AND (FORALL (i, j: I):
+        leq(i, join(i, j))
+          AND leq(j, join(i, j)))
+      AND (FORALL (i, j, k: I):
+        leq(i, k) AND leq(j, k)
+          IMPLIES leq(join(i, j), k))
+
+  countable_index: bool =
+    EXISTS (enumeration: [nat -> I]):
+      FORALL (i: I):
+        EXISTS (number: nat):
+          enumeration(number) = i
+
+  converges_at_top(
+      values: indexed_values,
+      limit_value: B,
+      leq: index_order,
+      edist: extended_distance): bool =
+    FORALL (radius: posreal):
+      EXISTS (cutoff: I):
+        FORALL (index: I):
+          leq(cutoff, index) IMPLIES
+            edist_lt_real(
+              edist(values(index), limit_value),
+              radius)
+
+  tends_uniformly_on(
+      functions: indexed_functions,
+      limit_function: b_function,
+      leq: index_order,
+      edist: extended_distance,
+      domain: event): bool =
+    FORALL (radius: posreal):
+      EXISTS (cutoff: I):
+        FORALL (index: I):
+          leq(cutoff, index) IMPLIES
+            FORALL (x: A):
+              domain(x) IMPLIES
+                edist_lt_real(
+                  edist(
+                    functions(index)(x),
+                    limit_function(x)),
+                  radius)
+
+  tendstoUniformlyOn_of_ae_tendsto: bool =
+    FORALL
+        (Sigma: sigma_algebra),
+        (M: measure_map),
+        (edist: extended_distance),
+        (leq: index_order),
+        (join: index_join),
+        (functions: indexed_functions),
+        (limit_function: b_function),
+        (source_set: event),
+        (epsilon_value: real):
+      (is_measure(M, Sigma)
+        AND pseudo_emetric_laws(edist)
+        AND semilattice_sup_laws(leq, join)
+        AND countable_index
+        AND (FORALL (index: I):
+          strongly_measurable(
+            Sigma, edist, functions(index)))
+        AND strongly_measurable(
+          Sigma, edist, limit_function)
+        AND measurable_finite_set(
+          M, Sigma, source_set)
+        AND almost_everywhere(
+          M,
+          Sigma,
+          LAMBDA (x: A):
+            source_set(x) IMPLIES
+              converges_at_top(
+                LAMBDA (index: I):
+                  functions(index)(x),
+                limit_function(x),
+                leq,
+                edist))
+        AND epsilon_value > 0)
+      IMPLIES
+        EXISTS (exception_set: event):
+          event_subset(exception_set, source_set)
+            AND Sigma(exception_set)
+            AND ennreal_le(
+              M(exception_set),
+              finite_ennreal(epsilon_value))
+            AND tends_uniformly_on(
+              functions,
+              limit_function,
+              leq,
+              edist,
+              event_difference(
+                source_set, exception_set))
+END egorov_s_theorem_Q1191709

@@ -1,0 +1,136 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% frama_c/verker/match_string_Why3_ide_VCmatch_string_loop_inv_established_goal1:
+% a match_string loop-invariant establishment condition asserting that the
+% computed real pointer-array length is at most the input bound and nonnegative.
+% This file contains no proof.
+
+match_string_Why3_ide_VCmatch_string_loop_inv_established_goal1: THEORY
+BEGIN
+  addr: TYPE = [# base: int, offset: int #]
+  allocation_table: TYPE = [int -> int]
+  pointer_memory: TYPE = [addr -> addr]
+  integer_memory: TYPE = [addr -> int]
+  integer_conversion: TYPE = [int -> int]
+  real_length_function: TYPE =
+    [pointer_memory, addr, int -> int]
+
+  shift(p: addr, k: int): addr =
+    (# base := base(p), offset := offset(p) + k #)
+
+  valid_rw(malloc: allocation_table, p: addr, size: int): bool =
+    0 < size IMPLIES
+      0 < base(p)
+        AND 0 <= offset(p)
+        AND offset(p) + size <= malloc(base(p))
+
+  framed(region: [int -> int], mptr: pointer_memory): bool =
+    FORALL (p: addr): region(base(mptr(p))) <= 0
+
+  is_uint8(value: int): bool =
+    0 <= value AND value < 256
+
+  is_sint8(value: int): bool =
+    -128 <= value AND value < 128
+
+  is_sint64(value: int): bool =
+    -9223372036854775808 <= value AND value < 9223372036854775808
+
+  is_uint64(value: int): bool =
+    0 <= value AND value < 18446744073709551616
+
+  p_valid_str(
+      malloc: allocation_table,
+      mchar: integer_memory,
+      s: addr): bool =
+    EXISTS (terminator: int):
+      mchar(shift(s, terminator)) = 0
+        AND is_uint64(terminator)
+        AND valid_rw(malloc, shift(s, 0), 1 + terminator)
+        AND (FORALL (j: int):
+          j <= terminator IMPLIES is_sint8(mchar(shift(s, j))))
+
+  conversion_axioms(
+      to_uint8, to_sint8, to_uint64, to_sint64: integer_conversion): bool =
+    (FORALL (value: int): is_uint8(to_uint8(value)))
+      AND
+    (FORALL (value: int):
+      is_uint8(value) IMPLIES to_uint8(value) = value)
+      AND
+    (FORALL (value: int): is_sint8(to_sint8(value)))
+      AND
+    (FORALL (value: int):
+      is_sint8(value) IMPLIES to_sint8(value) = value)
+      AND
+    (FORALL (value: int): is_uint64(to_uint64(value)))
+      AND
+    (FORALL (value: int):
+      is_uint64(value) IMPLIES to_uint64(value) = value)
+      AND
+    (FORALL (value: int): is_sint64(to_sint64(value)))
+      AND
+    (FORALL (value: int):
+      is_sint64(value) IMPLIES to_sint64(value) = value)
+      AND
+    (FORALL (value: int):
+      to_sint8(to_uint8(value)) = to_sint8(value))
+      AND
+    (FORALL (value: int):
+      to_sint64(to_uint64(value)) = to_sint64(value))
+
+  real_length_axioms(
+      to_uint64: integer_conversion,
+      l_real_len: real_length_function): bool =
+    (FORALL
+      (mptr: pointer_memory),
+      (a: addr),
+      (n: int):
+      IF n = 0 OR mptr(shift(a, 0)) = (# base := 0, offset := 0 #)
+      THEN l_real_len(mptr, a, n) = 0
+      ELSE
+        to_uint64(
+          1 + l_real_len(mptr, shift(a, 1), to_uint64(n - 1))) =
+            l_real_len(mptr, a, n)
+      ENDIF)
+      AND
+    (FORALL
+      (mptr: pointer_memory),
+      (a: addr),
+      (n: int):
+      is_uint64(l_real_len(mptr, a, n)))
+
+  goal1: bool =
+    FORALL
+      (region: [int -> int]),
+      (linked: [allocation_table -> bool]),
+      (sconst: [integer_memory -> bool]),
+      (to_uint8, to_sint8, to_uint64, to_sint64: integer_conversion),
+      (l_real_len: real_length_function),
+      (t_2: pointer_memory),
+      (a_1: addr),
+      (i: int),
+      (a: addr),
+      (t: allocation_table),
+      (t_1: integer_memory):
+      conversion_axioms(
+        to_uint8, to_sint8, to_uint64, to_sint64) IMPLIES
+      real_length_axioms(to_uint64, l_real_len) IMPLIES
+      LET x: int = l_real_len(t_2, a_1, i),
+          a_2: addr = shift(a_1, 0)
+      IN
+        region(base(a)) <= 0 IMPLIES
+        region(base(a_1)) <= 0 IMPLIES
+        i <= 2147483647 IMPLIES
+        framed(region, t_2) IMPLIES
+        linked(t) IMPLIES
+        sconst(t_1) IMPLIES
+        is_uint64(i) IMPLIES
+        p_valid_str(t, t_1, a) IMPLIES
+        (x = i IMPLIES valid_rw(t, a_2, i)) IMPLIES
+        (x < i IMPLIES valid_rw(t, a_2, 1 + x)) IMPLIES
+        (FORALL (i_1: int):
+          0 <= i_1 IMPLIES
+          i_1 < x IMPLIES
+          is_uint64(i_1) IMPLIES
+          p_valid_str(t, t_1, t_2(shift(a_1, i_1)))) IMPLIES
+        x <= i AND 0 <= x
+END match_string_Why3_ide_VCmatch_string_loop_inv_established_goal1

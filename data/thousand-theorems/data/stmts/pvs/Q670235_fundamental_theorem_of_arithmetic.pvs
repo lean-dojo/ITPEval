@@ -1,0 +1,85 @@
+% Statement-only formalization of the Thousand Theorems artifact Q670235,
+% "Fundamental theorem of arithmetic": every list of natural primes with
+% product n is a permutation of the canonical prime-factor list of n.
+% This file contains no proof.
+
+Q670235_fundamental_theorem_of_arithmetic: THEORY
+BEGIN
+
+  nat_divides(divisor, value: nat): bool =
+    EXISTS (quotient: nat):
+      value = divisor * quotient
+
+  prime_nat(value: nat): bool =
+    value >= 2
+      AND (FORALL (divisor: posnat):
+        nat_divides(divisor, value) IMPLIES
+          divisor = 1 OR divisor = value)
+
+  list_product(factors: list[nat]): RECURSIVE nat =
+    CASES factors OF
+      null: 1,
+      cons(head, tail):
+        head * list_product(tail)
+    ENDCASES
+  MEASURE factors BY <<
+
+  all_prime(factors: list[nat]): RECURSIVE bool =
+    CASES factors OF
+      null: TRUE,
+      cons(head, tail):
+        prime_nat(head) AND all_prime(tail)
+    ENDCASES
+  MEASURE factors BY <<
+
+  occurrence_count(
+      value: nat,
+      factors: list[nat]): RECURSIVE nat =
+    CASES factors OF
+      null: 0,
+      cons(head, tail):
+        (IF value = head THEN 1 ELSE 0 ENDIF)
+          + occurrence_count(value, tail)
+    ENDCASES
+  MEASURE factors BY <<
+
+  list_permutation(left, right: list[nat]): bool =
+    FORALL (value: nat):
+      occurrence_count(value, left) = occurrence_count(value, right)
+
+  least_prime_factor(value: nat): nat =
+    epsilon(
+      LAMBDA (p: nat):
+        prime_nat(p)
+          AND nat_divides(p, value)
+          AND (FORALL (q: nat):
+            (prime_nat(q) AND nat_divides(q, value))
+              IMPLIES p <= q))
+
+  nat_quotient(value, divisor: nat): nat =
+    epsilon(
+      LAMBDA (quotient: nat):
+        value = divisor * quotient)
+
+  prime_factor_list_with_fuel(
+      value, fuel: nat): RECURSIVE list[nat] =
+    IF value < 2 OR fuel = 0 THEN
+      null
+    ELSE
+      cons(
+        least_prime_factor(value),
+        prime_factor_list_with_fuel(
+          nat_quotient(value, least_prime_factor(value)),
+          fuel - 1))
+    ENDIF
+  MEASURE fuel
+
+  prime_factor_list(value: nat): list[nat] =
+    prime_factor_list_with_fuel(value, value)
+
+  fundamental_theorem_of_arithmetic_statement: bool =
+    FORALL (n: nat), (factors: list[nat]):
+      (list_product(factors) = n AND all_prime(factors))
+        IMPLIES list_permutation(factors, prime_factor_list(n))
+
+END Q670235_fundamental_theorem_of_arithmetic

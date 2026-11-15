@@ -1,0 +1,387 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/string_search_BadShiftTable_searchqtvc: the bad-character-shift
+% string-search loop verification condition, including the shift-table
+% invariant, progress, skipped-match exclusion, and result contract.
+% This file contains no proof.
+
+string_search_BadShiftTable_searchqtvc: THEORY
+BEGIN
+
+  IMPORTING bv[8], bv_nat[8], bv[63], bv_nat[63]
+
+  char8: TYPE = bvec[8]
+  word63: TYPE = bvec[63]
+
+  zero_char: char8 = fill[8](FALSE)
+
+  signed63(value: word63): int =
+    IF value(62) THEN
+      bv2nat[63](value) - 9223372036854775808
+    ELSE
+      bv2nat[63](value)
+    ENDIF
+
+  int63_min: int = -4611686018427387904
+  int63_max: int = 4611686018427387903
+
+  int63_in_bounds(value: int): bool =
+    int63_min <= value AND value <= int63_max
+
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  nth_char(values: list[char8], index: int): RECURSIVE char8 =
+    CASES values OF
+      null:
+        zero_char,
+      cons(head, tail):
+        IF int_to_nat(index) = 0 THEN
+          head
+        ELSE
+          nth_char(tail, int_to_nat(index) - 1)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  list_take(
+      count: nat,
+      values: list[char8]): RECURSIVE list[char8] =
+    IF count = 0 THEN
+      null[char8]
+    ELSE
+      CASES values OF
+        null:
+          null[char8],
+        cons(head, tail):
+          cons(head, list_take(count - 1, tail))
+      ENDCASES
+    ENDIF
+  MEASURE count
+
+  list_drop(
+      count: nat,
+      values: list[char8]): RECURSIVE list[char8] =
+    IF count = 0 THEN
+      values
+    ELSE
+      CASES values OF
+        null:
+          null[char8],
+        cons(head, tail):
+          list_drop(count - 1, tail)
+      ENDCASES
+    ENDIF
+  MEASURE count
+
+  substring(
+      text: list[char8],
+      start, count: int): list[char8] =
+    list_take(
+      int_to_nat(count),
+      list_drop(int_to_nat(start), text))
+
+  matches1(
+      pattern, text: list[char8],
+      position: int): bool =
+    0 <= position
+      AND position <= length(text) - length(pattern)
+      AND substring(text, position, length(pattern)) = pattern
+
+  shift_map: TYPE =
+    [# present: [char8 -> bool],
+       lookup: [char8 -> word63] #]
+
+  bad_shift_table: TYPE =
+    [# pattern: list[char8],
+       shifts: shift_map #]
+
+  bad_shift_table_invariant(bst: bad_shift_table): bool =
+    (FORALL (j: int), (c: char8):
+      (0 <= j AND j < length(pattern(bst)))
+        IMPLIES
+          c = nth_char(pattern(bst), j)
+            IMPLIES present(shifts(bst))(c))
+      AND
+    (FORALL (c: char8):
+      present(shifts(bst))(c)
+        IMPLIES
+          1 <= signed63(lookup(shifts(bst))(c))
+            AND
+          signed63(lookup(shifts(bst))(c))
+            <= length(pattern(bst)) + 1)
+      AND
+    (FORALL (c: char8):
+      present(shifts(bst))(c)
+        IMPLIES
+          (FORALL (j: int):
+            (1 <= j
+              AND j < signed63(lookup(shifts(bst))(c)))
+              IMPLIES
+                nth_char(
+                  pattern(bst),
+                  length(pattern(bst)) - j)
+                  /= c))
+
+  no_match_before(
+      text, pattern1: list[char8],
+      pattern_length, text_length, upper: int): bool =
+    FORALL (j: int):
+      (0 <= j AND j < upper)
+        IMPLIES
+          j <= text_length - pattern_length
+            IMPLIES
+              substring(text, j, pattern_length) /= pattern1
+
+  search_result_condition(
+      bst: bad_shift_table,
+      text: list[char8],
+      result: int): bool =
+    -1 <= result
+      AND result <= length(text) - length(pattern(bst))
+      AND
+    IF result = -1 THEN
+      FORALL (j: int):
+        NOT matches1(pattern(bst), text, j)
+    ELSE
+      matches1(pattern(bst), text, result)
+    ENDIF
+
+  shifted_loop_invariant(
+      text, pattern1: list[char8],
+      m, n, next_index: int): bool =
+    (0 <= next_index AND next_index <= n)
+      AND
+    no_match_before(
+      text,
+      pattern1,
+      m,
+      n,
+      next_index)
+
+  shift_update_condition(
+      bst: bad_shift_table,
+      text, pattern1: list[char8],
+      m, n, i: int,
+      c: char8,
+      shift_word: word63): bool =
+    int63_in_bounds(i + signed63(shift_word))
+      AND
+    (FORALL (next_word: word63):
+      signed63(next_word) = i + signed63(shift_word)
+        IMPLIES
+          (0 <= n - m - i
+            AND n - m - signed63(next_word) < n - m - i)
+            AND
+          shifted_loop_invariant(
+            text,
+            pattern1,
+            m,
+            n,
+            signed63(next_word)))
+
+  choose_shift_condition(
+      bst: bad_shift_table,
+      text, pattern1: list[char8],
+      m, n, i: int,
+      c: char8): bool =
+    FORALL (shift_word: word63):
+      (IF present(shifts(bst))(c) THEN
+         shift_word = lookup(shifts(bst))(c)
+           AND shift_word = lookup(shifts(bst))(c)
+       ELSE
+         signed63(shift_word) = m + 1
+       ENDIF)
+        IMPLIES
+          shift_update_condition(
+            bst,
+            text,
+            pattern1,
+            m,
+            n,
+            i,
+            c,
+            shift_word)
+
+  character_shift_condition(
+      bst: bad_shift_table,
+      text, pattern1: list[char8],
+      m, n, i: int,
+      next_character_word: word63): bool =
+    signed63(next_character_word) = i + m
+      IMPLIES
+        (0 <= signed63(next_character_word)
+          AND signed63(next_character_word) < length(text))
+          AND
+        (LET c: char8 =
+           nth_char(text, signed63(next_character_word))
+         IN
+           (IF present(shifts(bst))(c) THEN
+              present(shifts(bst))(c)
+            ELSE
+              int63_in_bounds(m + 1)
+            ENDIF)
+             AND
+           choose_shift_condition(
+             bst,
+             text,
+             pattern1,
+             m,
+             n,
+             i,
+             c))
+
+  mismatch_advance_condition(
+      bst: bad_shift_table,
+      text, pattern1: list[char8],
+      m, n, i: int): bool =
+    int63_in_bounds(i + m)
+      AND
+    (FORALL (next_character_word: word63):
+      character_shift_condition(
+        bst,
+        text,
+        pattern1,
+        m,
+        n,
+        i,
+        next_character_word))
+
+  comparison_failure_condition(
+      bst: bad_shift_table,
+      text, pattern1: list[char8],
+      m, n: int,
+      i: word63,
+      final_index_word: word63): bool =
+    signed63(final_index_word) = n - m
+      IMPLIES
+        (signed63(i) = signed63(final_index_word)
+          IMPLIES i = final_index_word)
+          IMPLIES
+            IF i = final_index_word THEN
+              search_result_condition(bst, text, -1)
+            ELSE
+              mismatch_advance_condition(
+                bst,
+                text,
+                pattern1,
+                m,
+                n,
+                signed63(i))
+            ENDIF
+
+  occurrence_test_condition(
+      bst: bad_shift_table,
+      text, pattern1: list[char8],
+      m, n: int,
+      i: word63): bool =
+    IF matches1(pattern1, text, signed63(i)) THEN
+      search_result_condition(bst, text, signed63(i))
+    ELSE
+      int63_in_bounds(n - m)
+        AND
+      (FORALL (final_index_word: word63):
+        comparison_failure_condition(
+          bst,
+          text,
+          pattern1,
+          m,
+          n,
+          i,
+          final_index_word))
+    ENDIF
+
+  loop_body_condition(
+      bst: bad_shift_table,
+      text, pattern1: list[char8],
+      m, n: int,
+      i, final_index_word: word63): bool =
+    signed63(final_index_word) = n - m
+      IMPLIES
+        IF signed63(i) <= signed63(final_index_word) THEN
+          (0 <= signed63(i)
+            AND signed63(i)
+              <= length(text) - length(pattern1))
+            AND
+          occurrence_test_condition(
+            bst,
+            text,
+            pattern1,
+            m,
+            n,
+            i)
+        ELSE
+          search_result_condition(bst, text, -1)
+        ENDIF
+
+  loop_preservation_condition(
+      bst: bad_shift_table,
+      text, pattern1: list[char8],
+      m, n: int,
+      i: word63): bool =
+    ((0 <= signed63(i) AND signed63(i) <= n)
+      AND
+     no_match_before(
+       text,
+       pattern1,
+       m,
+       n,
+       signed63(i)))
+      IMPLIES
+        int63_in_bounds(n - m)
+          AND
+        (FORALL (final_index_word: word63):
+          loop_body_condition(
+            bst,
+            text,
+            pattern1,
+            m,
+            n,
+            i,
+            final_index_word))
+
+  initialized_loop_condition(
+      bst: bad_shift_table,
+      text, pattern1: list[char8],
+      m, n: int): bool =
+    ((0 <= 0 AND 0 <= n)
+      AND
+     no_match_before(
+       text,
+       pattern1,
+       m,
+       n,
+       0))
+      AND
+    (FORALL (i: word63):
+      loop_preservation_condition(
+        bst,
+        text,
+        pattern1,
+        m,
+        n,
+        i))
+
+  search_vc: bool =
+    FORALL (bst: bad_shift_table), (text: list[char8]):
+      bad_shift_table_invariant(bst)
+        IMPLIES
+          length(pattern(bst)) <= length(text)
+            IMPLIES
+              LET pattern1: list[char8] = pattern(bst)
+              IN
+                FORALL (m_word: word63):
+                  (signed63(m_word) = length(pattern1)
+                    AND 0 <= length(pattern1))
+                    IMPLIES
+                      FORALL (n_word: word63):
+                        (signed63(n_word) = length(text)
+                          AND 0 <= length(text))
+                          IMPLIES
+                            initialized_loop_condition(
+                              bst,
+                              text,
+                              pattern1,
+                              signed63(m_word),
+                              signed63(n_word))
+
+END string_search_BadShiftTable_searchqtvc

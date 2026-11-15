@@ -1,0 +1,75 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1990_b2:
+% a finite-product quotient sequence yields an infinite real series summing
+% to negative one when the two parameters satisfy the stated absolute-value
+% bounds. This file contains no proof.
+
+putnam_1990_b2: THEORY
+BEGIN
+  real_sequence: TYPE = [nat -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  numerator_product(x, z: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      1
+    ELSE
+      numerator_product(x, z, count - 1)
+        * (1 - z * x ^ (count - 1))
+    ENDIF
+  MEASURE count
+
+  denominator_product(x, z: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      1
+    ELSE
+      denominator_product(x, z, count - 1)
+        * (z - x ^ count)
+    ENDIF
+  MEASURE count
+
+  has_product_quotients(
+      x, z: real,
+      P: real_sequence): bool =
+    FORALL (j: nat):
+      j >= 1 IMPLIES
+        P(j) =
+          safe_div(
+            numerator_product(x, z, j),
+            denominator_product(x, z, j))
+
+  series_partial_sum(
+      x: real,
+      P: real_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      1
+    ELSE
+      series_partial_sum(x, P, count - 1)
+        + (1 + x ^ count) * P(count)
+    ENDIF
+  MEASURE count
+
+  converges_to_zero(
+      x: real,
+      P: real_sequence): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (count: nat):
+          cutoff <= count IMPLIES
+            abs(series_partial_sum(x, P, count))
+              < epsilon_value
+
+  putnam_1990_b2: bool =
+    FORALL
+        (x, z: real),
+        (P: real_sequence):
+      (abs(x) < 1
+        AND abs(z) > 1
+        AND has_product_quotients(x, z, P))
+      IMPLIES converges_to_zero(x, P)
+END putnam_1990_b2

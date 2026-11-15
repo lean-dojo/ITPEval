@@ -1,0 +1,73 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2014_b1:
+% positive integers have a unique base-10 over-expansion exactly when their
+% ordinary decimal expansion contains no zero digit. This file contains no proof.
+
+putnam_2014_b1: THEORY
+BEGIN
+  digit_list: TYPE = list[nat]
+  natural_set: TYPE = [nat -> bool]
+  overexpansion_relation: TYPE = [nat, digit_list -> bool]
+
+  decimal_value(digits: digit_list): RECURSIVE nat =
+    CASES digits OF
+      null: 0,
+      cons(digit, tail):
+        digit + 10 * decimal_value(tail)
+    ENDCASES
+  MEASURE digits BY <<
+
+  digits_at_most_ten(digits: digit_list): RECURSIVE bool =
+    CASES digits OF
+      null: TRUE,
+      cons(digit, tail):
+        digit <= 10 AND digits_at_most_ten(tail)
+    ENDCASES
+  MEASURE digits BY <<
+
+  leading_digit_nonzero(digits: digit_list): RECURSIVE bool =
+    CASES digits OF
+      null: FALSE,
+      cons(digit, tail):
+        IF tail = null THEN
+          digit /= 0
+        ELSE
+          leading_digit_nonzero(tail)
+        ENDIF
+    ENDCASES
+  MEASURE digits BY <<
+
+  is_overexpansion(N: nat, digits: digit_list): bool =
+    decimal_value(digits) = N
+      AND leading_digit_nonzero(digits)
+      AND digits_at_most_ten(digits)
+
+  unique_overexpansion(
+      overexpansion: overexpansion_relation,
+      N: nat): bool =
+    EXISTS (digits: digit_list):
+      overexpansion(N, digits)
+        AND (FORALL (other: digit_list):
+          overexpansion(N, other) IMPLIES other = digits)
+
+  putnam_2014_b1_solution(N: nat): bool =
+    N > 0
+      AND (FORALL (position: nat):
+        ndiv(N, 10 ^ position) > 0 IMPLIES
+          mod(ndiv(N, 10 ^ position), 10) /= 0)
+
+  putnam_2014_b1: bool =
+    FORALL
+        (overexpansion: overexpansion_relation),
+        (S: natural_set):
+      ((FORALL (N: nat), (digits: digit_list):
+          overexpansion(N, digits)
+            IFF is_overexpansion(N, digits))
+        AND (FORALL (N: nat):
+          S(N)
+            IFF
+              (N > 0
+                AND unique_overexpansion(overexpansion, N))))
+      IMPLIES
+        (FORALL (N: nat):
+          S(N) IFF putnam_2014_b1_solution(N))
+END putnam_2014_b1

@@ -1,0 +1,489 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/linear_probing_LinearProbing_removeqtvc: the verification condition
+% for removing a key from a linear-probing hash table while preserving cyclic
+% probing, dummy counts, table validity, and the updated view. This file contains no proof.
+
+linear_probing_LinearProbing_removeqtvc[
+  key, keym, t: TYPE+,
+  key_default: key,
+  keym1: [key -> keym],
+  key_eq: [key, key -> bool],
+  hash: [key -> int],
+  dummy: key,
+  bucket: [key, int -> int],
+  size: [t -> int],
+  data: [t -> list[key]],
+  view: [t -> [keym -> bool]],
+  loc: [t -> [keym -> int]]
+]: THEORY
+BEGIN
+
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  nth_default(
+      values: list[key],
+      index: nat): RECURSIVE key =
+    CASES values OF
+      null:
+        key_default,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          nth_default(tail, index - 1)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  list_set(
+      values: list[key],
+      index: nat,
+      value: key): RECURSIVE list[key] =
+    CASES values OF
+      null:
+        null,
+      cons(head, tail):
+        IF index = 0 THEN
+          cons(value, tail)
+        ELSE
+          cons(head, list_set(tail, index - 1, value))
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  list_contents(values: list[key]): [int -> key] =
+    LAMBDA (index: int):
+      nth_default(values, int_to_nat(index))
+
+  update_key(
+      values: [int -> key],
+      index: int,
+      value: key): [int -> key] =
+    values WITH [(index) := value]
+
+  update_view(
+      values: [keym -> bool],
+      index: keym,
+      value: bool): [keym -> bool] =
+    values WITH [(index) := value]
+
+  neq(left, right: key): bool =
+    NOT key_eq(left, right)
+
+  between(left, position, right: int): bool =
+    (left <= position AND position < right)
+      OR (right < left AND left <= position)
+      OR (position < right AND right < left)
+
+  in_range(values: list[key], index: int): bool =
+    0 <= index AND index < length(values)
+
+  count_dummy_span(
+      values: list[key],
+      lower: int,
+      span: nat): RECURSIVE int =
+    IF span = 0 THEN
+      0
+    ELSE
+      (IF key_eq(
+            nth_default(values, int_to_nat(lower)),
+            dummy)
+       THEN 1 ELSE 0 ENDIF)
+        + count_dummy_span(values, lower + 1, span - 1)
+    ENDIF
+  MEASURE span
+
+  numof(values: list[key], lower, upper: int): int =
+    count_dummy_span(
+      values,
+      lower,
+      int_to_nat(upper - lower))
+
+  valid(
+      values: list[key],
+      visible: [keym -> bool],
+      locations: [keym -> int]): bool =
+    NOT (visible(keym1(dummy)) = TRUE)
+      AND
+    (FORALL (index: int):
+      in_range(values, index)
+        IMPLIES
+          LET x: key =
+            nth_default(values, int_to_nat(index))
+          IN
+            neq(x, dummy)
+              IMPLIES
+                visible(keym1(x)) = TRUE
+                  AND locations(keym1(x)) = index)
+      AND
+    (LET n: int = length(values)
+     IN
+       FORALL (x: key):
+         visible(keym1(x)) = TRUE
+           IMPLIES
+             LET index: int = locations(keym1(x))
+             IN
+               in_range(values, index)
+                 AND key_eq(
+                   nth_default(values, int_to_nat(index)),
+                   x)
+                 AND
+               (FORALL (position: int):
+                 in_range(values, position)
+                   IMPLIES
+                 between(bucket(x, n), position, index)
+                   IMPLIES
+                     neq(
+                       nth_default(
+                         values,
+                         int_to_nat(position)),
+                       x)
+                       AND
+                     neq(
+                       nth_default(
+                         values,
+                         int_to_nat(position)),
+                       dummy)))
+
+  state_invariant(
+      state_size: int,
+      values: list[key],
+      visible: [keym -> bool],
+      locations: [keym -> int]): bool =
+    0 <= state_size
+      AND state_size < length(values)
+      AND state_size + numof(values, 0, length(values))
+        = length(values)
+      AND valid(values, visible, locations)
+
+  state_equal(left, right: t): bool =
+    size(left) = size(right)
+      AND data(left) = data(right)
+      AND view(left) = view(right)
+      AND loc(left) = loc(right)
+
+  key_context: bool =
+    (FORALL (left, right: key):
+      key_eq(left, right)
+        IFF keym1(left) = keym1(right))
+      AND
+    (FORALL (left, right: key):
+      neq(left, right)
+        IFF NOT (keym1(left) = keym1(right)))
+      AND
+    (FORALL (x: key):
+      0 <= hash(x))
+      AND
+    (FORALL (left, right: key):
+      key_eq(left, right)
+        IMPLIES hash(left) = hash(right))
+
+  bucket_context: bool =
+    FORALL (n: int), (x: key):
+      0 < n
+        IMPLIES
+          bucket(x, n) = mod(hash(x), n)
+            AND 0 <= bucket(x, n)
+            AND bucket(x, n) < n
+
+  state_context: bool =
+    (FORALL (self: t):
+      state_invariant(
+        size(self),
+        data(self),
+        view(self),
+        loc(self)))
+      AND
+    (FORALL (left, right: t):
+      state_equal(left, right)
+        IMPLIES left = right)
+
+  source_context: bool =
+    key_context
+      AND bucket_context
+      AND state_context
+
+  next_index(n, index: int): int =
+    LET successor: int = index + 1
+    IN
+      IF successor = n THEN 0 ELSE successor ENDIF
+
+  mapped_entries(
+      values: list[key],
+      visible: [keym -> bool],
+      locations: [keym -> int]): bool =
+    FORALL (index: int):
+      in_range(values, index)
+        IMPLIES
+          LET x: key =
+            nth_default(values, int_to_nat(index))
+          IN
+            neq(x, dummy)
+              IMPLIES
+                visible(keym1(x)) = TRUE
+                  AND locations(keym1(x)) = index
+
+  located_allowing_hole(
+      values: list[key],
+      visible: [keym -> bool],
+      locations: [keym -> int],
+      hole, scan: int): bool =
+    LET n: int = length(values)
+    IN
+      FORALL (x: key):
+        visible(keym1(x)) = TRUE
+          IMPLIES
+            LET index: int = locations(keym1(x))
+            IN
+              in_range(values, index)
+                AND key_eq(
+                  nth_default(values, int_to_nat(index)),
+                  x)
+                AND
+              (FORALL (position: int):
+                in_range(values, position)
+                  IMPLIES
+                between(bucket(x, n), position, index)
+                  IMPLIES
+                    neq(
+                      nth_default(
+                        values,
+                        int_to_nat(position)),
+                      x)
+                      AND
+                    (neq(
+                       nth_default(
+                         values,
+                         int_to_nat(position)),
+                       dummy)
+                      OR
+                     (position = hole
+                       AND between(hole, scan, index))))
+
+  open_segment(
+      values: list[key],
+      scan, finish: int): bool =
+    FORALL (index: int):
+      in_range(values, index)
+        IMPLIES
+      between(scan, index, finish)
+        IMPLIES
+      index /= scan
+        IMPLIES
+          neq(
+            nth_default(values, int_to_nat(index)),
+            dummy)
+
+  updated_visible(h: t, x: key): [keym -> bool] =
+    update_view(view(h), keym1(x), FALSE)
+
+  probe_prefix_clear(
+      values: list[key],
+      x: key,
+      index: int): bool =
+    FORALL (position: int):
+      in_range(values, position)
+        IMPLIES
+      between(
+        bucket(x, length(values)),
+        position,
+        index)
+        IMPLIES
+          neq(
+            nth_default(values, int_to_nat(position)),
+            x)
+            AND
+          neq(
+            nth_default(values, int_to_nat(position)),
+            dummy)
+
+  probe_candidate(
+      values: list[key],
+      x: key,
+      index: int): bool =
+    in_range(values, index)
+      AND
+    (key_eq(
+       nth_default(values, int_to_nat(index)),
+       dummy)
+      OR
+     key_eq(
+       nth_default(values, int_to_nat(index)),
+       x))
+      AND probe_prefix_clear(values, x, index)
+
+  reconstructed_state_condition(
+      h: t,
+      x: key,
+      cleared: list[key]): bool =
+    FORALL
+        (locations: [keym -> int]),
+        (h_data: list[key]):
+      length(h_data) = length(cleared)
+        IMPLIES
+      length(h_data) = length(cleared)
+        IMPLIES
+      (numof(h_data, 0, length(h_data))
+          = numof(cleared, 0, length(h_data))
+        AND
+       valid(
+         h_data,
+         updated_visible(h, x),
+         locations))
+        IMPLIES
+          FORALL (h1: t):
+            ((0 <= size(h) - 1
+                AND size(h) - 1 < length(h_data))
+              AND
+             (size(h) - 1
+                + numof(h_data, 0, length(h_data))
+                  = length(h_data))
+              AND
+             valid(
+               h_data,
+               updated_visible(h, x),
+               locations))
+              AND
+            ((locations = loc(h1)
+                AND updated_visible(h, x) = view(h1)
+                AND h_data = data(h1)
+                AND size(h) - 1 = size(h1))
+              IMPLIES
+                view(h1) = updated_visible(h, x))
+
+  terminal_hole_postcondition(
+      h: t,
+      x: key,
+      hole: int,
+      cleared: list[key],
+      finish: int): bool =
+    in_range(cleared, finish)
+      AND in_range(cleared, hole)
+      AND in_range(cleared, hole)
+      AND hole /= finish
+      AND key_eq(
+        nth_default(cleared, int_to_nat(hole)),
+        dummy)
+      AND key_eq(
+        nth_default(cleared, int_to_nat(finish)),
+        dummy)
+      AND between(hole, hole, finish)
+      AND open_segment(cleared, hole, finish)
+      AND NOT (
+        updated_visible(h, x)(keym1(dummy)) = TRUE)
+      AND mapped_entries(
+        cleared,
+        updated_visible(h, x),
+        loc(h))
+      AND located_allowing_hole(
+        cleared,
+        updated_visible(h, x),
+        loc(h),
+        hole,
+        hole)
+      AND reconstructed_state_condition(h, x, cleared)
+
+  terminal_hole_condition(
+      h: t,
+      x: key,
+      hole: int,
+      cleared: list[key]): bool =
+    FORALL (finish: int):
+      (in_range(cleared, finish)
+        AND finish /= hole
+        AND key_eq(
+          nth_default(cleared, int_to_nat(finish)),
+          dummy)
+        AND open_segment(cleared, hole, finish))
+        IMPLIES
+          terminal_hole_postcondition(
+            h,
+            x,
+            hole,
+            cleared,
+            finish)
+
+  next_hole_condition(
+      h: t,
+      x: key,
+      hole: int,
+      cleared: list[key]): bool =
+    LET next_hole: int =
+      next_index(length(data(h)), hole)
+    IN
+      in_range(cleared, hole)
+        AND in_range(cleared, next_hole)
+        AND next_hole /= hole
+        AND
+      (IF hole <= next_hole THEN
+         1 <=
+           numof(cleared, next_hole, length(cleared))
+             + numof(cleared, 0, hole)
+       ELSE
+         1 <= numof(cleared, next_hole, hole)
+       ENDIF)
+        AND open_segment(cleared, hole, next_hole)
+        AND terminal_hole_condition(h, x, hole, cleared)
+
+  occupied_removal_branch(
+      h: t,
+      x: key,
+      index: int): bool =
+    LET values: list[key] = data(h),
+        cleared: list[key] =
+          list_set(values, int_to_nat(index), dummy)
+    IN
+      in_range(values, index)
+        AND
+      (length(cleared) = length(values)
+        IMPLIES
+      length(cleared) = length(data(h))
+        IMPLIES
+      (FORALL (q: int):
+         in_range(values, q)
+           IMPLIES
+         list_contents(cleared)(q)
+           = update_key(list_contents(values), index, dummy)(q))
+        IMPLIES
+          next_hole_condition(h, x, index, cleared))
+
+  removal_at_index(
+      h: t,
+      x: key,
+      index: int): bool =
+    LET old_dummy: key = dummy,
+        values: list[key] = data(h),
+        selected: key =
+          nth_default(values, int_to_nat(index))
+    IN
+      in_range(values, index)
+        AND
+      ((neq(selected, old_dummy)
+          IFF NOT (keym1(selected) = keym1(old_dummy)))
+        IMPLIES
+          IF neq(selected, old_dummy) THEN
+            occupied_removal_branch(h, x, index)
+          ELSE
+            view(h) = updated_visible(h, x)
+          ENDIF)
+
+  remove_vc: bool =
+    source_context
+      IMPLIES
+        FORALL (x: key), (h: t):
+          neq(x, dummy)
+            IMPLIES
+              (neq(x, dummy)
+                AND
+               (LET n: int = length(data(h))
+                IN
+                  0 < n
+                    AND 0 < numof(data(h), 0, n)))
+                AND
+              (FORALL (index: int):
+                probe_candidate(data(h), x, index)
+                  IMPLIES
+                    removal_at_index(h, x, index))
+
+END linear_probing_LinearProbing_removeqtvc

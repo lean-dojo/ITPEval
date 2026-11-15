@@ -1,0 +1,100 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2005_b5:
+% a harmonic real polynomial in a positive number of variables that is
+% divisible by the sum of the variable squares is identically zero. This file
+% contains no proof.
+
+putnam_2005_b5[n: posnat]: THEORY
+BEGIN
+  coordinate: TYPE = below(n)
+  exponent: TYPE = [coordinate -> nat]
+  polynomial: TYPE = [exponent -> real]
+
+  bounded_nat_sum(
+      values: [coordinate -> nat],
+      count: nat): RECURSIVE nat =
+    IF count = 0 THEN
+      0
+    ELSE
+      bounded_nat_sum(values, count - 1)
+        + IF count <= n THEN values(count - 1) ELSE 0 ENDIF
+    ENDIF
+  MEASURE count
+
+  bounded_real_sum(
+      values: [coordinate -> real],
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      bounded_real_sum(values, count - 1)
+        + IF count <= n THEN values(count - 1) ELSE 0 ENDIF
+    ENDIF
+  MEASURE count
+
+  total_degree(e: exponent): nat =
+    bounded_nat_sum(e, n)
+
+  is_polynomial(P: polynomial): bool =
+    EXISTS (degree_bound: nat):
+      FORALL (e: exponent):
+        total_degree(e) > degree_bound IMPLIES P(e) = 0
+
+  increment_exponent(
+      e: exponent,
+      i: coordinate,
+      amount: nat): exponent =
+    LAMBDA (j: coordinate):
+      IF j = i THEN e(j) + amount ELSE e(j) ENDIF
+
+  decrement_exponent(
+      e: exponent,
+      i: coordinate,
+      amount: nat): exponent =
+    LAMBDA (j: coordinate):
+      IF j = i THEN
+        IF amount <= e(j) THEN e(j) - amount ELSE 0 ENDIF
+      ELSE
+        e(j)
+      ENDIF
+
+  second_partial_coefficient(
+      P: polynomial,
+      i: coordinate,
+      e: exponent): real =
+    (((e(i) + 2) * (e(i) + 1)) :: real)
+      * P(increment_exponent(e, i, 2))
+
+  laplacian_coefficient(
+      P: polynomial,
+      e: exponent): real =
+    bounded_real_sum(
+      LAMBDA (i: coordinate):
+        second_partial_coefficient(P, i, e),
+      n)
+
+  sum_of_squares_product_coefficient(
+      Q: polynomial,
+      e: exponent): real =
+    bounded_real_sum(
+      LAMBDA (i: coordinate):
+        IF e(i) >= 2 THEN
+          Q(decrement_exponent(e, i, 2))
+        ELSE
+          0
+        ENDIF,
+      n)
+
+  putnam_2005_b5: bool =
+    FORALL (P: polynomial):
+      (is_polynomial(P)
+        AND (FORALL (e: exponent):
+          laplacian_coefficient(P, e) = 0)
+        AND (EXISTS (Q: polynomial):
+          is_polynomial(Q)
+            AND (FORALL (e: exponent):
+              P(e) =
+                sum_of_squares_product_coefficient(Q, e))))
+      IMPLIES
+        FORALL (e: exponent):
+          P(e) = 0
+END putnam_2005_b5

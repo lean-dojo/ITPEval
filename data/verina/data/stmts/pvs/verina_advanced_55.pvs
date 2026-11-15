@@ -1,0 +1,258 @@
+% Statement-only formalization of the VERINA corpus artifact
+% verina_advanced_55, catalog title "mostFrequent": building integer
+% frequencies by a list fold and returning the first input element having
+% maximum frequency, with its full correctness contract. This file contains no proof.
+
+verina_advanced_55: THEORY
+BEGIN
+
+  int_option: DATATYPE
+  BEGIN
+    NoneInt: NoneInt?
+    SomeInt(option_value: int): SomeInt?
+  END int_option
+
+  int_member(
+      requested: int,
+      values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        FALSE,
+      cons(head, tail):
+        head = requested
+          OR int_member(requested, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  append_int(
+      values: list[int],
+      value: int): RECURSIVE list[int] =
+    CASES values OF
+      null:
+        cons(value, null[int]),
+      cons(head, tail):
+        cons(head, append_int(tail, value))
+    ENDCASES
+  MEASURE values BY <<
+
+  frequency_map: TYPE =
+    [# map_counts: [int -> nat],
+       map_keys: list[int] #]
+
+  empty_frequency_map: frequency_map =
+    (# map_counts := LAMBDA (value: int): 0,
+       map_keys := null[int] #)
+
+  frequency_get(
+      value: int,
+      frequencies: frequency_map): nat =
+    map_counts(frequencies)(value)
+
+  frequency_insert(
+      value: int,
+      count: nat,
+      frequencies: frequency_map): frequency_map =
+    (# map_counts :=
+         LAMBDA (query: int):
+           IF query = value THEN
+             count
+           ELSE
+             frequency_get(query, frequencies)
+           ENDIF,
+       map_keys :=
+         IF int_member(value, map_keys(frequencies)) THEN
+           map_keys(frequencies)
+         ELSE
+           append_int(map_keys(frequencies), value)
+         ENDIF #)
+
+  % The map record is an extensional finite-map encoding of Lean HashMap:
+  % map_counts stores the lookup result and map_keys stores each inserted key
+  % once. Its canonical first-insertion order replaces HashMap.toList order;
+  % maximum and candidate membership are invariant under that permutation.
+  countMap_fold(
+      remaining: list[int],
+      frequencies: frequency_map): RECURSIVE frequency_map =
+    CASES remaining OF
+      null:
+        frequencies,
+      cons(head, tail):
+        countMap_fold(
+          tail,
+          frequency_insert(
+            head,
+            frequency_get(head, frequencies) + 1,
+            frequencies))
+    ENDCASES
+  MEASURE remaining BY <<
+
+  countMap(xs: list[int]): frequency_map =
+    countMap_fold(xs, empty_frequency_map)
+
+  getMaxFrequency_fold(
+      keys: list[int],
+      frequencies: frequency_map,
+      accumulator: nat): RECURSIVE nat =
+    CASES keys OF
+      null:
+        accumulator,
+      cons(head, tail):
+        getMaxFrequency_fold(
+          tail,
+          frequencies,
+          IF frequency_get(head, frequencies) > accumulator THEN
+            frequency_get(head, frequencies)
+          ELSE
+            accumulator
+          ENDIF)
+    ENDCASES
+  MEASURE keys BY <<
+
+  getMaxFrequency(frequencies: frequency_map): nat =
+    getMaxFrequency_fold(
+      map_keys(frequencies),
+      frequencies,
+      0)
+
+  getCandidates_fold(
+      keys: list[int],
+      frequencies: frequency_map,
+      maxFreq: nat): RECURSIVE list[int] =
+    CASES keys OF
+      null:
+        null,
+      cons(head, tail):
+        IF frequency_get(head, frequencies) = maxFreq THEN
+          cons(
+            head,
+            getCandidates_fold(
+              tail,
+              frequencies,
+              maxFreq))
+        ELSE
+          getCandidates_fold(
+            tail,
+            frequencies,
+            maxFreq)
+        ENDIF
+    ENDCASES
+  MEASURE keys BY <<
+
+  getCandidates(
+      frequencies: frequency_map,
+      maxFreq: nat): list[int] =
+    getCandidates_fold(
+      map_keys(frequencies),
+      frequencies,
+      maxFreq)
+
+  getFirstWithFreq(
+      xs, candidates: list[int]): RECURSIVE int =
+    CASES xs OF
+      null:
+        0,
+      cons(head, tail):
+        IF int_member(head, candidates) THEN
+          head
+        ELSE
+          getFirstWithFreq(tail, candidates)
+        ENDIF
+    ENDCASES
+  MEASURE xs BY <<
+
+  mostFrequent_precond(xs: list[int]): bool =
+    xs /= null[int]
+
+  % The Lean precondition proof argument is computationally irrelevant. This
+  % definition is its exact proof-erased executable computation.
+  mostFrequent(xs: list[int]): int =
+    LET freqMap: frequency_map = countMap(xs),
+        maxF: nat = getMaxFrequency(freqMap),
+        candidates: list[int] =
+          getCandidates(freqMap, maxF)
+    IN
+      getFirstWithFreq(xs, candidates)
+
+  occurrence_count(
+      requested: int,
+      values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        (IF head = requested THEN 1 ELSE 0 ENDIF)
+          + occurrence_count(requested, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  all_counts_at_most_result(
+      remaining, whole: list[int],
+      result: int): RECURSIVE bool =
+    CASES remaining OF
+      null:
+        TRUE,
+      cons(head, tail):
+        occurrence_count(head, whole)
+            <= occurrence_count(result, whole)
+          AND all_counts_at_most_result(
+            tail,
+            whole,
+            result)
+    ENDCASES
+  MEASURE remaining BY <<
+
+  filter_same_count_as_result(
+      remaining, whole: list[int],
+      result: int): RECURSIVE list[int] =
+    CASES remaining OF
+      null:
+        null,
+      cons(head, tail):
+        IF occurrence_count(head, whole)
+             = occurrence_count(result, whole)
+        THEN
+          cons(
+            head,
+            filter_same_count_as_result(
+              tail,
+              whole,
+              result))
+        ELSE
+          filter_same_count_as_result(
+            tail,
+            whole,
+            result)
+        ENDIF
+    ENDCASES
+  MEASURE remaining BY <<
+
+  int_list_head_option(values: list[int]): int_option =
+    CASES values OF
+      null:
+        NoneInt,
+      cons(head, tail):
+        SomeInt(head)
+    ENDCASES
+
+  mostFrequent_postcond(
+      xs: list[int],
+      result: int): bool =
+    int_member(result, xs)
+      AND all_counts_at_most_result(xs, xs, result)
+      AND
+        int_list_head_option(
+          filter_same_count_as_result(
+            xs,
+            xs,
+            result))
+          = SomeInt(result)
+
+  mostFrequent_spec_satisfied: bool =
+    FORALL (xs: list[int]):
+      mostFrequent_precond(xs)
+        IMPLIES
+          mostFrequent_postcond(
+            xs,
+            mostFrequent(xs))
+
+END verina_advanced_55

@@ -1,0 +1,298 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/vstte12_combinators_Combinators_reduction3qtvc: the verification
+% condition for parity-sensitive call-by-value reduction of iterated K
+% combinator terms, including recursive context and reduction obligations.
+% This file contains no proof.
+
+vstte12_combinators_Combinators_reduction3qtvc: THEORY
+BEGIN
+
+  term: DATATYPE
+  BEGIN
+    S: S?
+    K: K?
+    App(
+      function_part: term,
+      argument_part: term): App?
+  END term
+
+  context: DATATYPE
+  BEGIN
+    Hole: Hole?
+    Left(
+      previous_left_context: context,
+      pending_argument: term): Left?
+    Right(
+      saved_function_value: term,
+      previous_right_context: context): Right?
+  END context
+
+  is_value(value: term): RECURSIVE bool =
+    CASES value OF
+      S:
+        TRUE,
+      K:
+        TRUE,
+      App(function_value, argument_value):
+        CASES function_value OF
+          S:
+            is_value(argument_value),
+          K:
+            is_value(argument_value),
+          App(head, first_argument):
+            IF S?(head) THEN
+              is_value(first_argument) AND is_value(argument_value)
+            ELSE
+              FALSE
+            ENDIF
+        ENDCASES
+    ENDCASES
+  MEASURE value BY <<
+
+  is_context(current_context: context): RECURSIVE bool =
+    CASES current_context OF
+      Hole:
+        TRUE,
+      Left(previous, pending):
+        is_context(previous),
+      Right(saved_value, previous):
+        is_value(saved_value) AND is_context(previous)
+    ENDCASES
+  MEASURE current_context BY <<
+
+  subst(
+      current_context: context,
+      value: term): RECURSIVE term =
+    CASES current_context OF
+      Hole:
+        value,
+      Left(previous, pending):
+        App(subst(previous, value), pending),
+      Right(saved_value, previous):
+        App(saved_value, subst(previous, value))
+    ENDCASES
+  MEASURE current_context BY <<
+
+  subst_c(
+      outer_context: context,
+      inner_context: context): RECURSIVE context =
+    CASES outer_context OF
+      Hole:
+        inner_context,
+      Left(previous, pending):
+        Left(subst_c(previous, inner_context), pending),
+      Right(saved_value, previous):
+        Right(saved_value, subst_c(previous, inner_context))
+    ENDCASES
+  MEASURE outer_context BY <<
+
+  one_step(source, target: term): bool =
+    (EXISTS
+        (current_context: context),
+        (v1, v2: term):
+      is_context(current_context)
+        AND is_value(v1)
+        AND is_value(v2)
+        AND source =
+          subst(
+            current_context,
+            App(App(K, v1), v2))
+        AND target = subst(current_context, v1))
+      OR
+    (EXISTS
+        (current_context: context),
+        (v1, v2, v3: term):
+      is_context(current_context)
+        AND is_value(v1)
+        AND is_value(v2)
+        AND is_value(v3)
+        AND source =
+          subst(
+            current_context,
+            App(App(App(S, v1), v2), v3))
+        AND target =
+          subst(
+            current_context,
+            App(App(v1, v3), App(v2, v3))))
+
+  relTR(source, target: term): bool =
+    FORALL (relation: [term, term -> bool]):
+      ((FORALL (value: term):
+          relation(value, value))
+        AND
+       (FORALL (x, y, z: term):
+          (relation(x, y) AND one_step(y, z))
+            IMPLIES relation(x, z)))
+        IMPLIES relation(source, target)
+
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  ks_nat(n: nat): RECURSIVE term =
+    IF n = 0 THEN
+      K
+    ELSE
+      App(ks_nat(n - 1), K)
+    ENDIF
+  MEASURE n
+
+  ks(n: int): term =
+    ks_nat(int_to_nat(n))
+
+  even(value: int): bool =
+    EXISTS (half: int):
+      value = 2 * half
+
+  odd(value: int): bool =
+    EXISTS (half: int):
+      value = 2 * half + 1
+
+  context_preservation_obligation(
+      outer_context: context,
+      inner_context: context,
+      combined_context: context): bool =
+    (is_context(outer_context) AND is_context(inner_context))
+      IMPLIES is_context(combined_context)
+
+  evaluation_premise(
+      current_context: context,
+      source, value: term,
+      index: int): bool =
+    relTR(
+      subst(current_context, source),
+      subst(current_context, value))
+      AND is_value(value)
+      AND (even(index) IMPLIES value = K)
+      AND (odd(index) IMPLIES value = App(K, K))
+
+  acceptable_first_value(value: term): bool =
+    CASES value OF
+      S:
+        FALSE,
+      K:
+        TRUE,
+      App(function_value, argument_value):
+        K?(function_value)
+    ENDCASES
+
+  result_for_values(
+      v1, v2, result: term): bool =
+    CASES v1 OF
+      S:
+        FALSE,
+      K:
+        result = App(v1, v2),
+      App(function_value, saved_argument):
+        IF K?(function_value) THEN
+          result = saved_argument
+        ELSE
+          FALSE
+        ENDIF
+    ENDCASES
+
+  recursive_branch_obligation(
+      n: int,
+      current_context: context): bool =
+    CASES ks(n) OF
+      S:
+        FALSE,
+      K:
+        TRUE,
+      App(t1, t2):
+        LET o1: int = n - 1
+        IN
+          LET o2: context = Left(Hole, t2)
+          IN
+            LET o3: context = subst_c(current_context, o2)
+            IN
+              context_preservation_obligation(
+                current_context, o2, o3)
+              IMPLIES
+                (((0 <= n AND o1 < n)
+                    AND 0 <= o1
+                    AND t1 = ks(o1)
+                    AND is_context(o3))
+                  AND
+                 (FORALL (v1: term):
+                    evaluation_premise(o3, t1, v1, o1)
+                      IMPLIES
+                        (LET o4: context = Right(v1, Hole)
+                         IN
+                           LET o5: context =
+                             subst_c(current_context, o4)
+                           IN
+                             context_preservation_obligation(
+                               current_context, o4, o5)
+                             IMPLIES
+                               (((0 <= n AND 0 < n)
+                                   AND 0 <= 0
+                                   AND t2 = ks(0)
+                                   AND is_context(o5))
+                                 AND
+                                (FORALL (v2: term):
+                                   evaluation_premise(
+                                     o5, t2, v2, 0)
+                                     IMPLIES
+                                       acceptable_first_value(v1))))))
+    ENDCASES
+
+  reduction_result_antecedent(
+      n: int,
+      current_context: context,
+      result: term): bool =
+    CASES ks(n) OF
+      S:
+        FALSE,
+      K:
+        result = K,
+      App(t1, t2):
+        LET o1: int = n - 1
+        IN
+          LET o2: context = Left(Hole, t2)
+          IN
+            LET o3: context = subst_c(current_context, o2)
+            IN
+              context_preservation_obligation(
+                current_context, o2, o3)
+                AND
+              (EXISTS (v1: term):
+                evaluation_premise(o3, t1, v1, o1)
+                  AND
+                (LET o4: context = Right(v1, Hole)
+                 IN
+                   LET o5: context =
+                     subst_c(current_context, o4)
+                   IN
+                     context_preservation_obligation(
+                       current_context, o4, o5)
+                       AND
+                     (EXISTS (v2: term):
+                       evaluation_premise(o5, t2, v2, 0)
+                         AND result_for_values(v1, v2, result))))
+    ENDCASES
+
+  reduction_postcondition(
+      n: int,
+      current_context: context,
+      result: term): bool =
+    relTR(
+      subst(current_context, ks(n)),
+      subst(current_context, result))
+      AND is_value(result)
+      AND (even(n) IMPLIES result = K)
+      AND (odd(n) IMPLIES result = App(K, K))
+
+  reduction3_vc: bool =
+    FORALL (n: int), (current_context: context):
+      (0 <= n AND is_context(current_context))
+        IMPLIES
+          (recursive_branch_obligation(n, current_context)
+            AND
+           (FORALL (result: term):
+              reduction_result_antecedent(
+                n, current_context, result)
+                IMPLIES
+                  reduction_postcondition(
+                    n, current_context, result)))
+
+END vstte12_combinators_Combinators_reduction3qtvc

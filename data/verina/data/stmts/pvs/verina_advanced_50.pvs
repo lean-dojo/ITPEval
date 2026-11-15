@@ -1,0 +1,209 @@
+% Statement-only formalization of the VERINA corpus artifact
+% verina_advanced_50, catalog title "mergeSorted": an executable indexed
+% merge loop and suffix-draining program combines two pairwise nondecreasing
+% natural-number arrays into a sorted permutation of their concatenation.
+% This file contains no proof.
+
+verina_advanced_50: THEORY
+BEGIN
+
+  merge_state: TYPE =
+    [# first_index: nat,
+       second_index: nat,
+       merged_values: list[nat] #]
+
+  nat_list_length(
+      values: list[nat]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        nat_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  append_nat_lists(
+      first, second: list[nat]): RECURSIVE list[nat] =
+    CASES first OF
+      null:
+        second,
+      cons(head, tail):
+        cons(
+          head,
+          append_nat_lists(tail, second))
+    ENDCASES
+  MEASURE first BY <<
+
+  push_nat(
+      values: list[nat],
+      value: nat): list[nat] =
+    append_nat_lists(
+      values,
+      cons(value, null))
+
+  nat_list_drop(
+      count: nat,
+      values: list[nat]): RECURSIVE list[nat] =
+    IF count = 0 THEN
+      values
+    ELSE
+      CASES values OF
+        null:
+          null,
+        cons(head, tail):
+          nat_list_drop(count - 1, tail)
+      ENDCASES
+    ENDIF
+  MEASURE count
+
+  all_at_least_nat(
+      lower: nat,
+      values: list[nat]): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        lower <= head
+          AND all_at_least_nat(lower, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  pairwise_nondecreasing_nat(
+      values: list[nat]): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        all_at_least_nat(head, tail)
+          AND pairwise_nondecreasing_nat(tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  mergeSorted_precond(
+      a1, a2: list[nat]): bool =
+    pairwise_nondecreasing_nat(a1)
+      AND pairwise_nondecreasing_nat(a2)
+
+  % This structural worker is the exact mergeLoop transition system after
+  % dropping the prefixes already consumed at indices i and j.
+  mergeLoop_remaining(
+      remaining_a1, remaining_a2: list[nat],
+      i, j: nat,
+      result: list[nat]): RECURSIVE merge_state =
+    CASES remaining_a1 OF
+      null:
+        (# first_index := i,
+           second_index := j,
+           merged_values := result #),
+      cons(head_a1, tail_a1):
+        CASES remaining_a2 OF
+          null:
+            (# first_index := i,
+               second_index := j,
+               merged_values := result #),
+          cons(head_a2, tail_a2):
+            IF head_a1 <= head_a2 THEN
+              mergeLoop_remaining(
+                tail_a1,
+                remaining_a2,
+                i + 1,
+                j,
+                push_nat(result, head_a1))
+            ELSE
+              mergeLoop_remaining(
+                remaining_a1,
+                tail_a2,
+                i,
+                j + 1,
+                push_nat(result, head_a2))
+            ENDIF
+        ENDCASES
+    ENDCASES
+  MEASURE
+    nat_list_length(remaining_a1)
+      + nat_list_length(remaining_a2)
+
+  mergeLoop(
+      a1, a2: list[nat],
+      i, j: nat,
+      result: list[nat]): merge_state =
+    mergeLoop_remaining(
+      nat_list_drop(i, a1),
+      nat_list_drop(j, a2),
+      i,
+      j,
+      result)
+
+  drain_remaining(
+      remaining: list[nat],
+      result: list[nat]): RECURSIVE list[nat] =
+    CASES remaining OF
+      null:
+        result,
+      cons(head, tail):
+        drain_remaining(
+          tail,
+          push_nat(result, head))
+    ENDCASES
+  MEASURE remaining BY <<
+
+  drain(
+      arr: list[nat],
+      i: nat,
+      result: list[nat]): list[nat] =
+    drain_remaining(
+      nat_list_drop(i, arr),
+      result)
+
+  % The Lean proof argument is computationally irrelevant. Otherwise this
+  % follows mergeSorted exactly: merge from empty, drain a1, then drain a2.
+  mergeSorted(
+      a1, a2: list[nat]): list[nat] =
+    LET state: merge_state =
+          mergeLoop(a1, a2, 0, 0, null),
+        after_a1: list[nat] =
+          drain(
+            a1,
+            first_index(state),
+            merged_values(state))
+    IN
+      drain(
+        a2,
+        second_index(state),
+        after_a1)
+
+  occurrence_count_nat(
+      value: nat,
+      values: list[nat]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        (IF head = value THEN 1 ELSE 0 ENDIF)
+          + occurrence_count_nat(value, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  nat_list_is_permutation(
+      first, second: list[nat]): bool =
+    FORALL (value: nat):
+      occurrence_count_nat(value, first)
+        = occurrence_count_nat(value, second)
+
+  mergeSorted_postcond(
+      a1, a2, result: list[nat]): bool =
+    pairwise_nondecreasing_nat(result)
+      AND nat_list_is_permutation(
+        result,
+        append_nat_lists(a1, a2))
+
+  mergeSorted_spec_satisfied: bool =
+    FORALL (a1, a2: list[nat]):
+      mergeSorted_precond(a1, a2)
+        IMPLIES
+          mergeSorted_postcond(
+            a1,
+            a2,
+            mergeSorted(a1, a2))
+
+END verina_advanced_50

@@ -1,0 +1,266 @@
+% Statement-only formalization of "The Isoperimetric Theorem" from Hundred
+% Theorems item 043: a rectifiable simple closed plane curve of length L
+% encloses area at most L^2/(4*pi), with equality only for a circle.
+% This file contains no proof.
+
+the_isoperimetric_theorem_043: THEORY
+BEGIN
+  point: TYPE = [# x_coord: real, y_coord: real #]
+  planar_region: TYPE = [point -> bool]
+  parametrized_curve: TYPE = [real -> point]
+  knot_sequence: TYPE = [nat -> real]
+
+  box: TYPE =
+    [# left: real, right: real, bottom: real, top: real #]
+  box_sequence: TYPE = [nat -> box]
+
+  squared_distance(p, q: point): real =
+    (x_coord(p) - x_coord(q)) ^ 2
+      + (y_coord(p) - y_coord(q)) ^ 2
+
+  squared_norm(p: point): real =
+    x_coord(p) ^ 2 + y_coord(p) ^ 2
+
+  euclidean_distance(p, q: point): real =
+    epsilon(
+      LAMBDA (distance: real):
+        0 <= distance
+          AND distance ^ 2 = squared_distance(p, q))
+
+  in_unit_interval(t: real): bool =
+    0 <= t AND t <= 1
+
+  point_close(p, q: point, epsilon: real): bool =
+    squared_distance(p, q) < epsilon ^ 2
+
+  continuous_on_unit_interval(g: parametrized_curve): bool =
+    FORALL (t: real):
+      in_unit_interval(t) IMPLIES
+        FORALL (epsilon: posreal):
+          EXISTS (delta: posreal):
+            FORALL (s: real):
+              (in_unit_interval(s) AND abs(s - t) < delta)
+                IMPLIES point_close(g(s), g(t), epsilon)
+
+  path_start(g: parametrized_curve): point =
+    g(0)
+
+  path_finish(g: parametrized_curve): point =
+    g(1)
+
+  closed_path(g: parametrized_curve): bool =
+    path_finish(g) = path_start(g)
+
+  path_image(g: parametrized_curve): planar_region =
+    LAMBDA (p: point):
+      EXISTS (t: real):
+        in_unit_interval(t) AND p = g(t)
+
+  simple_path(g: parametrized_curve): bool =
+    continuous_on_unit_interval(g)
+      AND FORALL (s, t: real):
+        (in_unit_interval(s)
+          AND in_unit_interval(t)
+          AND g(s) = g(t))
+        IMPLIES
+          (s = t
+            OR (s = 0 AND t = 1)
+            OR (s = 1 AND t = 0))
+
+  partition_of_unit_interval(
+      knots: knot_sequence,
+      count: nat): bool =
+    knots(0) = 0
+      AND knots(count) = 1
+      AND FORALL (index: nat):
+        index < count IMPLIES
+          knots(index) < knots(index + 1)
+
+  polygonal_length(
+      g: parametrized_curve,
+      knots: knot_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      polygonal_length(g, knots, count - 1)
+        + euclidean_distance(
+            g(knots(count - 1)),
+            g(knots(count)))
+    ENDIF
+  MEASURE count
+
+  variation_upper_bound(g: parametrized_curve, bound: real): bool =
+    0 <= bound
+      AND FORALL (knots: knot_sequence), (count: nat):
+        partition_of_unit_interval(knots, count)
+          IMPLIES polygonal_length(g, knots, count) <= bound
+
+  is_path_length(g: parametrized_curve, length: real): bool =
+    variation_upper_bound(g, length)
+      AND FORALL (lower: real):
+        lower < length IMPLIES
+          EXISTS (knots: knot_sequence), (count: nat):
+            partition_of_unit_interval(knots, count)
+              AND lower < polygonal_length(g, knots, count)
+
+  path_length(g: parametrized_curve): real =
+    epsilon(
+      LAMBDA (length: real):
+        is_path_length(g, length))
+
+  rectifiable_path(g: parametrized_curve): bool =
+    continuous_on_unit_interval(g)
+      AND EXISTS (bound: real):
+        variation_upper_bound(g, bound)
+
+  complement_path(
+      h: parametrized_curve,
+      region: planar_region,
+      start, finish: point): bool =
+    continuous_on_unit_interval(h)
+      AND path_start(h) = start
+      AND path_finish(h) = finish
+      AND FORALL (t: real):
+        in_unit_interval(t) IMPLIES NOT region(h(t))
+
+  same_complement_component(
+      region: planar_region,
+      p, q: point): bool =
+    EXISTS (h: parametrized_curve):
+      complement_path(h, region, p, q)
+
+  bounded_complement_component(
+      region: planar_region,
+      p: point): bool =
+    EXISTS (bound: nonneg_real):
+      FORALL (q: point):
+        same_complement_component(region, p, q)
+          IMPLIES squared_norm(q) <= bound ^ 2
+
+  inside_region(region: planar_region): planar_region =
+    LAMBDA (p: point):
+      NOT region(p)
+        AND bounded_complement_component(region, p)
+
+  in_open_box(p: point, b: box): bool =
+    left(b) < x_coord(p)
+      AND x_coord(p) < right(b)
+      AND bottom(b) < y_coord(p)
+      AND y_coord(p) < top(b)
+
+  box_area(b: box): real =
+    IF left(b) < right(b) AND bottom(b) < top(b) THEN
+      (right(b) - left(b)) * (top(b) - bottom(b))
+    ELSE
+      0
+    ENDIF
+
+  partial_box_area(
+      boxes: box_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      partial_box_area(boxes, count - 1)
+        + box_area(boxes(count - 1))
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: [nat -> real], value: real): bool =
+    FORALL (epsilon: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon
+
+  covers(region: planar_region, boxes: box_sequence): bool =
+    FORALL (p: point):
+      region(p) IMPLIES
+        EXISTS (index: nat):
+          in_open_box(p, boxes(index))
+
+  cover_has_total_area(
+      region: planar_region,
+      boxes: box_sequence,
+      total: real): bool =
+    covers(region, boxes)
+      AND converges_to(
+        LAMBDA (count: nat):
+          partial_box_area(boxes, count),
+        total)
+
+  is_lebesgue_outer_area(
+      region: planar_region,
+      area: real): bool =
+    0 <= area
+      AND (FORALL (boxes: box_sequence), (total: real):
+        cover_has_total_area(region, boxes, total)
+          IMPLIES area <= total)
+      AND (FORALL (epsilon: posreal):
+        EXISTS (boxes: box_sequence), (total: real):
+          cover_has_total_area(region, boxes, total)
+            AND total < area + epsilon)
+
+  lebesgue_area(region: planar_region): real =
+    epsilon(
+      LAMBDA (area: real):
+        is_lebesgue_outer_area(region, area))
+
+  alternating_sign(index: nat): RECURSIVE real =
+    IF index = 0 THEN
+      1
+    ELSE
+      -alternating_sign(index - 1)
+    ENDIF
+  MEASURE index
+
+  leibniz_partial_sum(count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        leibniz_partial_sum(count - 1)
+          + alternating_sign(index)
+              / ((2 * index + 1) :: real)
+    ENDIF
+  MEASURE count
+
+  is_pi(value: real): bool =
+    converges_to(
+      LAMBDA (count: nat):
+        4 * leibniz_partial_sum(count),
+      value)
+
+  pi: real =
+    epsilon(
+      LAMBDA (value: real):
+        is_pi(value))
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  sphere(center: point, radius: real): planar_region =
+    LAMBDA (p: point):
+      0 <= radius
+        AND squared_distance(p, center) = radius ^ 2
+
+  isoperimetric_theorem: bool =
+    FORALL (L: real), (g: parametrized_curve):
+      (rectifiable_path(g)
+        AND simple_path(g)
+        AND closed_path(g)
+        AND path_length(g) = L)
+      IMPLIES
+        (lebesgue_area(inside_region(path_image(g)))
+            <= safe_div(L ^ 2, 4 * pi)
+          AND (lebesgue_area(inside_region(path_image(g)))
+                = safe_div(L ^ 2, 4 * pi)
+            IMPLIES
+              EXISTS (center: point), (radius: real):
+                path_image(g) = sphere(center, radius)))
+END the_isoperimetric_theorem_043

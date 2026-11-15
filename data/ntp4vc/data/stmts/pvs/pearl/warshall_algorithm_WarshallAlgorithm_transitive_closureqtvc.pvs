@@ -1,0 +1,346 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/warshall_algorithm_WarshallAlgorithm_transitive_closureqtvc: the full
+% verification condition for Warshall's Boolean-matrix transitive closure,
+% including its inductive path invariant, index safety, and cell updates.
+% This file contains no proof.
+
+warshall_algorithm_WarshallAlgorithm_transitive_closureqtvc: THEORY
+BEGIN
+
+  matrix_data: TYPE =
+    [# rows: int,
+       columns: int,
+       elts: [int -> [int -> bool]] #]
+
+  matrix: TYPE =
+    {m: matrix_data |
+      0 <= rows(m) AND 0 <= columns(m)}
+
+  valid_index(m: matrix, row, column_index: int): bool =
+    0 <= row
+      AND row < rows(m)
+      AND 0 <= column_index
+      AND column_index < columns(m)
+
+  same_dimensions(left, right: matrix): bool =
+    rows(left) = rows(right)
+      AND columns(left) = columns(right)
+
+  matrix_update(
+      entries: [int -> [int -> bool]],
+      row, column_index: int,
+      value: bool): [int -> [int -> bool]] =
+    entries WITH
+      [(row) := entries(row) WITH [(column_index) := value]]
+
+  path(
+      m: matrix,
+      source, destination, bound: int): INDUCTIVE bool =
+    elts(m)(source)(destination) = TRUE
+      OR
+    (EXISTS (middle: int):
+      0 <= middle
+        AND middle < bound
+        AND path(m, source, middle, bound)
+        AND path(m, middle, destination, bound))
+
+  path_matrix(
+      current, original: matrix,
+      size, bound: int): bool =
+    FORALL (x, y: int):
+      (0 <= x AND x < size)
+        IMPLIES
+          (0 <= y AND y < size)
+            IMPLIES
+              (elts(current)(x)(y) = TRUE
+                IFF path(original, x, y, bound))
+
+  row_prefix_matrix(
+      current, original: matrix,
+      size, row_bound, path_bound: int): bool =
+    FORALL (x, y: int):
+      (0 <= x AND x < size)
+        IMPLIES
+          (0 <= y AND y < size)
+            IMPLIES
+              (elts(current)(x)(y) = TRUE
+                IFF
+                  IF x < row_bound THEN
+                    path(original, x, y, path_bound + 1)
+                  ELSE
+                    path(original, x, y, path_bound)
+                  ENDIF)
+
+  cell_prefix_matrix(
+      current, original: matrix,
+      size, row_bound, column_bound, path_bound: int): bool =
+    FORALL (x, y: int):
+      (0 <= x AND x < size)
+        IMPLIES
+          (0 <= y AND y < size)
+            IMPLIES
+              (elts(current)(x)(y) = TRUE
+                IFF
+                  IF x < row_bound
+                       OR (x = row_bound AND y < column_bound)
+                  THEN
+                    path(original, x, y, path_bound + 1)
+                  ELSE
+                    path(original, x, y, path_bound)
+                  ENDIF)
+
+  initial_entries_match(current, original: matrix): bool =
+    FORALL (row: int):
+      (0 <= row AND row < rows(current))
+        IMPLIES
+          (FORALL (column_index: int):
+            (0 <= column_index
+              AND column_index < columns(current))
+              IMPLIES
+                elts(current)(row)(column_index)
+                  = elts(original)(row)(column_index))
+
+  final_closure(current, original: matrix): bool =
+    LET size: int = rows(original)
+    IN
+      path_matrix(current, original, size, size)
+
+  column_step(
+      original, current: matrix,
+      size, path_bound, row, column_index: int): bool =
+    valid_index(current, row, column_index)
+      AND
+    LET old_value: bool = elts(current)(row)(column_index)
+    IN
+      (old_value /= TRUE
+        IMPLIES
+          valid_index(current, row, path_bound)
+            AND
+          (elts(current)(row)(path_bound) = TRUE
+            IMPLIES
+              valid_index(current, path_bound, column_index)))
+        AND
+      (FORALL (new_value: bool):
+        (IF old_value = TRUE THEN
+           new_value = TRUE
+         ELSE
+           IF elts(current)(row)(path_bound) = TRUE THEN
+             new_value = elts(current)(path_bound)(column_index)
+           ELSE
+             new_value = FALSE
+           ENDIF
+         ENDIF)
+          IMPLIES
+            valid_index(current, row, column_index)
+              AND
+            (FORALL (updated: matrix):
+              same_dimensions(updated, current)
+                IMPLIES
+                  elts(updated)
+                    = matrix_update(
+                        elts(current),
+                        row,
+                        column_index,
+                        new_value)
+                    IMPLIES
+                      cell_prefix_matrix(
+                        updated,
+                        original,
+                        size,
+                        row,
+                        column_index + 1,
+                        path_bound)))
+
+  column_obligations(
+      original, current: matrix,
+      size, path_bound, row, last_column: int): bool =
+    FORALL (column_index: int):
+      ((0 <= column_index AND column_index <= last_column)
+        AND
+       cell_prefix_matrix(
+         current,
+         original,
+         size,
+         row,
+         column_index,
+         path_bound))
+        IMPLIES
+          column_step(
+            original,
+            current,
+            size,
+            path_bound,
+            row,
+            column_index)
+
+  row_iteration_body(
+      original, current: matrix,
+      size, path_bound, row: int): bool =
+    LET last_column: int = size - 1
+    IN
+      (0 <= last_column + 1
+        IMPLIES
+          cell_prefix_matrix(
+            current,
+            original,
+            size,
+            row,
+            0,
+            path_bound)
+            AND
+          (FORALL (column_state: matrix):
+            same_dimensions(column_state, current)
+              IMPLIES
+                column_obligations(
+                  original,
+                  column_state,
+                  size,
+                  path_bound,
+                  row,
+                  last_column)
+                  AND
+                (cell_prefix_matrix(
+                   column_state,
+                   original,
+                   size,
+                   row,
+                   last_column + 1,
+                   path_bound)
+                  IMPLIES
+                    row_prefix_matrix(
+                      column_state,
+                      original,
+                      size,
+                      row + 1,
+                      path_bound))))
+        AND
+      (last_column + 1 < 0
+        IMPLIES
+          row_prefix_matrix(
+            current,
+            original,
+            size,
+            row + 1,
+            path_bound))
+
+  row_obligations(
+      original, current: matrix,
+      size, path_bound, last_row: int): bool =
+    FORALL (row: int):
+      ((0 <= row AND row <= last_row)
+        AND
+       row_prefix_matrix(
+         current,
+         original,
+         size,
+         row,
+         path_bound))
+        IMPLIES
+          row_iteration_body(
+            original,
+            current,
+            size,
+            path_bound,
+            row)
+
+  path_bound_iteration_body(
+      original, current: matrix,
+      size, path_bound: int): bool =
+    LET last_row: int = size - 1
+    IN
+      (0 <= last_row + 1
+        IMPLIES
+          row_prefix_matrix(
+            current,
+            original,
+            size,
+            0,
+            path_bound)
+            AND
+          (FORALL (row_state: matrix):
+            same_dimensions(row_state, current)
+              IMPLIES
+                row_obligations(
+                  original,
+                  row_state,
+                  size,
+                  path_bound,
+                  last_row)
+                  AND
+                (row_prefix_matrix(
+                   row_state,
+                   original,
+                   size,
+                   last_row + 1,
+                   path_bound)
+                  IMPLIES
+                    path_matrix(
+                      row_state,
+                      original,
+                      size,
+                      path_bound + 1))))
+        AND
+      (last_row + 1 < 0
+        IMPLIES
+          path_matrix(
+            current,
+            original,
+            size,
+            path_bound + 1))
+
+  path_bound_obligations(
+      original, current: matrix,
+      size, last_path_bound: int): bool =
+    FORALL (path_bound: int):
+      ((0 <= path_bound AND path_bound <= last_path_bound)
+        AND
+       path_matrix(
+         current,
+         original,
+         size,
+         path_bound))
+        IMPLIES
+          path_bound_iteration_body(
+            original,
+            current,
+            size,
+            path_bound)
+
+  transitive_closure_vc: bool =
+    FORALL (original, initial: matrix):
+      (rows(original) = columns(original)
+        AND rows(initial) = rows(original)
+        AND columns(initial) = columns(original)
+        AND initial_entries_match(initial, original))
+        IMPLIES
+          LET size: int = rows(original),
+              last_path_bound: int = size - 1
+          IN
+            (0 <= last_path_bound + 1
+              IMPLIES
+                path_matrix(initial, original, size, 0)
+                  AND
+                (FORALL (path_state: matrix):
+                  same_dimensions(path_state, initial)
+                    IMPLIES
+                      path_bound_obligations(
+                        original,
+                        path_state,
+                        size,
+                        last_path_bound)
+                        AND
+                      (path_matrix(
+                         path_state,
+                         original,
+                         size,
+                         last_path_bound + 1)
+                        IMPLIES
+                          final_closure(
+                            path_state,
+                            original))))
+              AND
+            (last_path_bound + 1 < 0
+              IMPLIES
+                final_closure(initial, original))
+
+END warshall_algorithm_WarshallAlgorithm_transitive_closureqtvc

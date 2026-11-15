@@ -1,0 +1,96 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1992_b6:
+% a set of real n-by-n matrices with exclusive signed closure, pairwise
+% commuting or anticommuting products, and nonidentity anticommuting witnesses
+% has at most n^2 elements. This file contains no proof.
+
+putnam_1992_b6: THEORY
+BEGIN
+  matrix(n: posnat): TYPE = [below(n), below(n) -> real]
+  matrix_set(n: posnat): TYPE = [matrix(n) -> bool]
+
+  bounded_real_sum(
+      n: posnat,
+      values: [below(n) -> real],
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      bounded_real_sum(n, values, count - 1)
+        + IF count <= n THEN
+            values(count - 1)
+          ELSE
+            0
+          ENDIF
+    ENDIF
+  MEASURE count
+
+  identity_matrix(n: posnat): matrix(n) =
+    LAMBDA (row, column: below(n)):
+      IF row = column THEN 1 ELSE 0 ENDIF
+
+  matrix_negate(n: posnat)(A: matrix(n)): matrix(n) =
+    LAMBDA (row, column: below(n)):
+      -A(row, column)
+
+  matrix_multiply(n: posnat)(A, B: matrix(n)): matrix(n) =
+    LAMBDA (row, column: below(n)):
+      bounded_real_sum(
+        n,
+        LAMBDA (inner: below(n)):
+          A(row, inner) * B(inner, column),
+        n)
+
+  exclusive_or(left, right: bool): bool =
+    (left OR right) AND NOT (left AND right)
+
+  has_more_than_square_elements(
+      n: posnat,
+      M: matrix_set(n)): bool =
+    EXISTS
+        (enumeration: [below(n * n + 1) -> matrix(n)]):
+      (FORALL (index: below(n * n + 1)):
+        M(enumeration(index)))
+        AND
+          (FORALL (left, right: below(n * n + 1)):
+            enumeration(left) = enumeration(right)
+              IMPLIES left = right)
+
+  putnam_1992_b6: bool =
+    FORALL (n: posnat), (M: matrix_set(n)):
+      (M(identity_matrix(n))
+        AND
+          (FORALL (A, B: matrix(n)):
+            (M(A) AND M(B))
+              IMPLIES
+                exclusive_or(
+                  M(matrix_multiply(n)(A, B)),
+                  M(
+                    matrix_multiply(
+                      n)(
+                      matrix_negate(n)(A),
+                      B))))
+        AND
+          (FORALL (A, B: matrix(n)):
+            (M(A) AND M(B))
+              IMPLIES
+                (matrix_multiply(n)(A, B)
+                    = matrix_multiply(n)(B, A)
+                  OR
+                    matrix_multiply(n)(A, B)
+                      = matrix_multiply(
+                          n)(
+                          matrix_negate(n)(B),
+                          A)))
+        AND
+          (FORALL (A: matrix(n)):
+            (M(A) AND A /= identity_matrix(n))
+              IMPLIES
+                EXISTS (B: matrix(n)):
+                  M(B)
+                    AND matrix_multiply(n)(A, B)
+                      = matrix_multiply(
+                          n)(
+                          matrix_negate(n)(B),
+                          A)))
+      IMPLIES NOT has_more_than_square_elements(n, M)
+END putnam_1992_b6

@@ -1,0 +1,560 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/dijkstra_DijkstraShortestPath_shortest_path_codeqtvc: Dijkstra's
+% shortest-path verification condition for initialization, queue and
+% successor loops, invariants, variants, and final path optimality.
+% This file contains no proof.
+
+dijkstra_DijkstraShortestPath_shortest_path_codeqtvc[
+  vertex: TYPE+,
+  set_value: TYPE+,
+  map_value: TYPE+
+]: THEORY
+BEGIN
+
+  IMPORTING finite_sets[vertex]
+
+  graph_environment: TYPE =
+    [# graph_vertices: finite_set[vertex],
+       graph_successors: [vertex -> finite_set[vertex]],
+       graph_weight: [vertex, vertex -> int] #]
+
+  set_environment: TYPE =
+    [# to_fset_function: [set_value -> finite_set[vertex]],
+       choose_function: [set_value -> vertex] #]
+
+  map_environment: TYPE =
+    [# map_contents_function: [map_value -> [vertex -> int]],
+       map_create_function: [int -> map_value],
+       map_read_function: [map_value, vertex -> int],
+       map_update_function: [map_value, vertex, int -> map_value] #]
+
+  graph_specification(graph: graph_environment): bool =
+    (FORALL (x: vertex):
+      subset?(
+        graph_successors(graph)(x),
+        graph_vertices(graph)))
+      AND
+    (FORALL (x, y: vertex):
+      0 <= graph_weight(graph)(x, y))
+
+  set_specification(sets: set_environment): bool =
+    FORALL (selected_set: set_value):
+      to_fset_function(sets)(selected_set)
+        /= emptyset[vertex]
+      IMPLIES
+        to_fset_function(sets)(selected_set)
+          (choose_function(sets)(selected_set))
+
+  map_specification(maps: map_environment): bool =
+    (FORALL (value: int), (point: vertex):
+      map_contents_function(maps)
+        (map_create_function(maps)(value))(point)
+        = value)
+      AND
+    (FORALL (map_object: map_value), (point: vertex):
+      map_read_function(maps)(map_object, point)
+        = map_contents_function(maps)(map_object)(point))
+      AND
+    (FORALL
+      (map_object: map_value),
+      (updated_point, point: vertex),
+      (value: int):
+        map_contents_function(maps)
+          (map_update_function(
+            maps)(map_object, updated_point, value))(point)
+          =
+        (IF point = updated_point THEN
+           value
+         ELSE
+           map_contents_function(maps)(map_object)(point)
+         ENDIF))
+
+  background_assumptions(
+      graph: graph_environment,
+      sets: set_environment,
+      maps: map_environment): bool =
+    graph_specification(graph)
+      AND set_specification(sets)
+      AND map_specification(maps)
+
+  route_path(
+      graph: graph_environment,
+      start: vertex,
+      route: list[vertex],
+      destination: vertex): RECURSIVE bool =
+    CASES route OF
+      null:
+        start = destination,
+      cons(next_vertex, rest):
+        graph_successors(graph)(start)(next_vertex)
+          AND route_path(
+                graph, next_vertex, rest, destination)
+    ENDCASES
+  MEASURE route BY <<
+
+  route_weight(
+      graph: graph_environment,
+      start: vertex,
+      route: list[vertex]): RECURSIVE int =
+    CASES route OF
+      null:
+        0,
+      cons(next_vertex, rest):
+        graph_weight(graph)(start, next_vertex)
+          + route_weight(graph, next_vertex, rest)
+    ENDCASES
+  MEASURE route BY <<
+
+  path(
+      graph: graph_environment,
+      start, destination: vertex,
+      distance: int): bool =
+    EXISTS (route: list[vertex]):
+      route_path(graph, start, route, destination)
+        AND route_weight(graph, start, route) = distance
+
+  shortest_path(
+      graph: graph_environment,
+      start, destination: vertex,
+      distance: int): bool =
+    path(graph, start, destination, distance)
+      AND
+    (FORALL (other_distance: int):
+      path(graph, start, destination, other_distance)
+        IMPLIES distance <= other_distance)
+
+  dijkstra_min(
+      sets: set_environment,
+      maps: map_environment,
+      minimum_vertex: vertex,
+      queue: set_value,
+      distances: map_value): bool =
+    to_fset_function(sets)(queue)(minimum_vertex)
+      AND
+    (FORALL (x: vertex):
+      to_fset_function(sets)(queue)(x)
+        IMPLIES
+          map_read_function(maps)(distances, minimum_vertex)
+            <= map_read_function(maps)(distances, x))
+
+  inv_src(
+      sets: set_environment,
+      source: vertex,
+      visited, queue: set_value): bool =
+    to_fset_function(sets)(visited)(source)
+      OR to_fset_function(sets)(queue)(source)
+
+  inv(
+      graph: graph_environment,
+      sets: set_environment,
+      maps: map_environment,
+      source: vertex,
+      visited, queue: set_value,
+      distances: map_value): bool =
+    inv_src(sets, source, visited, queue)
+      AND map_read_function(maps)(distances, source) = 0
+      AND subset?(
+            to_fset_function(sets)(visited),
+            graph_vertices(graph))
+      AND subset?(
+            to_fset_function(sets)(queue),
+            graph_vertices(graph))
+      AND
+    (FORALL (v1: vertex):
+      to_fset_function(sets)(queue)(v1)
+        IMPLIES
+          NOT to_fset_function(sets)(visited)(v1))
+      AND
+    (FORALL (v1: vertex):
+      to_fset_function(sets)(visited)(v1)
+        IMPLIES
+          shortest_path(
+            graph,
+            source,
+            v1,
+            map_read_function(maps)(distances, v1)))
+      AND
+    (FORALL (v1: vertex):
+      to_fset_function(sets)(queue)(v1)
+        IMPLIES
+          path(
+            graph,
+            source,
+            v1,
+            map_read_function(maps)(distances, v1)))
+
+  inv_succ(
+      graph: graph_environment,
+      sets: set_environment,
+      maps: map_environment,
+      source: vertex,
+      visited, queue: set_value,
+      distances: map_value): bool =
+    FORALL (x: vertex):
+      to_fset_function(sets)(visited)(x)
+      IMPLIES
+        (FORALL (y: vertex):
+          graph_successors(graph)(x)(y)
+          IMPLIES
+            (to_fset_function(sets)(visited)(y)
+              OR to_fset_function(sets)(queue)(y))
+            AND
+              map_read_function(maps)(distances, y)
+                <= map_read_function(maps)(distances, x)
+                     + graph_weight(graph)(x, y))
+
+  inv_succ2(
+      graph: graph_environment,
+      sets: set_environment,
+      maps: map_environment,
+      source: vertex,
+      visited, queue: set_value,
+      distances: map_value,
+      selected: vertex,
+      remaining_successors: set_value): bool =
+    FORALL (x: vertex):
+      to_fset_function(sets)(visited)(x)
+      IMPLIES
+        (FORALL (y: vertex):
+          graph_successors(graph)(x)(y)
+          IMPLIES
+            (NOT x = selected
+              OR
+                (x = selected
+                  AND
+                    NOT to_fset_function(
+                      sets)(remaining_successors)(y)))
+            IMPLIES
+              (to_fset_function(sets)(visited)(y)
+                OR to_fset_function(sets)(queue)(y))
+              AND
+                map_read_function(maps)(distances, y)
+                  <= map_read_function(maps)(distances, x)
+                       + graph_weight(graph)(x, y))
+
+  below_min_visited(
+      graph: graph_environment,
+      sets: set_environment,
+      maps: map_environment,
+      source: vertex,
+      visited, queue: set_value,
+      distances: map_value): bool =
+    FORALL (minimum_vertex: vertex):
+      dijkstra_min(
+        sets, maps, minimum_vertex, queue, distances)
+      IMPLIES
+        (FORALL (x: vertex), (distance: int):
+          path(graph, source, x, distance)
+          IMPLIES
+            distance
+              < map_read_function(
+                  maps)(distances, minimum_vertex)
+          IMPLIES
+            to_fset_function(sets)(visited)(x))
+
+  shortest_path_code_vc: bool =
+    FORALL
+      (graph: graph_environment),
+      (sets: set_environment),
+      (maps: map_environment),
+      (src, dst: vertex),
+      (visited, queue: set_value),
+      (distances: map_value):
+        (background_assumptions(graph, sets, maps)
+          AND graph_vertices(graph)(src)
+          AND graph_vertices(graph)(dst)
+          AND
+            to_fset_function(sets)(visited)
+              = emptyset[vertex]
+          AND
+            to_fset_function(sets)(queue)
+              = add(src, emptyset[vertex]))
+        IMPLIES
+          LET initial_distances: map_value =
+                map_update_function(maps)(
+                  distances, src, 0)
+          IN
+            inv(
+              graph, sets, maps, src,
+              visited, queue, initial_distances)
+            AND
+            inv_succ(
+              graph, sets, maps, src,
+              visited, queue, initial_distances)
+            AND
+            below_min_visited(
+              graph, sets, maps, src,
+              visited, queue, initial_distances)
+            AND
+            (FORALL
+              (q1: set_value),
+              (d1: map_value),
+              (visited1: set_value):
+                (inv(
+                   graph, sets, maps, src,
+                   visited1, q1, d1)
+                  AND
+                 inv_succ(
+                   graph, sets, maps, src,
+                   visited1, q1, d1)
+                  AND
+                 below_min_visited(
+                   graph, sets, maps, src,
+                   visited1, q1, d1))
+                IMPLIES
+                  IF to_fset_function(sets)(q1)
+                       /= emptyset[vertex]
+                  THEN
+                    to_fset_function(sets)(q1)
+                      /= emptyset[vertex]
+                    AND
+                    (FORALL (q2: set_value), (u: vertex):
+                      (dijkstra_min(
+                         sets, maps, u, q1, d1)
+                        AND
+                       to_fset_function(sets)(q2)
+                         =
+                       remove(
+                         u,
+                         to_fset_function(sets)(q1)))
+                      IMPLIES
+                        (FORALL (visited2: set_value):
+                          (to_fset_function(sets)(visited2)
+                             =
+                           add(
+                             u,
+                             to_fset_function(sets)(visited1))
+                            AND
+                           (IF
+                              to_fset_function(
+                                sets)(visited1)(u)
+                            THEN
+                              card(
+                                to_fset_function(
+                                  sets)(visited2))
+                                =
+                              card(
+                                to_fset_function(
+                                  sets)(visited1))
+                            ELSE
+                              (card(
+                                 to_fset_function(
+                                   sets)(visited2)) :: int)
+                                =
+                              (card(
+                                 to_fset_function(
+                                   sets)(visited1)) :: int)
+                                + 1
+                            ENDIF))
+                          IMPLIES
+                            (FORALL (su: set_value):
+                              to_fset_function(sets)(su)
+                                = graph_successors(graph)(u)
+                              IMPLIES
+                                (subset?(
+                                   to_fset_function(sets)(su),
+                                   graph_successors(graph)(u))
+                                  AND
+                                 inv(
+                                   graph, sets, maps, src,
+                                   visited2, q2, d1)
+                                  AND
+                                 inv_succ2(
+                                   graph, sets, maps, src,
+                                   visited2, q2, d1, u, su))
+                                AND
+                                (FORALL
+                                  (su1, q3: set_value),
+                                  (d2: map_value):
+                                    (subset?(
+                                       to_fset_function(sets)(su1),
+                                       graph_successors(graph)(u))
+                                      AND
+                                     inv(
+                                       graph, sets, maps, src,
+                                       visited2, q3, d2)
+                                      AND
+                                     inv_succ2(
+                                       graph, sets, maps, src,
+                                       visited2, q3, d2, u, su1))
+                                    IMPLIES
+                                      IF
+                                        to_fset_function(sets)(su1)
+                                          /= emptyset[vertex]
+                                      THEN
+                                        to_fset_function(sets)(su1)
+                                          /= emptyset[vertex]
+                                        AND
+                                        (FORALL (su2: set_value):
+                                          LET v1: vertex =
+                                                choose_function(
+                                                  sets)(su1)
+                                          IN
+                                            (to_fset_function(
+                                               sets)(su1)(v1)
+                                              AND
+                                             to_fset_function(sets)(su2)
+                                               =
+                                             remove(
+                                               v1,
+                                               to_fset_function(
+                                                 sets)(su1)))
+                                            IMPLIES
+                                              (FORALL
+                                                (q4: set_value),
+                                                (d3: map_value):
+                                                  ((to_fset_function(
+                                                       sets)(visited2)(v1)
+                                                      AND q4 = q3
+                                                      AND d3 = d2)
+                                                    OR
+                                                   (to_fset_function(
+                                                       sets)(q4)(v1)
+                                                      AND
+                                                        map_read_function(
+                                                          maps)(d3, v1)
+                                                          <=
+                                                        map_read_function(
+                                                          maps)(d3, u)
+                                                          +
+                                                        graph_weight(
+                                                          graph)(u, v1)
+                                                      AND q4 = q3
+                                                      AND d3 = d2)
+                                                    OR
+                                                   (to_fset_function(
+                                                       sets)(q4)(v1)
+                                                      AND
+                                                        map_read_function(
+                                                          maps)(d2, u)
+                                                          +
+                                                        graph_weight(
+                                                          graph)(u, v1)
+                                                          <
+                                                        map_read_function(
+                                                          maps)(d2, v1)
+                                                      AND q4 = q3
+                                                      AND
+                                                        d3
+                                                          =
+                                                        map_update_function(
+                                                          maps)(
+                                                            d2,
+                                                            v1,
+                                                            map_read_function(
+                                                              maps)(d2, u)
+                                                              +
+                                                            graph_weight(
+                                                              graph)(u, v1)))
+                                                    OR
+                                                   (NOT
+                                                      to_fset_function(
+                                                        sets)(visited2)(v1)
+                                                      AND NOT
+                                                        to_fset_function(
+                                                          sets)(q3)(v1)
+                                                      AND
+                                                        to_fset_function(
+                                                          sets)(q4)
+                                                          =
+                                                        add(
+                                                          v1,
+                                                          to_fset_function(
+                                                            sets)(q3))
+                                                      AND
+                                                        d3
+                                                          =
+                                                        map_update_function(
+                                                          maps)(
+                                                            d2,
+                                                            v1,
+                                                            map_read_function(
+                                                              maps)(d2, u)
+                                                              +
+                                                            graph_weight(
+                                                              graph)(u, v1))))
+                                                  IMPLIES
+                                                    ((0
+                                                        <=
+                                                      (card(
+                                                         to_fset_function(
+                                                           sets)(su1))
+                                                        :: int))
+                                                      AND
+                                                       card(
+                                                         to_fset_function(
+                                                           sets)(su2))
+                                                         <
+                                                       card(
+                                                         to_fset_function(
+                                                           sets)(su1)))
+                                                    AND
+                                                    subset?(
+                                                      to_fset_function(
+                                                        sets)(su2),
+                                                      graph_successors(
+                                                        graph)(u))
+                                                    AND
+                                                    inv(
+                                                      graph, sets, maps, src,
+                                                      visited2, q4, d3)
+                                                    AND
+                                                    inv_succ2(
+                                                      graph, sets, maps, src,
+                                                      visited2, q4, d3,
+                                                      u, su2)))
+                                      ELSE
+                                        ((0
+                                            <=
+                                          (card(
+                                             graph_vertices(graph)) :: int)
+                                            -
+                                          (card(
+                                             to_fset_function(
+                                               sets)(visited1)) :: int))
+                                          AND
+                                           (card(
+                                              graph_vertices(graph)) :: int)
+                                             -
+                                           (card(
+                                              to_fset_function(
+                                                sets)(visited2)) :: int)
+                                             <
+                                           (card(
+                                              graph_vertices(graph)) :: int)
+                                             -
+                                           (card(
+                                              to_fset_function(
+                                                sets)(visited1)) :: int))
+                                        AND
+                                        inv(
+                                          graph, sets, maps, src,
+                                          visited2, q3, d2)
+                                        AND
+                                        inv_succ(
+                                          graph, sets, maps, src,
+                                          visited2, q3, d2)
+                                        AND
+                                        below_min_visited(
+                                          graph, sets, maps, src,
+                                          visited2, q3, d2)
+                                      ENDIF))))
+                  ELSE
+                    (FORALL (v1: vertex):
+                      to_fset_function(sets)(visited1)(v1)
+                      IMPLIES
+                        shortest_path(
+                          graph,
+                          src,
+                          v1,
+                          map_read_function(maps)(d1, v1)))
+                    AND
+                    (FORALL (v1: vertex):
+                      NOT to_fset_function(sets)(visited1)(v1)
+                      IMPLIES
+                        (FORALL (distance: int):
+                          NOT path(
+                            graph, src, v1, distance)))
+                  ENDIF)
+
+END dijkstra_DijkstraShortestPath_shortest_path_codeqtvc

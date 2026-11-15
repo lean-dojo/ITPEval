@@ -27,6 +27,8 @@ if [[ ! -f "${HELLO_FILE}" ]]; then
   fail "missing hello file at ${HELLO_FILE}"
 fi
 
+itpeval_validate_statement_file "lean4" "${HELLO_FILE}"
+
 export PATH="${LEAN_ROOT}/bin:${PREFIX}/bin:${PATH}"
 
 run "${LEAN_BIN}" --version
@@ -40,7 +42,7 @@ if [[ "${needs_mathlib}" == "1" ]]; then
   if [[ -n "${ITPEVAL_LEAN4_LEAN_PATH:-}" ]]; then
     export LEAN_PATH="${ITPEVAL_LEAN4_LEAN_PATH}"
     run "${LEAN_BIN}" "${HELLO_FILE}"
-  elif [[ -x "${LAKE_BIN}" && -f "${MATHLIB_PROJECT_DIR}/lakefile.lean" ]]; then
+  elif [[ -x "${LAKE_BIN}" ]] && [[ -f "${MATHLIB_PROJECT_DIR}/lakefile.lean" || -f "${MATHLIB_PROJECT_DIR}/lakefile.toml" ]]; then
     if [[ ! -f "${MATHLIB_OLEAN}" ]]; then
       fail "Hello.lean imports Mathlib, but Mathlib.olean is missing under ${MATHLIB_PROJECT_DIR}. Build or fetch Mathlib there, or set ITPEVAL_LEAN4_MATHLIB_PROJECT/ITPEVAL_LEAN4_LEAN_PATH."
     fi

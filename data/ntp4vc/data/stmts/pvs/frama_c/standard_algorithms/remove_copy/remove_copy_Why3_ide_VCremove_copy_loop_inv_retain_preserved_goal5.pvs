@@ -1,0 +1,218 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% frama_c/standard_algorithms/remove_copy/remove_copy_Why3_ide_VCremove_copy_loop_inv_retain_preserved_goal5:
+% a remove-copy loop verification condition stating that the next conditional
+% memory update preserves the multiset-retain-rest invariant.
+% This file contains no proof.
+
+remove_copy_Why3_ide_VCremove_copy_loop_inv_retain_preserved_goal5: THEORY
+BEGIN
+  addr: TYPE = [# base: int, offset: int #]
+  integer_memory: TYPE = [addr -> int]
+  allocation_table: TYPE = [int -> int]
+  occurrence_counter: TYPE =
+    [integer_memory, addr, int, int, int -> int]
+
+  shift(p: addr, k: int): addr =
+    (# base := base(p), offset := offset(p) + k #)
+
+  update(
+      memory: integer_memory,
+      location: addr,
+      value: int): integer_memory =
+    LAMBDA (q: addr):
+      IF q = location THEN value ELSE memory(q) ENDIF
+
+  separated(p: addr, p_size: int, q: addr, q_size: int): bool =
+    p_size <= 0
+      OR q_size <= 0
+      OR base(p) /= base(q)
+      OR offset(q) + q_size <= offset(p)
+      OR offset(p) + p_size <= offset(q)
+
+  havoc(
+      original, outside: integer_memory,
+      start: addr,
+      size: int): integer_memory =
+    LAMBDA (q: addr):
+      IF separated(q, 1, start, size) THEN
+        outside(q)
+      ELSE
+        original(q)
+      ENDIF
+
+  valid_rw(m: allocation_table, p: addr, n: int): bool =
+    0 < n IMPLIES
+      0 < base(p)
+        AND 0 <= offset(p)
+        AND offset(p) + n <= m(base(p))
+
+  valid_rd(m: allocation_table, p: addr, n: int): bool =
+    0 < n IMPLIES
+      base(p) /= 0
+        AND 0 <= offset(p)
+        AND offset(p) + n <= m(base(p))
+
+  is_uint32(x: int): bool =
+    0 <= x AND x < 4294967296
+
+  is_sint32(x: int): bool =
+    -2147483648 <= x AND x < 2147483648
+
+  p_hasvalue(
+      memory: integer_memory,
+      a: addr,
+      first, last, value: int): bool =
+    EXISTS (j: int):
+      memory(shift(a, j)) = value
+        AND first <= j
+        AND j < last
+
+  p_unchanged(
+      mint_0, mint_1: integer_memory,
+      a: addr,
+      first, last: int): bool =
+    FORALL (j: int):
+      first <= j IMPLIES
+      j < last IMPLIES
+      mint_1(shift(a, j)) = mint_0(shift(a, j))
+
+  count_axioms(l_count: occurrence_counter): bool =
+    (FORALL
+      (n, m, value: int),
+      (memory: integer_memory),
+      (a: addr):
+        n <= m IMPLIES
+        is_sint32(value) IMPLIES
+        l_count(memory, a, m, n, value) = 0)
+    AND
+    (FORALL
+      (n: int),
+      (memory: integer_memory),
+      (a: addr),
+      (value, m: int):
+        memory(shift(a, n - 1)) = value IMPLIES
+        m < n IMPLIES
+        is_sint32(value) IMPLIES
+        1 + l_count(memory, a, m, n - 1, value) =
+          l_count(memory, a, m, n, value))
+    AND
+    (FORALL
+      (n: int),
+      (memory: integer_memory),
+      (a: addr),
+      (value, m: int):
+        memory(shift(a, n - 1)) /= value IMPLIES
+        m < n IMPLIES
+        is_sint32(value) IMPLIES
+        l_count(memory, a, m, n - 1, value) =
+          l_count(memory, a, m, n, value))
+    AND
+    (FORALL
+      (value: int),
+      (mint_0, mint_1: integer_memory),
+      (a: addr),
+      (m, n: int):
+        is_sint32(value) IMPLIES
+        p_unchanged(mint_0, mint_1, a, m, n) IMPLIES
+        l_count(mint_1, a, m, n, value) =
+          l_count(mint_0, a, m, n, value))
+
+  p_multisetretainrest(
+      l_count: occurrence_counter,
+      mint_0, mint_1: integer_memory,
+      a: addr,
+      m1, m2: int,
+      b: addr,
+      n1, n2, excluded: int): bool =
+    FORALL (value: int):
+      value /= excluded IMPLIES
+      is_sint32(value) IMPLIES
+      l_count(mint_1, a, m1, m2, value) =
+        l_count(mint_0, b, n1, n2, value)
+
+  goal5: bool =
+    FORALL
+      (region: [int -> int]),
+      (linked: [allocation_table -> bool]),
+      (l_count: occurrence_counter),
+      (t_3: integer_memory),
+      (a_1: addr),
+      (i_5, i: int),
+      (a: addr),
+      (t_1: integer_memory),
+      (i_2: int),
+      (t: allocation_table),
+      (i_1, i_3, i_4: int),
+      (t_2: integer_memory),
+      (p: bool):
+      LET x: int = l_count(t_3, a_1, 0, i_5, i),
+          x_1: int = 1 + i_5,
+          a_2: addr = shift(a_1, 0),
+          a_3: addr = shift(a_1, i_5),
+          a_4: addr = shift(a, 0),
+          x_2: int = i_5 - x,
+          a_5: integer_memory = havoc(t_1, t_3, a_4, i_2),
+          a_6: int = a_5(a_3),
+          a_7: addr = shift(a, x_2)
+      IN
+        count_axioms(l_count) IMPLIES
+        i_5 <= i_2 IMPLIES
+        i_5 < i_2 IMPLIES
+        region(base(a)) <= 0 IMPLIES
+        region(base(a_1)) <= 0 IMPLIES
+        x <= i_5 IMPLIES
+        0 <= x IMPLIES
+        i_5 <= 4294967294 IMPLIES
+        linked(t) IMPLIES
+        is_uint32(i_1) IMPLIES
+        is_uint32(i_2) IMPLIES
+        is_uint32(i_3) IMPLIES
+        is_uint32(i_4) IMPLIES
+        is_uint32(i_5) IMPLIES
+        is_sint32(i) IMPLIES
+        is_uint32(x_1) IMPLIES
+        valid_rd(t, a_2, i_2) IMPLIES
+        valid_rd(t, a_3, 1) IMPLIES
+        valid_rw(t, a_4, i_2) IMPLIES
+        separated(a_2, i_2, a, 1) IMPLIES
+        is_uint32(x_2) IMPLIES
+        is_sint32(a_6) IMPLIES
+        NOT p_hasvalue(a_5, a, 0, x_2, i) IMPLIES
+        p_unchanged(a_5, t_3, a_1, i_5, i_2) IMPLIES
+        p_unchanged(a_5, t_3, a, x_2, i_2) IMPLIES
+        p_multisetretainrest(
+          l_count,
+          a_5,
+          t_3,
+          a_1,
+          0,
+          i_5,
+          a,
+          0,
+          x_2,
+          i) IMPLIES
+        (IF a_6 = i THEN
+          a_5 = t_2
+            AND i_4 + l_count(t_3, a_1, 0, i_5, t_2(a_3)) = i_5
+        ELSE
+          p = FALSE
+            AND i_3 = i_1
+            AND i_1 + x = i_5
+            AND i_3 + x = i_5
+            AND i_4 + x = x_1
+            AND update(a_5, a_7, a_6) = t_2
+            AND i_5 <= 4294967294 + x
+            AND valid_rw(t, a_7, 1)
+        ENDIF) IMPLIES
+        p_multisetretainrest(
+          l_count,
+          t_2,
+          t_3,
+          a_1,
+          0,
+          x_1,
+          a,
+          0,
+          i_4,
+          i)
+END remove_copy_Why3_ide_VCremove_copy_loop_inv_retain_preserved_goal5

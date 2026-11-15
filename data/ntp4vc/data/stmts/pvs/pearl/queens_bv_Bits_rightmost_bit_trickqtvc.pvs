@@ -1,0 +1,92 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/queens_bv_Bits_rightmost_bit_trickqtvc: the 32-bit rightmost-set-bit
+% verification condition relating two's-complement bit arithmetic to the
+% singleton containing the minimum modeled bit position. This file contains no proof.
+
+queens_bv_Bits_rightmost_bit_trickqtvc[
+  t: TYPE+,
+  bv: [t -> bvec[32]],
+  mdl: [t -> finite_set[int]]
+]: THEORY
+BEGIN
+
+  IMPORTING bv[32], bv_nat[32], finite_sets[int]
+
+  word32: TYPE = bvec[32]
+
+  unsigned(value: word32): nat =
+    bv2nat[32](value)
+
+  integer_bit(value: int, index: below(32)): bool =
+    mod(
+      floor(
+        (mod(value, 4294967296) :: real)
+          / (exp2(index) :: real)),
+      2)
+      = 1
+
+  word32_from_int(value: int): word32 =
+    LAMBDA (index: below(32)):
+      integer_bit(value, index)
+
+  word_neg(value: word32): word32 =
+    word32_from_int(-unsigned(value))
+
+  word_and(left, right: word32): word32 =
+    LAMBDA (index: below(32)):
+      left(index) AND right(index)
+
+  bit_at(value: word32, index: int): bool =
+    IF 0 <= index AND index < 32 THEN
+      value(index)
+    ELSE
+      FALSE
+    ENDIF
+
+  t_invariant: bool =
+    FORALL (index: int), (self: t):
+      (((0 <= index AND index < 32)
+        AND bit_at(bv(self), index) = TRUE)
+       IFF mdl(self)(index))
+
+  t_eq(left, right: t): bool =
+    bv(left) = bv(right) AND mdl(left) = mdl(right)
+
+  t_injective: bool =
+    FORALL (left, right: t):
+      t_eq(left, right) IMPLIES left = right
+
+  is_minimum(minimum: int, values: finite_set[int]): bool =
+    values(minimum)
+      AND
+        (FORALL (element: int):
+          values(element) IMPLIES minimum <= element)
+
+  rightmost_bit_trick_vc: bool =
+    (t_invariant AND t_injective)
+      IMPLIES
+        (FORALL (a: t):
+          mdl(a) /= emptyset[int]
+            IMPLIES
+              (EXISTS (minimum: int):
+                is_minimum(minimum, mdl(a))
+                  AND
+                    (LET
+                       res: word32 =
+                         word_and(bv(a), word_neg(bv(a))),
+                       o1: finite_set[int] =
+                         add(minimum, emptyset[int])
+                     IN
+                       (FORALL (index: int):
+                         (((0 <= index AND index < 32)
+                           AND bit_at(res, index) = TRUE)
+                          IFF o1(index)))
+                         AND
+                           (FORALL (result: t):
+                             (bv(result) = res
+                               AND mdl(result) = o1)
+                               IMPLIES
+                                 mdl(result)
+                                   = add(minimum, emptyset[int])))))
+
+END queens_bv_Bits_rightmost_bit_trickqtvc

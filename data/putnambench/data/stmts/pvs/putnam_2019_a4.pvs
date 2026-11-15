@@ -1,0 +1,184 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2019_a4:
+% a continuous real function on real three-space with zero surface integral
+% over every unit sphere need not be identically zero. This file contains no proof.
+
+putnam_2019_a4: THEORY
+BEGIN
+  point: TYPE =
+    [# x_coord: real, y_coord: real, z_coord: real #]
+  space_function: TYPE = [point -> real]
+  real_sequence: TYPE = [nat -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  sine_partial(argument: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        sine_partial(argument, count - 1)
+          + safe_div(
+              ((-1 :: real) ^ index) * argument ^ (2 * index + 1),
+              factorial(2 * index + 1) :: real)
+    ENDIF
+  MEASURE count
+
+  cosine_partial(argument: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        cosine_partial(argument, count - 1)
+          + safe_div(
+              ((-1 :: real) ^ index) * argument ^ (2 * index),
+              factorial(2 * index) :: real)
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  sine(argument: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat):
+            sine_partial(argument, count),
+          value))
+
+  cosine(argument: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat):
+            cosine_partial(argument, count),
+          value))
+
+  pi: real =
+    epsilon(
+      LAMBDA (value: real):
+        3 < value
+          AND value < 4
+          AND cosine(value / 2) = 0)
+
+  squared_distance(P, Q: point): real =
+    (x_coord(P) - x_coord(Q)) ^ 2
+      + (y_coord(P) - y_coord(Q)) ^ 2
+      + (z_coord(P) - z_coord(Q)) ^ 2
+
+  continuous(f: space_function): bool =
+    FORALL (P: point), (epsilon_value: posreal):
+      EXISTS (delta: posreal):
+        FORALL (Q: point):
+          squared_distance(P, Q) < delta ^ 2
+            IMPLIES abs(f(Q) - f(P)) < epsilon_value
+
+  sphere_point(
+      center: point,
+      azimuth, polar: real): point =
+    (# x_coord :=
+         x_coord(center) + sine(polar) * cosine(azimuth),
+       y_coord :=
+         y_coord(center) + sine(polar) * sine(azimuth),
+       z_coord :=
+         z_coord(center) + cosine(polar) #)
+
+  surface_density(
+      f: space_function,
+      center: point,
+      azimuth, polar: real): real =
+    f(sphere_point(center, azimuth, polar)) * sine(polar)
+
+  surface_row_sum(
+      f: space_function,
+      center: point,
+      subdivisions, row, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET column: nat = count - 1,
+          azimuth: real =
+            safe_div(
+              2 * pi
+                * ((column :: real) + (1 :: real) / 2),
+              subdivisions :: real),
+          polar: real =
+            safe_div(
+              pi * ((row :: real) + (1 :: real) / 2),
+              subdivisions :: real)
+      IN
+        surface_row_sum(
+          f, center, subdivisions, row, count - 1)
+          + surface_density(f, center, azimuth, polar)
+    ENDIF
+  MEASURE count
+
+  surface_grid_sum(
+      f: space_function,
+      center: point,
+      subdivisions, rows: nat): RECURSIVE real =
+    IF rows = 0 THEN
+      0
+    ELSE
+      surface_grid_sum(f, center, subdivisions, rows - 1)
+        + surface_row_sum(
+            f, center, subdivisions, rows - 1, subdivisions)
+    ENDIF
+  MEASURE rows
+
+  unit_sphere_surface_sum(
+      f: space_function,
+      center: point,
+      subdivisions: nat): real =
+    safe_div(2 * pi, subdivisions :: real)
+      * safe_div(pi, subdivisions :: real)
+      * surface_grid_sum(
+          f, center, subdivisions, subdivisions)
+
+  has_unit_sphere_surface_integral(
+      f: space_function,
+      center: point,
+      integral_value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        cutoff > 0
+          AND FORALL (subdivisions: nat):
+            cutoff <= subdivisions IMPLIES
+              abs(
+                unit_sphere_surface_sum(
+                  f, center, subdivisions)
+                  - integral_value)
+                < epsilon_value
+
+  zero_unit_sphere_integrals(f: space_function): bool =
+    FORALL (center: point):
+      has_unit_sphere_surface_integral(f, center, 0)
+
+  identically_zero(f: space_function): bool =
+    FORALL (P: point): f(P) = 0
+
+  putnam_2019_a4_solution: bool = FALSE
+
+  putnam_2019_a4: bool =
+    (FORALL (f: space_function):
+      (continuous(f) AND zero_unit_sphere_integrals(f))
+        IMPLIES identically_zero(f))
+      IFF putnam_2019_a4_solution
+END putnam_2019_a4

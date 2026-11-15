@@ -1,0 +1,71 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1976_a6:
+% a globally twice continuously differentiable real function bounded in
+% absolute value by one, with f(0)^2 + f'(0)^2 = 4, has a point where
+% f + f'' vanishes. This file contains no proof.
+
+putnam_1976_a6: THEORY
+BEGIN
+  real_function: TYPE = [real -> real]
+
+  continuous(f: real_function): bool =
+    FORALL (x: real), (epsilon_value: posreal):
+      EXISTS (delta: posreal):
+        FORALL (z: real):
+          abs(z - x) < delta IMPLIES
+            abs(f(z) - f(x)) < epsilon_value
+
+  has_derivative_at(
+      f: real_function,
+      derivative, x: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (delta: posreal):
+        FORALL (h: real):
+          (NOT (h = 0) AND abs(h) < delta)
+            IMPLIES
+              abs(
+                f(x + h) - f(x)
+                  - derivative * h)
+                < epsilon_value * abs(h)
+
+  differentiable_at(f: real_function, x: real): bool =
+    EXISTS (derivative: real):
+      has_derivative_at(f, derivative, x)
+
+  derivative_value(f: real_function, x: real): real =
+    IF differentiable_at(f, x) THEN
+      epsilon(
+        LAMBDA (derivative: real):
+          has_derivative_at(f, derivative, x))
+    ELSE
+      0
+    ENDIF
+
+  derivative_function(f: real_function): real_function =
+    LAMBDA (x: real): derivative_value(f, x)
+
+  second_derivative_value(
+      f: real_function,
+      x: real): real =
+    derivative_value(derivative_function(f), x)
+
+  continuously_differentiable(f: real_function): bool =
+    (FORALL (x: real): differentiable_at(f, x))
+      AND continuous(derivative_function(f))
+
+  continuously_twice_differentiable(
+      f: real_function): bool =
+    continuously_differentiable(f)
+      AND continuously_differentiable(
+        derivative_function(f))
+
+  putnam_1976_a6: bool =
+    FORALL (f: real_function):
+      (continuously_twice_differentiable(f)
+        AND (FORALL (x: real): abs(f(x)) <= 1)
+        AND f(0) ^ 2
+              + derivative_value(f, 0) ^ 2
+            = 4)
+      IMPLIES
+        EXISTS (y: real):
+          f(y) + second_derivative_value(f, y) = 0
+END putnam_1976_a6

@@ -1,0 +1,95 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2001_b1:
+% in a positive even square grid with row-major integer labels and a balanced
+% two-coloring in every row and column, the two color sums are equal. This file
+% contains no proof.
+
+putnam_2001_b1: THEORY
+BEGIN
+  integer_grid: TYPE = [nat, nat -> int]
+  natural_grid: TYPE = [nat, nat -> nat]
+
+  row_color_count(
+      colors: natural_grid,
+      color, row, count: nat): RECURSIVE nat =
+    IF count = 0 THEN
+      0
+    ELSE
+      row_color_count(colors, color, row, count - 1)
+        + (IF colors(row, count - 1) = color THEN 1 ELSE 0 ENDIF)
+    ENDIF
+  MEASURE count
+
+  column_color_count(
+      colors: natural_grid,
+      color, column, count: nat): RECURSIVE nat =
+    IF count = 0 THEN
+      0
+    ELSE
+      column_color_count(colors, color, column, count - 1)
+        + (IF colors(count - 1, column) = color THEN 1 ELSE 0 ENDIF)
+    ENDIF
+  MEASURE count
+
+  weighted_row_color_sum(
+      nums: integer_grid,
+      colors: natural_grid,
+      color, row, count: nat): RECURSIVE int =
+    IF count = 0 THEN
+      0
+    ELSE
+      weighted_row_color_sum(nums, colors, color, row, count - 1)
+        + (IF colors(row, count - 1) = color
+           THEN nums(row, count - 1)
+           ELSE 0
+           ENDIF)
+    ENDIF
+  MEASURE count
+
+  weighted_color_sum(
+      nums: integer_grid,
+      colors: natural_grid,
+      color, row_count, column_count: nat): RECURSIVE int =
+    IF row_count = 0 THEN
+      0
+    ELSE
+      weighted_color_sum(
+        nums, colors, color, row_count - 1, column_count)
+        + weighted_row_color_sum(
+            nums, colors, color, row_count - 1, column_count)
+    ENDIF
+  MEASURE row_count
+
+  row_major_labels(nums: integer_grid, n: nat): bool =
+    FORALL (row, column: nat):
+      (row < n AND column < n)
+        IMPLIES
+          nums(row, column) = ((row * n + column + 1) :: int)
+
+  binary_coloring(colors: natural_grid, n: nat): bool =
+    FORALL (row, column: nat):
+      (row < n AND column < n)
+        IMPLIES
+          (colors(row, column) = 0 OR colors(row, column) = 1)
+
+  balanced_rows(colors: natural_grid, n: nat): bool =
+    FORALL (row: nat):
+      row < n
+        IMPLIES row_color_count(colors, 0, row, n) = ndiv(n, 2)
+
+  balanced_columns(colors: natural_grid, n: nat): bool =
+    FORALL (column: nat):
+      column < n
+        IMPLIES column_color_count(colors, 0, column, n) = ndiv(n, 2)
+
+  putnam_2001_b1: bool =
+    FORALL (n: nat), (nums: integer_grid), (colors: natural_grid):
+      (n > 0
+        AND mod(n, 2) = 0
+        AND row_major_labels(nums, n)
+        AND binary_coloring(colors, n)
+        AND balanced_rows(colors, n)
+        AND balanced_columns(colors, n))
+      IMPLIES
+        weighted_color_sum(nums, colors, 0, n, n)
+          = weighted_color_sum(nums, colors, 1, n, n)
+END putnam_2001_b1

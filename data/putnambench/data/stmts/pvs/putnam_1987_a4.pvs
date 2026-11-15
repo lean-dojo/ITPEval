@@ -1,0 +1,187 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1987_a4:
+% a real-coefficient polynomial in three variables satisfying the stated
+% scaling law and axis values determines the distance from a complex zero
+% to be (5/3)*sqrt(30). This file contains no proof.
+
+putnam_1987_a4: THEORY
+BEGIN
+  complex: TYPE = [# real_part: real, imag_part: real #]
+  coefficient_table: TYPE = [nat, nat, nat -> real]
+
+  % The bound belongs to each polynomial; it is not a corpus-wide degree
+  % cutoff. Every finitely supported trivariate polynomial has some maximum
+  % coordinate exponent and therefore fits in one such cube. Conversely,
+  % masking coefficients outside that cube yields finite support.
+  polynomial: TYPE =
+    [# coefficients: coefficient_table,
+       support_bound: nat #]
+
+  complex_zero: complex =
+    (# real_part := 0, imag_part := 0 #)
+
+  complex_one: complex =
+    (# real_part := 1, imag_part := 0 #)
+
+  complex_of_real(value: real): complex =
+    (# real_part := value, imag_part := 0 #)
+
+  complex_neg(value: complex): complex =
+    (# real_part := -real_part(value),
+       imag_part := -imag_part(value) #)
+
+  complex_add(left, right: complex): complex =
+    (# real_part := real_part(left) + real_part(right),
+       imag_part := imag_part(left) + imag_part(right) #)
+
+  complex_sub(left, right: complex): complex =
+    complex_add(left, complex_neg(right))
+
+  complex_mul(left, right: complex): complex =
+    (# real_part :=
+         real_part(left) * real_part(right)
+           - imag_part(left) * imag_part(right),
+       imag_part :=
+         real_part(left) * imag_part(right)
+           + imag_part(left) * real_part(right) #)
+
+  complex_scale(scalar: real, value: complex): complex =
+    complex_mul(complex_of_real(scalar), value)
+
+  complex_power(value: complex, exponent: nat): RECURSIVE complex =
+    IF exponent = 0 THEN
+      complex_one
+    ELSE
+      complex_mul(complex_power(value, exponent - 1), value)
+    ENDIF
+  MEASURE exponent
+
+  coefficient(
+      p: polynomial,
+      i, j, k: nat): real =
+    IF i <= support_bound(p)
+        AND j <= support_bound(p)
+        AND k <= support_bound(p) THEN
+      coefficients(p)(i, j, k)
+    ELSE
+      0
+    ENDIF
+
+  sum_z(
+      p: polynomial,
+      x, y, z: complex,
+      i, j, count: nat): RECURSIVE complex =
+    IF count = 0 THEN
+      complex_zero
+    ELSE
+      LET k: nat = count - 1 IN
+        complex_add(
+          sum_z(p, x, y, z, i, j, count - 1),
+          complex_scale(
+            coefficient(p, i, j, k),
+            complex_mul(
+              complex_mul(
+                complex_power(x, i),
+                complex_power(y, j)),
+              complex_power(z, k))))
+    ENDIF
+  MEASURE count
+
+  sum_y(
+      p: polynomial,
+      x, y, z: complex,
+      i, count: nat): RECURSIVE complex =
+    IF count = 0 THEN
+      complex_zero
+    ELSE
+      complex_add(
+        sum_y(p, x, y, z, i, count - 1),
+        sum_z(
+          p,
+          x,
+          y,
+          z,
+          i,
+          count - 1,
+          support_bound(p) + 1))
+    ENDIF
+  MEASURE count
+
+  sum_x(
+      p: polynomial,
+      x, y, z: complex,
+      count: nat): RECURSIVE complex =
+    IF count = 0 THEN
+      complex_zero
+    ELSE
+      complex_add(
+        sum_x(p, x, y, z, count - 1),
+        sum_y(
+          p,
+          x,
+          y,
+          z,
+          count - 1,
+          support_bound(p) + 1))
+    ENDIF
+  MEASURE count
+
+  polynomial_value(
+      p: polynomial,
+      x, y, z: complex): complex =
+    sum_x(p, x, y, z, support_bound(p) + 1)
+
+  nonnegative_square_root(value: real): real =
+    IF 0 <= value THEN
+      epsilon(
+        LAMBDA (root: real):
+          0 <= root AND root * root = value)
+    ELSE
+      0
+    ENDIF
+
+  squared_modulus(value: complex): real =
+    real_part(value) ^ 2 + imag_part(value) ^ 2
+
+  complex_modulus(value: complex): real =
+    nonnegative_square_root(squared_modulus(value))
+
+  putnam_1987_a4_solution: real =
+    (5 / 3) * nonnegative_square_root(30)
+
+  putnam_1987_a4: bool =
+    FORALL
+        (P: polynomial),
+        (F: [real, real -> real]),
+        (A, B, C: complex):
+      ((FORALL (x, y, z, u: real):
+          polynomial_value(
+            P,
+            complex_of_real(u * x),
+            complex_of_real(u * y),
+            complex_of_real(u * z))
+            = complex_of_real(
+                u ^ 2 * F(y - x, z - x)))
+        AND polynomial_value(
+              P,
+              complex_of_real(1),
+              complex_zero,
+              complex_zero)
+            = complex_of_real(4)
+        AND polynomial_value(
+              P,
+              complex_zero,
+              complex_of_real(1),
+              complex_zero)
+            = complex_of_real(5)
+        AND polynomial_value(
+              P,
+              complex_zero,
+              complex_zero,
+              complex_of_real(1))
+            = complex_of_real(6)
+        AND polynomial_value(P, A, B, C) = complex_zero
+        AND complex_modulus(complex_sub(B, A)) = 10)
+      IMPLIES
+        complex_modulus(complex_sub(C, A))
+          = putnam_1987_a4_solution
+END putnam_1987_a4

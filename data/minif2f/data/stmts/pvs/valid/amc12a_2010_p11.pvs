@@ -1,0 +1,66 @@
+% Statement-only formalization of miniF2F valid problem amc12a_2010_p11. This file contains no
+% proof.
+
+amc12a_2010_p11: THEORY
+BEGIN
+  safe_div(x, y: real): real =
+    IF y = 0 THEN 0 ELSE x / y ENDIF
+
+  nat_factorial(n: nat): RECURSIVE nat =
+    IF n = 0 THEN
+      1
+    ELSE
+      n * nat_factorial(n - 1)
+    ENDIF
+  MEASURE n
+
+  exponential_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET j: nat = count - 1 IN
+        exponential_partial(x, count - 1)
+          + safe_div(x^j, nat_factorial(j) :: real)
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: [nat -> real], value: real): bool =
+    FORALL (eps: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < eps
+
+  exponential_value(x, value: real): bool =
+    converges_to(
+      (LAMBDA (count: nat): exponential_partial(x, count)),
+      value)
+
+  natural_log_value(argument, value: real): bool =
+    argument > 0 AND exponential_value(value, argument)
+
+  log_base_value(base, argument, value: real): bool =
+    base > 0
+      AND base /= 1
+      AND argument > 0
+      AND EXISTS (log_argument, log_base: real):
+        natural_log_value(argument, log_argument)
+          AND natural_log_value(base, log_base)
+          AND value = safe_div(log_argument, log_base)
+
+  real_power_value(base, exponent, value: real): bool =
+    base > 0
+      AND EXISTS (log_base: real):
+        exponential_value(log_base, base)
+          AND exponential_value(exponent * log_base, value)
+
+  amc12a_2010_p11: bool =
+    FORALL (x, b: real):
+      (b > 0
+        AND log_base_value(b, (7 :: real)^7, x)
+        AND (EXISTS (seven_power, eight_power: real):
+          real_power_value(7, x + 7, seven_power)
+            AND real_power_value(8, x, eight_power)
+            AND seven_power = eight_power))
+      IMPLIES b = (8 :: real) / 7
+END amc12a_2010_p11

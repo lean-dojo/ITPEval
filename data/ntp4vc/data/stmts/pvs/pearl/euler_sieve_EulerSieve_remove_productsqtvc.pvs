@@ -1,0 +1,721 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/euler_sieve_EulerSieve_remove_productsqtvc: the signed 63-bit
+% verification condition for removing products while preserving the Euler
+% sieve's primality, marking, and successor invariants. This file contains no proof.
+
+euler_sieve_EulerSieve_remove_productsqtvc[
+  t: TYPE+,
+  nexts: [t -> list[int]],
+  marked: [t -> list[bool]],
+  maximum: [t -> bvec[63]]
+]: THEORY
+BEGIN
+
+  IMPORTING bv[63], bv_nat[63]
+
+  word63: TYPE = bvec[63]
+
+  signed63(value: word63): int =
+    IF value(62) THEN
+      bv2nat[63](value) - 9223372036854775808
+    ELSE
+      bv2nat[63](value)
+    ENDIF
+
+  int63_max: int = 4611686018427387903
+  int63_min: int = -4611686018427387904
+
+  int63_in_bounds(value: int): bool =
+    int63_min <= value AND value <= int63_max
+
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  trunc_div(numerator, denominator: int): int =
+    IF denominator = 0 THEN
+      0
+    ELSIF numerator * denominator >= 0 THEN
+      floor((numerator :: real) / (denominator :: real))
+    ELSE
+      -floor(-((numerator :: real) / (denominator :: real)))
+    ENDIF
+
+  euclid_div(numerator, denominator: int): int =
+    IF denominator = 0 THEN
+      0
+    ELSIF denominator > 0 THEN
+      floor((numerator :: real) / (denominator :: real))
+    ELSE
+      -floor((numerator :: real) / (-(denominator) :: real))
+    ENDIF
+
+  euclid_mod(numerator, denominator: int): int =
+    numerator - denominator * euclid_div(numerator, denominator)
+
+  nth_int_default(values: list[int], index: nat): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          nth_int_default(tail, index - 1)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  nth_bool_default(values: list[bool], index: nat): RECURSIVE bool =
+    CASES values OF
+      null:
+        FALSE,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          nth_bool_default(tail, index - 1)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  set_int(
+      values: list[int],
+      index: nat,
+      value: int): RECURSIVE list[int] =
+    CASES values OF
+      null:
+        null,
+      cons(head, tail):
+        IF index = 0 THEN
+          cons(value, tail)
+        ELSE
+          cons(head, set_int(tail, index - 1, value))
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  set_bool(
+      values: list[bool],
+      index: nat,
+      value: bool): RECURSIVE list[bool] =
+    CASES values OF
+      null:
+        null,
+      cons(head, tail):
+        IF index = 0 THEN
+          cons(value, tail)
+        ELSE
+          cons(head, set_bool(tail, index - 1, value))
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  nat_divides(divisor, value: nat): bool =
+    EXISTS (quotient: nat): value = divisor * quotient
+
+  prime_nat(value: nat): bool =
+    2 <= value
+      AND
+    (FORALL (divisor: nat):
+      (1 <= divisor AND nat_divides(divisor, value))
+        IMPLIES divisor = 1 OR divisor = value)
+
+  inv_nexts(values: list[int], n: int): bool =
+    FORALL (i: int):
+      (0 <= i AND i < n)
+        IMPLIES
+          i < nth_int_default(values, int_to_nat(i))
+            AND nth_int_default(values, int_to_nat(i)) <= n
+
+  all_eliminated_marked(
+      marker_values: list[bool],
+      successor_values: list[int]): bool =
+    length(marker_values) = length(successor_values)
+      AND
+    (FORALL (i: int):
+      (0 <= i AND i < length(marker_values))
+        IMPLIES
+          (FORALL (j: int):
+            (i < j
+              AND j
+                < nth_int_default(
+                    successor_values, int_to_nat(i)))
+            IMPLIES
+              nth_bool_default(
+                marker_values, int_to_nat(j)) = TRUE))
+
+  all_eliminated_marked_partial(
+      marker_values: list[bool],
+      successor_values: list[int],
+      minimum: int): bool =
+    length(marker_values) = length(successor_values)
+      AND
+    (FORALL (i: int):
+      (minimum <= i AND i < length(marker_values))
+        IMPLIES
+          (FORALL (j: int):
+            (i < j
+              AND j
+                < nth_int_default(
+                    successor_values, int_to_nat(i)))
+            IMPLIES
+              nth_bool_default(
+                marker_values, int_to_nat(j)) = TRUE))
+
+  not_marked_impl_next_not_marked(
+      marker_values: list[bool],
+      successor_values: list[int],
+      n: int): bool =
+    LET bound: int =
+      trunc_div(length(marker_values) - 1, n)
+    IN
+      length(marker_values) = length(successor_values)
+        AND 2 <= length(marker_values)
+        AND 2 <= n
+        AND
+      (FORALL (i: int):
+        (2 <= i AND i <= bound)
+          IMPLIES
+            nth_int_default(successor_values, int_to_nat(i))
+              <= bound
+          IMPLIES
+            NOT nth_bool_default(
+              marker_values, int_to_nat(i)) = TRUE
+          IMPLIES
+            NOT nth_bool_default(
+              marker_values,
+              int_to_nat(
+                nth_int_default(
+                  successor_values, int_to_nat(i)))) = TRUE)
+
+  is_copy(
+      marker_values, old_marker_values: list[bool]): bool =
+    length(marker_values) = length(old_marker_values)
+      AND
+    (FORALL (i: int):
+      (0 <= i AND i < length(marker_values))
+        IMPLIES
+          NOT nth_bool_default(
+            marker_values, int_to_nat(i)) = TRUE
+        IMPLIES
+          NOT nth_bool_default(
+            old_marker_values, int_to_nat(i)) = TRUE)
+
+  not_marked_impl_next_not_marked_partial(
+      marker_values: list[bool],
+      successor_values: list[int],
+      n, p: int): bool =
+    LET bound: int =
+      trunc_div(length(marker_values) - 1, n)
+    IN
+      length(marker_values) = length(successor_values)
+        AND 2 <= length(marker_values)
+        AND 2 <= n
+        AND p <= bound
+        AND
+      (FORALL (i: int):
+        (2 <= i AND i < p)
+          IMPLIES
+            nth_int_default(successor_values, int_to_nat(i))
+              <= bound
+          IMPLIES
+            NOT nth_bool_default(
+              marker_values, int_to_nat(i)) = TRUE
+          IMPLIES
+            NOT nth_bool_default(
+              marker_values,
+              int_to_nat(
+                nth_int_default(
+                  successor_values, int_to_nat(i)))) = TRUE)
+
+  all_primes(marker_values: list[bool], n: int): bool =
+    FORALL (i: int):
+      (0 <= i AND i < n)
+        IMPLIES
+          (NOT nth_bool_default(
+             marker_values, int_to_nat(i)) = TRUE)
+            IFF prime_nat(int_to_nat(i))
+
+  all_multiples_marked(
+      marker_values: list[bool],
+      i, upper: int): bool =
+    (2 <= i AND i < length(marker_values))
+      AND
+    (FORALL (k: int):
+      (2 <= k AND k < upper)
+        IMPLIES i * k < length(marker_values)
+        IMPLIES
+          nth_bool_default(
+            marker_values, int_to_nat(i * k)) = TRUE)
+
+  previously_marked_multiples(
+      marker_values: list[bool],
+      n: int): bool =
+    FORALL (i: int):
+      (2 <= i AND i < n)
+        IMPLIES
+          all_multiples_marked(
+            marker_values, i, length(marker_values))
+
+  only_multiples_marked(
+      marker_values: list[bool],
+      n: int): bool =
+    FORALL (k: int):
+      (2 <= k AND k < length(marker_values))
+        IMPLIES
+          nth_bool_default(
+            marker_values, int_to_nat(k)) = TRUE
+        IMPLIES
+          (EXISTS (i, j: int):
+            (2 <= i AND i < n)
+              AND
+            (2 <= j AND j < length(marker_values))
+              AND i * j = k)
+
+  prime_multiples_marked(
+      old_marker_values, marker_values: list[bool],
+      n, upper: int): bool =
+    length(old_marker_values) = length(marker_values)
+      AND n < upper
+      AND upper <= length(marker_values)
+      AND
+    (FORALL (i: int):
+      (n <= i AND i < upper)
+        IMPLIES
+          NOT nth_bool_default(
+            old_marker_values, int_to_nat(i)) = TRUE
+        IMPLIES n * i < length(old_marker_values)
+        IMPLIES
+          nth_bool_default(
+            marker_values, int_to_nat(n * i)) = TRUE)
+
+  inv_remove_products(
+      successor_values: list[int],
+      marker_values: list[bool],
+      n: int): bool =
+    length(successor_values) = length(marker_values)
+      AND NOT nth_bool_default(marker_values, 2) = TRUE
+      AND all_primes(marker_values, n)
+      AND prime_nat(int_to_nat(n))
+      AND NOT nth_bool_default(
+        marker_values, int_to_nat(n)) = TRUE
+      AND inv_nexts(successor_values, length(successor_values))
+
+  state_invariant(self: t): bool =
+    signed63(maximum(self)) < int63_max
+      AND 3 <= signed63(maximum(self))
+      AND length(nexts(self)) = length(marked(self))
+      AND length(marked(self)) = signed63(maximum(self)) + 1
+      AND inv_nexts(nexts(self), length(nexts(self)))
+      AND all_eliminated_marked(marked(self), nexts(self))
+      AND
+    (FORALL (i: int):
+      (3 <= i AND i <= signed63(maximum(self)))
+        IMPLIES euclid_mod(i, 2) = 0
+        IMPLIES
+          nth_bool_default(
+            marked(self), int_to_nat(i)) = TRUE)
+      AND
+    (FORALL (i: int):
+      (3 <= i AND i < signed63(maximum(self)) - 1)
+        IMPLIES euclid_mod(i, 2) = 1
+        IMPLIES
+          euclid_mod(
+            nth_int_default(nexts(self), int_to_nat(i)),
+            2) = 1
+          OR
+          nth_int_default(nexts(self), int_to_nat(i))
+            = signed63(maximum(self)) + 1)
+      AND
+      nth_int_default(
+        nexts(self), int_to_nat(signed63(maximum(self))))
+        = signed63(maximum(self)) + 1
+      AND
+    (euclid_mod(signed63(maximum(self)) - 1, 2) = 0
+      IMPLIES
+        nth_int_default(
+          nexts(self),
+          int_to_nat(signed63(maximum(self)) - 1))
+          = signed63(maximum(self)))
+      AND
+    (euclid_mod(signed63(maximum(self)) - 1, 2) = 1
+      IMPLIES
+        nth_int_default(
+          nexts(self),
+          int_to_nat(signed63(maximum(self)) - 1))
+          = signed63(maximum(self)) + 1)
+
+  loop_invariant(
+      n, max1: int,
+      old_marker_values: list[bool],
+      self: t,
+      p, x: int): bool =
+    ((n <= p AND p <= max1)
+      AND (3 <= n AND n <= max1)
+      AND euclid_mod(p, 2) = 1
+      AND (p <= x
+        AND x < nth_int_default(nexts(self), int_to_nat(p)))
+      AND nth_int_default(nexts(self), int_to_nat(x))
+        = nth_int_default(nexts(self), int_to_nat(p))
+      AND nth_bool_default(
+        marked(self), int_to_nat(n * n)) = TRUE)
+      AND inv_remove_products(nexts(self), marked(self), n)
+      AND previously_marked_multiples(marked(self), n)
+      AND NOT nth_bool_default(
+        marked(self), int_to_nat(p)) = TRUE
+      AND is_copy(marked(self), old_marker_values)
+      AND all_eliminated_marked_partial(
+        old_marker_values, nexts(self), x)
+      AND not_marked_impl_next_not_marked(
+        old_marker_values, nexts(self), n)
+      AND prime_multiples_marked(
+        old_marker_values,
+        marked(self),
+        n,
+        nth_int_default(nexts(self), int_to_nat(x)))
+      AND not_marked_impl_next_not_marked_partial(
+        marked(self), nexts(self), n, p)
+      AND only_multiples_marked(marked(self), n + 1)
+
+  final_state(
+      n: int,
+      old_marker_values: list[bool],
+      self: t): bool =
+    inv_remove_products(nexts(self), marked(self), n)
+      AND not_marked_impl_next_not_marked(
+        marked(self),
+        nexts(self),
+        nth_int_default(nexts(self), int_to_nat(n)))
+      AND is_copy(marked(self), old_marker_values)
+      AND previously_marked_multiples(marked(self), n)
+      AND prime_multiples_marked(
+        old_marker_values,
+        marked(self),
+        n,
+        length(marked(self)))
+      AND only_multiples_marked(marked(self), n + 1)
+
+  final_conclusion(n: int, self: t): bool =
+    LET next_n: int =
+      nth_int_default(nexts(self), int_to_nat(n))
+    IN
+      inv_remove_products(nexts(self), marked(self), n)
+        AND not_marked_impl_next_not_marked(
+          marked(self), nexts(self), next_n)
+        AND previously_marked_multiples(marked(self), next_n)
+        AND only_multiples_marked(marked(self), next_n)
+
+  next_condition(self: t, p, next_value: int): bool =
+    (3 <= next_value
+      AND next_value <= signed63(maximum(self)) + 1)
+      AND next_value
+        = nth_int_default(nexts(self), int_to_nat(p))
+      AND
+    (euclid_mod(next_value, 2) = 1
+      OR next_value = signed63(maximum(self)) + 1)
+
+  o2_condition(self: t, next_value: int, o2: bool): bool =
+    IF 0 <= next_value THEN
+      2 <= signed63(maximum(self))
+        AND o2 =
+          (IF next_value <= signed63(maximum(self))
+           THEN TRUE ELSE FALSE ENDIF)
+    ELSE
+      o2 = FALSE
+    ENDIF
+
+  next_update_facts(
+      self: t,
+      p, o4: int): bool =
+    ((0 <= p AND p <= signed63(maximum(self)))
+      AND p < o4
+      AND o4 <= signed63(maximum(self)) + 1)
+      AND euclid_mod(p, 2) = 1
+      AND
+    (FORALL (j: int):
+      (p < j AND j < o4)
+        IMPLIES
+          nth_bool_default(
+            marked(self), int_to_nat(j)) = TRUE)
+      AND NOT nth_bool_default(
+        marked(self), int_to_nat(p)) = TRUE
+      AND
+    (euclid_mod(o4, 2) = 1
+      OR o4 = signed63(maximum(self)) + 1)
+
+  updated_successor_branch(
+      n, max1: int,
+      old_marker_values: list[bool],
+      t2: t,
+      p, next_value: int,
+      t3: t,
+      o4: int): bool =
+    next_update_facts(t3, p, o4)
+      AND
+    (FORALL (t4: t):
+      (marked(t4) = marked(t3)
+        AND maximum(t4) = maximum(t3))
+        IMPLIES
+          nexts(t4) =
+            set_int(nexts(t3), int_to_nat(p), o4)
+        IMPLIES
+          (0 <= max1
+              - nth_int_default(nexts(t2), int_to_nat(p))
+            AND
+            max1 - nth_int_default(nexts(t4), int_to_nat(p))
+              < max1
+                  - nth_int_default(nexts(t2), int_to_nat(p)))
+          AND
+          loop_invariant(
+            n, max1, old_marker_values,
+            t4, p, next_value))
+
+  marked_next_branch(
+      n, max1: int,
+      old_marker_values: list[bool],
+      t2: t,
+      p, next_value: int,
+      t3: t): bool =
+    ((3 <= next_value
+      AND next_value <= signed63(maximum(t3)))
+      AND euclid_mod(next_value, 2) = 1)
+      AND
+    (FORALL (o4: word63):
+      ((3 <= signed63(o4)
+        AND signed63(o4) <= signed63(maximum(t3)) + 1)
+        AND signed63(o4)
+          = nth_int_default(nexts(t3), int_to_nat(next_value))
+        AND
+      (euclid_mod(signed63(o4), 2) = 1
+        OR signed63(o4) = signed63(maximum(t3)) + 1))
+        IMPLIES
+          updated_successor_branch(
+            n, max1, old_marker_values,
+            t2, p, next_value, t3, signed63(o4)))
+
+  unmarked_next_branch(
+      n, max1: int,
+      old_marker_values: list[bool],
+      t2: t,
+      p: int,
+      t3: t,
+      next_value: int): bool =
+    (0 <= max1
+        - nth_int_default(nexts(t2), int_to_nat(p))
+      AND
+      max1
+          - nth_int_default(
+              nexts(t3), int_to_nat(next_value))
+        < max1
+            - nth_int_default(nexts(t2), int_to_nat(p)))
+      AND
+      loop_invariant(
+        n, max1, old_marker_values,
+        t3, next_value, next_value)
+
+  after_product_write(
+      n, max1: int,
+      old_marker_values: list[bool],
+      t2: t,
+      p, next_value: int,
+      t3: t): bool =
+    ((0 <= next_value
+      AND next_value <= signed63(maximum(t3)))
+      AND euclid_mod(next_value, 2) = 1)
+      AND
+    (IF nth_bool_default(
+          marked(t3), int_to_nat(next_value)) = TRUE
+     THEN
+       marked_next_branch(
+         n, max1, old_marker_values,
+         t2, p, next_value, t3)
+     ELSE
+       unmarked_next_branch(
+         n, max1, old_marker_values,
+         t2, p, t3, next_value)
+     ENDIF)
+
+  product_result(
+      n, max1: int,
+      old_marker_values: list[bool],
+      t2: t,
+      p, next_value, product: int): bool =
+    ((0 <= product
+      AND product <= signed63(maximum(t2)))
+      AND euclid_mod(product, 2) = 1)
+      AND
+    (FORALL (t3: t):
+      (nexts(t3) = nexts(t2)
+        AND maximum(t3) = maximum(t2))
+        IMPLIES
+          marked(t3) =
+            set_bool(
+              marked(t2), int_to_nat(product), TRUE)
+        IMPLIES
+          after_product_write(
+            n, max1, old_marker_values,
+            t2, p, next_value, t3))
+
+  product_path(
+      n, max1: int,
+      old_marker_values: list[bool],
+      t2: t,
+      p, next_value: int): bool =
+    int63_in_bounds(n * next_value)
+      AND
+    (FORALL (product: word63):
+      signed63(product) = n * next_value
+        IMPLIES
+          product_result(
+            n, max1, old_marker_values,
+            t2, p, next_value, signed63(product)))
+
+  loop_step(
+      n, d, max1: int,
+      old_marker_values: list[bool],
+      t2: t,
+      p, next_value: int): bool =
+    FORALL (o2: bool):
+      o2_condition(t2, next_value, o2)
+        IMPLIES
+          IF o2 = TRUE THEN
+            IF next_value <= d THEN
+              product_path(
+                n, max1, old_marker_values,
+                t2, p, next_value)
+            ELSE
+              final_state(n, old_marker_values, t2)
+            ENDIF
+          ELSE
+            final_state(n, old_marker_values, t2)
+          ENDIF
+
+  loop_body(
+      n, d, max1: int,
+      old_marker_values: list[bool],
+      t2: t,
+      p: int): bool =
+    ((3 <= p AND p <= signed63(maximum(t2)))
+      AND euclid_mod(p, 2) = 1)
+      AND
+    (FORALL (next_word: word63):
+      next_condition(t2, p, signed63(next_word))
+        IMPLIES
+          loop_step(
+            n, d, max1, old_marker_values,
+            t2, p, signed63(next_word)))
+
+  all_loop_obligations(
+      n, d, max1: int,
+      old_marker_values: list[bool],
+      t1: t): bool =
+    FORALL (t2: t):
+      maximum(t2) = maximum(t1)
+        IMPLIES
+          (FORALL (p: word63), (x: int):
+            loop_invariant(
+              n, max1, old_marker_values,
+              t2, signed63(p), x)
+              IMPLIES
+                loop_body(
+                  n, d, max1, old_marker_values,
+                  t2, signed63(p)))
+
+  square_continuation(
+      n, max1: int,
+      old_marker_values: list[bool],
+      t2: t): bool =
+    loop_invariant(
+      n, max1, old_marker_values, t2, n, n)
+      AND
+    (FORALL (t3: t):
+      maximum(t3) = maximum(t2)
+        IMPLIES final_state(n, old_marker_values, t3)
+        IMPLIES final_conclusion(n, t3))
+
+  square_result(
+      n, max1: int,
+      old_marker_values: list[bool],
+      t1: t,
+      square: int): bool =
+    ((0 <= square
+      AND square <= signed63(maximum(t1)))
+      AND euclid_mod(square, 2) = 1)
+      AND
+    (FORALL (t2: t):
+      (nexts(t2) = nexts(t1)
+        AND maximum(t2) = maximum(t1))
+        IMPLIES
+          marked(t2) =
+            set_bool(marked(t1), int_to_nat(square), TRUE)
+        IMPLIES
+          square_continuation(
+            n, max1, old_marker_values, t2))
+
+  square_obligations(
+      n, max1: int,
+      old_marker_values: list[bool],
+      t1: t): bool =
+    int63_in_bounds(n * n)
+      AND
+    (FORALL (square: word63):
+      signed63(square) = n * n
+        IMPLIES
+          square_result(
+            n, max1, old_marker_values,
+            t1, signed63(square)))
+
+  remove_products_result(
+      n, d: int,
+      t1: t): bool =
+    LET max1: int = signed63(maximum(t1)),
+        old_marker_values: list[bool] = marked(t1)
+    IN
+      all_loop_obligations(
+        n, d, max1, old_marker_values, t1)
+        AND
+      square_obligations(
+        n, max1, old_marker_values, t1)
+
+  source_context: bool =
+    FORALL (self: t): state_invariant(self)
+
+  remove_products_vc: bool =
+    source_context
+      IMPLIES
+    (FORALL (n: word63), (t1: t):
+      3 <= signed63(n)
+        IMPLIES
+          signed63(n) <= signed63(maximum(t1))
+        IMPLIES
+          signed63(n) * signed63(n)
+            <= signed63(maximum(t1))
+        IMPLIES
+          inv_remove_products(
+            nexts(t1), marked(t1), signed63(n))
+        IMPLIES
+          previously_marked_multiples(
+            marked(t1), signed63(n))
+        IMPLIES
+          only_multiples_marked(
+            marked(t1), signed63(n))
+        IMPLIES
+          not_marked_impl_next_not_marked(
+            marked(t1), nexts(t1), signed63(n))
+        IMPLIES
+          2 <= signed63(maximum(t1))
+        IMPLIES
+          (NOT signed63(n) = 0
+            AND int63_in_bounds(
+              trunc_div(
+                signed63(maximum(t1)), signed63(n))))
+          AND
+          (FORALL (d: word63):
+            signed63(d) =
+              trunc_div(
+                signed63(maximum(t1)), signed63(n))
+              IMPLIES
+                remove_products_result(
+                  signed63(n), signed63(d), t1)))
+
+END euler_sieve_EulerSieve_remove_productsqtvc

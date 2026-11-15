@@ -1,0 +1,78 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2021_b2:
+% the greatest value of a weighted infinite series of geometric means of
+% prefixes of a nonnegative real sequence with sum 1 is 2/3. This file
+% contains no proof.
+
+putnam_2021_b2: THEORY
+BEGIN
+  real_sequence: TYPE = [nat -> real]
+  real_set: TYPE = [real -> bool]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  prefix_sum(values: real_sequence, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      prefix_sum(values, count - 1) + values(count - 1)
+    ENDIF
+  MEASURE count
+
+  prefix_product(values: real_sequence, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      1
+    ELSE
+      prefix_product(values, count - 1) * values(count - 1)
+    ENDIF
+  MEASURE count
+
+  series_sums_to(values: real_sequence, total: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (count: nat):
+          cutoff <= count IMPLIES
+            abs(prefix_sum(values, count) - total) < epsilon_value
+
+  admissible(a: real_sequence): bool =
+    (FORALL (index: nat): 0 <= a(index))
+      AND series_sums_to(a, 1)
+
+  prefix_geometric_means(
+      a, roots: real_sequence): bool =
+    FORALL (index: nat):
+      0 <= roots(index)
+        AND roots(index) ^ (index + 1)
+          = prefix_product(a, index + 1)
+
+  weighted_terms(roots: real_sequence): real_sequence =
+    LAMBDA (index: nat):
+      safe_div(
+        (index + 1) :: real,
+        (2 :: real) ^ (index + 1))
+        * roots(index)
+
+  attainable_values: real_set =
+    LAMBDA (total: real):
+      EXISTS (a, roots: real_sequence):
+        admissible(a)
+          AND prefix_geometric_means(a, roots)
+          AND series_sums_to(weighted_terms(roots), total)
+
+  is_greatest(values: real_set, greatest_value: real): bool =
+    values(greatest_value)
+      AND FORALL (value: real):
+        values(value) IMPLIES value <= greatest_value
+
+  putnam_2021_b2_solution: real =
+    safe_div(2, 3)
+
+  putnam_2021_b2: bool =
+    is_greatest(
+      attainable_values,
+      putnam_2021_b2_solution)
+END putnam_2021_b2

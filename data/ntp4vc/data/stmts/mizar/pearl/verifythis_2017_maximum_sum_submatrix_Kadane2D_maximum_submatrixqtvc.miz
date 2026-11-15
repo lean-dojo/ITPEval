@@ -1,0 +1,485 @@
+:: Statement-only formalization of the NTP4VC corpus artifact
+:: pearl/verifythis_2017_maximum_sum_submatrix_Kadane2D_maximum_submatrixqtvc:
+:: the nested-loop verification condition for Kadane's two-dimensional
+:: maximum-sum submatrix algorithm. This file contains no proof.
+
+environ
+  vocabularies TARSKI, XBOOLE_0, SUBSET_1, RELAT_1, FUNCT_1,
+    FUNCT_2, PARTFUN1, ZFMISC_1, NUMBERS, XREAL_0, CARD_1,
+    XXREAL_0, ARYTM_1, ARYTM_3, REAL_1, INT_1, NAT_1,
+    VALUED_0, VALUED_1, ORDINAL1, ORDINAL4, FINSEQ_1,
+    FINSEQ_2, MCART_1;
+  notations TARSKI, XBOOLE_0, SUBSET_1, ZFMISC_1, XTUPLE_0,
+    MCART_1, RELAT_1, FUNCT_1, RELSET_1, PARTFUN1, FUNCT_2,
+    ORDINAL1, CARD_1, NUMBERS, XCMPLX_0, XREAL_0, REAL_1,
+    INT_1, NAT_1, XXREAL_0, FINSEQ_1, FINSEQ_2;
+  constructors FUNCT_1, RELSET_1, PARTFUN1, FUNCT_2, CARD_1,
+    REAL_1, INT_1, XXREAL_0, ZFMISC_1, MCART_1, NAT_1,
+    FINSEQ_1, FINSEQ_2;
+  registrations XBOOLE_0, SUBSET_1, RELAT_1, FUNCT_1, RELSET_1,
+    PARTFUN1, FUNCT_2, NUMBERS, CARD_1, XXREAL_0, MEMBERED,
+    VALUED_0, VALUED_1, XCMPLX_0, XREAL_0, ORDINAL1, INT_1,
+    NAT_1, FINSEQ_1, FINSEQ_2;
+  requirements REAL, NUMERALS, SUBSET, BOOLE, ARITHM;
+
+begin
+
+::$P-
+theorem
+  for Matrix being non empty set,
+      m being Element of Matrix,
+      rows,columns being Function of Matrix,INT,
+      entry being Function of [:Matrix,[:INT,INT:]:],INT,
+      nthInt being Function of [:INT*,INT:],INT,
+      setInt being Function of [:INT*,[:INT,INT:]:],INT*,
+      arraySum being Function of [:INT*,[:INT,INT:]:],INT,
+      columnSum being
+        Function of [:Matrix,[:INT,[:INT,INT:]:]:],INT,
+      matrixSum being
+        Function of [:Matrix,[:INT,[:INT,[:INT,INT:]:]:]:],INT,
+      ArrayLe,ArrayGt,MatrixNonneg,MatrixLeInt,
+        MatrixLeArray,ChoicePhase,ColumnPhase,InnerPhase,
+        Zeroed being set
+  st
+    (for mm being Element of Matrix holds
+       0 <= rows.mm & 0 <= columns.mm) &
+
+    (for xs being FinSequence of INT, q being Integer holds
+       (q < 0 & len xs = 0 implies nthInt.[xs,q] = 0) &
+       (q < 0 & 0 < len xs implies nthInt.[xs,q] = xs.1) &
+       (0 <= q & q < len xs implies
+          nthInt.[xs,q] = xs.(q+1)) &
+       (len xs <= q implies nthInt.[xs,q] = 0)) &
+
+    (for xs being FinSequence of INT, q,x being Integer holds
+       len (setInt.[xs,[q,x]]) = len xs &
+       ((q <= 0 & 0 < len xs) implies
+          for k being Integer holds
+            (k <= 0 implies
+               nthInt.[setInt.[xs,[q,x]],k] = x) &
+            (0 < k implies
+               nthInt.[setInt.[xs,[q,x]],k] =
+                 nthInt.[xs,k])) &
+       ((0 < q & q < len xs) implies
+          for k being Integer holds
+            (k = q implies
+               nthInt.[setInt.[xs,[q,x]],k] = x) &
+            (k <> q implies
+               nthInt.[setInt.[xs,[q,x]],k] =
+                 nthInt.[xs,k])) &
+       ((len xs = 0 or len xs <= q) implies
+          setInt.[xs,[q,x]] = xs)) &
+
+    (for xs being FinSequence of INT, lo,hi being Integer holds
+       (hi <= lo implies arraySum.[xs,[lo,hi]] = 0) &
+       (not hi <= lo implies
+          for s,x being Integer st
+            s = arraySum.[xs,[lo,hi-1]] &
+            x = nthInt.[xs,hi-1]
+          holds arraySum.[xs,[lo,hi]] = s+x)) &
+
+    (for mm being Element of Matrix, j,lo,hi being Integer holds
+       (hi <= lo implies
+          columnSum.[mm,[j,[lo,hi]]] = 0) &
+       (not hi <= lo implies
+          for s,x being Integer st
+            s = columnSum.[mm,[j,[lo,hi-1]]] &
+            x = entry.[mm,[hi-1,j]]
+          holds columnSum.[mm,[j,[lo,hi]]] = s+x)) &
+
+    (for mm being Element of Matrix, rl,rh,cl,ch being Integer holds
+       (ch <= cl implies
+          matrixSum.[mm,[rl,[rh,[cl,ch]]]] = 0) &
+       (not ch <= cl implies
+          for s,x being Integer st
+            s = matrixSum.[mm,[rl,[rh,[cl,ch-1]]]] &
+            x = columnSum.[mm,[ch-1,[rl,rh]]]
+          holds matrixSum.[mm,[rl,[rh,[cl,ch]]]] = s+x)) &
+
+    (for xs being FinSequence of INT,
+         l,h,lo,hi being Integer
+     holds
+       ([xs,[l,[h,[lo,hi]]]] in ArrayLe iff
+         for s,t being Integer st
+           s = arraySum.[xs,[l,h]] &
+           t = arraySum.[xs,[lo,hi]]
+         holds s <= t)) &
+
+    (for xs being FinSequence of INT,
+         lo,hi,b being Integer
+     holds
+       ([xs,[lo,[hi,b]]] in ArrayGt iff
+         for s being Integer st s = arraySum.[xs,[lo,hi]]
+         holds b < s)) &
+
+    (for mm being Element of Matrix,
+         rl,rh,cl,ch being Integer
+     holds
+       ([mm,[rl,[rh,[cl,ch]]]] in MatrixNonneg iff
+         for s being Integer st
+           s = matrixSum.[mm,[rl,[rh,[cl,ch]]]]
+         holds 0 <= s)) &
+
+    (for mm being Element of Matrix,
+         rl,rh,cl,ch,b being Integer
+     holds
+       ([mm,[rl,[rh,[cl,[ch,b]]]]] in MatrixLeInt iff
+         for s being Integer st
+           s = matrixSum.[mm,[rl,[rh,[cl,ch]]]]
+         holds s <= b)) &
+
+    (for mm being Element of Matrix,
+         rl,rh,cl,ch being Integer,
+         xs being FinSequence of INT, lo,hi being Integer
+     holds
+       ([mm,[rl,[rh,[cl,[ch,[xs,[lo,hi]]]]]]]
+          in MatrixLeArray iff
+         for s,t being Integer st
+           s = matrixSum.[mm,[rl,[rh,[cl,ch]]]] &
+           t = arraySum.[xs,[lo,hi]]
+         holds s <= t)) &
+
+    (for a4 being FinSequence of INT,
+         rl,rh,rlo1,rhi1,clo1,chi1,maxsum1 being Integer
+     holds
+       ([a4,[rl,[rh,[rlo1,[rhi1,[clo1,[chi1,maxsum1]]]]]]]
+          in ChoicePhase iff
+        for lo,hi being Integer st
+          0 <= lo & lo <= hi & hi <= len a4 &
+          (for l,h being Integer st
+             0 <= l & l <= h & h <= len a4
+           holds [a4,[l,[h,[lo,hi]]]] in ArrayLe)
+        holds
+          ([a4,[lo,[hi,maxsum1]]] in ArrayGt implies
+            0 <= rl & rl <= rh & rh <= rows.m &
+            0 <= lo & lo <= hi & hi <= columns.m &
+            arraySum.[a4,[lo,hi]] =
+              matrixSum.[m,[rl,[rh,[lo,hi]]]] &
+            [m,[rl,[rh,[lo,hi]]]] in MatrixNonneg &
+            (for rl1,rh1 being Integer st
+               0 <= rl1 & rl1 <= rh1 & rh1 <= rows.m &
+               (rl1 < rl or rl1 = rl & rh1 < rh+1)
+             holds
+               for cl,ch being Integer st
+                 0 <= cl & cl <= ch & ch <= columns.m
+               holds
+                 [m,[rl1,[rh1,[cl,[ch,[a4,[lo,hi]]]]]]]
+                   in MatrixLeArray) &
+            (for j being Integer st
+               0 <= j & j < columns.m
+             holds
+               nthInt.[a4,j] =
+                 columnSum.[m,[j,[rl,rh+1-1]]])) &
+          (not [a4,[lo,[hi,maxsum1]]] in ArrayGt implies
+            0 <= rlo1 & rlo1 <= rhi1 & rhi1 <= rows.m &
+            0 <= clo1 & clo1 <= chi1 & chi1 <= columns.m &
+            maxsum1 =
+              matrixSum.[m,[rlo1,[rhi1,[clo1,chi1]]]] &
+            [m,[rlo1,[rhi1,[clo1,chi1]]]] in MatrixNonneg &
+            (for rl1,rh1 being Integer st
+               0 <= rl1 & rl1 <= rh1 & rh1 <= rows.m &
+               (rl1 < rl or rl1 = rl & rh1 < rh+1)
+             holds
+               for cl,ch being Integer st
+                 0 <= cl & cl <= ch & ch <= columns.m
+               holds
+                 [m,[rl1,[rh1,[cl,[ch,maxsum1]]]]]
+                   in MatrixLeInt) &
+            (for j being Integer st
+               0 <= j & j < columns.m
+             holds
+               nthInt.[a4,j] =
+                 columnSum.[m,[j,[rl,rh+1-1]]])))) &
+
+    (for a3 being FinSequence of INT,
+         rl,rh,rlo1,rhi1,clo1,chi1,maxsum1 being Integer
+     holds
+       ([a3,[rl,[rh,[rlo1,[rhi1,[clo1,[chi1,maxsum1]]]]]]]
+          in ColumnPhase iff
+        (0 <= columns.m-1+1 implies
+          (for j being Integer st 0 <= j & j < 0
+           holds
+             nthInt.[a3,j] = columnSum.[m,[j,[rl,rh]]]) &
+          (for j being Integer st 0 <= j & j < columns.m
+           holds
+             nthInt.[a3,j] =
+               columnSum.[m,[j,[rl,rh-1]]]) &
+          (for a4 being FinSequence of INT st len a4 = len a3
+           holds
+             (for c being Integer st
+                0 <= c & c <= columns.m-1 &
+                (for j being Integer st 0 <= j & j < c
+                 holds
+                   nthInt.[a4,j] =
+                     columnSum.[m,[j,[rl,rh]]]) &
+                (for j being Integer st
+                   c <= j & j < columns.m
+                 holds
+                   nthInt.[a4,j] =
+                     columnSum.[m,[j,[rl,rh-1]]])
+              holds
+                0 <= rh-1 & rh-1 < rows.m &
+                0 <= c & c < columns.m &
+                0 <= c & c < len a4 &
+                (for old,cell being Integer st
+                   old = nthInt.[a4,c] &
+                   cell = entry.[m,[rh-1,c]]
+                 holds
+                   for o8 being Integer st o8 = old+cell
+                   holds
+                     0 <= c & c < len a4 &
+                     (len (setInt.[a4,[c,o8]]) = len a4 implies
+                       ((for q being Integer st
+                           0 <= q & q < len a4
+                         holds
+                           (q = c implies
+                             nthInt.[setInt.[a4,[c,o8]],q] = o8) &
+                           (q <> c implies
+                             nthInt.[setInt.[a4,[c,o8]],q] =
+                               nthInt.[a4,q]))
+                        implies
+                          (for j being Integer st
+                             0 <= j & j < c+1
+                           holds
+                             nthInt.[setInt.[a4,[c,o8]],j] =
+                               columnSum.[m,[j,[rl,rh]]]) &
+                          (for j being Integer st
+                             c+1 <= j & j < columns.m
+                           holds
+                             nthInt.[setInt.[a4,[c,o8]],j] =
+                               columnSum.[m,[j,[rl,rh-1]]]))))) &
+             (((for j being Integer st
+                  0 <= j & j < columns.m-1+1
+                holds
+                  nthInt.[a4,j] =
+                    columnSum.[m,[j,[rl,rh]]]) &
+               (for j being Integer st
+                  columns.m-1+1 <= j & j < columns.m
+                holds
+                  nthInt.[a4,j] =
+                    columnSum.[m,[j,[rl,rh-1]]]))
+              implies
+                [a4,[rl,[rh,[rlo1,
+                  [rhi1,[clo1,[chi1,maxsum1]]]]]]]
+                    in ChoicePhase))) &
+        (columns.m-1+1 < 0 implies
+          [a3,[rl,[rh,[rlo1,[rhi1,[clo1,[chi1,maxsum1]]]]]]]
+            in ChoicePhase))) &
+
+    (for a2 being FinSequence of INT,
+         rl,rlo,rhi,clo,chi,maxsum being Integer
+     holds
+       ([a2,[rl,[rlo,[rhi,[clo,[chi,maxsum]]]]]]
+          in InnerPhase iff
+        (rl+1 <= rows.m+1 implies
+          0 <= rlo & rlo <= rhi & rhi <= rows.m &
+          0 <= clo & clo <= chi & chi <= columns.m &
+          maxsum = matrixSum.[m,[rlo,[rhi,[clo,chi]]]] &
+          [m,[rlo,[rhi,[clo,chi]]]] in MatrixNonneg &
+          (for rl1,rh1 being Integer st
+             0 <= rl1 & rl1 <= rh1 & rh1 <= rows.m &
+             (rl1 < rl or rl1 = rl & rh1 < rl+1)
+           holds
+             for cl,ch being Integer st
+               0 <= cl & cl <= ch & ch <= columns.m
+             holds
+               [m,[rl1,[rh1,[cl,[ch,maxsum]]]]]
+                 in MatrixLeInt) &
+          (for j being Integer st 0 <= j & j < columns.m
+           holds
+             nthInt.[a2,j] =
+               columnSum.[m,[j,[rl,rl+1-1]]]) &
+          (for a3 being FinSequence of INT,
+               rlo1,rhi1,clo1,chi1,maxsum1 being Integer st
+             len a3 = len a2
+           holds
+             (for rh being Integer st
+                rl+1 <= rh & rh <= rows.m &
+                0 <= rlo1 & rlo1 <= rhi1 &
+                  rhi1 <= rows.m &
+                0 <= clo1 & clo1 <= chi1 &
+                  chi1 <= columns.m &
+                maxsum1 =
+                  matrixSum.[m,[rlo1,[rhi1,[clo1,chi1]]]] &
+                [m,[rlo1,[rhi1,[clo1,chi1]]]]
+                  in MatrixNonneg &
+                (for rl2,rh2 being Integer st
+                   0 <= rl2 & rl2 <= rh2 & rh2 <= rows.m &
+                   (rl2 < rl or rl2 = rl & rh2 < rh)
+                 holds
+                   for cl,ch being Integer st
+                     0 <= cl & cl <= ch & ch <= columns.m
+                   holds
+                     [m,[rl2,[rh2,[cl,[ch,maxsum1]]]]]
+                       in MatrixLeInt) &
+                (for j being Integer st
+                   0 <= j & j < columns.m
+                 holds
+                   nthInt.[a3,j] =
+                     columnSum.[m,[j,[rl,rh-1]]])
+              holds
+                [a3,[rl,[rh,[rlo1,
+                  [rhi1,[clo1,[chi1,maxsum1]]]]]]]
+                    in ColumnPhase) &
+             ((0 <= rlo1 & rlo1 <= rhi1 &
+                 rhi1 <= rows.m &
+               0 <= clo1 & clo1 <= chi1 &
+                 chi1 <= columns.m &
+               maxsum1 =
+                 matrixSum.[m,[rlo1,[rhi1,[clo1,chi1]]]] &
+               [m,[rlo1,[rhi1,[clo1,chi1]]]]
+                 in MatrixNonneg &
+               (for rl2,rh2 being Integer st
+                  0 <= rl2 & rl2 <= rh2 & rh2 <= rows.m &
+                  (rl2 < rl or
+                    rl2 = rl & rh2 < rows.m+1)
+                holds
+                  for cl,ch being Integer st
+                    0 <= cl & cl <= ch & ch <= columns.m
+                  holds
+                    [m,[rl2,[rh2,[cl,[ch,maxsum1]]]]]
+                      in MatrixLeInt) &
+               (for j being Integer st
+                  0 <= j & j < columns.m
+                holds
+                  nthInt.[a3,j] =
+                    columnSum.[m,[j,[rl,rows.m+1-1]]]))
+              implies
+                0 <= rlo1 & rlo1 <= rhi1 & rhi1 <= rows.m &
+                0 <= clo1 & clo1 <= chi1 &
+                  chi1 <= columns.m &
+                maxsum1 =
+                  matrixSum.[m,[rlo1,[rhi1,[clo1,chi1]]]] &
+                [m,[rlo1,[rhi1,[clo1,chi1]]]]
+                  in MatrixNonneg &
+                (for rl2,rh2 being Integer st
+                   0 <= rl2 & rl2 < rl+1
+                 holds
+                   rl2 <= rh2 & rh2 <= rows.m implies
+                     for cl,ch being Integer st
+                       0 <= cl & cl <= ch & ch <= columns.m
+                     holds
+                       [m,[rl2,[rh2,[cl,[ch,maxsum1]]]]]
+                         in MatrixLeInt)))) &
+        (rows.m+1 < rl+1 implies
+          0 <= rlo & rlo <= rhi & rhi <= rows.m &
+          0 <= clo & clo <= chi & chi <= columns.m &
+          maxsum = matrixSum.[m,[rlo,[rhi,[clo,chi]]]] &
+          [m,[rlo,[rhi,[clo,chi]]]] in MatrixNonneg &
+          (for rl1,rh1 being Integer st
+             0 <= rl1 & rl1 < rl+1
+           holds
+             rl1 <= rh1 & rh1 <= rows.m implies
+               for cl,ch being Integer st
+                 0 <= cl & cl <= ch & ch <= columns.m
+               holds
+                 [m,[rl1,[rh1,[cl,[ch,maxsum]]]]]
+                   in MatrixLeInt)))) &
+
+    (for a1,a2 being FinSequence of INT
+     holds
+       ([a1,a2] in Zeroed iff
+         len a2 = len a1 &
+         (for i being Integer st
+            0 <= i & i < 0
+          holds nthInt.[a2,i] = nthInt.[a1,i]) &
+         (for i being Integer st
+            columns.m <= i & i < len a2
+          holds nthInt.[a2,i] = nthInt.[a1,i]) &
+         (for i being Integer st
+            0 <= i & i < columns.m
+          holds nthInt.[a2,i] = 0)))
+
+  holds
+    0 <= columns.m &
+    (for a being FinSequence of INT st
+       (for i being Integer st 0 <= i & i < columns.m
+        holds nthInt.[a,i] = 0) &
+       len a = columns.m
+     holds
+       (0 <= rows.m-1+1 implies
+          0 <= 0 & 0 <= 0 & 0 <= rows.m &
+          0 <= 0 & 0 <= 0 & 0 <= columns.m &
+          0 = matrixSum.[m,[0,[0,[0,0]]]] &
+          [m,[0,[0,[0,0]]]] in MatrixNonneg &
+          (for rl1,rh being Integer st
+             0 <= rl1 & rl1 < 0
+           holds
+             rl1 <= rh & rh <= rows.m implies
+               for cl,ch being Integer st
+                 0 <= cl & cl <= ch & ch <= columns.m
+               holds
+                 [m,[rl1,[rh,[cl,[ch,0]]]]]
+                   in MatrixLeInt) &
+          (for a1 being FinSequence of INT,
+               rlo,rhi,clo,chi,maxsum being Integer st
+             len a1 = len a
+           holds
+             (for rl being Integer st
+                0 <= rl & rl <= rows.m-1 &
+                0 <= rlo & rlo <= rhi & rhi <= rows.m &
+                0 <= clo & clo <= chi & chi <= columns.m &
+                maxsum =
+                  matrixSum.[m,[rlo,[rhi,[clo,chi]]]] &
+                [m,[rlo,[rhi,[clo,chi]]]]
+                  in MatrixNonneg &
+                (for rl1,rh being Integer st
+                   0 <= rl1 & rl1 < rl
+                 holds
+                   rl1 <= rh & rh <= rows.m implies
+                     for cl,ch being Integer st
+                       0 <= cl & cl <= ch & ch <= columns.m
+                     holds
+                       [m,[rl1,[rh,[cl,[ch,maxsum]]]]]
+                         in MatrixLeInt)
+              holds
+                0 <= 0 &
+                0 <= columns.m & columns.m <= len a1 &
+                (for a2 being FinSequence of INT st
+                   [a1,a2] in Zeroed
+                 holds
+                   [a2,[rl,[rlo,[rhi,[clo,[chi,maxsum]]]]]]
+                     in InnerPhase)) &
+             ((0 <= rlo & rlo <= rhi & rhi <= rows.m &
+               0 <= clo & clo <= chi & chi <= columns.m &
+               maxsum =
+                 matrixSum.[m,[rlo,[rhi,[clo,chi]]]] &
+               [m,[rlo,[rhi,[clo,chi]]]]
+                 in MatrixNonneg &
+               (for rl1,rh being Integer st
+                  0 <= rl1 & rl1 < rows.m-1+1
+                holds
+                  rl1 <= rh & rh <= rows.m implies
+                    for cl,ch being Integer st
+                      0 <= cl & cl <= ch & ch <= columns.m
+                    holds
+                      [m,[rl1,[rh,[cl,[ch,maxsum]]]]]
+                        in MatrixLeInt))
+              implies
+                0 <= rlo & rlo <= rhi & rhi <= rows.m &
+                0 <= clo & clo <= chi & chi <= columns.m &
+                maxsum =
+                  matrixSum.[m,[rlo,[rhi,[clo,chi]]]] &
+                (for rl,rh being Integer st
+                   0 <= rl & rl <= rh & rh <= rows.m
+                 holds
+                   for cl,ch being Integer st
+                     0 <= cl & cl <= ch & ch <= columns.m
+                   holds
+                     [m,[rl,[rh,[cl,[ch,maxsum]]]]]
+                       in MatrixLeInt)))) &
+       (rows.m-1+1 < 0 implies
+          0 <= 0 & 0 <= 0 & 0 <= rows.m &
+          0 <= 0 & 0 <= 0 & 0 <= columns.m &
+          0 = matrixSum.[m,[0,[0,[0,0]]]] &
+          (for rl,rh being Integer st
+             0 <= rl & rl <= rh & rh <= rows.m
+           holds
+             for cl,ch being Integer st
+               0 <= cl & cl <= ch & ch <= columns.m
+             holds
+               [m,[rl,[rh,[cl,[ch,0]]]]]
+                 in MatrixLeInt)))
+proof
+end;
+::$P+

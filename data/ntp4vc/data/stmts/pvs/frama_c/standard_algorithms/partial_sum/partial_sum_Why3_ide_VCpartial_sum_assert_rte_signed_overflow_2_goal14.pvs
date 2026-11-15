@@ -1,0 +1,178 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% frama_c/standard_algorithms/partial_sum/partial_sum_Why3_ide_VCpartial_sum_assert_rte_signed_overflow_2_goal14:
+% a partial-sum verification condition asserting that adding the next array
+% value to the preceding accumulated sum does not overflow signed 32-bit
+% arithmetic, under the source memory, bounds, and partial-sum assumptions.
+% This file contains no proof.
+
+partial_sum_Why3_ide_VCpartial_sum_assert_rte_signed_overflow_2_goal14: THEORY
+BEGIN
+  addr: TYPE = [# base: int, offset: int #]
+  integer_memory: TYPE = [addr -> int]
+  allocation_table: TYPE = [int -> int]
+  accumulate_function:
+    TYPE = [integer_memory, addr, int, int -> int]
+
+  shift(p: addr, k: int): addr =
+    (# base := base(p), offset := offset(p) + k #)
+
+  separated(p: addr, p_size: int, q: addr, q_size: int): bool =
+    p_size <= 0
+      OR q_size <= 0
+      OR base(p) /= base(q)
+      OR offset(q) + q_size <= offset(p)
+      OR offset(p) + p_size <= offset(q)
+
+  update(
+      memory: integer_memory,
+      location: addr,
+      value: int): integer_memory =
+    LAMBDA (q: addr):
+      IF q = location THEN value ELSE memory(q) ENDIF
+
+  havoc(
+      original, outside: integer_memory,
+      start: addr,
+      size: int): integer_memory =
+    LAMBDA (q: addr):
+      IF separated(q, 1, start, size) THEN
+        outside(q)
+      ELSE
+        original(q)
+      ENDIF
+
+  valid_rw(malloc: allocation_table, p: addr, size: int): bool =
+    0 < size IMPLIES
+      0 < base(p)
+        AND 0 <= offset(p)
+        AND offset(p) + size <= malloc(base(p))
+
+  valid_rd(malloc: allocation_table, p: addr, size: int): bool =
+    0 < size IMPLIES
+      base(p) /= 0
+        AND 0 <= offset(p)
+        AND offset(p) + size <= malloc(base(p))
+
+  is_uint32(value: int): bool =
+    0 <= value AND value < 4294967296
+
+  is_sint32(value: int): bool =
+    -2147483648 <= value AND value < 2147483648
+
+  to_uint32(value: int): int =
+    mod(value, 4294967296)
+
+  p_unchanged_1(
+      original, updated: integer_memory,
+      start: addr,
+      lower, upper: int): bool =
+    FORALL (index: int):
+      lower <= index IMPLIES
+      index < upper IMPLIES
+      updated(shift(start, index)) = original(shift(start, index))
+
+  accumulate_axioms(l_accumulate: accumulate_function): bool =
+    (FORALL
+      (n, init_0: int),
+      (mint_0: integer_memory),
+      (a: addr):
+        n <= 0 IMPLIES
+        is_sint32(init_0) IMPLIES
+        l_accumulate(mint_0, a, n, init_0) = init_0)
+      AND
+    (FORALL
+      (n, init_0: int),
+      (mint_0: integer_memory),
+      (a: addr):
+        0 < n IMPLIES
+        is_sint32(init_0) IMPLIES
+        mint_0(shift(a, n - 1))
+            + l_accumulate(mint_0, a, n - 1, init_0)
+          = l_accumulate(mint_0, a, n, init_0))
+      AND
+    (FORALL
+      (init_0: int),
+      (mint_0, mint_1: integer_memory),
+      (a: addr),
+      (n: int):
+        is_sint32(init_0) IMPLIES
+        p_unchanged_1(mint_0, mint_1, a, 0, n) IMPLIES
+        l_accumulate(mint_1, a, n, init_0)
+          = l_accumulate(mint_0, a, n, init_0))
+      AND
+    (FORALL
+      (mint_0: integer_memory),
+      (a: addr),
+      (n, init_0: int):
+        is_sint32(l_accumulate(mint_0, a, n, init_0)))
+
+  p_accumulatebounds_1(
+      l_accumulate: accumulate_function,
+      mint_0: integer_memory,
+      a: addr,
+      n, init_0: int): bool =
+    FORALL (index: int):
+      index <= n IMPLIES
+      0 <= index IMPLIES
+      -2147483648
+        <= l_accumulate(mint_0, a, index, init_0)
+        AND l_accumulate(mint_0, a, index, init_0)
+          <= 2147483647
+
+  p_partialsum(
+      l_accumulate: accumulate_function,
+      mint_0: integer_memory,
+      a: addr,
+      n: int,
+      b: addr): bool =
+    FORALL (index: int):
+      0 <= index IMPLIES
+      index < n IMPLIES
+      mint_0(shift(b, index))
+        = l_accumulate(mint_0, a, 1 + index, 0)
+
+  goal14: bool =
+    FORALL
+      (region: [int -> int]),
+      (linked: [allocation_table -> bool]),
+      (l_accumulate: accumulate_function),
+      (a, a_1: addr),
+      (t_2, t_1: integer_memory),
+      (i, i_1: int),
+      (t: allocation_table):
+        accumulate_axioms(l_accumulate) IMPLIES
+        LET a_2: addr = shift(a, 0) IN
+        LET a_3: addr = shift(a_1, 0) IN
+        LET x: int = t_2(a_3) IN
+        LET a_4: integer_memory =
+          havoc(t_1, update(t_2, a_2, x), shift(a, 1), i - 1)
+        IN
+        LET x_1: int = i_1 - 1 IN
+        LET a_5: int = a_4(shift(a, x_1)) IN
+        LET a_6: int = a_4(shift(a_1, i_1)) IN
+        LET a_7: int = a_4(shift(a, to_uint32(x_1))) IN
+          a_5 = l_accumulate(a_4, a_1, i_1, 0) IMPLIES
+          0 < i IMPLIES
+          0 < i_1 IMPLIES
+          i_1 <= i IMPLIES
+          i_1 < i IMPLIES
+          region(base(a)) <= 0 IMPLIES
+          region(base(a_1)) <= 0 IMPLIES
+          linked(t) IMPLIES
+          is_uint32(i) IMPLIES
+          is_uint32(i_1) IMPLIES
+          is_sint32(x) IMPLIES
+          valid_rd(t, a_3, 1) IMPLIES
+          valid_rd(t, a_3, i) IMPLIES
+          valid_rw(t, a_2, 1) IMPLIES
+          valid_rw(t, a_2, i) IMPLIES
+          p_accumulatebounds_1(
+            l_accumulate, t_2, a_1, 1 + i, 0) IMPLIES
+          separated(a_3, i, a_2, i) IMPLIES
+          is_sint32(a_6) IMPLIES
+          is_sint32(a_5) IMPLIES
+          is_sint32(a_7) IMPLIES
+          p_unchanged_1(a_4, t_2, a_1, 0, i) IMPLIES
+          p_partialsum(l_accumulate, a_4, a_1, i_1, a) IMPLIES
+          a_6 + a_7 <= 2147483647
+END partial_sum_Why3_ide_VCpartial_sum_assert_rte_signed_overflow_2_goal14

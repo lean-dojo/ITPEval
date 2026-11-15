@@ -1,0 +1,76 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/sumrange_CumulativeArray_queryqtvc: the cumulative-array range-query
+% verification condition, asserting index bounds and that the difference of
+% two cumulative entries equals the source sum over a half-open range.
+% This file contains no proof.
+
+sumrange_CumulativeArray_queryqtvc: THEORY
+BEGIN
+
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  nth_default(values: list[int], index: nat): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          nth_default(tail, index - 1)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  sum_from(
+      values: list[int],
+      start, count: nat): RECURSIVE int =
+    IF count = 0 THEN
+      0
+    ELSE
+      nth_default(values, start)
+        + sum_from(values, start + 1, count - 1)
+    ENDIF
+  MEASURE count
+
+  array_sum(
+      values: list[int],
+      lower, upper: int): int =
+    sum_from(
+      values,
+      int_to_nat(lower),
+      int_to_nat(upper - lower))
+
+  is_cumulative_array_for(
+      cumulative, source: list[int]): bool =
+    length(cumulative) = length(source) + 1
+      AND
+    (FORALL (index: int):
+      (0 <= index AND index < length(cumulative))
+        IMPLIES
+          nth_default(cumulative, int_to_nat(index))
+            = array_sum(source, 0, index))
+
+  query_vc: bool =
+    FORALL
+      (cumulative, source: list[int]),
+      (i, j: int):
+      is_cumulative_array_for(cumulative, source)
+        IMPLIES
+      0 <= i
+        IMPLIES
+      i <= j
+        IMPLIES
+      j < length(cumulative)
+        IMPLIES
+          0 <= i
+            AND i < length(cumulative)
+            AND 0 <= j
+            AND j < length(cumulative)
+            AND
+              nth_default(cumulative, int_to_nat(j))
+                - nth_default(cumulative, int_to_nat(i))
+                = array_sum(source, i, j)
+
+END sumrange_CumulativeArray_queryqtvc

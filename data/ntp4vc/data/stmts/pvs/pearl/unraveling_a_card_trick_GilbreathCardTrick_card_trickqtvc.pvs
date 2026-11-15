@@ -1,0 +1,254 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/unraveling_a_card_trick_GilbreathCardTrick_card_trickqtvc: the
+% verification condition for cutting an ordered card stack and riffle
+% shuffling the reversed pieces into suit-sorted blocks. This file contains
+% no proof.
+
+unraveling_a_card_trick_GilbreathCardTrick_card_trickqtvc[
+  stack: TYPE+,
+  stack_elts: [stack -> list[int]]
+]: THEORY
+BEGIN
+
+  int_option: DATATYPE
+  BEGIN
+    NoInt: NoInt?
+    SomeInt(option_value: int): SomeInt?
+  END int_option
+
+  nth_option(values: list[int], index: int): RECURSIVE int_option =
+    IF index < 0 THEN
+      NoInt
+    ELSE
+      CASES values OF
+        null:
+          NoInt,
+        cons(head, tail):
+          IF index = 0 THEN
+            SomeInt(head)
+          ELSE
+            nth_option(tail, index - 1)
+          ENDIF
+      ENDCASES
+    ENDIF
+  MEASURE values BY <<
+
+  list_reverse(values: list[int]): RECURSIVE list[int] =
+    CASES values OF
+      null:
+        null,
+      cons(head, tail):
+        append(list_reverse(tail), cons(head, null))
+    ENDCASES
+  MEASURE values BY <<
+
+  stack_length(value: stack): int =
+    length(stack_elts(value))
+
+  shuffle(
+      left, right, combined: list[int]): INDUCTIVE bool =
+    (right = null AND combined = left)
+      OR
+    (left = null AND combined = right)
+      OR
+    (EXISTS
+        (head: int),
+        (left_tail, combined_tail: list[int]):
+      left = cons(head, left_tail)
+        AND combined = cons(head, combined_tail)
+        AND shuffle(left_tail, right, combined_tail))
+      OR
+    (EXISTS
+        (head: int),
+        (right_tail, combined_tail: list[int]):
+      right = cons(head, right_tail)
+        AND combined = cons(head, combined_tail)
+        AND shuffle(left, right_tail, combined_tail))
+
+  suit_ordered(
+      values: list[int],
+      m, n: int): bool =
+    FORALL (i, j: int):
+      (0 <= i AND i < n)
+        IMPLIES
+          (0 <= j AND j < m)
+            IMPLIES
+              nth_option(values, i * m + j) = SomeInt(j)
+
+  suit_sorted(
+      values: list[int],
+      m, n: int): bool =
+    (FORALL (i, value: int):
+      nth_option(values, i) = SomeInt(value)
+        IMPLIES
+          0 <= value AND value < m)
+      AND
+    (FORALL (i, j1, j2: int):
+      (0 <= i AND i < n)
+        IMPLIES
+          (0 <= j1 AND j1 < m)
+            IMPLIES
+              (0 <= j2 AND j2 < m)
+                IMPLIES
+                  nth_option(values, i * m + j1)
+                    /= nth_option(values, i * m + j2))
+
+  gilbreath_card_trick_specification(m, n: int): bool =
+    FORALL (ordered: list[int]):
+      length(ordered) = n * m
+        IMPLIES
+          suit_ordered(ordered, m, n)
+            IMPLIES
+              (FORALL (left, right: list[int]):
+                ordered = append(left, right)
+                  IMPLIES
+                    (FORALL (shuffled: list[int]):
+                      shuffle(
+                        left,
+                        list_reverse(right),
+                        shuffled)
+                        IMPLIES
+                          suit_sorted(shuffled, m, n)))
+
+  loop_invariant(
+      original, remaining, reversed_prefix: stack,
+      index, m, n: int): bool =
+    stack_length(remaining) = n * m - index + 1
+      AND stack_length(reversed_prefix) = index - 1
+      AND
+        stack_elts(original)
+          =
+        append(
+          list_reverse(stack_elts(reversed_prefix)),
+          stack_elts(remaining))
+
+  pop_characterization(
+      values: list[int],
+      popped: int,
+      remainder: list[int]): bool =
+    CASES values OF
+      null:
+        FALSE,
+      cons(head, tail):
+        popped = head AND remainder = tail
+    ENDCASES
+
+  loop_step(
+      original, reversed_prefix, remaining: stack,
+      index, m, n: int): bool =
+    stack_elts(remaining) /= null
+      AND
+    (FORALL (next_remaining: stack), (popped: int):
+      pop_characterization(
+        stack_elts(remaining),
+        popped,
+        stack_elts(next_remaining))
+        IMPLIES
+          (FORALL (next_prefix: stack):
+            stack_elts(next_prefix)
+                = cons(popped, stack_elts(reversed_prefix))
+              IMPLIES
+                loop_invariant(
+                  original,
+                  next_remaining,
+                  next_prefix,
+                  index + 1,
+                  m,
+                  n)))
+
+  shuffle_completion(
+      left_before, right_before: stack,
+      m, n: int): bool =
+    FORALL
+        (right_after, left_after, result: stack):
+      (stack_elts(left_after) = null
+        AND stack_elts(right_after) = null
+        AND
+          shuffle(
+            list_reverse(stack_elts(left_before)),
+            list_reverse(stack_elts(right_before)),
+            stack_elts(result)))
+        IMPLIES
+          stack_length(result) = n * m
+            AND suit_sorted(stack_elts(result), m, n)
+
+  positive_cut_obligation(
+      original, initial_prefix: stack,
+      cut, m, n: int): bool =
+    loop_invariant(
+      original,
+      original,
+      initial_prefix,
+      1,
+      m,
+      n)
+      AND
+    (FORALL (reversed_prefix, remaining: stack):
+      (FORALL (index: int):
+        ((1 <= index AND index <= cut)
+          AND
+            loop_invariant(
+              original,
+              remaining,
+              reversed_prefix,
+              index,
+              m,
+              n))
+          IMPLIES
+            loop_step(
+              original,
+              reversed_prefix,
+              remaining,
+              index,
+              m,
+              n))
+        AND
+      (loop_invariant(
+        original,
+        remaining,
+        reversed_prefix,
+        cut + 1,
+        m,
+        n)
+        IMPLIES
+          shuffle_completion(
+            remaining,
+            reversed_prefix,
+            m,
+            n)))
+
+  card_trick_vc: bool =
+    FORALL
+        (m, n: int),
+        (a, initial_prefix: stack):
+      (0 < m
+        AND 0 <= n
+        AND gilbreath_card_trick_specification(m, n)
+        AND stack_length(a) = n * m
+        AND suit_ordered(stack_elts(a), m, n)
+        AND stack_elts(initial_prefix) = null)
+        IMPLIES
+          (EXISTS (result: int):
+            0 <= result AND result <= n * m)
+          AND
+          (FORALL (cut: int):
+            (0 <= cut AND cut <= n * m)
+              IMPLIES
+                ((1 <= cut + 1)
+                  IMPLIES
+                    positive_cut_obligation(
+                      a,
+                      initial_prefix,
+                      cut,
+                      m,
+                      n))
+                AND
+                ((cut + 1 < 1)
+                  IMPLIES
+                    shuffle_completion(
+                      a,
+                      initial_prefix,
+                      m,
+                      n)))
+
+END unraveling_a_card_trick_GilbreathCardTrick_card_trickqtvc

@@ -1,0 +1,298 @@
+% Statement-only formalization of the VERINA corpus artifact
+% verina_advanced_13, "hasChordIntersection": detecting whether two chords
+% have alternating endpoints and therefore cross inside a circle.
+% This file contains no proof.
+
+verina_advanced_13: THEORY
+BEGIN
+
+  nat_list_length(values: list[nat]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        nat_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  chord_list_length(
+      chords: list[list[nat]]): RECURSIVE nat =
+    CASES chords OF
+      null:
+        0,
+      cons(chord, rest):
+        chord_list_length(rest) + 1
+    ENDCASES
+  MEASURE chords BY <<
+
+  nat_list_nth_default(
+      index: nat,
+      values: list[nat]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          nat_list_nth_default(index - 1, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  nat_member(value: nat, values: list[nat]): RECURSIVE bool =
+    CASES values OF
+      null:
+        FALSE,
+      cons(head, tail):
+        value = head OR nat_member(value, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  no_duplicate_nats(values: list[nat]): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        NOT nat_member(head, tail)
+          AND no_duplicate_nats(tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  append_nat_lists(
+      first, second: list[nat]): RECURSIVE list[nat] =
+    CASES first OF
+      null:
+        second,
+      cons(head, tail):
+        cons(head, append_nat_lists(tail, second))
+    ENDCASES
+  MEASURE first BY <<
+
+  flatten_chords(chords: list[list[nat]]): RECURSIVE list[nat] =
+    CASES chords OF
+      null:
+        null,
+      cons(chord, rest):
+        append_nat_lists(chord, flatten_chords(rest))
+    ENDCASES
+  MEASURE chords BY <<
+
+  valid_chord(N: nat, chord: list[nat]): bool =
+    nat_list_length(chord) = 2
+      AND nat_list_nth_default(0, chord) >= 1
+      AND nat_list_nth_default(0, chord) <= 2 * N
+      AND nat_list_nth_default(1, chord) >= 1
+      AND nat_list_nth_default(1, chord) <= 2 * N
+
+  all_valid_chords(
+      N: nat,
+      chords: list[list[nat]]): RECURSIVE bool =
+    CASES chords OF
+      null:
+        TRUE,
+      cons(chord, rest):
+        valid_chord(N, chord)
+          AND all_valid_chords(N, rest)
+    ENDCASES
+  MEASURE chords BY <<
+
+  hasChordIntersection_precond(
+      N: nat,
+      chords: list[list[nat]]): bool =
+    N >= 2
+      AND chord_list_length(chords) = N
+      AND all_valid_chords(N, chords)
+      AND no_duplicate_nats(flatten_chords(chords))
+
+  normalize_chord(chord: list[nat]): list[nat] =
+    LET a: nat = nat_list_nth_default(0, chord),
+        b: nat = nat_list_nth_default(1, chord)
+    IN
+      IF a > b THEN
+        cons(b, cons(a, null))
+      ELSE
+        cons(a, cons(b, null))
+      ENDIF
+
+  normalize_chords(
+      chords: list[list[nat]]): RECURSIVE list[list[nat]] =
+    CASES chords OF
+      null:
+        null,
+      cons(chord, rest):
+        cons(normalize_chord(chord), normalize_chords(rest))
+    ENDCASES
+  MEASURE chords BY <<
+
+  drop_while_ending_before(
+      a: nat,
+      stack: list[list[nat]]): RECURSIVE list[list[nat]] =
+    CASES stack OF
+      null:
+        null,
+      cons(chord, rest):
+        IF nat_list_nth_default(1, chord) < a THEN
+          drop_while_ending_before(a, rest)
+        ELSE
+          cons(chord, rest)
+        ENDIF
+    ENDCASES
+  MEASURE stack BY <<
+
+  insert_chord(
+      chord: list[nat],
+      chords: list[list[nat]]): RECURSIVE list[list[nat]] =
+    CASES chords OF
+      null:
+        cons(chord, null),
+      cons(head, tail):
+        IF nat_list_nth_default(0, chord)
+             < nat_list_nth_default(0, head)
+        THEN
+          cons(chord, chords)
+        ELSE
+          cons(head, insert_chord(chord, tail))
+        ENDIF
+    ENDCASES
+  MEASURE chords BY <<
+
+  sort_chords(
+      chords: list[list[nat]]): RECURSIVE list[list[nat]] =
+    CASES chords OF
+      null:
+        null,
+      cons(head, tail):
+        insert_chord(head, sort_chords(tail))
+    ENDCASES
+  MEASURE chords BY <<
+
+  check_intersection(
+      stack: list[list[nat]],
+      remaining: list[list[nat]]): RECURSIVE bool =
+    CASES remaining OF
+      null:
+        FALSE,
+      cons(chord, rest):
+        LET a: nat = nat_list_nth_default(0, chord),
+            b: nat = nat_list_nth_default(1, chord),
+            new_stack: list[list[nat]] =
+              drop_while_ending_before(a, stack)
+        IN
+          CASES new_stack OF
+            null:
+              check_intersection(cons(chord, null), rest),
+            cons(top, stack_tail):
+              IF nat_list_nth_default(1, top) > a
+                   AND nat_list_nth_default(1, top) < b
+              THEN
+                TRUE
+              ELSE
+                check_intersection(
+                  cons(chord, new_stack),
+                  rest)
+              ENDIF
+          ENDCASES
+    ENDCASES
+  MEASURE remaining BY <<
+
+  hasChordIntersection(
+      N: nat,
+      chords: list[list[nat]]): bool =
+    check_intersection(
+      null,
+      sort_chords(normalize_chords(chords)))
+
+  has_intersection(
+      chord1, chord2: list[nat]): bool =
+    LET a1: nat = nat_list_nth_default(0, chord1),
+        b1: nat = nat_list_nth_default(1, chord1),
+        a2: nat = nat_list_nth_default(0, chord2),
+        b2: nat = nat_list_nth_default(1, chord2)
+    IN
+      (a1 < a2 AND a2 < b1 AND b1 < b2)
+        OR (a2 < a1 AND a1 < b2 AND b2 < b1)
+
+  chord_intersects_any(
+      chord: list[nat],
+      chords: list[list[nat]]): RECURSIVE bool =
+    CASES chords OF
+      null:
+        FALSE,
+      cons(head, tail):
+        has_intersection(chord, head)
+          OR chord_intersects_any(chord, tail)
+    ENDCASES
+  MEASURE chords BY <<
+
+  checkAllPairs(chords: list[list[nat]]): RECURSIVE bool =
+    CASES chords OF
+      null:
+        FALSE,
+      cons(head, tail):
+        IF chord_intersects_any(head, tail) THEN
+          TRUE
+        ELSE
+          checkAllPairs(tail)
+        ENDIF
+    ENDCASES
+  MEASURE chords BY <<
+
+  chord_avoids_all(
+      chord: list[nat],
+      chords: list[list[nat]]): RECURSIVE bool =
+    CASES chords OF
+      null:
+        TRUE,
+      cons(head, tail):
+        NOT has_intersection(chord, head)
+          AND chord_avoids_all(chord, tail)
+    ENDCASES
+  MEASURE chords BY <<
+
+  pairwise_no_intersection(
+      chords: list[list[nat]]): RECURSIVE bool =
+    CASES chords OF
+      null:
+        TRUE,
+      cons(head, tail):
+        chord_avoids_all(head, tail)
+          AND pairwise_no_intersection(tail)
+    ENDCASES
+  MEASURE chords BY <<
+
+  any_chord_has_intersection(
+      original: list[list[nat]],
+      remaining: list[list[nat]]): RECURSIVE bool =
+    CASES remaining OF
+      null:
+        FALSE,
+      cons(head, tail):
+        chord_intersects_any(head, original)
+          OR any_chord_has_intersection(original, tail)
+    ENDCASES
+  MEASURE remaining BY <<
+
+  hasChordIntersection_postcond(
+      N: nat,
+      chords: list[list[nat]],
+      result: bool): bool =
+    LET sorted_chords: list[list[nat]] =
+      normalize_chords(chords)
+    IN
+      (pairwise_no_intersection(sorted_chords)
+        IMPLIES NOT result)
+      AND (any_chord_has_intersection(
+             sorted_chords,
+             sorted_chords)
+        IMPLIES result)
+
+  hasChordIntersection_spec_satisfied: bool =
+    FORALL (N: nat), (chords: list[list[nat]]):
+      hasChordIntersection_precond(N, chords) IMPLIES
+        hasChordIntersection_postcond(
+          N,
+          chords,
+          hasChordIntersection(N, chords))
+
+END verina_advanced_13

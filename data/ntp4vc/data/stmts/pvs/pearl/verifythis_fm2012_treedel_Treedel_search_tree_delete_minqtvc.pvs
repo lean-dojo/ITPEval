@@ -1,0 +1,439 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/verifythis_fm2012_treedel_Treedel_search_tree_delete_minqtvc:
+% the verification condition for deleting the minimum node from a
+% pointer-modeled binary tree by left descent and zipper reconstruction.
+% This file contains no proof.
+
+verifythis_fm2012_treedel_Treedel_search_tree_delete_minqtvc[
+  loc: TYPE+,
+  null_loc: loc,
+  eq_loc: [loc, loc -> bool]
+]: THEORY
+BEGIN
+
+  node_data: TYPE =
+    [# node_left: loc,
+       node_right: loc,
+       node_value: int #]
+
+  memory: TYPE = [loc -> node_data]
+
+  tree: DATATYPE
+  BEGIN
+    Empty: Empty?
+    Node(
+      left_subtree: tree,
+      tree_location: loc,
+      right_subtree: tree): Node?
+  END tree
+
+  zipper: DATATYPE
+  BEGIN
+    Top: Top?
+    Left(
+      zipper_context: zipper,
+      zipper_location: loc,
+      zipper_right: tree): Left?
+  END zipper
+
+  loc_list: DATATYPE
+  BEGIN
+    LNil: LNil?
+    LCons(
+      list_head: loc,
+      list_tail: loc_list): LCons?
+  END loc_list
+
+  list_append(
+      first, second: loc_list): RECURSIVE loc_list =
+    CASES first OF
+      LNil:
+        second,
+      LCons(head, tail):
+        LCons(head, list_append(tail, second))
+    ENDCASES
+  MEASURE first BY <<
+
+  list_mem(
+      element: loc,
+      values: loc_list): RECURSIVE bool =
+    CASES values OF
+      LNil:
+        FALSE,
+      LCons(head, tail):
+        element = head OR list_mem(element, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  no_duplicates(values: loc_list): RECURSIVE bool =
+    CASES values OF
+      LNil:
+        TRUE,
+      LCons(head, tail):
+        NOT list_mem(head, tail) AND no_duplicates(tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  root(values: tree): loc =
+    CASES values OF
+      Empty:
+        null_loc,
+      Node(left, point, right):
+        point
+    ENDCASES
+
+  inorder(values: tree): RECURSIVE loc_list =
+    CASES values OF
+      Empty:
+        LNil,
+      Node(left, point, right):
+        list_append(
+          inorder(left),
+          LCons(point, inorder(right)))
+    ENDCASES
+  MEASURE values BY <<
+
+  istree(
+      mem: memory,
+      values: tree): RECURSIVE bool =
+    CASES values OF
+      Empty:
+        TRUE,
+      Node(left, point, right):
+        point /= null_loc
+          AND istree(mem, left)
+          AND istree(mem, right)
+          AND root(left) = node_left(mem(point))
+          AND root(right) = node_right(mem(point))
+    ENDCASES
+  MEASURE values BY <<
+
+  zip(
+      values: tree,
+      context: zipper): RECURSIVE tree =
+    CASES context OF
+      Top:
+        values,
+      Left(outer, point, right):
+        zip(Node(values, point, right), outer)
+    ENDCASES
+  MEASURE context BY <<
+
+  inorderz(context: zipper): RECURSIVE loc_list =
+    CASES context OF
+      Top:
+        LNil,
+      Left(outer, point, right):
+        list_append(
+          LCons(point, inorder(right)),
+          inorderz(outer))
+    ENDCASES
+  MEASURE context BY <<
+
+  left_child(values, child: tree): bool =
+    CASES values OF
+      Empty:
+        FALSE,
+      Node(left, point, right):
+        child = left
+    ENDCASES
+
+  right_child(values, child: tree): bool =
+    CASES values OF
+      Empty:
+        FALSE,
+      Node(left, point, right):
+        child = right
+    ENDCASES
+
+  either_child(values, child: tree): bool =
+    CASES values OF
+      Empty:
+        FALSE,
+      Node(left, point, right):
+        left = child OR right = child
+    ENDCASES
+
+  root_data_conclusion(
+      mem: memory,
+      initial, right: tree): bool =
+    CASES inorder(initial) OF
+      LNil:
+        FALSE,
+      LCons(point, tail):
+        node_value(mem(root(initial)))
+            = node_value(mem(point))
+          AND inorder(right) = tail
+    ENDCASES
+
+  direct_delete_branch(
+      mem: memory,
+      initial: tree): bool =
+    CASES initial OF
+      Empty:
+        FALSE,
+      Node(left, point, right):
+        istree(mem, right)
+          AND root(right) = node_right(mem(root(initial)))
+          AND root_data_conclusion(mem, initial, right)
+    ENDCASES
+
+  final_inorder_conclusion(
+      initial: tree,
+      mem, updated_mem: memory,
+      parent: loc,
+      rebuilt: tree): bool =
+    CASES inorder(initial) OF
+      LNil:
+        FALSE,
+      LCons(point, tail):
+        node_value(mem(node_left(mem(parent))))
+            = node_value(updated_mem(point))
+          AND inorder(rebuilt) = tail
+    ENDCASES
+
+  updated_node(mem: memory, parent: loc): node_data =
+    (# node_left :=
+         node_right(mem(node_left(mem(parent)))),
+       node_right := node_right(mem(parent)),
+       node_value := node_value(mem(parent)) #)
+
+  memory_update_premise(
+      mem, updated_mem: memory,
+      parent: loc): bool =
+    updated_mem(parent) = updated_node(mem, parent)
+      AND
+    (FORALL (point: loc):
+      point /= parent
+        IMPLIES updated_mem(point) = mem(point))
+
+  all_data_unchanged(
+      mem, updated_mem: memory): bool =
+    FORALL (point: loc):
+      node_value(updated_mem(point)) = node_value(mem(point))
+
+  updated_memory_conclusion(
+      initial: tree,
+      mem: memory,
+      subtree, right_context: tree,
+      context: zipper,
+      parent: loc,
+      updated_mem: memory): bool =
+    subtree /= Empty
+      AND
+    (FORALL (left: tree):
+      left_child(subtree, left)
+        IMPLIES
+          (subtree /= Empty
+            AND
+          (FORALL (right: tree):
+            right_child(subtree, right)
+              IMPLIES
+                (LET rebuilt: tree =
+                   zip(right, Left(context, parent, right_context))
+                 IN
+                   all_data_unchanged(mem, updated_mem)
+                     AND istree(updated_mem, rebuilt)
+                     AND root(rebuilt) = root(initial)
+                     AND
+                       final_inorder_conclusion(
+                         initial,
+                         mem,
+                         updated_mem,
+                         parent,
+                         rebuilt)))))
+
+  deep_null_branch(
+      initial: tree,
+      mem: memory,
+      subtree, right_context: tree,
+      context: zipper,
+      parent: loc): bool =
+    node_left(mem(parent)) /= null_loc
+      AND node_left(mem(parent)) /= null_loc
+      AND parent /= null_loc
+      AND
+    (FORALL (updated_mem: memory):
+      memory_update_premise(mem, updated_mem, parent)
+        IMPLIES
+          updated_memory_conclusion(
+            initial,
+            mem,
+            subtree,
+            right_context,
+            context,
+            parent,
+            updated_mem))
+
+  deep_nonnull_branch(
+      initial: tree,
+      mem: memory,
+      subtree, right_context: tree,
+      context: zipper,
+      parent: loc): bool =
+    subtree /= Empty
+      AND
+    (FORALL (right: tree):
+      right_child(subtree, right)
+        IMPLIES
+          (subtree /= Empty
+            AND
+          (FORALL (left: tree):
+            left_child(subtree, left)
+              IMPLIES
+                (LET parent_left: loc = node_left(mem(parent)),
+                     deeper_left: loc =
+                       node_left(mem(parent_left)),
+                     rebuilt: tree =
+                       Node(left, parent_left, right)
+                 IN
+                   deeper_left /= null_loc
+                     AND either_child(subtree, left)
+                     AND parent_left /= null_loc
+                     AND deeper_left /= null_loc
+                     AND istree(mem, rebuilt)
+                     AND
+                       zip(
+                         rebuilt,
+                         Left(context, parent, right_context))
+                         = initial))))
+
+  loop_body_conclusion(
+      initial: tree,
+      mem: memory,
+      subtree, right_context: tree,
+      context: zipper,
+      parent: loc): bool =
+    LET parent_left: loc = node_left(mem(parent)),
+        deeper_left: loc = node_left(mem(parent_left)),
+        tested_null: loc = null_loc
+    IN
+      ((eq_loc(deeper_left, tested_null) = TRUE)
+        <=> (deeper_left = tested_null))
+        IMPLIES
+          (IF NOT (eq_loc(deeper_left, tested_null) = TRUE) THEN
+             deep_nonnull_branch(
+               initial,
+               mem,
+               subtree,
+               right_context,
+               context,
+               parent)
+           ELSE
+             deep_null_branch(
+               initial,
+               mem,
+               subtree,
+               right_context,
+               context,
+               parent)
+           ENDIF)
+
+  loop_premise(
+      initial: tree,
+      mem: memory,
+      subtree, right_context: tree,
+      context: zipper,
+      parent: loc): bool =
+    parent /= null_loc
+      AND node_left(mem(parent)) /= null_loc
+      AND
+        (LET partial: tree =
+           Node(subtree, parent, right_context)
+         IN
+           istree(mem, partial)
+             AND zip(partial, context) = initial)
+
+  loop_obligation(
+      initial: tree,
+      mem: memory): bool =
+    FORALL
+        (subtree, right_context: tree),
+        (context: zipper),
+        (parent: loc):
+      loop_premise(
+        initial,
+        mem,
+        subtree,
+        right_context,
+        context,
+        parent)
+        IMPLIES
+          loop_body_conclusion(
+            initial,
+            mem,
+            subtree,
+            right_context,
+            context,
+            parent)
+
+  initial_descent_conclusion(
+      initial: tree,
+      mem: memory,
+      first_left: loc,
+      right, left: tree): bool =
+    ((root(initial) /= null_loc
+        AND node_left(mem(root(initial))) = first_left)
+      AND first_left /= null_loc
+      AND
+        (LET partial: tree =
+           Node(left, root(initial), right)
+         IN
+           istree(mem, partial)
+             AND zip(partial, Top) = initial))
+      AND loop_obligation(initial, mem)
+
+  left_descent_branch(
+      initial: tree,
+      mem: memory,
+      first_left: loc): bool =
+    first_left /= null_loc
+      AND initial /= Empty
+      AND
+    (FORALL (right: tree):
+      right_child(initial, right)
+        IMPLIES
+          (initial /= Empty
+            AND
+          (FORALL (left: tree):
+            left_child(initial, left)
+              IMPLIES
+                initial_descent_conclusion(
+                  initial,
+                  mem,
+                  first_left,
+                  right,
+                  left))))
+
+  immediate_left_branch(
+      initial: tree,
+      mem: memory): bool =
+    root(initial) /= null_loc
+      AND root(initial) /= null_loc
+      AND direct_delete_branch(mem, initial)
+
+  main_conclusion(
+      initial: tree,
+      mem: memory): bool =
+    root(initial) /= null_loc
+      AND
+    (LET first_left: loc = node_left(mem(root(initial))),
+         tested_null: loc = null_loc
+     IN
+       ((eq_loc(first_left, tested_null) = TRUE)
+         <=> (first_left = tested_null))
+         IMPLIES
+           (IF eq_loc(first_left, tested_null) THEN
+              immediate_left_branch(initial, mem)
+            ELSE
+              left_descent_branch(initial, mem, first_left)
+            ENDIF))
+
+  search_tree_delete_min_vc: bool =
+    FORALL (initial: tree), (mem: memory):
+      (root(initial) /= null_loc
+        AND istree(mem, initial)
+        AND no_duplicates(inorder(initial)))
+      IMPLIES main_conclusion(initial, mem)
+
+END verifythis_fm2012_treedel_Treedel_search_tree_delete_minqtvc

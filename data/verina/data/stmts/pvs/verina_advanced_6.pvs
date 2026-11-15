@@ -1,0 +1,91 @@
+% Statement-only formalization of the VERINA corpus artifact
+% verina_advanced_6, catalog title "allVowels": deciding whether a
+% Unicode-scalar string contains all five English vowels after lowercasing
+% ASCII uppercase letters. This file contains no proof.
+
+verina_advanced_6: THEORY
+BEGIN
+
+  % Lean String.data is observed extensionally as its finite list of Unicode
+  % scalar characters.
+  lean_char: TYPE =
+    {codepoint: nat |
+      codepoint < 1114112
+        AND (codepoint < 55296 OR codepoint >= 57344)}
+
+  lean_string: TYPE = list[lean_char]
+
+  toLower(c: lean_char): lean_char =
+    IF c >= 65 AND c <= 90 THEN c + 32 ELSE c ENDIF
+
+  normalize_str(
+      s: lean_string): RECURSIVE list[lean_char] =
+    CASES s OF
+      null:
+        null[lean_char],
+      cons(head, tail):
+        cons(toLower(head), normalize_str(tail))
+    ENDCASES
+  MEASURE s BY <<
+
+  lean_char_list_contains(
+      chars: list[lean_char],
+      requested: nat): RECURSIVE bool =
+    CASES chars OF
+      null:
+        FALSE,
+      cons(head, tail):
+        head = requested
+          OR lean_char_list_contains(tail, requested)
+    ENDCASES
+  MEASURE chars BY <<
+
+  every_vowel_occurs(
+      vowels: list[nat],
+      chars: list[lean_char]): RECURSIVE bool =
+    CASES vowels OF
+      null:
+        TRUE,
+      cons(vowel, remaining):
+        lean_char_list_contains(chars, vowel)
+          AND every_vowel_occurs(remaining, chars)
+    ENDCASES
+  MEASURE vowels BY <<
+
+  vowelSet: list[nat] =
+    cons(
+      97,
+      cons(
+        101,
+        cons(
+          105,
+          cons(
+            111,
+            cons(117, null[nat])))))
+
+  allVowels_precond(s: lean_string): bool =
+    TRUE
+
+  % The Lean precondition proof is computationally irrelevant. This is the
+  % exact proof-erased map, membership, and list-all executable computation.
+  allVowels(s: lean_string): bool =
+    LET chars: list[lean_char] = normalize_str(s)
+    IN
+      every_vowel_occurs(vowelSet, chars)
+
+  allVowels_postcond(
+      s: lean_string,
+      result: bool): bool =
+    LET chars: list[lean_char] = normalize_str(s)
+    IN
+      result = every_vowel_occurs(vowelSet, chars)
+
+  allVowels_spec_satisfied: bool =
+    FORALL (s: lean_string):
+      allVowels_precond(s)
+        IMPLIES
+          allVowels_postcond(
+            s,
+            allVowels(s))
+
+END verina_advanced_6

@@ -1,0 +1,197 @@
+% Statement-only formalization of "The Number of Platonic Solids" from Hundred
+% Theorems item 050. It characterizes the possible constant numbers of edges
+% per facet and per vertex of a full-dimensional real three-dimensional
+% polytope. This file contains no proof.
+
+the_number_of_platonic_solids_050: THEORY
+BEGIN
+  coordinate: TYPE = below(3)
+  point: TYPE = [coordinate -> real]
+  point_set: TYPE = [point -> bool]
+  point_set_family: TYPE = [point_set -> bool]
+  point_enumeration: TYPE = [nat -> point]
+  point_set_enumeration: TYPE = [nat -> point_set]
+
+  subset(S, T: point_set): bool =
+    FORALL (x: point):
+      S(x) IMPLIES T(x)
+
+  affine_combination(t: real, a, b: point): point =
+    LAMBDA (i: coordinate):
+      (1 - t) * a(i) + t * b(i)
+
+  convex(S: point_set): bool =
+    FORALL (a, b: point), (t: real):
+      S(a) AND S(b) AND 0 <= t AND t <= 1
+        IMPLIES S(affine_combination(t, a, b))
+
+  convex_hull(S: point_set): point_set =
+    LAMBDA (x: point):
+      FORALL (C: point_set):
+        convex(C) AND subset(S, C) IMPLIES C(x)
+
+  open_segment_member(x, a, b: point): bool =
+    NOT a = b
+      AND
+        EXISTS (t: real):
+          0 < t AND t < 1
+            AND x = affine_combination(t, a, b)
+
+  injective_points_below(
+      enumeration: point_enumeration,
+      bound: nat): bool =
+    FORALL (i, j: nat):
+      i < bound AND j < bound
+        AND enumeration(i) = enumeration(j)
+      IMPLIES i = j
+
+  enumerates_points_exactly(
+      enumeration: point_enumeration,
+      S: point_set,
+      bound: nat): bool =
+    FORALL (x: point):
+      S(x)
+        IFF
+          EXISTS (i: nat):
+            i < bound AND enumeration(i) = x
+
+  has_point_cardinality(S: point_set, cardinality: nat): bool =
+    EXISTS (enumeration: point_enumeration):
+      injective_points_below(enumeration, cardinality)
+        AND enumerates_points_exactly(enumeration, S, cardinality)
+
+  finite_point_set(S: point_set): bool =
+    EXISTS (cardinality: nat):
+      has_point_cardinality(S, cardinality)
+
+  injective_point_sets_below(
+      enumeration: point_set_enumeration,
+      bound: nat): bool =
+    FORALL (i, j: nat):
+      i < bound AND j < bound
+        AND enumeration(i) = enumeration(j)
+      IMPLIES i = j
+
+  enumerates_point_sets_exactly(
+      enumeration: point_set_enumeration,
+      family: point_set_family,
+      bound: nat): bool =
+    FORALL (S: point_set):
+      family(S)
+        IFF
+          EXISTS (i: nat):
+            i < bound AND enumeration(i) = S
+
+  has_point_set_cardinality(
+      family: point_set_family,
+      cardinality: nat): bool =
+    EXISTS (enumeration: point_set_enumeration):
+      injective_point_sets_below(enumeration, cardinality)
+        AND enumerates_point_sets_exactly(
+          enumeration,
+          family,
+          cardinality)
+
+  polytope(S: point_set): bool =
+    EXISTS (vertices: point_set):
+      finite_point_set(vertices)
+        AND S = convex_hull(vertices)
+
+  face_of(F, S: point_set): bool =
+    subset(F, S)
+      AND convex(F)
+      AND
+        FORALL (a, b, x: point):
+          S(a) AND S(b) AND F(x)
+            AND open_segment_member(x, a, b)
+          IMPLIES F(a) AND F(b)
+
+  collinear(a, b, c: point): bool =
+    (b(0) - a(0)) * (c(1) - a(1))
+        = (b(1) - a(1)) * (c(0) - a(0))
+      AND
+        (b(0) - a(0)) * (c(2) - a(2))
+          = (b(2) - a(2)) * (c(0) - a(0))
+      AND
+        (b(1) - a(1)) * (c(2) - a(2))
+          = (b(2) - a(2)) * (c(1) - a(1))
+
+  oriented_volume(a, b, c, d: point): real =
+    (b(0) - a(0))
+        * ((c(1) - a(1)) * (d(2) - a(2))
+          - (c(2) - a(2)) * (d(1) - a(1)))
+      - (b(1) - a(1))
+        * ((c(0) - a(0)) * (d(2) - a(2))
+          - (c(2) - a(2)) * (d(0) - a(0)))
+      + (b(2) - a(2))
+        * ((c(0) - a(0)) * (d(1) - a(1))
+          - (c(1) - a(1)) * (d(0) - a(0)))
+
+  coplanar(a, b, c, d: point): bool =
+    oriented_volume(a, b, c, d) = 0
+
+  affine_dimension_zero(S: point_set): bool =
+    EXISTS (a: point):
+      S(a)
+        AND
+          FORALL (x: point):
+            S(x) IMPLIES x = a
+
+  affine_dimension_one(S: point_set): bool =
+    EXISTS (a, b: point):
+      S(a) AND S(b) AND NOT a = b
+        AND
+          FORALL (x: point):
+            S(x) IMPLIES collinear(a, b, x)
+
+  affine_dimension_two(S: point_set): bool =
+    EXISTS (a, b, c: point):
+      S(a) AND S(b) AND S(c) AND NOT collinear(a, b, c)
+        AND
+          FORALL (x: point):
+            S(x) IMPLIES coplanar(a, b, c, x)
+
+  affine_dimension_three(S: point_set): bool =
+    EXISTS (a, b, c, d: point):
+      S(a) AND S(b) AND S(c) AND S(d)
+        AND NOT oriented_volume(a, b, c, d) = 0
+
+  edge_of(E, P: point_set): bool =
+    face_of(E, P) AND affine_dimension_one(E)
+
+  edges_of_facet(P, F: point_set): point_set_family =
+    LAMBDA (E: point_set):
+      edge_of(E, P) AND subset(E, F)
+
+  edges_at_vertex(P, V: point_set): point_set_family =
+    LAMBDA (E: point_set):
+      edge_of(E, P) AND subset(V, E)
+
+  platonic_pair(m, n: nat): bool =
+    (m = 3 AND n = 3)
+      OR (m = 4 AND n = 3)
+      OR (m = 3 AND n = 4)
+      OR (m = 5 AND n = 3)
+      OR (m = 3 AND n = 5)
+
+  number_of_platonic_solids: bool =
+    FORALL (m, n: nat):
+      (EXISTS (P: point_set):
+        polytope(P)
+          AND affine_dimension_three(P)
+          AND
+            (FORALL (F: point_set):
+              face_of(F, P) AND affine_dimension_two(F)
+                IMPLIES
+                  has_point_set_cardinality(
+                    edges_of_facet(P, F),
+                    m))
+          AND
+            (FORALL (V: point_set):
+              face_of(V, P) AND affine_dimension_zero(V)
+                IMPLIES
+                  has_point_set_cardinality(
+                    edges_at_vertex(P, V),
+                    n)))
+      IFF platonic_pair(m, n)
+END the_number_of_platonic_solids_050

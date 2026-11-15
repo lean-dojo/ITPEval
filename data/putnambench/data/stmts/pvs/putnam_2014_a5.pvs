@@ -1,0 +1,119 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2014_a5:
+% the polynomials P_n(x) = 1 + 2*x + ... + n*x^(n-1) are relatively prime
+% for every pair of distinct positive indices. This file contains no proof.
+
+putnam_2014_a5: THEORY
+BEGIN
+  complex: TYPE = [# real_part: real, imag_part: real #]
+  polynomial: TYPE = list[complex]
+
+  complex_zero: complex =
+    (# real_part := 0, imag_part := 0 #)
+
+  complex_one: complex =
+    (# real_part := 1, imag_part := 0 #)
+
+  complex_of_nat(value: nat): complex =
+    (# real_part := value :: real, imag_part := 0 #)
+
+  complex_add(left, right: complex): complex =
+    (# real_part := real_part(left) + real_part(right),
+       imag_part := imag_part(left) + imag_part(right) #)
+
+  complex_mul(left, right: complex): complex =
+    (# real_part :=
+         real_part(left) * real_part(right)
+           - imag_part(left) * imag_part(right),
+       imag_part :=
+         real_part(left) * imag_part(right)
+           + imag_part(left) * real_part(right) #)
+
+  polynomial_coefficient(
+      p: polynomial,
+      degree: nat): RECURSIVE complex =
+    CASES p OF
+      null: complex_zero,
+      cons(coefficient, tail):
+        IF degree = 0 THEN
+          coefficient
+        ELSE
+          polynomial_coefficient(tail, degree - 1)
+        ENDIF
+    ENDCASES
+  MEASURE p BY <<
+
+  polynomial_equal(left, right: polynomial): bool =
+    FORALL (degree: nat):
+      polynomial_coefficient(left, degree)
+        = polynomial_coefficient(right, degree)
+
+  polynomial_add(
+      left, right: polynomial): RECURSIVE polynomial =
+    CASES left OF
+      null: right,
+      cons(left_coefficient, left_tail):
+        CASES right OF
+          null: left,
+          cons(right_coefficient, right_tail):
+            cons(
+              complex_add(left_coefficient, right_coefficient),
+              polynomial_add(left_tail, right_tail))
+        ENDCASES
+    ENDCASES
+  MEASURE left BY <<
+
+  polynomial_scale(
+      scalar: complex,
+      p: polynomial): RECURSIVE polynomial =
+    CASES p OF
+      null: null,
+      cons(coefficient, tail):
+        cons(
+          complex_mul(scalar, coefficient),
+          polynomial_scale(scalar, tail))
+    ENDCASES
+  MEASURE p BY <<
+
+  polynomial_multiply(
+      left, right: polynomial): RECURSIVE polynomial =
+    CASES left OF
+      null: null,
+      cons(coefficient, tail):
+        polynomial_add(
+          polynomial_scale(coefficient, right),
+          cons(
+            complex_zero,
+            polynomial_multiply(tail, right)))
+    ENDCASES
+  MEASURE left BY <<
+
+  coefficient_segment(
+      first, count: nat): RECURSIVE polynomial =
+    IF count = 0 THEN
+      null
+    ELSE
+      cons(
+        complex_of_nat(first),
+        coefficient_segment(first + 1, count - 1))
+    ENDIF
+  MEASURE count
+
+  P(n: nat): polynomial =
+    coefficient_segment(1, n)
+
+  polynomial_one: polynomial =
+    cons(complex_one, null)
+
+  relatively_prime(left, right: polynomial): bool =
+    EXISTS (a, b: polynomial):
+      polynomial_equal(
+        polynomial_add(
+          polynomial_multiply(a, left),
+          polynomial_multiply(b, right)),
+        polynomial_one)
+
+  putnam_2014_a5: bool =
+    FORALL (j, k: nat):
+      (j > 0 AND k > 0 AND j /= k)
+        IMPLIES relatively_prime(P(j), P(k))
+END putnam_2014_a5

@@ -1,0 +1,604 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/register_allocation_OptimalNumberOfRegisters_compileqtvc: the optimal
+% register-allocation expression compiler verification condition, including
+% register-need ordering, stack spilling, operand swapping, and double-WP
+% correctness. This file contains no proof.
+
+register_allocation_OptimalNumberOfRegisters_compileqtvc[
+  addr: TYPE+
+]: THEORY
+BEGIN
+
+  expr: DATATYPE
+  BEGIN
+    Evar(variable_address: addr): Evar?
+    Eneg(negated_expression: expr): Eneg?
+    Eadd(left_expression, right_expression: expr): Eadd?
+  END expr
+
+  instr: DATATYPE
+  BEGIN
+    Iload(load_address: addr, load_register: int): Iload?
+    Ineg(neg_register: int): Ineg?
+    Iadd(source_register: int, target_register: int): Iadd?
+    Ipush(push_register: int): Ipush?
+    Ipop(pop_register: int): Ipop?
+  END instr
+
+  state: TYPE =
+    [# mem: [addr -> int],
+       reg: [int -> int],
+       st: list[int] #]
+
+  eval(memory: [addr -> int], expression: expr): RECURSIVE int =
+    CASES expression OF
+      Evar(address):
+        memory(address),
+      Eneg(inner):
+        -eval(memory, inner),
+      Eadd(left, right):
+        eval(memory, left) + eval(memory, right)
+    ENDCASES
+  MEASURE expression BY <<
+
+  register_need(expression: expr): RECURSIVE int =
+    CASES expression OF
+      Evar(address):
+        1,
+      Eneg(inner):
+        register_need(inner),
+      Eadd(left, right):
+        LET left_need: int = register_need(left),
+            right_need: int = register_need(right)
+        IN
+          IF left_need = right_need
+          THEN 1 + left_need
+          ELSE max(left_need, right_need)
+          ENDIF
+    ENDCASES
+  MEASURE expression BY <<
+
+  compile_measure(expression: expr): RECURSIVE int =
+    CASES expression OF
+      Evar(address):
+        0,
+      Eneg(inner):
+        1 + compile_measure(inner),
+      Eadd(left, right):
+        1 +
+          IF register_need(right) <= register_need(left)
+          THEN compile_measure(left) + compile_measure(right)
+          ELSE 1 + compile_measure(left) + compile_measure(right)
+          ENDIF
+    ENDCASES
+  MEASURE expression BY <<
+
+  update_registers(
+      registers: [int -> int],
+      register, value: int): [int -> int] =
+    LAMBDA (query: int):
+      IF query = register THEN value ELSE registers(query) ENDIF
+
+  exec(instruction: instr, s: state): state =
+    CASES instruction OF
+      Iload(address, register):
+        (# mem := mem(s),
+           reg :=
+             update_registers(
+               reg(s), register, mem(s)(address)),
+           st := st(s) #),
+      Ineg(register):
+        (# mem := mem(s),
+           reg :=
+             update_registers(
+               reg(s), register, -reg(s)(register)),
+           st := st(s) #),
+      Iadd(source, target):
+        (# mem := mem(s),
+           reg :=
+             update_registers(
+               reg(s),
+               target,
+               reg(s)(source) + reg(s)(target)),
+           st := st(s) #),
+      Ipush(register):
+        (# mem := mem(s),
+           reg := reg(s),
+           st := cons(reg(s)(register), st(s)) #),
+      Ipop(register):
+        CASES st(s) OF
+          null:
+            s,
+          cons(value, rest):
+            (# mem := mem(s),
+               reg :=
+                 update_registers(reg(s), register, value),
+               st := rest #)
+        ENDCASES
+    ENDCASES
+
+  exec_list(code: list[instr], s: state): RECURSIVE state =
+    CASES code OF
+      null:
+        s,
+      cons(instruction, rest):
+        exec_list(rest, exec(instruction, s))
+    ENDCASES
+  MEASURE code BY <<
+
+  post: TYPE = [state -> [state -> bool]]
+
+  expr_post(expression: expr, register: int): post =
+    LAMBDA (initial: state):
+      LAMBDA (final: state):
+        mem(final) = mem(initial)
+          AND reg(final)(register) = eval(mem(initial), expression)
+          AND st(final) = st(initial)
+          AND
+        (FORALL (other: int):
+          other < register
+            IMPLIES reg(final)(other) = reg(initial)(other))
+
+  hcode: TYPE =
+    [# hcode1: list[instr],
+       post1: post #]
+
+  hcode_ok(hc: hcode): bool =
+    FORALL (s: state):
+      post1(hc)(s)(exec_list(hcode1(hc), s)) = TRUE
+
+  trans: TYPE = [[state -> bool] -> [state -> bool]]
+
+  wcode: TYPE =
+    [# trans1: trans,
+       wcode1: list[instr] #]
+
+  wcode_ok(wc: wcode): bool =
+    FORALL (q: [state -> bool]), (s: state):
+      trans1(wc)(q)(s) = TRUE
+        IMPLIES q(exec_list(wcode1(wc), s)) = TRUE
+
+  to_wp(pst: post): trans =
+    LAMBDA (q: [state -> bool]):
+      LAMBDA (initial: state):
+        FORALL (final: state):
+          pst(initial)(final) = TRUE
+            IMPLIES q(final) = TRUE
+
+  trans_compose(first, second: trans): trans =
+    LAMBDA (q: [state -> bool]):
+      second(first(q))
+
+  exec_transform(instruction: instr): trans =
+    LAMBDA (q: [state -> bool]):
+      LAMBDA (s: state):
+        q(exec(instruction, s))
+
+  identity: trans =
+    LAMBDA (q: [state -> bool]): q
+
+  compile_pre(k, r: int, expression: expr): bool =
+    CASES expression OF
+      Evar(address):
+        FORALL (o2: wcode):
+          (wcode_ok(o2) AND trans1(o2) = identity)
+            IMPLIES wcode_ok(o2),
+      Eneg(e1):
+        FORALL (o2: wcode):
+          (wcode_ok(o2) AND trans1(o2) = identity)
+            IMPLIES
+              wcode_ok(o2)
+                AND
+              (FORALL (o3: wcode):
+                (wcode_ok(o3)
+                  AND
+                 trans1(o3)
+                   =
+                 trans_compose(
+                   trans1(o2),
+                   exec_transform(Ineg(r))))
+                  IMPLIES
+                    ((0 <= compile_measure(expression)
+                        AND
+                      compile_measure(e1)
+                        <
+                      compile_measure(expression))
+                      AND 0 <= r
+                      AND r < k)
+                    AND
+                    (FORALL (o4: hcode):
+                      (hcode_ok(o4)
+                        AND post1(o4) = expr_post(e1, r))
+                        IMPLIES
+                          hcode_ok(o4)
+                            AND
+                          (FORALL (o5: wcode):
+                            (wcode_ok(o5)
+                              AND trans1(o5) = to_wp(post1(o4)))
+                              IMPLIES
+                                wcode_ok(o5)
+                                  AND wcode_ok(o3)))),
+      Eadd(e1, e2):
+        IF register_need(e2) <= register_need(e1) THEN
+          IF r < k - 1 THEN
+            FORALL (o2: wcode):
+              (wcode_ok(o2) AND trans1(o2) = identity)
+                IMPLIES
+                  wcode_ok(o2)
+                    AND
+                  (FORALL (o3: wcode):
+                    (wcode_ok(o3)
+                      AND
+                     trans1(o3)
+                       =
+                     trans_compose(
+                       trans1(o2),
+                       exec_transform(Iadd(r + 1, r))))
+                      IMPLIES
+                        LET o4: int = r + 1 IN
+                          ((0 <= compile_measure(expression)
+                              AND
+                            compile_measure(e2)
+                              <
+                            compile_measure(expression))
+                            AND 0 <= o4
+                            AND o4 < k)
+                          AND
+                          (FORALL (o5: hcode):
+                            (hcode_ok(o5)
+                              AND post1(o5) = expr_post(e2, o4))
+                              IMPLIES
+                                hcode_ok(o5)
+                                  AND
+                                (FORALL (o6: wcode):
+                                  (wcode_ok(o6)
+                                    AND
+                                   trans1(o6) = to_wp(post1(o5)))
+                                    IMPLIES
+                                      ((0
+                                          <=
+                                        compile_measure(expression)
+                                          AND
+                                        compile_measure(e1)
+                                          <
+                                        compile_measure(expression))
+                                        AND 0 <= r
+                                        AND r < k)
+                                      AND
+                                      (FORALL (o7: hcode):
+                                        (hcode_ok(o7)
+                                          AND
+                                         post1(o7) = expr_post(e1, r))
+                                          IMPLIES
+                                            hcode_ok(o7)
+                                              AND
+                                            (FORALL (o8: wcode):
+                                              (wcode_ok(o8)
+                                                AND
+                                               trans1(o8)
+                                                 =
+                                               to_wp(post1(o7)))
+                                                IMPLIES
+                                                  (wcode_ok(o8)
+                                                    AND wcode_ok(o6))
+                                                  AND
+                                                  (FORALL (o9: wcode):
+                                                    (wcode_ok(o9)
+                                                      AND
+                                                     trans1(o9)
+                                                       =
+                                                     trans_compose(
+                                                       trans1(o6),
+                                                       trans1(o8)))
+                                                      IMPLIES
+                                                        wcode_ok(o9)
+                                                          AND
+                                                        wcode_ok(o3)))))))
+          ELSE
+            FORALL (o2: wcode):
+              (wcode_ok(o2) AND trans1(o2) = identity)
+                IMPLIES
+                  wcode_ok(o2)
+                    AND
+                  (FORALL (o3: wcode):
+                    (wcode_ok(o3)
+                      AND
+                     trans1(o3)
+                       =
+                     trans_compose(
+                       trans1(o2),
+                       exec_transform(Ipop(k - 2))))
+                      IMPLIES
+                        wcode_ok(o3)
+                          AND
+                        (FORALL (o4: wcode):
+                          (wcode_ok(o4)
+                            AND
+                           trans1(o4)
+                             =
+                           trans_compose(
+                             trans1(o3),
+                             exec_transform(
+                               Iadd(k - 2, k - 1))))
+                            IMPLIES
+                              LET o5: int = k - 1 IN
+                                ((0 <= compile_measure(expression)
+                                    AND
+                                  compile_measure(e2)
+                                    <
+                                  compile_measure(expression))
+                                  AND 0 <= o5
+                                  AND o5 < k)
+                                AND
+                                (FORALL (o6: hcode):
+                                  (hcode_ok(o6)
+                                    AND
+                                   post1(o6) = expr_post(e2, o5))
+                                    IMPLIES
+                                      hcode_ok(o6)
+                                        AND
+                                      (FORALL (o7: wcode):
+                                        (wcode_ok(o7)
+                                          AND
+                                         trans1(o7)
+                                           =
+                                         to_wp(post1(o6)))
+                                          IMPLIES
+                                            LET o8: int = k - 2 IN
+                                              ((0
+                                                  <=
+                                                compile_measure(expression)
+                                                  AND
+                                                compile_measure(e1)
+                                                  <
+                                                compile_measure(expression))
+                                                AND 0 <= o8
+                                                AND o8 < k)
+                                              AND
+                                              (FORALL (o9: hcode):
+                                                (hcode_ok(o9)
+                                                  AND
+                                                 post1(o9)
+                                                   =
+                                                 expr_post(e1, o8))
+                                                  IMPLIES
+                                                    hcode_ok(o9)
+                                                      AND
+                                                    (FORALL
+                                                        (o10: wcode):
+                                                      (wcode_ok(o10)
+                                                        AND
+                                                       trans1(o10)
+                                                         =
+                                                       to_wp(post1(o9)))
+                                                        IMPLIES
+                                                          (wcode_ok(o10)
+                                                            AND
+                                                           wcode_ok(o7))
+                                                          AND
+                                                          (FORALL
+                                                              (o11: wcode):
+                                                            (wcode_ok(o11)
+                                                              AND
+                                                             trans1(o11)
+                                                               =
+                                                             trans_compose(
+                                                               trans1(o7),
+                                                               trans1(o10)))
+                                                              IMPLIES
+                                                                (wcode_ok(
+                                                                   o11)
+                                                                  AND
+                                                                 wcode_ok(
+                                                                   o4))
+                                                                AND
+                                                                (FORALL
+                                                                    (o12:
+                                                                      wcode):
+                                                                  (wcode_ok(
+                                                                     o12)
+                                                                    AND
+                                                                   trans1(o12)
+                                                                     =
+                                                                   trans_compose(
+                                                                     trans1(
+                                                                       o4),
+                                                                     trans1(
+                                                                       o11)))
+                                                                    IMPLIES
+                                                                      wcode_ok(
+                                                                        o12)))))))))
+          ENDIF
+        ELSE
+          LET swapped: expr = Eadd(e2, e1) IN
+            ((0 <= compile_measure(expression)
+                AND
+              compile_measure(swapped)
+                <
+              compile_measure(expression))
+              AND 0 <= r
+              AND r < k)
+            AND
+            (FORALL (o3: hcode):
+              (hcode_ok(o3)
+                AND post1(o3) = expr_post(swapped, r))
+                IMPLIES hcode_ok(o3))
+        ENDIF
+    ENDCASES
+
+  compile_build(
+      k, r: int,
+      expression: expr,
+      o2: wcode): bool =
+    CASES expression OF
+      Evar(address):
+        EXISTS (o3: wcode):
+          (wcode_ok(o3) AND trans1(o3) = identity)
+            AND wcode_ok(o2)
+            AND
+          trans1(o2)
+            =
+          trans_compose(
+            trans1(o3),
+            exec_transform(Iload(address, r))),
+      Eneg(e1):
+        EXISTS (o3: wcode):
+          (wcode_ok(o3) AND trans1(o3) = identity)
+            AND
+          (EXISTS (o4: wcode):
+            (wcode_ok(o4)
+              AND
+             trans1(o4)
+               =
+             trans_compose(
+               trans1(o3),
+               exec_transform(Ineg(r))))
+              AND
+            (EXISTS (o5: hcode):
+              (hcode_ok(o5) AND post1(o5) = expr_post(e1, r))
+                AND
+              (EXISTS (o6: wcode):
+                (wcode_ok(o6)
+                  AND trans1(o6) = to_wp(post1(o5)))
+                  AND wcode_ok(o2)
+                  AND
+                trans1(o2)
+                  =
+                trans_compose(trans1(o4), trans1(o6))))),
+      Eadd(e1, e2):
+        IF register_need(e2) <= register_need(e1) THEN
+          IF r < k - 1 THEN
+            EXISTS (o3: wcode):
+              (wcode_ok(o3) AND trans1(o3) = identity)
+                AND
+              (EXISTS (o4: wcode):
+                (wcode_ok(o4)
+                  AND
+                 trans1(o4)
+                   =
+                 trans_compose(
+                   trans1(o3),
+                   exec_transform(Iadd(r + 1, r))))
+                  AND
+                (EXISTS (o5: hcode):
+                  (hcode_ok(o5)
+                    AND post1(o5) = expr_post(e2, r + 1))
+                    AND
+                  (EXISTS (o6: wcode):
+                    (wcode_ok(o6)
+                      AND trans1(o6) = to_wp(post1(o5)))
+                      AND
+                    (EXISTS (o7: hcode):
+                      (hcode_ok(o7)
+                        AND post1(o7) = expr_post(e1, r))
+                        AND
+                      (EXISTS (o8: wcode):
+                        (wcode_ok(o8)
+                          AND trans1(o8) = to_wp(post1(o7)))
+                          AND
+                        (EXISTS (o9: wcode):
+                          (wcode_ok(o9)
+                            AND
+                           trans1(o9)
+                             =
+                           trans_compose(
+                             trans1(o6), trans1(o8)))
+                            AND wcode_ok(o2)
+                            AND
+                          trans1(o2)
+                            =
+                          trans_compose(
+                            trans1(o4), trans1(o9))))))))
+          ELSE
+            EXISTS (o3: wcode):
+              (wcode_ok(o3) AND trans1(o3) = identity)
+                AND
+              (EXISTS (o4: wcode):
+                (wcode_ok(o4)
+                  AND
+                 trans1(o4)
+                   =
+                 trans_compose(
+                   trans1(o3),
+                   exec_transform(Ipop(k - 2))))
+                  AND
+                (EXISTS (o5: wcode):
+                  (wcode_ok(o5)
+                    AND
+                   trans1(o5)
+                     =
+                   trans_compose(
+                     trans1(o4),
+                     exec_transform(Iadd(k - 2, k - 1))))
+                    AND
+                  (EXISTS (o6: hcode):
+                    (hcode_ok(o6)
+                      AND post1(o6) = expr_post(e2, k - 1))
+                      AND
+                    (EXISTS (o7: wcode):
+                      (wcode_ok(o7)
+                        AND trans1(o7) = to_wp(post1(o6)))
+                        AND
+                      (EXISTS (o8: hcode):
+                        (hcode_ok(o8)
+                          AND post1(o8) = expr_post(e1, k - 2))
+                          AND
+                        (EXISTS (o9: wcode):
+                          (wcode_ok(o9)
+                            AND trans1(o9) = to_wp(post1(o8)))
+                            AND
+                          (EXISTS (o10: wcode):
+                            (wcode_ok(o10)
+                              AND
+                             trans1(o10)
+                               =
+                             trans_compose(
+                               trans1(o7), trans1(o9)))
+                              AND
+                            (EXISTS (o11: wcode):
+                              (wcode_ok(o11)
+                                AND
+                               trans1(o11)
+                                 =
+                               trans_compose(
+                                 trans1(o5), trans1(o10)))
+                                AND wcode_ok(o2)
+                                AND
+                              trans1(o2)
+                                =
+                              trans_compose(
+                                trans1(o11),
+                                exec_transform(
+                                  Ipush(k - 2)))))))))))
+          ENDIF
+        ELSE
+          EXISTS (o3: hcode):
+            (hcode_ok(o3)
+              AND post1(o3) = expr_post(Eadd(e2, e1), r))
+              AND wcode_ok(o2)
+              AND trans1(o2) = to_wp(post1(o3))
+        ENDIF
+    ENDCASES
+
+  compile_vc: bool =
+    FORALL (k, r: int), (e: expr):
+      (2 <= k AND 0 <= r AND r < k)
+        IMPLIES
+          compile_pre(k, r, e)
+            AND
+          (FORALL (o2: wcode):
+            compile_build(k, r, e, o2)
+              IMPLIES
+                (wcode_ok(o2)
+                  AND
+                 (FORALL (x: state):
+                   trans1(o2)(expr_post(e, r)(x))(x) = TRUE))
+                AND
+                (FORALL (result: hcode):
+                  (hcode_ok(result)
+                    AND post1(result) = expr_post(e, r))
+                    IMPLIES
+                      hcode_ok(result)
+                        AND post1(result) = expr_post(e, r)))
+
+END register_allocation_OptimalNumberOfRegisters_compileqtvc

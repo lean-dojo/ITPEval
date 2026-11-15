@@ -1,0 +1,519 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/bellman_ford_BellmanFord_bellman_fordqtvc: the Bellman-Ford
+% verification condition for relaxation passes, shortest-path distances, and
+% reachable negative-cycle detection. This file contains no proof.
+
+bellman_ford_BellmanFord_bellman_fordqtvc[
+  vertex: TYPE+,
+  set_value: TYPE+,
+  map_value: TYPE+
+]: THEORY
+BEGIN
+  edge_pair: TYPE = [vertex, vertex]
+
+  IMPORTING finite_sets[vertex], finite_sets[edge_pair]
+
+  intinf: DATATYPE
+  BEGIN
+    Finite(finite_value: int): Finite?
+    Infinite: Infinite?
+  END intinf
+
+  graph_environment: TYPE =
+    [# graph_vertices: finite_set[vertex],
+       graph_edges: finite_set[edge_pair],
+       source_vertex: vertex,
+       edge_weight: [vertex, vertex -> int] #]
+
+  set_environment: TYPE =
+    [# to_fset_function: [set_value -> finite_set[edge_pair]],
+       choose_function: [set_value -> edge_pair] #]
+
+  map_environment: TYPE =
+    [# map_contents_function: [map_value -> [vertex -> intinf]],
+       map_create_function: [intinf -> map_value],
+       map_read_function: [map_value, vertex -> intinf],
+       map_update_function: [map_value, vertex, intinf -> map_value] #]
+
+  edge(graph: graph_environment, x, y: vertex): bool =
+    graph_edges(graph)((x, y))
+
+  intinf_add(left, right: intinf): intinf =
+    CASES left OF
+      Infinite:
+        Infinite,
+      Finite(left_value):
+        CASES right OF
+          Infinite:
+            Infinite,
+          Finite(right_value):
+            Finite(left_value + right_value)
+        ENDCASES
+    ENDCASES
+
+  intinf_lt(left, right: intinf): bool =
+    CASES left OF
+      Infinite:
+        FALSE,
+      Finite(left_value):
+        CASES right OF
+          Infinite:
+            TRUE,
+          Finite(right_value):
+            left_value < right_value
+        ENDCASES
+    ENDCASES
+
+  intinf_le(left, right: intinf): bool =
+    intinf_lt(left, right) OR left = right
+
+  path(
+      graph: graph_environment,
+      start: vertex,
+      vertices_list: list[vertex],
+      destination: vertex): RECURSIVE bool =
+    CASES vertices_list OF
+      null:
+        start = destination,
+      cons(head, tail):
+        head = start
+          AND
+        (EXISTS (next_vertex: vertex):
+          edge(graph, start, next_vertex)
+            AND path(
+                  graph, next_vertex, tail, destination))
+    ENDCASES
+  MEASURE vertices_list BY <<
+
+  path_weight(
+      graph: graph_environment,
+      vertices_list: list[vertex],
+      destination: vertex): RECURSIVE int =
+    CASES vertices_list OF
+      null:
+        0,
+      cons(first_vertex, tail):
+        CASES tail OF
+          null:
+            edge_weight(graph)(first_vertex, destination),
+          cons(second_vertex, rest):
+            edge_weight(graph)(first_vertex, second_vertex)
+              + path_weight(graph, tail, destination)
+        ENDCASES
+    ENDCASES
+  MEASURE vertices_list BY <<
+
+  negative_cycle(
+      graph: graph_environment,
+      cycle_vertex: vertex): bool =
+    graph_vertices(graph)(cycle_vertex)
+      AND
+    (EXISTS (prefix: list[vertex]):
+      path(
+        graph, source_vertex(graph),
+        prefix, cycle_vertex))
+      AND
+    (EXISTS (cycle: list[vertex]):
+      path(graph, cycle_vertex, cycle, cycle_vertex)
+        AND path_weight(graph, cycle, cycle_vertex) < 0)
+
+  graph_specification(graph: graph_environment): bool =
+    graph_vertices(graph)(source_vertex(graph))
+      AND
+    (FORALL (x, y: vertex):
+      edge(graph, x, y)
+        IMPLIES
+          graph_vertices(graph)(x)
+            AND graph_vertices(graph)(y))
+
+  set_specification(sets: set_environment): bool =
+    FORALL (selected_set: set_value):
+      to_fset_function(sets)(selected_set)
+        /= emptyset[edge_pair]
+      IMPLIES
+        to_fset_function(sets)(selected_set)
+          (choose_function(sets)(selected_set))
+
+  map_specification(maps: map_environment): bool =
+    (FORALL (value: intinf), (point: vertex):
+      map_contents_function(maps)
+        (map_create_function(maps)(value))(point)
+        = value)
+      AND
+    (FORALL (map_object: map_value), (point: vertex):
+      map_read_function(maps)(map_object, point)
+        = map_contents_function(maps)(map_object)(point))
+      AND
+    (FORALL
+      (map_object: map_value),
+      (updated_point, point: vertex),
+      (value: intinf):
+        map_contents_function(maps)
+          (map_update_function(
+            maps)(map_object, updated_point, value))(point)
+          =
+        (IF point = updated_point THEN
+           value
+         ELSE
+           map_contents_function(maps)(map_object)(point)
+         ENDIF))
+
+  background_assumptions(
+      graph: graph_environment,
+      sets: set_environment,
+      maps: map_environment): bool =
+    graph_specification(graph)
+      AND set_specification(sets)
+      AND map_specification(maps)
+
+  inv1(
+      graph: graph_environment,
+      maps: map_environment,
+      map_object: map_value,
+      pass: int,
+      via: finite_set[edge_pair]): bool =
+    FORALL (v: vertex):
+      graph_vertices(graph)(v)
+      IMPLIES
+        CASES map_read_function(maps)(map_object, v) OF
+          Finite(distance):
+            (EXISTS (route: list[vertex]):
+              path(
+                graph, source_vertex(graph), route, v)
+                AND path_weight(graph, route, v) = distance)
+              AND
+            (FORALL (route: list[vertex]):
+              path(
+                graph, source_vertex(graph), route, v)
+                IMPLIES
+                  (length(route) :: int) < pass
+                    IMPLIES
+                      distance
+                        <= path_weight(graph, route, v))
+              AND
+            (FORALL (u: vertex), (route: list[vertex]):
+              path(
+                graph, source_vertex(graph), route, u)
+                IMPLIES
+                  (length(route) :: int) < pass
+                    IMPLIES
+                      via((u, v))
+                        IMPLIES
+                          distance
+                            <= path_weight(
+                                 graph, route, u)
+                              + edge_weight(graph)(u, v)),
+          Infinite:
+            (FORALL (route: list[vertex]):
+              path(
+                graph, source_vertex(graph), route, v)
+                IMPLIES
+                  pass <= (length(route) :: int))
+              AND
+            (FORALL (u: vertex):
+              via((u, v))
+                IMPLIES
+                  (FORALL (route: list[vertex]):
+                    path(
+                      graph, source_vertex(graph),
+                      route, u)
+                      IMPLIES
+                        pass <= (length(route) :: int)))
+        ENDCASES
+
+  inv2(
+      graph: graph_environment,
+      maps: map_environment,
+      map_object: map_value,
+      via: finite_set[edge_pair]): bool =
+    FORALL (u, v: vertex):
+      via((u, v))
+        IMPLIES
+          intinf_le(
+            map_read_function(maps)(map_object, v),
+            intinf_add(
+              map_read_function(maps)(map_object, u),
+              Finite(edge_weight(graph)(u, v))))
+
+  set_decreases(
+      sets: set_environment,
+      before_set, after_set: set_value): bool =
+    0
+      <= (card(
+            to_fset_function(sets)(before_set)) :: int)
+      AND
+        card(to_fset_function(sets)(after_set))
+          < card(to_fset_function(sets)(before_set))
+
+  final_distances(
+      graph: graph_environment,
+      maps: map_environment,
+      map_object: map_value): bool =
+    FORALL (v: vertex):
+      graph_vertices(graph)(v)
+      IMPLIES
+        CASES map_read_function(maps)(map_object, v) OF
+          Finite(distance):
+            (EXISTS (route: list[vertex]):
+              path(
+                graph, source_vertex(graph), route, v)
+                AND path_weight(graph, route, v) = distance)
+              AND
+            (FORALL (route: list[vertex]):
+              path(
+                graph, source_vertex(graph), route, v)
+                IMPLIES
+                  distance <= path_weight(graph, route, v)),
+          Infinite:
+            FORALL (route: list[vertex]):
+              NOT path(
+                graph, source_vertex(graph), route, v)
+        ENDCASES
+
+  edge_loop_inv1(
+      graph: graph_environment,
+      sets: set_environment,
+      maps: map_environment,
+      map_object: map_value,
+      pass: int): bool =
+    FORALL (all_edges: set_value):
+      to_fset_function(sets)(all_edges)
+        = graph_edges(graph)
+      IMPLIES
+        (subset?(
+           to_fset_function(sets)(all_edges),
+           graph_edges(graph))
+          AND
+            inv1(
+              graph, maps, map_object, pass,
+              difference(
+                graph_edges(graph),
+                to_fset_function(sets)(all_edges))))
+        AND
+        (FORALL
+          (remaining_edges: set_value),
+          (current_map: map_value):
+            (subset?(
+               to_fset_function(sets)(remaining_edges),
+               graph_edges(graph))
+              AND
+                inv1(
+                  graph, maps, current_map, pass,
+                  difference(
+                    graph_edges(graph),
+                    to_fset_function(
+                      sets)(remaining_edges))))
+            IMPLIES
+              IF to_fset_function(sets)(remaining_edges)
+                   /= emptyset[edge_pair]
+              THEN
+                LET via: finite_set[edge_pair] =
+                      difference(
+                        graph_edges(graph),
+                        to_fset_function(
+                          sets)(remaining_edges))
+                IN
+                  to_fset_function(sets)(remaining_edges)
+                    /= emptyset[edge_pair]
+                  AND
+                  (FORALL (next_edges: set_value):
+                    LET selected_edge: edge_pair =
+                          choose_function(
+                            sets)(remaining_edges),
+                        u: vertex = selected_edge`1,
+                        v: vertex = selected_edge`2
+                    IN
+                      (to_fset_function(
+                         sets)(remaining_edges)(selected_edge)
+                        AND
+                          to_fset_function(sets)(next_edges)
+                            =
+                          remove(
+                            selected_edge,
+                            to_fset_function(
+                              sets)(remaining_edges)))
+                      IMPLIES
+                        (((1 <= pass
+                            AND edge(graph, u, v)
+                            AND NOT via((u, v)))
+                          AND
+                            inv1(
+                              graph, maps, current_map,
+                              pass, via))
+                          AND
+                        (FORALL (updated_map: map_value):
+                          inv1(
+                            graph, maps, updated_map, pass,
+                            add((u, v), via))
+                          IMPLIES
+                            set_decreases(
+                              sets,
+                              remaining_edges,
+                              next_edges)
+                              AND
+                            subset?(
+                              to_fset_function(
+                                sets)(next_edges),
+                              graph_edges(graph))
+                              AND
+                            inv1(
+                              graph, maps, updated_map, pass,
+                              difference(
+                                graph_edges(graph),
+                                to_fset_function(
+                                  sets)(next_edges))))))
+              ELSE
+                inv1(
+                  graph, maps, current_map, pass + 1,
+                  emptyset[edge_pair])
+              ENDIF)
+
+  edge_loop_inv2(
+      graph: graph_environment,
+      sets: set_environment,
+      maps: map_environment,
+      map_object: map_value): bool =
+    FORALL (all_edges: set_value):
+      to_fset_function(sets)(all_edges)
+        = graph_edges(graph)
+      IMPLIES
+        (subset?(
+           to_fset_function(sets)(all_edges),
+           graph_edges(graph))
+          AND
+            inv2(
+              graph, maps, map_object,
+              difference(
+                graph_edges(graph),
+                to_fset_function(sets)(all_edges))))
+        AND
+        (FORALL (remaining_edges: set_value):
+          (subset?(
+             to_fset_function(sets)(remaining_edges),
+             graph_edges(graph))
+            AND
+              inv2(
+                graph, maps, map_object,
+                difference(
+                  graph_edges(graph),
+                  to_fset_function(sets)(remaining_edges))))
+          IMPLIES
+            IF to_fset_function(sets)(remaining_edges)
+                 /= emptyset[edge_pair]
+            THEN
+              to_fset_function(sets)(remaining_edges)
+                /= emptyset[edge_pair]
+              AND
+              (FORALL (next_edges: set_value):
+                LET selected_edge: edge_pair =
+                      choose_function(sets)(remaining_edges),
+                    u: vertex = selected_edge`1,
+                    v: vertex = selected_edge`2
+                IN
+                  (to_fset_function(
+                     sets)(remaining_edges)(selected_edge)
+                    AND
+                      to_fset_function(sets)(next_edges)
+                        =
+                      remove(
+                        selected_edge,
+                        to_fset_function(
+                          sets)(remaining_edges)))
+                  IMPLIES
+                    LET destination_value: intinf =
+                          map_read_function(
+                            maps)(map_object, v)
+                    IN
+                      destination_value
+                        =
+                      map_contents_function(
+                        maps)(map_object)(v)
+                      IMPLIES
+                        LET source_value: intinf =
+                              map_read_function(
+                                maps)(map_object, u)
+                        IN
+                          source_value
+                            =
+                          map_contents_function(
+                            maps)(map_object)(u)
+                          IMPLIES
+                            IF intinf_lt(
+                                 intinf_add(
+                                   source_value,
+                                   Finite(
+                                     edge_weight(
+                                       graph)(u, v))),
+                                 destination_value)
+                            THEN
+                              EXISTS (cycle_vertex: vertex):
+                                negative_cycle(
+                                  graph, cycle_vertex)
+                            ELSE
+                              set_decreases(
+                                sets,
+                                remaining_edges,
+                                next_edges)
+                                AND
+                              subset?(
+                                to_fset_function(
+                                  sets)(next_edges),
+                                graph_edges(graph))
+                                AND
+                              inv2(
+                                graph, maps, map_object,
+                                difference(
+                                  graph_edges(graph),
+                                  to_fset_function(
+                                    sets)(next_edges)))
+                            ENDIF)
+            ELSE
+              final_distances(graph, maps, map_object)
+            ENDIF)
+
+  bellman_ford_vc: bool =
+    FORALL
+      (graph: graph_environment),
+      (sets: set_environment),
+      (maps: map_environment):
+        background_assumptions(graph, sets, maps)
+        IMPLIES
+          LET initial_map: map_value =
+                map_update_function(maps)(
+                  map_create_function(maps)(Infinite),
+                  source_vertex(graph),
+                  Finite(0)),
+              last_pass: int =
+                (card(graph_vertices(graph)) :: int) - 1
+          IN
+            ((1 <= last_pass + 1
+              IMPLIES
+                inv1(
+                  graph, maps, initial_map, 1,
+                  emptyset[edge_pair])
+                AND
+                (FORALL (map_object: map_value):
+                  (FORALL (pass: int):
+                    ((1 <= pass AND pass <= last_pass)
+                      AND
+                        inv1(
+                          graph, maps, map_object, pass,
+                          emptyset[edge_pair]))
+                    IMPLIES
+                      edge_loop_inv1(
+                        graph, sets, maps,
+                        map_object, pass))
+                    AND
+                  (inv1(
+                     graph, maps, map_object,
+                     last_pass + 1,
+                     emptyset[edge_pair])
+                    IMPLIES
+                      edge_loop_inv2(
+                        graph, sets, maps, map_object))))
+              AND
+            (last_pass + 1 < 1
+              IMPLIES
+                edge_loop_inv2(
+                  graph, sets, maps, initial_map)))
+END bellman_ford_BellmanFord_bellman_fordqtvc

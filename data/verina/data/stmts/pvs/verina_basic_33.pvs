@@ -1,0 +1,86 @@
+% Statement-only formalization of the VERINA corpus artifact verina_basic_33,
+% catalog title "smallestMissingNumber": scanning a nondecreasing finite list
+% of natural numbers returns its least missing natural. This file contains no proof.
+
+verina_basic_33: THEORY
+BEGIN
+
+  nat_list_all_at_least(
+      lower: nat,
+      values: list[nat]): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        lower <= head
+          AND nat_list_all_at_least(lower, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  nat_list_pairwise_nondecreasing(
+      values: list[nat]): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        nat_list_all_at_least(head, tail)
+          AND nat_list_pairwise_nondecreasing(tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  smallestMissingNumber_precond(
+      s: list[nat]): bool =
+    nat_list_pairwise_nondecreasing(s)
+
+  findMissing(
+      candidate: nat,
+      values: list[nat]): RECURSIVE nat =
+    CASES values OF
+      null:
+        candidate,
+      cons(head, tail):
+        IF head > candidate THEN
+          candidate
+        ELSIF head = candidate THEN
+          findMissing(candidate + 1, tail)
+        ELSE
+          findMissing(candidate, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  % The source precondition proof argument is computationally irrelevant.
+  % This is exactly the proof-erased recursive scan from candidate zero.
+  smallestMissingNumber(
+      s: list[nat]): nat =
+    findMissing(0, s)
+
+  nat_list_member(
+      requested: nat,
+      values: list[nat]): RECURSIVE bool =
+    CASES values OF
+      null:
+        FALSE,
+      cons(head, tail):
+        head = requested
+          OR nat_list_member(requested, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  smallestMissingNumber_postcond(
+      s: list[nat],
+      result: nat): bool =
+    NOT nat_list_member(result, s)
+      AND
+        (FORALL (k: nat):
+          k < result IMPLIES nat_list_member(k, s))
+
+  smallestMissingNumber_spec_satisfied: bool =
+    FORALL (s: list[nat]):
+      smallestMissingNumber_precond(s)
+        IMPLIES
+          smallestMissingNumber_postcond(
+            s,
+            smallestMissingNumber(s))
+
+END verina_basic_33

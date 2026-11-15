@@ -1,0 +1,27 @@
+theory float_quat_of_rmat_Why3_ide_VCfloat_quat_of_rmat_a22_max_post_goal11
+  imports "NTP4Verif.NTP4Verif" "Why3STD.Qed_Qed" "Why3STD.Memory_Memory" "../../lib/isabelle/Axiomatic15_Axiomatic15" "Why3STD.Cmath_Cmath" "Why3STD.Cfloat_Cfloat" "../../lib/isabelle/Compound_Compound" "../../lib/isabelle/Axiomatic17_Axiomatic17" "../../lib/isabelle/S10_RealRMat_s_S10_RealRMat_s" "../../lib/isabelle/Axiomatic19_Axiomatic19" "../../lib/isabelle/S11_RealQuat_s_S11_RealQuat_s" "Why3STD.Square_Square" "../../lib/isabelle/Axiomatic18_Axiomatic18"
+begin
+theorem goal11:
+  fixes a :: "addr"
+  fixes t_1 :: "addr \<Rightarrow> real"
+  fixes a_1 :: "addr"
+  fixes t_8 :: "addr \<Rightarrow> real"
+  fixes r_3 :: "real"
+  fixes r_7 :: "real"
+  fixes t_7 :: "addr \<Rightarrow> real"
+  fixes r_6 :: "real"
+  fixes r_2 :: "real"
+  fixes t_4 :: "addr \<Rightarrow> real"
+  fixes r_1 :: "real"
+  fixes t_6 :: "addr \<Rightarrow> real"
+  fixes r_5 :: "real"
+  fixes r :: "real"
+  fixes t_5 :: "addr \<Rightarrow> real"
+  fixes r_4 :: "real"
+  fixes t :: "int \<Rightarrow> int"
+  fixes t_9 :: "addr \<Rightarrow> real"
+  fixes t_2 :: "addr \<Rightarrow> real"
+  fixes t_3 :: "addr \<Rightarrow> real"
+  shows "let a_2 :: addr = shift a (0 :: int); a_3 :: addr = shift a_2 (0 :: int); r_8 :: real = t_1 a_3; a_4 :: addr = shift a_2 (8 :: int); r_9 :: real = t_1 a_4; a_5 :: addr = shift a_2 (4 :: int); r_10 :: real = t_1 a_5; a_6 :: s10_realrmat_s = l_l_rmat_of_floatrmat t_1 a; r_11 :: real = r_8 + r_10 + r_9; a_7 :: addr = shift a_1 (0 :: int); m :: addr \<Rightarrow> real = t_8(a_7 := (1 :: Real.real) / (2 :: Real.real) * r_3); a_8 :: addr = shift a_1 (1 :: int); a_9 :: addr = shift a_2 (5 :: int); a_10 :: addr = shift a_2 (7 :: int); m_1 :: addr \<Rightarrow> real = m(a_8 := (m a_9 + -m a_10) / r_7); a_11 :: addr = shift a_1 (2 :: int); a_12 :: addr = shift a_2 (6 :: int); a_13 :: addr = shift a_2 (2 :: int); m_2 :: addr \<Rightarrow> real = m_1(a_11 := (m_1 a_12 + -m_1 a_13) / r_7); a_14 :: addr = shift a_1 (3 :: int); a_15 :: addr = shift a_2 (1 :: int); a_16 :: addr = shift a_2 (3 :: int); r_13 :: real = (1 :: Real.real) + (t_8 a_3 + t_8 a_5 + t_8 a_4); m_3 :: addr \<Rightarrow> real = t_7(a_8 := (1 :: Real.real) / (2 :: Real.real) * r_2, a_7 := (t_7 a_9 + -t_7 a_10) / r_6); m_4 :: addr \<Rightarrow> real = m_3(a_11 := (m_3 a_15 + m_3 a_16) / r_6); r_15 :: real = t_7 a_3 + -t_7 a_5 + -t_7 a_4 + (1 :: Real.real); r_16 :: real = t_4 a_4; r_17 :: real = t_4 a_5; r_19 :: real = (2 :: Real.real) * r_1; m_5 :: addr \<Rightarrow> real = t_6(a_7 := (t_6 a_12 + -t_6 a_13) / r_5); m_6 :: addr \<Rightarrow> real = m_5(a_11 := (1 :: Real.real) / (2 :: Real.real) * r_1, a_8 := (m_5 a_15 + m_5 a_16) / r_5); m_7 :: addr \<Rightarrow> real = m_6(a_14 := (m_6 a_9 + m_6 a_10) / r_5); r_20 :: real = t_6 a_5 + -t_6 a_3 + -t_6 a_4 + (1 :: Real.real); r_22 :: real = (2 :: Real.real) * r; m_8 :: addr \<Rightarrow> real = t_5(a_7 := (t_5 a_15 + -t_5 a_16) / r_4); m_9 :: addr \<Rightarrow> real = m_8(a_8 := (m_8 a_12 + m_8 a_13) / r_4); m_10 :: addr \<Rightarrow> real = m_9(a_14 := (1 :: Real.real) / (2 :: Real.real) * r, a_11 := (m_9 a_9 + m_9 a_10) / r_4); r_23 :: real = t_5 a_4 + -t_5 a_3 + -t_5 a_5 + (1 :: Real.real) in l_trace_2' t_1 a \<le> (0 :: Real.real) \<longrightarrow> region (base a) \<le> (0 :: int) \<longrightarrow> region (base a_1) \<le> (0 :: int) \<longrightarrow> r_8 \<le> r_9 \<longrightarrow> r_10 \<le> r_9 \<longrightarrow> linked t \<longrightarrow> is_float32 r \<longrightarrow> is_float32 r_1 \<longrightarrow> is_float32 r_2 \<longrightarrow> is_float32 r_3 \<longrightarrow> is_float32 r_4 \<longrightarrow> is_float32 r_5 \<longrightarrow> is_float32 r_6 \<longrightarrow> is_float32 r_7 \<longrightarrow> valid_rw t a_1 (4 :: int) \<longrightarrow> p_rvalid_floatrmat t t_1 a \<longrightarrow> separated a (9 :: int) a_1 (4 :: int) \<longrightarrow> p_rotation_matrix a_6 \<longrightarrow> p_special_orthogonal a_6 \<longrightarrow> is_float32 r_8 \<longrightarrow> is_float32 r_10 \<longrightarrow> is_float32 r_9 \<longrightarrow> is_float32 r_11 \<longrightarrow> (if (0 :: Real.real) < r_11 then t_8 = t_1 \<and> (2 :: Real.real) * r_3 = r_7 \<and> m_2(a_14 := (m_2 a_15 + -m_2 a_16) / r_7) = t_9 \<and> (0 :: Real.real) \<le> r_3 \<and> (0 :: Real.real) \<le> r_13 \<and> is_finite32 r_3 \<and> is_finite32 r_13 else t_2 = t_1 \<and> (if t_2 a_5 < t_2 a_3 then t_3 = t_2 \<and> (if t_3 a_4 < t_3 a_3 then t_7 = t_3 \<and> (2 :: Real.real) * r_2 = r_6 \<and> m_4(a_14 := (m_4 a_12 + m_4 a_13) / r_6) = t_9 \<and> (0 :: Real.real) \<le> r_2 \<and> (0 :: Real.real) \<le> r_15 \<and> is_finite32 r_2 \<and> is_finite32 r_15 else t_4 = t_3 \<and> (if r_16 < r_17 then t_6 = t_4 \<and> r_19 = r_5 \<and> m_7 = t_9 \<and> (0 :: Real.real) \<le> r_1 \<and> (0 :: Real.real) \<le> r_20 \<and> is_finite32 r_1 \<and> is_finite32 r_20 else t_5 = t_4 \<and> r_22 = r_4 \<and> m_10 = t_9 \<and> (0 :: Real.real) \<le> r \<and> (0 :: Real.real) \<le> r_23 \<and> is_finite32 r \<and> is_finite32 r_23)) else t_4 = t_2 \<and> (if r_16 < r_17 then t_6 = t_4 \<and> r_19 = r_5 \<and> m_7 = t_9 \<and> (0 :: Real.real) \<le> r_1 \<and> (0 :: Real.real) \<le> r_20 \<and> is_finite32 r_1 \<and> is_finite32 r_20 else t_5 = t_4 \<and> r_22 = r_4 \<and> m_10 = t_9 \<and> (0 :: Real.real) \<le> r \<and> (0 :: Real.real) \<le> r_23 \<and> is_finite32 r \<and> is_finite32 r_23))) \<longrightarrow> eqs11_realquat_s (l_l_floatquat_of_rmat_2_max_t t_9 a) (l_l_quat_of_floatquat t_9 a_1)"
+  sorry
+end

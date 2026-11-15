@@ -1,0 +1,54 @@
+(*
+  Corrected semantic authority for the imported A_Accumulate theory.
+  The pinned generated theory is retained unchanged elsewhere.
+*)
+
+theory A_AccumulateCorrected
+
+  use import int.Int
+
+  type addr
+  type int_memory
+
+  function shift addr int : addr
+  function read int_memory addr : int
+  function l_accumulate int_memory addr int int : int
+
+  predicate is_sint32 (x: int) =
+    -2147483648 <= x <= 2147483647
+
+  axiom Q_AccumulateEmpty:
+    forall n init: int, m: int_memory, a: addr.
+      n <= 0 -> is_sint32 init ->
+      l_accumulate m a n init = init
+
+  axiom Q_AccumulateNext:
+    forall n init: int, m: int_memory, a: addr.
+      0 < n -> is_sint32 init ->
+      read m (shift a (n - 1)) + l_accumulate m a (n - 1) init =
+      l_accumulate m a n init
+
+  predicate unchanged
+      (before after: int_memory) (a: addr) (lower upper: int) =
+    forall i: int.
+      lower <= i < upper ->
+      read before (shift a i) = read after (shift a i)
+
+  axiom Q_AccumulateRead:
+    forall init: int, before after: int_memory, a: addr, n: int.
+      is_sint32 init -> unchanged before after a 0 n ->
+      l_accumulate after a n init = l_accumulate before a n init
+
+  predicate p_accumulatebounds
+      (m: int_memory) (a: addr) (n init: int) =
+    forall i: int.
+      0 <= i <= n ->
+      is_sint32 (l_accumulate m a i init)
+
+  (*
+    There is deliberately no global axiom asserting is_sint32 for every
+    l_accumulate result. VCs that need this bound must assume
+    p_accumulatebounds over their relevant finite prefix.
+  *)
+
+end

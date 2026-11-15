@@ -1,0 +1,121 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/vacid_0_red_black_trees_Vacid0_lookupqtvc: the lookup verification
+% condition for an integer-keyed red-black-tree map with a default value,
+% relating its invariant, tree membership, key absence, and returned value.
+% This file contains no proof.
+
+vacid_0_red_black_trees_Vacid0_lookupqtvc: THEORY
+BEGIN
+
+  color: DATATYPE
+  BEGIN
+    Red: Red?
+    Black: Black?
+  END color
+
+  tree: DATATYPE
+  BEGIN
+    Leaf: Leaf?
+    Node(
+      node_color: color,
+      left_subtree: tree,
+      node_key: int,
+      node_value: int,
+      right_subtree: tree): Node?
+  END tree
+
+  rbt: TYPE = [int, tree]
+
+  memt(values: tree, searched_key, searched_value: int):
+      RECURSIVE bool =
+    CASES values OF
+      Leaf:
+        FALSE,
+      Node(c, left, stored_key, stored_value, right):
+        (searched_key = stored_key
+          AND searched_value = stored_value)
+          OR memt(left, searched_key, searched_value)
+          OR memt(right, searched_key, searched_value)
+    ENDCASES
+  MEASURE values BY <<
+
+  lt_tree(bound: int, values: tree): bool =
+    FORALL (stored_key, stored_value: int):
+      memt(values, stored_key, stored_value)
+        IMPLIES stored_key < bound
+
+  gt_tree(bound: int, values: tree): bool =
+    FORALL (stored_key, stored_value: int):
+      memt(values, stored_key, stored_value)
+        IMPLIES bound < stored_key
+
+  bst(values: tree): RECURSIVE bool =
+    CASES values OF
+      Leaf:
+        TRUE,
+      Node(c, left, stored_key, stored_value, right):
+        bst(left)
+          AND bst(right)
+          AND lt_tree(stored_key, left)
+          AND gt_tree(stored_key, right)
+    ENDCASES
+  MEASURE values BY <<
+
+  is_not_red(values: tree): bool =
+    CASES values OF
+      Leaf:
+        TRUE,
+      Node(c, left, stored_key, stored_value, right):
+        IF c = Red THEN FALSE ELSE TRUE ENDIF
+    ENDCASES
+
+  rbtree(black_height: int, values: tree): RECURSIVE bool =
+    CASES values OF
+      Leaf:
+        black_height = 0,
+      Node(c, left, stored_key, stored_value, right):
+        IF c = Red THEN
+          rbtree(black_height, left)
+            AND rbtree(black_height, right)
+            AND is_not_red(left)
+            AND is_not_red(right)
+        ELSE
+          rbtree(black_height - 1, left)
+            AND rbtree(black_height - 1, right)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  inv(state: rbt): bool =
+    bst(state`2)
+      AND (EXISTS (black_height: int):
+        rbtree(black_height, state`2))
+
+  default(state: rbt): int =
+    state`1
+
+  map_mem(
+      state: rbt,
+      searched_key, searched_value: int): bool =
+    memt(state`2, searched_key, searched_value)
+      OR
+    (searched_value = default(state)
+      AND
+    (FORALL (value: int):
+      NOT memt(state`2, searched_key, value)))
+
+  lookup_vc: bool =
+    FORALL (m: int), (m1: tree), (k: int):
+      inv((m, m1))
+        IMPLIES
+          bst(m1)
+            AND
+          (FORALL (result: int):
+            (memt(m1, k, result)
+              OR
+            ((FORALL (value: int):
+                NOT memt(m1, k, value))
+              AND result = m))
+            IMPLIES map_mem((m, m1), k, result))
+
+END vacid_0_red_black_trees_Vacid0_lookupqtvc

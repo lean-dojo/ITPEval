@@ -1,0 +1,311 @@
+% Statement-only formalization of the thousand-theorems corpus artifact Q2631152,
+% "Carathéodory's extension theorem": a sigma-subadditive extended-nonnegative-real
+% additive content on a generating set semiring agrees there with the measure
+% obtained by taking infima of countable cover costs. This file contains no proof.
+
+caratheodory_s_extension_theorem_Q2631152[A: TYPE]: THEORY
+BEGIN
+  event: TYPE = [A -> bool]
+  event_sequence: TYPE = [nat -> event]
+  set_family: TYPE = [event -> bool]
+  sigma_algebra: TYPE = [event -> bool]
+
+  measure_value: TYPE =
+    [# infinite_flag: bool, finite_part: real #]
+  measure_value_sequence: TYPE = [nat -> measure_value]
+  content_map: TYPE = [event -> measure_value]
+  real_sequence: TYPE = [nat -> real]
+
+  zero_measure_value: measure_value =
+    (# infinite_flag := FALSE, finite_part := 0 #)
+
+  infinite_measure_value: measure_value =
+    (# infinite_flag := TRUE, finite_part := 0 #)
+
+  finite_measure_value(value: real): measure_value =
+    (# infinite_flag := FALSE, finite_part := value #)
+
+  canonical_measure_value(value: measure_value): bool =
+    IF infinite_flag(value) THEN
+      finite_part(value) = 0
+    ELSE
+      finite_part(value) >= 0
+    ENDIF
+
+  measure_value_is_zero(value: measure_value): bool =
+    canonical_measure_value(value)
+      AND NOT infinite_flag(value)
+      AND finite_part(value) = 0
+
+  measure_value_le(left, right: measure_value): bool =
+    canonical_measure_value(left)
+      AND canonical_measure_value(right)
+      AND IF infinite_flag(right) THEN
+        TRUE
+      ELSIF infinite_flag(left) THEN
+        FALSE
+      ELSE
+        finite_part(left) <= finite_part(right)
+      ENDIF
+
+  measure_value_add(left, right: measure_value): measure_value =
+    IF infinite_flag(left) OR infinite_flag(right) THEN
+      infinite_measure_value
+    ELSE
+      finite_measure_value(
+        finite_part(left) + finite_part(right))
+    ENDIF
+
+  empty_event: event =
+    LAMBDA (x: A): FALSE
+
+  full_event: event =
+    LAMBDA (x: A): TRUE
+
+  event_subset(left, right: event): bool =
+    FORALL (x: A):
+      left(x) IMPLIES right(x)
+
+  event_intersection(left, right: event): event =
+    LAMBDA (x: A):
+      left(x) AND right(x)
+
+  event_union(left, right: event): event =
+    LAMBDA (x: A):
+      left(x) OR right(x)
+
+  event_complement(source: event): event =
+    LAMBDA (x: A):
+      NOT source(x)
+
+  event_difference(left, right: event): event =
+    LAMBDA (x: A):
+      left(x) AND NOT right(x)
+
+  countable_union(events: event_sequence): event =
+    LAMBDA (x: A):
+      EXISTS (index: nat):
+        events(index)(x)
+
+  finite_union(
+      events: event_sequence,
+      count: nat): RECURSIVE event =
+    IF count = 0 THEN
+      empty_event
+    ELSE
+      event_union(
+        finite_union(events, count - 1),
+        events(count - 1))
+    ENDIF
+  MEASURE count
+
+  pairwise_disjoint_below(
+      events: event_sequence,
+      count: nat): bool =
+    FORALL (left_index, right_index: nat):
+      left_index < count
+        AND right_index < count
+        AND left_index /= right_index
+      IMPLIES
+        FORALL (x: A):
+          NOT (events(left_index)(x)
+            AND events(right_index)(x))
+
+  finite_measure_sum(
+      values: measure_value_sequence,
+      count: nat): RECURSIVE measure_value =
+    IF count = 0 THEN
+      zero_measure_value
+    ELSE
+      measure_value_add(
+        finite_measure_sum(values, count - 1),
+        values(count - 1))
+    ENDIF
+  MEASURE count
+
+  finite_real_sum(
+      values: real_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      finite_real_sum(values, count - 1)
+        + values(count - 1)
+    ENDIF
+  MEASURE count
+
+  converges_to_real(values: real_sequence, limit: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(values(index) - limit) < epsilon_value
+
+  unbounded_above(values: real_sequence): bool =
+    FORALL (bound: real):
+      EXISTS (index: nat):
+        bound < values(index)
+
+  partial_measure_sum(
+      values: measure_value_sequence,
+      count: nat): real =
+    finite_real_sum(
+      LAMBDA (index: nat):
+        finite_part(values(index)),
+      count)
+
+  extended_nonnegative_sum(
+      values: measure_value_sequence,
+      total: measure_value): bool =
+    canonical_measure_value(total)
+      AND (FORALL (index: nat):
+        canonical_measure_value(values(index)))
+      AND IF infinite_flag(total) THEN
+        (EXISTS (index: nat):
+          infinite_flag(values(index)))
+          OR ((FORALL (index: nat):
+                NOT infinite_flag(values(index)))
+            AND unbounded_above(
+              LAMBDA (count: nat):
+                partial_measure_sum(values, count)))
+      ELSE
+        (FORALL (index: nat):
+          NOT infinite_flag(values(index)))
+          AND converges_to_real(
+            LAMBDA (count: nat):
+              partial_measure_sum(values, count),
+            finite_part(total))
+      ENDIF
+
+  is_set_semiring(C: set_family): bool =
+    C(empty_event)
+      AND (FORALL (left, right: event):
+        C(left) AND C(right) IMPLIES
+          C(event_intersection(left, right)))
+      AND (FORALL (left, right: event):
+        C(left) AND C(right) IMPLIES
+          EXISTS
+              (pieces: event_sequence),
+              (count: nat):
+            (FORALL (index: nat):
+              index < count IMPLIES C(pieces(index)))
+              AND pairwise_disjoint_below(pieces, count)
+              AND event_difference(left, right)
+                = finite_union(pieces, count))
+
+  is_add_content(
+      C: set_family,
+      content: content_map): bool =
+    (FORALL (E: event):
+      canonical_measure_value(content(E)))
+      AND measure_value_is_zero(content(empty_event))
+      AND (FORALL
+          (pieces: event_sequence),
+          (count: nat):
+        ((FORALL (index: nat):
+            index < count IMPLIES C(pieces(index)))
+          AND pairwise_disjoint_below(pieces, count)
+          AND C(finite_union(pieces, count)))
+        IMPLIES
+          content(finite_union(pieces, count))
+            = finite_measure_sum(
+                LAMBDA (index: nat):
+                  content(pieces(index)),
+                count))
+
+  is_sigma_subadditive(
+      C: set_family,
+      content: content_map): bool =
+    FORALL (pieces: event_sequence):
+      ((FORALL (index: nat):
+          C(pieces(index)))
+        AND C(countable_union(pieces)))
+      IMPLIES
+        EXISTS (total: measure_value):
+          extended_nonnegative_sum(
+            LAMBDA (index: nat):
+              content(pieces(index)),
+            total)
+            AND measure_value_le(
+              content(countable_union(pieces)),
+              total)
+
+  is_sigma_algebra(Sigma: sigma_algebra): bool =
+    Sigma(empty_event)
+      AND (FORALL (E: event):
+        Sigma(E) IMPLIES
+          Sigma(event_complement(E)))
+      AND (FORALL (events: event_sequence):
+        (FORALL (index: nat):
+          Sigma(events(index)))
+        IMPLIES
+          Sigma(countable_union(events)))
+
+  is_generated_sigma(
+      C: set_family,
+      Sigma: sigma_algebra): bool =
+    is_sigma_algebra(Sigma)
+      AND (FORALL (E: event):
+        C(E) IMPLIES Sigma(E))
+      AND (FORALL (Other: sigma_algebra):
+        (is_sigma_algebra(Other)
+          AND (FORALL (E: event):
+            C(E) IMPLIES Other(E)))
+        IMPLIES
+          FORALL (E: event):
+            Sigma(E) IMPLIES Other(E))
+
+  countable_cover_cost(
+      C: set_family,
+      content: content_map,
+      target: event,
+      cost: measure_value): bool =
+    EXISTS (cover: event_sequence):
+      (FORALL (index: nat):
+        C(cover(index)))
+        AND event_subset(
+          target,
+          countable_union(cover))
+        AND extended_nonnegative_sum(
+          LAMBDA (index: nat):
+            content(cover(index)),
+          cost)
+
+  is_infimum_cover_cost(
+      C: set_family,
+      content: content_map,
+      target: event,
+      infimum_value: measure_value): bool =
+    canonical_measure_value(infimum_value)
+      AND (FORALL (cost: measure_value):
+        countable_cover_cost(
+          C, content, target, cost)
+        IMPLIES
+          measure_value_le(infimum_value, cost))
+      AND (FORALL (lower_bound: measure_value):
+        (canonical_measure_value(lower_bound)
+          AND (FORALL (cost: measure_value):
+            countable_cover_cost(
+              C, content, target, cost)
+            IMPLIES
+              measure_value_le(lower_bound, cost)))
+        IMPLIES
+          measure_value_le(
+            lower_bound,
+            infimum_value))
+
+  caratheodory_extension_agrees: bool =
+    FORALL
+        (C: set_family),
+        (Sigma: sigma_algebra),
+        (content: content_map),
+        (s: event):
+      (is_set_semiring(C)
+        AND is_add_content(C, content)
+        AND is_generated_sigma(C, Sigma)
+        AND is_sigma_subadditive(C, content)
+        AND C(s))
+      IMPLIES
+        is_infimum_cover_cost(
+          C, content, s, content(s))
+END caratheodory_s_extension_theorem_Q2631152

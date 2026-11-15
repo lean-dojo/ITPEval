@@ -1,0 +1,95 @@
+% Statement-only formalization of PutnamBench artifact putnam_1973_a4:
+% the real function 2^x - 1 - x^2 has exactly three zeros on the real line.
+% This file contains no proof.
+
+putnam_1973_a4: THEORY
+BEGIN
+  real_set: TYPE = [real -> bool]
+  real_enumeration: TYPE = [nat -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  nat_factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * nat_factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  exponential_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        exponential_partial(x, count - 1)
+          + safe_div(
+              x ^ index,
+              nat_factorial(index) :: real)
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: [nat -> real], value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  exponential_value(x, value: real): bool =
+    converges_to(
+      LAMBDA (count: nat):
+        exponential_partial(x, count),
+      value)
+
+  real_power_value(base, exponent, value: real): bool =
+    base > 0
+      AND EXISTS (log_base: real):
+        exponential_value(log_base, base)
+          AND exponential_value(exponent * log_base, value)
+
+  putnam_zero_set: real_set =
+    LAMBDA (x: real):
+      EXISTS (two_to_x: real):
+        real_power_value(2, x, two_to_x)
+          AND two_to_x - 1 - x ^ 2 = 0
+
+  injective_below(
+      enumeration: real_enumeration,
+      bound: nat): bool =
+    FORALL (i, j: nat):
+      i < bound
+        AND j < bound
+        AND enumeration(i) = enumeration(j)
+      IMPLIES i = j
+
+  enumerates_exactly(
+      enumeration: real_enumeration,
+      set_value: real_set,
+      bound: nat): bool =
+    FORALL (x: real):
+      set_value(x)
+        IFF
+          EXISTS (position: nat):
+            position < bound
+              AND enumeration(position) = x
+
+  has_cardinality(
+      set_value: real_set,
+      cardinality: nat): bool =
+    EXISTS (enumeration: real_enumeration):
+      injective_below(enumeration, cardinality)
+        AND enumerates_exactly(
+          enumeration, set_value, cardinality)
+
+  putnam_1973_a4_solution: nat = 3
+
+  putnam_1973_a4: bool =
+    has_cardinality(
+      putnam_zero_set, putnam_1973_a4_solution)
+END putnam_1973_a4

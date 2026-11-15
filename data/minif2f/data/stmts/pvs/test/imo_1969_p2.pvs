@@ -1,0 +1,80 @@
+% Statement-only formalization of miniF2F test artifact imo_1969_p2: zeros of a finite
+% dyadically weighted sum of shifted cosines differ by an integer multiple of pi.
+% This file contains no proof.
+
+imo_1969_p2: THEORY
+BEGIN
+  safe_div(x, y: real): real =
+    IF y = 0 THEN 0 ELSE x / y ENDIF
+
+  nat_factorial(n: nat): RECURSIVE nat =
+    IF n = 0 THEN
+      1
+    ELSE
+      n * nat_factorial(n - 1)
+    ENDIF
+  MEASURE n
+
+  cosine_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET j: nat = count - 1 IN
+        cosine_partial(x, count - 1)
+          + safe_div(
+              ((-1 :: real) ^ j) * x ^ (2 * j),
+              nat_factorial(2 * j) :: real)
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: [nat -> real], value: real): bool =
+    FORALL (eps: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < eps
+
+  cosine_value(x, value: real): bool =
+    converges_to(
+      (LAMBDA (count: nat): cosine_partial(x, count)),
+      value)
+
+  pi_value(p: posreal): bool =
+    3 < p AND p < 4 AND cosine_value(p / 2, 0)
+
+  prefix_sum(f: [nat -> real], count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      prefix_sum(f, count - 1) + f(count - 1)
+    ENDIF
+  MEASURE count
+
+  cosine_sum_value(
+      a: [nat -> real],
+      x: real,
+      count: nat,
+      value: real): bool =
+    EXISTS (cosine_terms: [nat -> real]):
+      (FORALL (i: nat):
+        i < count IMPLIES
+          cosine_value(a(i) + x, cosine_terms(i)))
+      AND value =
+        prefix_sum(
+          (LAMBDA (i: nat):
+            safe_div(cosine_terms(i), (2 :: real) ^ i)),
+          count)
+
+  imo_1969_p2: bool =
+    FORALL (m, n: real), (k: nat), (a: [nat -> real]),
+        (y: [real -> real]), (p: posreal):
+      (0 < k
+        AND pi_value(p)
+        AND (FORALL (x: real):
+          cosine_sum_value(a, x, k, y(x)))
+        AND y(m) = 0
+        AND y(n) = 0)
+      IMPLIES
+        EXISTS (t: int):
+          m - n = (t :: real) * p
+END imo_1969_p2

@@ -1,0 +1,271 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/leftist_heap_LeftistHeap_mergeqtvc: the leftist-heap merge verification
+% condition for recursive applicability, heap order, rank invariants, total
+% size, and preservation of element occurrences. This file contains no proof.
+
+leftist_heap_LeftistHeap_mergeqtvc[
+  elt: TYPE+,
+  heap: TYPE+
+]: THEORY
+BEGIN
+
+  tree: DATATYPE
+  BEGIN
+    Empty: Empty?
+    Node(
+      stored_rank: int,
+      left_subtree: tree,
+      root_element: elt,
+      right_subtree: tree): Node?
+  END tree
+
+  preorder_laws(leq: [elt, elt -> bool]): bool =
+    (FORALL (x: elt): leq(x, x))
+      AND
+    (FORALL (x, y, z: elt):
+      (leq(x, y) AND leq(y, z)) IMPLIES leq(x, z))
+      AND
+    (FORALL (x, y: elt): leq(x, y) OR leq(y, x))
+
+  tree_size(values: tree): RECURSIVE int =
+    CASES values OF
+      Empty:
+        0,
+      Node(rank_value, left, root, right):
+        1 + tree_size(left) + tree_size(right)
+    ENDCASES
+  MEASURE values BY <<
+
+  occ(element: elt, values: tree): RECURSIVE int =
+    CASES values OF
+      Empty:
+        0,
+      Node(rank_value, left, root, right):
+        (IF element = root THEN 1 ELSE 0 ENDIF)
+          + occ(element, left)
+          + occ(element, right)
+    ENDCASES
+  MEASURE values BY <<
+
+  le_root(
+      leq: [elt, elt -> bool],
+      element: elt,
+      values: tree): bool =
+    CASES values OF
+      Empty:
+        TRUE,
+      Node(rank_value, left, root, right):
+        leq(element, root)
+    ENDCASES
+
+  is_heap(
+      leq: [elt, elt -> bool],
+      values: tree): RECURSIVE bool =
+    CASES values OF
+      Empty:
+        TRUE,
+      Node(rank_value, left, root, right):
+        le_root(leq, root, left)
+          AND is_heap(leq, left)
+          AND le_root(leq, root, right)
+          AND is_heap(leq, right)
+    ENDCASES
+  MEASURE values BY <<
+
+  heap_rank(values: tree): RECURSIVE int =
+    CASES values OF
+      Empty:
+        0,
+      Node(rank_value, left, root, right):
+        1 + min(heap_rank(left), heap_rank(right))
+    ENDCASES
+  MEASURE values BY <<
+
+  leftist(values: tree): RECURSIVE bool =
+    CASES values OF
+      Empty:
+        TRUE,
+      Node(rank_value, left, root, right):
+        rank_value = 1 + min(heap_rank(left), heap_rank(right))
+          AND leftist(left)
+          AND leftist(right)
+          AND heap_rank(right) <= heap_rank(left)
+    ENDCASES
+  MEASURE values BY <<
+
+  leftist_heap(
+      leq: [elt, elt -> bool],
+      values: tree): bool =
+    is_heap(leq, values) AND leftist(values)
+
+  minimum_law(minimum_fn: [tree -> elt]): bool =
+    FORALL
+        (rank_value: int),
+        (left: tree),
+        (root: elt),
+        (right: tree):
+      minimum_fn(Node(rank_value, left, root, right)) = root
+
+  merge_initial_obligation(
+      leq: [elt, elt -> bool],
+      h1, h2: tree): bool =
+    CASES h2 OF
+      Empty:
+        TRUE,
+      Node(
+          right_rank,
+          right_left,
+          right_root,
+          right_right):
+        CASES h1 OF
+          Empty:
+            TRUE,
+          Node(
+              left_rank,
+              left_left,
+              left_root,
+              left_right):
+            IF leq(left_root, right_root) THEN
+              ((0 <= tree_size(h1) + tree_size(h2)
+                  AND
+                tree_size(left_right) + tree_size(h2)
+                  < tree_size(h1) + tree_size(h2))
+                AND leftist_heap(leq, left_right)
+                AND leftist_heap(leq, h2))
+              AND
+              (FORALL (merged_right: tree):
+                (tree_size(merged_right)
+                    = tree_size(left_right) + tree_size(h2)
+                  AND
+                (FORALL (element: elt):
+                  occ(element, merged_right)
+                    = occ(element, left_right) + occ(element, h2))
+                  AND leftist_heap(leq, merged_right))
+                IMPLIES
+                  (leftist_heap(leq, merged_right)
+                    AND leftist_heap(leq, left_left))
+                  AND le_root(leq, left_root, left_left)
+                  AND le_root(leq, left_root, merged_right))
+            ELSE
+              ((0 <= tree_size(h1) + tree_size(h2)
+                  AND
+                tree_size(h1) + tree_size(right_right)
+                  < tree_size(h1) + tree_size(h2))
+                AND leftist_heap(leq, h1)
+                AND leftist_heap(leq, right_right))
+              AND
+              (FORALL (merged_right: tree):
+                (tree_size(merged_right)
+                    = tree_size(h1) + tree_size(right_right)
+                  AND
+                (FORALL (element: elt):
+                  occ(element, merged_right)
+                    = occ(element, h1) + occ(element, right_right))
+                  AND leftist_heap(leq, merged_right))
+                IMPLIES
+                  (leftist_heap(leq, merged_right)
+                    AND leftist_heap(leq, right_left))
+                  AND le_root(leq, right_root, right_left)
+                  AND le_root(leq, right_root, merged_right))
+            ENDIF
+        ENDCASES
+    ENDCASES
+
+  merge_result_antecedent(
+      leq: [elt, elt -> bool],
+      minimum_fn: [tree -> elt],
+      h1, h2, result: tree): bool =
+    CASES h2 OF
+      Empty:
+        result = h1,
+      Node(
+          right_rank,
+          right_left,
+          right_root,
+          right_right):
+        CASES h1 OF
+          Empty:
+            result = h2,
+          Node(
+              left_rank,
+              left_left,
+              left_root,
+              left_right):
+            IF leq(left_root, right_root) THEN
+              EXISTS (merged_right: tree):
+                (tree_size(merged_right)
+                    = tree_size(left_right) + tree_size(h2)
+                  AND
+                (FORALL (element: elt):
+                  occ(element, merged_right)
+                    = occ(element, left_right) + occ(element, h2))
+                  AND leftist_heap(leq, merged_right))
+                AND leftist_heap(leq, result)
+                AND minimum_fn(result) = left_root
+                AND tree_size(result)
+                  = 1 + tree_size(left_left) + tree_size(merged_right)
+                AND occ(left_root, result)
+                  = 1 + occ(left_root, left_left)
+                      + occ(left_root, merged_right)
+                AND
+                  (FORALL (element: elt):
+                    element /= left_root
+                      IMPLIES
+                        occ(element, result)
+                          = occ(element, left_left)
+                            + occ(element, merged_right))
+            ELSE
+              EXISTS (merged_right: tree):
+                (tree_size(merged_right)
+                    = tree_size(h1) + tree_size(right_right)
+                  AND
+                (FORALL (element: elt):
+                  occ(element, merged_right)
+                    = occ(element, h1) + occ(element, right_right))
+                  AND leftist_heap(leq, merged_right))
+                AND leftist_heap(leq, result)
+                AND minimum_fn(result) = right_root
+                AND tree_size(result)
+                  = 1 + tree_size(right_left) + tree_size(merged_right)
+                AND occ(right_root, result)
+                  = 1 + occ(right_root, right_left)
+                      + occ(right_root, merged_right)
+                AND
+                  (FORALL (element: elt):
+                    element /= right_root
+                      IMPLIES
+                        occ(element, result)
+                          = occ(element, right_left)
+                            + occ(element, merged_right))
+            ENDIF
+        ENDCASES
+    ENDCASES
+
+  merge_postcondition(
+      leq: [elt, elt -> bool],
+      h1, h2, result: tree): bool =
+    tree_size(result) = tree_size(h1) + tree_size(h2)
+      AND
+    (FORALL (element: elt):
+      occ(element, result) = occ(element, h1) + occ(element, h2))
+      AND leftist_heap(leq, result)
+
+  merge_vc: bool =
+    FORALL
+        (leq: [elt, elt -> bool]),
+        (minimum_fn: [tree -> elt]),
+        (h1, h2: tree):
+      (preorder_laws(leq)
+        AND minimum_law(minimum_fn)
+        AND leftist_heap(leq, h1)
+        AND leftist_heap(leq, h2))
+      IMPLIES
+        (merge_initial_obligation(leq, h1, h2)
+          AND
+            (FORALL (result: tree):
+              merge_result_antecedent(
+                leq, minimum_fn, h1, h2, result)
+              IMPLIES
+                merge_postcondition(leq, h1, h2, result)))
+
+END leftist_heap_LeftistHeap_mergeqtvc

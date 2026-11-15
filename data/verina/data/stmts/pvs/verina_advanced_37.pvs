@@ -1,0 +1,137 @@
+% Statement-only formalization of the VERINA corpus artifact
+% verina_advanced_37, catalog title "majorityElement": insertion-sorting an
+% integer list and returning its middle element under a majority-existence
+% precondition, with the specified majority-frequency contract. This file contains no proof.
+
+verina_advanced_37: THEORY
+BEGIN
+
+  int_list_length(values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        int_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  occurrence_count(
+      requested: int,
+      values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        (IF head = requested THEN 1 ELSE 0 ENDIF)
+          + occurrence_count(requested, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  % Exact floor division by two on natural numbers.
+  nat_half(value: nat): RECURSIVE nat =
+    IF value < 2 THEN
+      0
+    ELSE
+      nat_half(value - 2) + 1
+    ENDIF
+  MEASURE value
+
+  has_majority_value(
+      remaining, whole: list[int]): RECURSIVE bool =
+    CASES remaining OF
+      null:
+        FALSE,
+      cons(head, tail):
+        occurrence_count(head, whole)
+            > nat_half(int_list_length(whole))
+          OR has_majority_value(tail, whole)
+    ENDCASES
+  MEASURE remaining BY <<
+
+  majorityElement_precond(nums: list[int]): bool =
+    int_list_length(nums) > 0
+      AND has_majority_value(nums, nums)
+
+  insert_int(
+      x: int,
+      values: list[int]): RECURSIVE list[int] =
+    CASES values OF
+      null:
+        cons(x, null),
+      cons(head, tail):
+        IF x <= head THEN
+          cons(x, cons(head, tail))
+        ELSE
+          cons(head, insert_int(x, tail))
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  insertionSort(values: list[int]): RECURSIVE list[int] =
+    CASES values OF
+      null:
+        null,
+      cons(head, tail):
+        insert_int(head, insertionSort(tail))
+    ENDCASES
+  MEASURE values BY <<
+
+  % This is exactly the source getAt defined by drop: out-of-range indices
+  % return zero, and otherwise the element at the requested index is returned.
+  int_list_nth_default(
+      index: nat,
+      values: list[int]): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          int_list_nth_default(index - 1, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  majorityElement(nums: list[int]): int =
+    LET sorted: list[int] = insertionSort(nums),
+        length: nat = int_list_length(sorted),
+        middle: nat = nat_half(length)
+    IN
+      int_list_nth_default(middle, sorted)
+
+  all_nonmajority_or_result(
+      result: int,
+      original, remaining: list[int]): RECURSIVE bool =
+    CASES remaining OF
+      null:
+        TRUE,
+      cons(head, tail):
+        (head = result
+          OR occurrence_count(head, original)
+               <= nat_half(int_list_length(original)))
+          AND all_nonmajority_or_result(
+            result,
+            original,
+            tail)
+    ENDCASES
+  MEASURE remaining BY <<
+
+  majorityElement_postcond(
+      nums: list[int],
+      result: int): bool =
+    occurrence_count(result, nums)
+        > nat_half(int_list_length(nums))
+      AND all_nonmajority_or_result(
+        result,
+        nums,
+        nums)
+
+  majorityElement_spec_satisfied: bool =
+    FORALL (nums: list[int]):
+      majorityElement_precond(nums) IMPLIES
+        majorityElement_postcond(
+          nums,
+          majorityElement(nums))
+
+END verina_advanced_37

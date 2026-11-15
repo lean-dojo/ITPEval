@@ -1,0 +1,238 @@
+% Statement-only formalization of the VERINA corpus artifact
+% verina_advanced_77, catalog title "trapRainWater": computing trapped
+% rainwater on a list of natural-number elevations with the exact two-pointer
+% implementation and its summation correctness contract. This file contains
+% no proof.
+
+verina_advanced_77: THEORY
+BEGIN
+
+  nat_max(first, second: nat): nat =
+    IF first >= second THEN first ELSE second ENDIF
+
+  nat_min(first, second: nat): nat =
+    IF first <= second THEN first ELSE second ENDIF
+
+  % Lean natural-number subtraction is truncated at zero.
+  nat_subtract(first, second: nat): nat =
+    IF first >= second THEN first - second ELSE 0 ENDIF
+
+  nat_list_length(values: list[nat]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        nat_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  % Lean's getElem! on a natural-number list returns zero out of bounds.
+  nat_list_get_bang(
+      index: nat,
+      values: list[nat]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          nat_list_get_bang(index - 1, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  nat_list_take(
+      count: nat,
+      values: list[nat]): RECURSIVE list[nat] =
+    IF count = 0 THEN
+      null[nat]
+    ELSE
+      CASES values OF
+        null:
+          null[nat],
+        cons(head, tail):
+          cons(
+            head,
+            nat_list_take(count - 1, tail))
+      ENDCASES
+    ENDIF
+  MEASURE count
+
+  nat_list_drop(
+      count: nat,
+      values: list[nat]): RECURSIVE list[nat] =
+    IF count = 0 THEN
+      values
+    ELSE
+      CASES values OF
+        null:
+          null[nat],
+        cons(head, tail):
+          nat_list_drop(count - 1, tail)
+      ENDCASES
+    ENDIF
+  MEASURE count
+
+  nat_list_fold_max(
+      values: list[nat],
+      accumulator: nat): RECURSIVE nat =
+    CASES values OF
+      null:
+        accumulator,
+      cons(head, tail):
+        nat_list_fold_max(
+          tail,
+          nat_max(accumulator, head))
+    ENDCASES
+  MEASURE values BY <<
+
+  nat_list_fold_sum(
+      values: list[nat],
+      accumulator: nat): RECURSIVE nat =
+    CASES values OF
+      null:
+        accumulator,
+      cons(head, tail):
+        nat_list_fold_sum(
+          tail,
+          accumulator + head)
+    ENDCASES
+  MEASURE values BY <<
+
+  trapRainWater_precond(height: list[nat]): bool =
+    TRUE
+
+  % The fuel is exactly right - left on every exposed call and decreases by
+  % one under either pointer update, matching the Lean termination measure.
+  trapLoop_fuel(
+      height: list[nat],
+      left, right, leftMax, rightMax, water, remaining: nat):
+        RECURSIVE nat =
+    IF remaining = 0 OR left >= right THEN
+      water
+    ELSE
+      LET hLeft: nat = nat_list_get_bang(left, height),
+          hRight: nat = nat_list_get_bang(right, height)
+      IN
+        IF hLeft < hRight THEN
+          LET new_leftMax: nat =
+                IF hLeft >= leftMax THEN hLeft ELSE leftMax ENDIF,
+              new_water: nat =
+                IF hLeft >= leftMax THEN
+                  water
+                ELSE
+                  water + nat_subtract(leftMax, hLeft)
+                ENDIF
+          IN
+            trapLoop_fuel(
+              height,
+              left + 1,
+              right,
+              new_leftMax,
+              rightMax,
+              new_water,
+              remaining - 1)
+        ELSE
+          LET new_rightMax: nat =
+                IF hRight >= rightMax THEN hRight ELSE rightMax ENDIF,
+              new_water: nat =
+                IF hRight >= rightMax THEN
+                  water
+                ELSE
+                  water + nat_subtract(rightMax, hRight)
+                ENDIF
+          IN
+            trapLoop_fuel(
+              height,
+              left,
+              right - 1,
+              leftMax,
+              new_rightMax,
+              new_water,
+              remaining - 1)
+        ENDIF
+    ENDIF
+  MEASURE remaining
+
+  trapLoop(
+      height: list[nat],
+      left, right, leftMax, rightMax, water: nat): nat =
+    trapLoop_fuel(
+      height,
+      left,
+      right,
+      leftMax,
+      rightMax,
+      water,
+      nat_subtract(right, left))
+
+  % The source precondition proof argument is computationally irrelevant.
+  % This definition is the exact proof-erased two-pointer computation.
+  trapRainWater(height: list[nat]): nat =
+    trapLoop(
+      height,
+      0,
+      nat_subtract(nat_list_length(height), 1),
+      0,
+      0,
+      0)
+
+  trapRainWater_water_at(
+      height: list[nat],
+      index: nat): nat =
+    LET lmax: nat =
+          nat_list_fold_max(
+            nat_list_take(index + 1, height),
+            0),
+        rmax: nat =
+          nat_list_fold_max(
+            nat_list_drop(index, height),
+            0)
+    IN
+      nat_subtract(
+        nat_min(lmax, rmax),
+        nat_list_get_bang(index, height))
+
+  % This constructs the source local waterAt list: map over List.range length.
+  trapRainWater_water_at_values(
+      height: list[nat],
+      index, remaining: nat): RECURSIVE list[nat] =
+    IF remaining = 0 THEN
+      null[nat]
+    ELSE
+      cons(
+        trapRainWater_water_at(height, index),
+        trapRainWater_water_at_values(
+          height,
+          index + 1,
+          remaining - 1))
+    ENDIF
+  MEASURE remaining
+
+  trapRainWater_waterAt(height: list[nat]): list[nat] =
+    trapRainWater_water_at_values(
+      height,
+      0,
+      nat_list_length(height))
+
+  trapRainWater_postcond(
+      height: list[nat],
+      result: nat): bool =
+    LET waterAt: list[nat] =
+          trapRainWater_waterAt(height),
+        total: nat =
+          nat_list_fold_sum(waterAt, 0)
+    IN
+      nat_subtract(result, total) = 0
+        AND total <= result
+
+  trapRainWater_spec_satisfied: bool =
+    FORALL (height: list[nat]):
+      trapRainWater_precond(height)
+        IMPLIES
+          trapRainWater_postcond(
+            height,
+            trapRainWater(height))
+
+END verina_advanced_77

@@ -1,0 +1,139 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/binary_search_Complexity_binary_searchqtvc: a binary-search
+% verification condition combining sortedness, exclusion invariants, loop
+% decrease, and a logarithmic time bound. This file contains no proof.
+
+binary_search_Complexity_binary_searchqtvc: THEORY
+BEGIN
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  nth_default(values: list[int], index: nat): RECURSIVE int =
+    CASES values OF
+      null: 0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          nth_default(tail, index - 1)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  trunc_div(numerator, denominator: int): int =
+    IF denominator = 0 THEN
+      0
+    ELSIF numerator * denominator >= 0 THEN
+      floor((numerator :: real) / (denominator :: real))
+    ELSE
+      -floor(-((numerator :: real) / (denominator :: real)))
+    ENDIF
+
+  log2_specification(log2_function: [int -> int]): bool =
+    FORALL (n: int):
+      IF n <= 1 THEN
+        log2_function(n) = 0
+      ELSE
+        log2_function(n) = 1 + log2_function(trunc_div(n, 2))
+      ENDIF
+
+  complexity(
+      log2_function: [int -> int],
+      n: int): int =
+    IF n = 0 THEN 0 ELSE 1 + log2_function(n) ENDIF
+
+  sorted_values(values: list[int]): bool =
+    FORALL (i1, i2: int):
+      (0 <= i1 AND i1 <= i2 AND i2 < length(values))
+        IMPLIES
+          nth_default(values, int_to_nat(i1))
+            <= nth_default(values, int_to_nat(i2))
+
+  outside_absent(
+      values: list[int],
+      target, lower, upper: int): bool =
+    FORALL (i: int):
+      ((0 <= i AND i < lower)
+        OR (upper <= i AND i < length(values)))
+      IMPLIES
+        nth_default(values, int_to_nat(i)) /= target
+
+  all_absent(values: list[int], target: int): bool =
+    FORALL (i: int):
+      (0 <= i AND i < length(values))
+        IMPLIES nth_default(values, int_to_nat(i)) /= target
+
+  binary_search_vc: bool =
+    FORALL
+      (log2_function: [int -> int]),
+      (a: list[int]),
+      (v: int):
+      log2_specification(log2_function) IMPLIES
+      sorted_values(a) IMPLIES
+      LET o1: int = length(a) IN
+        (((0 <= 0 AND 0 <= o1 AND o1 <= length(a))
+            AND outside_absent(a, v, 0, o1)
+            AND
+              0 - 0 + complexity(log2_function, o1 - 0)
+                <= complexity(log2_function, length(a)))
+          AND
+        (FORALL (hi, lo, time: int):
+          ((0 <= lo AND lo <= hi AND hi <= length(a))
+            AND outside_absent(a, v, lo, hi)
+            AND
+              time - 0 + complexity(log2_function, hi - lo)
+                <= complexity(log2_function, length(a)))
+          IMPLIES
+            IF lo < hi THEN
+              2 /= 0
+                AND
+              LET mid: int = lo + trunc_div(hi - lo, 2) IN
+                (0 <= mid AND mid < length(a))
+                  AND
+                IF nth_default(a, int_to_nat(mid)) < v THEN
+                  (0 <= hi - lo
+                    AND hi - (mid + 1) < hi - lo)
+                    AND
+                  (0 <= mid + 1
+                    AND mid + 1 <= hi
+                    AND hi <= length(a))
+                    AND outside_absent(a, v, mid + 1, hi)
+                    AND
+                      time + 1 - 0
+                        + complexity(
+                            log2_function, hi - (mid + 1))
+                        <= complexity(log2_function, length(a))
+                ELSE
+                  (0 <= mid AND mid < length(a))
+                    AND
+                  IF v < nth_default(a, int_to_nat(mid)) THEN
+                    (0 <= hi - lo
+                      AND mid - lo < hi - lo)
+                      AND
+                    (0 <= lo
+                      AND lo <= mid
+                      AND mid <= length(a))
+                      AND outside_absent(a, v, lo, mid)
+                      AND
+                        time + 1 - 0
+                          + complexity(log2_function, mid - lo)
+                          <= complexity(log2_function, length(a))
+                  ELSE
+                    ((((0 <= mid AND mid < length(a))
+                        AND
+                          nth_default(a, int_to_nat(mid)) = v)
+                      OR (mid = -1 AND all_absent(a, v)))
+                      AND
+                        time - 0
+                          <= complexity(log2_function, length(a)))
+                  ENDIF
+                ENDIF
+            ELSE
+              ((((0 <= -1 AND -1 < length(a))
+                  AND nth_default(a, int_to_nat(-1)) = v)
+                OR all_absent(a, v))
+                AND
+                  time - 0
+                    <= complexity(log2_function, length(a)))
+            ENDIF))
+END binary_search_Complexity_binary_searchqtvc

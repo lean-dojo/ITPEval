@@ -1,0 +1,60 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1999_a4:
+% the iterated double series over positive integers with summand
+% m^2*n / (3^m*(n*3^m + m*3^n)) converges to 9/32. This file contains no proof.
+
+putnam_1999_a4: THEORY
+BEGIN
+  real_sequence: TYPE = [nat -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  series_term(m, n: nat): real =
+    safe_div(
+      ((m + 1) :: real) ^ 2 * ((n + 1) :: real),
+      (3 :: real) ^ (m + 1)
+        * (((n + 1) :: real) * (3 :: real) ^ (m + 1)
+            + ((m + 1) :: real) * (3 :: real) ^ (n + 1)))
+
+  row_partial_sum(m, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      row_partial_sum(m, count - 1)
+        + series_term(m, count - 1)
+    ENDIF
+  MEASURE count
+
+  outer_partial_sum(
+      row_sums: real_sequence, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      outer_partial_sum(row_sums, count - 1)
+        + row_sums(count - 1)
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  putnam_1999_a4: bool =
+    EXISTS (row_sums: real_sequence):
+      (FORALL (m: nat):
+        converges_to(
+          LAMBDA (count: nat):
+            row_partial_sum(m, count),
+          row_sums(m)))
+      AND converges_to(
+        LAMBDA (count: nat):
+          outer_partial_sum(row_sums, count),
+        (9 :: real) / 32)
+END putnam_1999_a4

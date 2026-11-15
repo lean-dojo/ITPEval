@@ -1,0 +1,104 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1982_b5:
+% for x greater than e^e, the sequence starting at e and iterating the
+% logarithm of x to the preceding base converges, and its limit depends
+% continuously on x. This file contains no proof.
+
+putnam_1982_b5: THEORY
+BEGIN
+  real_sequence: TYPE = [nat -> real]
+  real_function: TYPE = [real -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  nat_factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * nat_factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  exponential_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        exponential_partial(x, count - 1)
+          + safe_div(
+              x ^ index,
+              nat_factorial(index) :: real)
+    ENDIF
+  MEASURE count
+
+  real_exponential(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat):
+            exponential_partial(x, count),
+          value))
+
+  natural_log(x: real): real =
+    IF x > 0 THEN
+      epsilon(
+        LAMBDA (value: real):
+          real_exponential(value) = x)
+    ELSE
+      0
+    ENDIF
+
+  log_with_base(base, argument: real): real =
+    safe_div(natural_log(argument), natural_log(base))
+
+  iterated_log_sequence(x: real, index: nat): RECURSIVE real =
+    IF index = 0 THEN
+      real_exponential(1)
+    ELSE
+      log_with_base(
+        iterated_log_sequence(x, index - 1),
+        x)
+    ENDIF
+  MEASURE index
+
+  in_domain(x: real): bool =
+    x > real_exponential(real_exponential(1))
+
+  limit_function(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (index: nat):
+            iterated_log_sequence(x, index),
+          value))
+
+  continuous_on_domain(f: real_function): bool =
+    FORALL (x: real):
+      in_domain(x) IMPLIES
+        FORALL (epsilon_value: posreal):
+          EXISTS (delta: posreal):
+            FORALL (y: real):
+              (in_domain(y) AND abs(y - x) < delta)
+                IMPLIES abs(f(y) - f(x)) < epsilon_value
+
+  putnam_1982_b5: bool =
+    (FORALL (x: real):
+      in_domain(x) IMPLIES
+        EXISTS (limit_value: real):
+          converges_to(
+            LAMBDA (index: nat):
+              iterated_log_sequence(x, index),
+            limit_value))
+      AND continuous_on_domain(limit_function)
+END putnam_1982_b5

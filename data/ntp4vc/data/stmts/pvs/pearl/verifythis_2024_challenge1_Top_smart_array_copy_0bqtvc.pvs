@@ -1,0 +1,378 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/verifythis_2024_challenge1_Top_smart_array_copy_0bqtvc: the smart
+% array-copy verification condition for shuffled fixed-size subsegments,
+% loop invariants, frame conditions, and the final remainder. This file
+% contains no proof.
+
+verifythis_2024_challenge1_Top_smart_array_copy_0bqtvc[
+  elt: TYPE+
+]: THEORY
+BEGIN
+
+  elt_array: TYPE =
+    [# array_length: nat,
+       array_values: [int -> elt] #]
+
+  int_array: TYPE =
+    [# int_array_length: nat,
+       int_array_values: [int -> int] #]
+
+  permutation(l: int, p: int_array): bool =
+    (0 <= l AND l <= int_array_length(p))
+      AND
+    (FORALL (i: int):
+      (0 <= i AND i < l)
+        IMPLIES
+          (0 <= int_array_values(p)(i)
+            AND int_array_values(p)(i) < l))
+      AND
+    (FORALL (i, j: int):
+      (0 <= i AND i < l)
+        IMPLIES
+          (0 <= j AND j < l)
+            IMPLIES
+              i /= j
+                IMPLIES
+                  int_array_values(p)(i)
+                    /= int_array_values(p)(j))
+
+  permutation_pair(
+      l: int,
+      p, inverse: int_array): bool =
+    permutation(l, p)
+      AND permutation(l, inverse)
+      AND
+    (FORALL (i: int):
+      (0 <= i AND i < l)
+        IMPLIES
+          int_array_values(p)(
+            int_array_values(inverse)(i)) = i)
+      AND
+    (FORALL (i: int):
+      (0 <= i AND i < l)
+        IMPLIES
+          int_array_values(inverse)(
+            int_array_values(p)(i)) = i)
+
+  valid_chunk(
+      values: elt_array,
+      offset, chunk_length: int): bool =
+    0 <= offset
+      AND offset <= offset + chunk_length
+      AND offset + chunk_length <= array_length(values)
+
+  copy(
+      source, destination: elt_array,
+      offset, chunk_length: int): bool =
+    valid_chunk(source, offset, chunk_length)
+      AND array_length(source) = array_length(destination)
+      AND
+    (FORALL (i: int):
+      (offset <= i AND i < offset + chunk_length)
+        IMPLIES
+          array_values(destination)(i)
+            = array_values(source)(i))
+
+  copy_to(
+      source, destination: elt_array,
+      source_offset, destination_offset, chunk_length: int): bool =
+    valid_chunk(source, source_offset, chunk_length)
+      AND valid_chunk(destination, destination_offset, chunk_length)
+      AND array_length(source) = array_length(destination)
+      AND
+    (FORALL (i: int):
+      (0 <= i AND i < chunk_length)
+        IMPLIES
+          array_values(destination)(destination_offset + i)
+            = array_values(source)(source_offset + i))
+      AND
+    (FORALL (i: int):
+      (destination_offset <= i
+        AND i < destination_offset + chunk_length)
+        IMPLIES
+          array_values(destination)(i)
+            =
+          array_values(source)(
+            i + (source_offset - destination_offset)))
+
+  copied_permuted_chunks(
+      source, destination: elt_array,
+      start: int,
+      sigma: int_array,
+      k, upper: int): bool =
+    FORALL (j_prime: int):
+      (0 <= j_prime AND j_prime < upper)
+        IMPLIES
+          copy(
+            source,
+            destination,
+            start + int_array_values(sigma)(j_prime) * k,
+            k)
+
+  copy_chunk_preconditions(
+      source, destination: elt_array,
+      start, chunk_length: int): bool =
+    array_length(source) = array_length(destination)
+      AND valid_chunk(source, start, chunk_length)
+      AND valid_chunk(destination, start, chunk_length)
+
+  copy_chunk_effect(
+      source, before, after: elt_array,
+      start, chunk_length: int): bool =
+    copy_to(source, after, start, start, chunk_length)
+      AND
+    (FORALL (i: int):
+      (0 <= i AND i < start)
+        IMPLIES
+          array_values(after)(i) = array_values(before)(i))
+      AND
+    (FORALL (i: int):
+      (start + chunk_length <= i
+        AND i < array_length(after))
+        IMPLIES
+          array_values(after)(i) = array_values(before)(i))
+
+  inner_step_conclusion(
+      source, destination: elt_array,
+      start, s, m, k: int,
+      sigma: int_array,
+      j: int): bool =
+    (0 <= j AND j < int_array_length(sigma))
+      AND
+    (LET startj: int =
+       start + int_array_values(sigma)(j) * k
+     IN
+       copy_chunk_preconditions(source, destination, startj, k)
+         AND
+       (FORALL (updated: elt_array):
+         array_length(updated) = array_length(destination)
+           IMPLIES
+             copy_chunk_effect(
+               source, destination, updated, startj, k)
+               IMPLIES
+                 (copy(source, updated, 0, s * m)
+                   AND
+                  copied_permuted_chunks(
+                    source,
+                    updated,
+                    start,
+                    sigma,
+                    k,
+                    j + 1))))
+
+  inner_loop_steps(
+      source, destination: elt_array,
+      start, s, m, k, o2: int,
+      sigma: int_array): bool =
+    FORALL (j: int):
+      ((0 <= j AND j <= o2)
+        AND copy(source, destination, 0, s * m)
+        AND
+          copied_permuted_chunks(
+            source, destination, start, sigma, k, j))
+        IMPLIES
+          (inner_step_conclusion(
+             source, destination, start, s, m, k, sigma, j)
+            AND
+           ((copy(source, destination, 0, s * m)
+              AND
+             copied_permuted_chunks(
+               source,
+               destination,
+               start,
+               sigma,
+               k,
+               o2 + 1))
+             IMPLIES
+               copy(
+                 source,
+                 destination,
+                 0,
+                 (s + 1) * m)))
+
+  inner_nonnegative_obligation(
+      source, destination: elt_array,
+      start, s, m, k, o2: int,
+      sigma: int_array): bool =
+    (copy(source, destination, 0, s * m)
+      AND
+     copied_permuted_chunks(
+       source, destination, start, sigma, k, 0))
+      AND
+    (FORALL (next_destination: elt_array):
+      array_length(next_destination) = array_length(destination)
+        IMPLIES
+          inner_loop_steps(
+            source,
+            next_destination,
+            start,
+            s,
+            m,
+            k,
+            o2,
+            sigma))
+
+  inner_iteration_obligation(
+      source, destination: elt_array,
+      start, s, m, k, o2: int,
+      sigma: int_array): bool =
+    (0 <= o2 + 1
+      IMPLIES
+        inner_nonnegative_obligation(
+          source, destination, start, s, m, k, o2, sigma))
+      AND
+    (o2 + 1 < 0
+      IMPLIES
+        copy(source, destination, 0, (s + 1) * m))
+
+  shuffled_segment_obligation(
+      source, destination: elt_array,
+      s, m, k, l: int,
+      sigma, inverse_sigma: int_array): bool =
+    ((int_array_length(sigma) = int_array_length(inverse_sigma)
+       AND int_array_length(inverse_sigma) = l)
+      AND permutation_pair(l, sigma, inverse_sigma))
+      IMPLIES
+        (LET start: int = s * m,
+             o2: int = l - 1
+         IN
+           inner_iteration_obligation(
+             source,
+             destination,
+             start,
+             s,
+             m,
+             k,
+             o2,
+             sigma))
+
+  outer_iteration_conclusion(
+      source, destination: elt_array,
+      s, m, k, l: int): bool =
+    0 < l
+      AND
+    (FORALL (sigma, inverse_sigma: int_array):
+      shuffled_segment_obligation(
+        source,
+        destination,
+        s,
+        m,
+        k,
+        l,
+        sigma,
+        inverse_sigma))
+
+  outer_loop_steps(
+      source, destination: elt_array,
+      m, k, l, o1: int): bool =
+    FORALL (s: int):
+      ((0 <= s AND s <= o1)
+        AND copy(source, destination, 0, s * m))
+        IMPLIES
+          outer_iteration_conclusion(
+            source, destination, s, m, k, l)
+
+  remainder_preconditions(
+      source, destination: elt_array,
+      last, remainder: int): bool =
+    array_length(source) = array_length(destination)
+      AND valid_chunk(source, last, remainder)
+      AND valid_chunk(destination, last, remainder)
+
+  remainder_effect(
+      source, before, after: elt_array,
+      last, remainder: int): bool =
+    copy_to(source, after, last, last, remainder)
+      AND
+    (FORALL (i: int):
+      (0 <= i AND i < last)
+        IMPLIES
+          array_values(after)(i) = array_values(before)(i))
+      AND
+    (FORALL (i: int):
+      (last + remainder <= i
+        AND i < array_length(after))
+        IMPLIES
+          array_values(after)(i) = array_values(before)(i))
+
+  remainder_obligation(
+      source, destination: elt_array,
+      last, remainder, total: int): bool =
+    remainder_preconditions(source, destination, last, remainder)
+      AND
+    (FORALL (updated: elt_array):
+      array_length(updated) = array_length(destination)
+        IMPLIES
+          remainder_effect(
+            source, destination, updated, last, remainder)
+            IMPLIES
+              copy(source, updated, 0, total))
+
+  outer_destination_obligation(
+      source, original_destination, destination: elt_array,
+      m, k, l, q, r, o1: int): bool =
+    outer_loop_steps(source, destination, m, k, l, o1)
+      AND
+    (copy(source, destination, 0, (o1 + 1) * m)
+      IMPLIES
+        (LET last: int = q * m
+         IN
+           remainder_obligation(
+             source,
+             destination,
+             last,
+             r,
+             array_length(original_destination))))
+
+  nonnegative_outer_obligation(
+      source, destination: elt_array,
+      m, k, l, q, r, o1: int): bool =
+    copy(source, destination, 0, 0 * m)
+      AND
+    (FORALL (next_destination: elt_array):
+      array_length(next_destination) = array_length(destination)
+        IMPLIES
+          outer_destination_obligation(
+            source,
+            destination,
+            next_destination,
+            m,
+            k,
+            l,
+            q,
+            r,
+            o1))
+
+  smart_array_copy_0b_vc: bool =
+    FORALL
+        (source, destination: elt_array),
+        (k, l, q, r: int):
+      (array_length(source) = array_length(destination)
+        AND 0 < array_length(destination)
+        AND 0 < k
+        AND 0 < l
+        AND 0 <= q
+        AND 0 <= r
+        AND r < k * l
+        AND array_length(destination) = q * k * l + r)
+      IMPLIES
+        (LET m: int = k * l,
+             o1: int = q - 1
+         IN
+           (0 <= o1 + 1
+             IMPLIES
+               nonnegative_outer_obligation(
+                 source, destination, m, k, l, q, r, o1))
+             AND
+           (o1 + 1 < 0
+             IMPLIES
+               (LET last: int = q * m
+                IN
+                  remainder_obligation(
+                    source,
+                    destination,
+                    last,
+                    r,
+                    array_length(destination)))))
+
+END verifythis_2024_challenge1_Top_smart_array_copy_0bqtvc

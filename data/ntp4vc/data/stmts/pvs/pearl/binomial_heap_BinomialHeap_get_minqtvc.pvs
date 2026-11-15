@@ -1,0 +1,247 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/binomial_heap_BinomialHeap_get_minqtvc: the verification condition
+% that get-min returns an element of a nonempty binomial heap forest that is
+% below every stored element. This file contains no proof.
+
+binomial_heap_BinomialHeap_get_minqtvc[
+  elt: TYPE+,
+  heap: TYPE+
+]: THEORY
+BEGIN
+
+  % This datatype is isomorphic to a list of source trees: each FCons stores
+  % one tree's root, child list, rank, and remaining sibling list.
+  forest: DATATYPE
+  BEGIN
+    FNil: FNil?
+    FCons(
+      root_element: elt,
+      child_forest: forest,
+      root_rank: int,
+      sibling_forest: forest): FCons?
+  END forest
+
+  preorder_laws(leq: [elt, elt -> bool]): bool =
+    (FORALL (x: elt): leq(x, x))
+      AND
+    (FORALL (x, y, z: elt):
+      (leq(x, y) AND leq(y, z)) IMPLIES leq(x, z))
+      AND
+    (FORALL (x, y: elt): leq(x, y) OR leq(y, x))
+
+  forest_size(values: forest): RECURSIVE int =
+    CASES values OF
+      FNil:
+        0,
+      FCons(element, children, rank, siblings):
+        1 + forest_size(children) + forest_size(siblings)
+    ENDCASES
+  MEASURE values BY <<
+
+  forest_length(values: forest): RECURSIVE int =
+    CASES values OF
+      FNil:
+        0,
+      FCons(element, children, rank, siblings):
+        1 + forest_length(siblings)
+    ENDCASES
+  MEASURE values BY <<
+
+  le_roots(
+      leq: [elt, elt -> bool],
+      element: elt,
+      values: forest): RECURSIVE bool =
+    CASES values OF
+      FNil:
+        TRUE,
+      FCons(root, children, rank, siblings):
+        leq(element, root)
+          AND le_roots(leq, element, siblings)
+    ENDCASES
+  MEASURE values BY <<
+
+  heaps(
+      leq: [elt, elt -> bool],
+      values: forest): RECURSIVE bool =
+    CASES values OF
+      FNil:
+        TRUE,
+      FCons(element, children, rank, siblings):
+        le_roots(leq, element, children)
+          AND heaps(leq, children)
+          AND heaps(leq, siblings)
+    ENDCASES
+  MEASURE values BY <<
+
+  occ(element: elt, values: forest): RECURSIVE int =
+    CASES values OF
+      FNil:
+        0,
+      FCons(root, children, rank, siblings):
+        (IF element = root THEN 1 ELSE 0 ENDIF)
+          + occ(element, children)
+          + occ(element, siblings)
+    ENDCASES
+  MEASURE values BY <<
+
+  forest_mem(element: elt, values: forest): bool =
+    0 < occ(element, values)
+
+  has_order(expected_rank: int, values: forest): RECURSIVE bool =
+    CASES values OF
+      FNil:
+        expected_rank = 0,
+      FCons(element, children, rank, siblings):
+        rank = expected_rank - 1
+          AND has_order(expected_rank - 1, children)
+          AND has_order(expected_rank - 1, siblings)
+    ENDCASES
+  MEASURE values BY <<
+
+  binomial_tree(children: forest, rank: int): bool =
+    rank = forest_length(children)
+      AND has_order(rank, children)
+
+  inv(minimum_rank: int, values: forest): RECURSIVE bool =
+    CASES values OF
+      FNil:
+        TRUE,
+      FCons(element, children, rank, siblings):
+        minimum_rank <= rank
+          AND binomial_tree(children, rank)
+          AND inv(rank + 1, siblings)
+    ENDCASES
+  MEASURE values BY <<
+
+  chosen_root(
+      leq: [elt, elt -> bool],
+      root, current: elt,
+      choice: elt): bool =
+    IF leq(root, current) THEN
+      choice = root
+    ELSE
+      choice = current
+    ENDIF
+
+  same_destructured_tail(values, expected_tail: forest): bool =
+    CASES values OF
+      FNil:
+        FALSE,
+      FCons(element, children, rank, actual_tail):
+        actual_tail = expected_tail
+    ENDCASES
+
+  recursive_step_postcondition(
+      leq: [elt, elt -> bool],
+      current: elt,
+      values: forest): bool =
+    CASES values OF
+      FNil:
+        TRUE,
+      FCons(root, children, rank, tail):
+        FORALL (choice: elt):
+          chosen_root(leq, root, current, choice)
+            IMPLIES
+              same_destructured_tail(values, tail)
+                AND heaps(leq, tail)
+    ENDCASES
+
+  recursive_result_antecedent(
+      leq: [elt, elt -> bool],
+      current: elt,
+      values: forest,
+      result: elt): bool =
+    CASES values OF
+      FNil:
+        result = current,
+      FCons(root, children, rank, tail):
+        EXISTS (choice: elt):
+          chosen_root(leq, root, current, choice)
+            AND
+          (result = choice OR forest_mem(result, tail))
+            AND leq(result, choice)
+            AND
+          (FORALL (x: elt):
+            forest_mem(x, tail) IMPLIES leq(result, x))
+    ENDCASES
+
+  recursive_result_conclusion(
+      leq: [elt, elt -> bool],
+      current: elt,
+      values: forest,
+      result: elt): bool =
+    (result = current OR forest_mem(result, values))
+      AND leq(result, current)
+      AND
+    (FORALL (x: elt):
+      forest_mem(x, values) IMPLIES leq(result, x))
+
+  recursive_call_obligation(
+      leq: [elt, elt -> bool],
+      outer_tail: forest,
+      current: elt,
+      values: forest): bool =
+    heaps(leq, values)
+      IMPLIES
+        (recursive_step_postcondition(leq, current, values)
+          AND
+        (FORALL (result: elt):
+          recursive_result_antecedent(
+            leq, current, values, result)
+            IMPLIES
+              recursive_result_conclusion(
+                leq, current, values, result))
+          AND heaps(leq, outer_tail))
+
+  final_result_antecedent(
+      leq: [elt, elt -> bool],
+      values: forest,
+      result: elt): bool =
+    CASES values OF
+      FNil:
+        FALSE,
+      FCons(root, children, rank, tail):
+        LET choice: elt = root
+        IN
+          (result = choice OR forest_mem(result, tail))
+            AND leq(result, choice)
+            AND
+          (FORALL (x: elt):
+            forest_mem(x, tail) IMPLIES leq(result, x))
+    ENDCASES
+
+  final_result_conclusion(
+      leq: [elt, elt -> bool],
+      values: forest,
+      result: elt): bool =
+    forest_mem(result, values)
+      AND
+    (FORALL (x: elt):
+      forest_mem(x, values) IMPLIES leq(result, x))
+
+  get_min_body(
+      leq: [elt, elt -> bool],
+      h: forest): bool =
+    CASES h OF
+      FNil:
+        FALSE,
+      FCons(root, children, rank, tail):
+        (FORALL (current: elt), (values: forest):
+          recursive_call_obligation(
+            leq, tail, current, values))
+          AND
+        (FORALL (result: elt):
+          final_result_antecedent(leq, h, result)
+            IMPLIES final_result_conclusion(leq, h, result))
+    ENDCASES
+
+  get_min_vc: bool =
+    FORALL
+        (leq: [elt, elt -> bool]),
+        (h: forest):
+      (preorder_laws(leq)
+        AND heaps(leq, h)
+        AND NOT FNil?(h))
+      IMPLIES get_min_body(leq, h)
+
+END binomial_heap_BinomialHeap_get_minqtvc

@@ -1,0 +1,57 @@
+% Statement-only formalization of PutnamBench artifact putnam_1962_b1:
+% the falling factorial of a sum satisfies the binomial convolution identity.
+% This file contains no proof.
+
+putnam_1962_b1: THEORY
+BEGIN
+  binomial_coefficient(n, k: nat): RECURSIVE nat =
+    IF k = 0 THEN
+      1
+    ELSIF n = 0 THEN
+      0
+    ELSE
+      binomial_coefficient(n - 1, k - 1)
+        + binomial_coefficient(n - 1, k)
+    ENDIF
+  MEASURE n
+
+  falling_factorial(x: real, n: nat): RECURSIVE real =
+    IF n = 0 THEN
+      1
+    ELSE
+      falling_factorial(x, n - 1) * (x - ((n - 1) :: real))
+    ENDIF
+  MEASURE n
+
+  falling_convolution_sum(
+      p: [nat -> [real -> real]],
+      x, y: real,
+      n, term_count: nat): RECURSIVE real =
+    IF term_count = 0 THEN
+      0
+    ELSE
+      LET k: nat = term_count - 1
+      IN
+        falling_convolution_sum(p, x, y, n, term_count - 1)
+          + IF k <= n THEN
+              (binomial_coefficient(n, k) :: real)
+                * p(k)(x)
+                * p(n - k)(y)
+            ELSE
+              0
+            ENDIF
+    ENDIF
+  MEASURE term_count
+
+  putnam_1962_b1: bool =
+    FORALL (p: [nat -> [real -> real]]), (x, y: real), (n: nat):
+      ((FORALL (z: real):
+          p(0)(z) = 1)
+        AND (FORALL (m: nat):
+          m > 0 IMPLIES
+            (FORALL (z: real):
+              p(m)(z) = falling_factorial(z, m))))
+      IMPLIES
+        p(n)(x + y)
+          = falling_convolution_sum(p, x, y, n, n + 1)
+END putnam_1962_b1

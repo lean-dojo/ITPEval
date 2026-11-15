@@ -1,0 +1,135 @@
+% Statement-only formalization of "Sum of the Angles of a Triangle" from Hundred
+% Theorems item 027. In an arbitrary real inner product space, the three unoriented
+% interior angles of any triangle whose vertices are not all equal sum to pi, with
+% a zero incident side assigned angle pi / 2. This file contains no proof.
+
+sum_of_the_angles_of_a_triangle_027[
+  V: TYPE+,
+  zero: V,
+  vadd: [V, V -> V],
+  vneg: [V -> V],
+  scale: [real, V -> V],
+  inner: [V, V -> real]
+]: THEORY
+BEGIN
+  vector_space_laws: bool =
+    (FORALL (u, v: V): vadd(u, v) = vadd(v, u))
+      AND (FORALL (u, v, w: V):
+        vadd(vadd(u, v), w) = vadd(u, vadd(v, w)))
+      AND (FORALL (u: V): vadd(u, zero) = u)
+      AND (FORALL (u: V): vadd(u, vneg(u)) = zero)
+      AND (FORALL (a: real), (u, v: V):
+        scale(a, vadd(u, v)) = vadd(scale(a, u), scale(a, v)))
+      AND (FORALL (a, b: real), (u: V):
+        scale(a + b, u) = vadd(scale(a, u), scale(b, u)))
+      AND (FORALL (a, b: real), (u: V):
+        scale(a * b, u) = scale(a, scale(b, u)))
+      AND (FORALL (u: V): scale(1, u) = u)
+      AND (FORALL (u: V): scale(0, u) = zero)
+      AND (FORALL (u: V): vneg(u) = scale(-1, u))
+
+  inner_product_laws: bool =
+    (FORALL (u, v, w: V):
+      inner(vadd(u, v), w) = inner(u, w) + inner(v, w))
+      AND (FORALL (a: real), (u, v: V):
+        inner(scale(a, u), v) = a * inner(u, v))
+      AND (FORALL (u, v: V): inner(u, v) = inner(v, u))
+      AND (FORALL (u: V): 0 <= inner(u, u))
+      AND (FORALL (u: V): inner(u, u) = 0 IFF u = zero)
+
+  real_inner_product_space: bool =
+    vector_space_laws AND inner_product_laws
+
+  displacement(P, Q: V): V =
+    vadd(Q, vneg(P))
+
+  squared_distance(P, Q: V): real =
+    inner(displacement(P, Q), displacement(P, Q))
+
+  dot_from(O, P, Q: V): real =
+    inner(displacement(O, P), displacement(O, Q))
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  alternating_sign(index: nat): RECURSIVE real =
+    IF index = 0 THEN
+      1
+    ELSE
+      -alternating_sign(index - 1)
+    ENDIF
+  MEASURE index
+
+  cosine_partial_sum(count: nat, x: real): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        cosine_partial_sum(count - 1, x)
+          + safe_div(
+              alternating_sign(index) * x ^ (2 * index),
+              factorial(2 * index) :: real)
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: [nat -> real], value: real): bool =
+    FORALL (eps: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (count: nat):
+          cutoff <= count IMPLIES
+            abs(sequence(count) - value) < eps
+
+  power_series_cosine(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          (LAMBDA (count: nat): cosine_partial_sum(count, x)),
+          value))
+
+  pi: real =
+    epsilon(
+      LAMBDA (value: real):
+        2 < value AND value < 4
+          AND power_series_cosine(value / 2) = 0)
+
+  positive_length(length: real, P, Q: V): bool =
+    0 < length
+      AND length * length = squared_distance(P, Q)
+
+  interior_angle_value(A, O, B: V, theta: real): bool =
+    0 <= theta
+      AND theta <= pi
+      AND
+      IF A = O OR B = O THEN
+        theta = pi / 2
+      ELSE
+        EXISTS (OA_length, OB_length: real):
+          positive_length(OA_length, O, A)
+            AND positive_length(OB_length, O, B)
+            AND power_series_cosine(theta) * OA_length * OB_length =
+              dot_from(O, A, B)
+      ENDIF
+
+  sum_of_the_angles_of_a_triangle: bool =
+    real_inner_product_space IMPLIES
+      (FORALL (A, B, C: V):
+        NOT (A = B AND B = C AND A = C)
+          IMPLIES
+            EXISTS (alpha, beta, gamma: real):
+              interior_angle_value(B, A, C, alpha)
+                AND interior_angle_value(A, B, C, beta)
+                AND interior_angle_value(B, C, A, gamma)
+                AND alpha + beta + gamma = pi)
+END sum_of_the_angles_of_a_triangle_027

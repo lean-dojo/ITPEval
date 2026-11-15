@@ -1,0 +1,206 @@
+% Statement-only formalization of the Thousand Theorems artifact Q2471737,
+% "Carathéodory's theorem (convex hull)": over any linearly ordered field and
+% module, a set's convex hull is the union of the convex hulls of its finite
+% affine-independent subsets. This file contains no proof.
+
+Q2471737_carath_odory_s_theorem_convex_hull[
+  K: TYPE+,
+  E: TYPE+,
+  zeroK, oneK: K,
+  negK, invK: [K -> K],
+  addK, mulK: [K, K -> K],
+  leK: [K, K -> bool],
+  zeroE: E,
+  negE: [E -> E],
+  addE: [E, E -> E],
+  smul: [K, E -> E]
+]: THEORY
+BEGIN
+  point_set: TYPE = [E -> bool]
+  scalar_family: TYPE = [E -> K]
+  vector_family: TYPE = [E -> E]
+
+  IMPORTING finite_sets[E]
+
+  additive_group_laws_K: bool =
+    (FORALL (x, y: K):
+      addK(x, y) = addK(y, x))
+      AND
+    (FORALL (x, y, z: K):
+      addK(addK(x, y), z) = addK(x, addK(y, z)))
+      AND
+    (FORALL (x: K):
+      addK(x, zeroK) = x
+        AND addK(x, negK(x)) = zeroK)
+
+  field_multiplication_laws: bool =
+    zeroK /= oneK
+      AND invK(zeroK) = zeroK
+      AND
+    (FORALL (x, y: K):
+      mulK(x, y) = mulK(y, x))
+      AND
+    (FORALL (x, y, z: K):
+      mulK(mulK(x, y), z) = mulK(x, mulK(y, z)))
+      AND
+    (FORALL (x: K):
+      mulK(x, oneK) = x)
+      AND
+    (FORALL (x, y, z: K):
+      mulK(x, addK(y, z)) =
+        addK(mulK(x, y), mulK(x, z)))
+      AND
+    (FORALL (x: K):
+      x /= zeroK IMPLIES mulK(x, invK(x)) = oneK)
+
+  linear_order_laws: bool =
+    (FORALL (x: K):
+      leK(x, x))
+      AND
+    (FORALL (x, y, z: K):
+      leK(x, y) AND leK(y, z) IMPLIES leK(x, z))
+      AND
+    (FORALL (x, y: K):
+      leK(x, y) AND leK(y, x) IMPLIES x = y)
+      AND
+    (FORALL (x, y: K):
+      leK(x, y) OR leK(y, x))
+
+  strictly_ordered_ring_laws: bool =
+    leK(zeroK, oneK)
+      AND
+    (FORALL (x, y, z: K):
+      leK(x, y) IMPLIES
+        leK(addK(x, z), addK(y, z)))
+      AND
+    (FORALL (x, y: K):
+      leK(zeroK, x) AND leK(zeroK, y)
+        IMPLIES leK(zeroK, mulK(x, y)))
+
+  linearly_ordered_field_laws: bool =
+    additive_group_laws_K
+      AND field_multiplication_laws
+      AND linear_order_laws
+      AND strictly_ordered_ring_laws
+
+  additive_commutative_group_laws_E: bool =
+    (FORALL (x, y: E):
+      addE(x, y) = addE(y, x))
+      AND
+    (FORALL (x, y, z: E):
+      addE(addE(x, y), z) = addE(x, addE(y, z)))
+      AND
+    (FORALL (x: E):
+      addE(x, zeroE) = x
+        AND addE(x, negE(x)) = zeroE)
+
+  module_laws: bool =
+    additive_commutative_group_laws_E
+      AND
+    (FORALL (a: K), (x, y: E):
+      smul(a, addE(x, y)) =
+        addE(smul(a, x), smul(a, y)))
+      AND
+    (FORALL (a, b: K), (x: E):
+      smul(addK(a, b), x) =
+        addE(smul(a, x), smul(b, x)))
+      AND
+    (FORALL (a, b: K), (x: E):
+      smul(mulK(a, b), x) =
+        smul(a, smul(b, x)))
+      AND
+    (FORALL (x: E):
+      smul(oneK, x) = x)
+
+  scalar_sum_value(
+      support: finite_set[E],
+      values: scalar_family,
+      total: K): bool =
+    EXISTS
+      (enumeration:
+        [below(card(support)) -> (support)]),
+      (partial_sums:
+        [upto(card(support)) -> K]):
+        bijective?(enumeration)
+          AND partial_sums(0) = zeroK
+          AND
+        (FORALL (n: below(card(support))):
+          partial_sums(n + 1) =
+            addK(
+              partial_sums(n),
+              values(enumeration(n))))
+          AND total = partial_sums(card(support))
+
+  vector_sum_value(
+      support: finite_set[E],
+      values: vector_family,
+      total: E): bool =
+    EXISTS
+      (enumeration:
+        [below(card(support)) -> (support)]),
+      (partial_sums:
+        [upto(card(support)) -> E]):
+        bijective?(enumeration)
+          AND partial_sums(0) = zeroE
+          AND
+        (FORALL (n: below(card(support))):
+          partial_sums(n + 1) =
+            addE(
+              partial_sums(n),
+              values(enumeration(n))))
+          AND total = partial_sums(card(support))
+
+  affine_independent(support: finite_set[E]): bool =
+    FORALL (weight: scalar_family):
+      (scalar_sum_value(support, weight, zeroK)
+        AND
+      vector_sum_value(
+        support,
+        (LAMBDA (x: E): smul(weight(x), x)),
+        zeroE))
+      IMPLIES
+        (FORALL (x: E):
+          member(x, support) IMPLIES weight(x) = zeroK)
+
+  point_subset(A, B: point_set): bool =
+    FORALL (x: E):
+      A(x) IMPLIES B(x)
+
+  finite_point_subset(
+      support: finite_set[E],
+      A: point_set): bool =
+    FORALL (x: E):
+      member(x, support) IMPLIES A(x)
+
+  finite_set_as_point_set(
+      support: finite_set[E]): point_set =
+    LAMBDA (x: E):
+      member(x, support)
+
+  convex(A: point_set): bool =
+    FORALL (x, y: E), (a, b: K):
+      A(x)
+        AND A(y)
+        AND leK(zeroK, a)
+        AND leK(zeroK, b)
+        AND addK(a, b) = oneK
+      IMPLIES
+        A(addE(smul(a, x), smul(b, y)))
+
+  convex_hull(A: point_set): point_set =
+    LAMBDA (x: E):
+      FORALL (C: point_set):
+        convex(C) AND point_subset(A, C) IMPLIES C(x)
+
+  convexHull_eq_union: bool =
+    (linearly_ordered_field_laws AND module_laws)
+    IMPLIES
+      FORALL (S: point_set), (x: E):
+        convex_hull(S)(x)
+          IFF
+        EXISTS (support: finite_set[E]):
+          finite_point_subset(support, S)
+            AND affine_independent(support)
+            AND convex_hull(
+              finite_set_as_point_set(support))(x)
+END Q2471737_carath_odory_s_theorem_convex_hull

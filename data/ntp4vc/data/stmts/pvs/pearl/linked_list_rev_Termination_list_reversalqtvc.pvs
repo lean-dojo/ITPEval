@@ -1,0 +1,273 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/linked_list_rev_Termination_list_reversalqtvc: the linked-list
+% reversal termination verification condition over finite memory, integer
+% visit ranks, seen-cell counts, and pointer updates. This file contains no proof.
+
+linked_list_rev_Termination_list_reversalqtvc[
+  loc: TYPE+,
+  null_loc: loc
+]: THEORY
+BEGIN
+
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  in_range(i, n: int): bool =
+    0 <= i AND i < n
+
+  valid_cells(s: [int -> loc], n: int): bool =
+    (FORALL (i: int):
+      in_range(i, n) IMPLIES s(i) /= null_loc)
+    AND
+    (FORALL (i, j: int):
+      in_range(i, n)
+        IMPLIES
+          in_range(j, n)
+            IMPLIES
+              i /= j
+                IMPLIES s(i) /= s(j))
+
+  inside_memory(
+      s: [int -> loc],
+      n: int,
+      location: loc): bool =
+    location = null_loc
+      OR
+    (EXISTS (i: int):
+      in_range(i, n) AND location = s(i))
+
+  finite_memory(
+      next: [loc -> loc],
+      s: [int -> loc],
+      n: int): bool =
+    FORALL (i: int):
+      in_range(i, n)
+        IMPLIES inside_memory(s, n, next(s(i)))
+
+  count_positive_span(
+      s: [int -> loc],
+      idx: [loc -> int],
+      lower: int,
+      span: nat): RECURSIVE int =
+    IF span = 0 THEN
+      0
+    ELSE
+      (IF 0 < idx(s(lower)) THEN 1 ELSE 0 ENDIF)
+        + count_positive_span(s, idx, lower + 1, span - 1)
+    ENDIF
+  MEASURE span
+
+  seen(
+      s: [int -> loc],
+      idx: [loc -> int],
+      lower, upper: int): int =
+    count_positive_span(
+      s,
+      idx,
+      lower,
+      int_to_nat(upper - lower))
+
+  initial_rank(location: loc): int =
+    IF location = null_loc THEN 0 ELSE -1 ENDIF
+
+  update_rank(
+      idx: [loc -> int],
+      point: loc,
+      value: int): [loc -> int] =
+    idx WITH [(point) := value]
+
+  update_next(
+      next: [loc -> loc],
+      point, value: loc): [loc -> loc] =
+    next WITH [(point) := value]
+
+  rank_bounds(
+      s: [int -> loc],
+      n: int,
+      idx: [loc -> int],
+      upper: int): bool =
+    FORALL (i: int):
+      in_range(i, n)
+        IMPLIES -1 <= idx(s(i)) AND idx(s(i)) <= upper
+
+  zero_exactly_null(idx: [loc -> int]): bool =
+    FORALL (p: loc):
+      (idx(p) = 0) IFF (p = null_loc)
+
+  chain_condition(
+      s: [int -> loc],
+      n: int,
+      next: [loc -> loc],
+      idx: [loc -> int],
+      r, l: loc,
+      upper: int): bool =
+    IF idx(l) = -1 THEN
+      idx(r) = upper
+        AND
+      (FORALL (i: int):
+        in_range(i, n)
+          IMPLIES
+            0 < idx(s(i))
+              IMPLIES
+                idx(next(s(i))) = idx(s(i)) - 1)
+    ELSE
+      FORALL (i: int):
+        in_range(i, n)
+          IMPLIES
+            (0 < idx(s(i)) AND idx(s(i)) <= idx(l))
+              IMPLIES
+                idx(next(s(i))) = idx(s(i)) - 1
+    ENDIF
+
+  loop_invariant(
+      s: [int -> loc],
+      n: int,
+      next: [loc -> loc],
+      idx: [loc -> int],
+      r, l: loc): bool =
+    LET count: int = seen(s, idx, 0, n) IN
+      inside_memory(s, n, l)
+        AND inside_memory(s, n, r)
+        AND finite_memory(next, s, n)
+        AND 0 <= count
+        AND rank_bounds(s, n, idx, count)
+        AND zero_exactly_null(idx)
+        AND chain_condition(s, n, next, idx, r, l, count)
+
+  initial_state(
+      s: [int -> loc],
+      n: int,
+      l: loc,
+      mem1: [loc -> loc]): bool =
+    LET idx: [loc -> int] = initial_rank,
+        count: int = seen(s, idx, 0, n)
+    IN
+      inside_memory(s, n, l)
+        AND inside_memory(s, n, null_loc)
+        AND finite_memory(mem1, s, n)
+        AND (0 = count AND 0 <= count)
+        AND rank_bounds(s, n, idx, 0)
+        AND zero_exactly_null(idx)
+        AND chain_condition(
+              s, n, mem1, idx, null_loc, l, 0)
+
+  updated_postcondition(
+      s: [int -> loc],
+      n: int,
+      idx: [loc -> int],
+      r, l1: loc,
+      mem3: [loc -> loc]): bool =
+    LET count: int = seen(s, idx, 0, n),
+        next_count: int = count + 1,
+        idx1: [loc -> int] =
+          update_rank(idx, l1, next_count),
+        mem4: [loc -> loc] =
+          update_next(mem3, l1, r),
+        next_location: loc = mem3(l1),
+        updated_seen: int = seen(s, idx1, 0, n)
+    IN
+      l1 /= null_loc
+        AND l1 /= null_loc
+        AND
+          ((0 <= n - count
+              AND n - next_count < n - count)
+            OR
+           (n - count = n - next_count
+              AND 0 <= 1 + idx(l1)
+              AND
+                1 + idx1(next_location)
+                  < 1 + idx(l1)))
+        AND inside_memory(s, n, next_location)
+        AND inside_memory(s, n, l1)
+        AND finite_memory(mem4, s, n)
+        AND
+          (next_count = updated_seen
+            AND 0 <= updated_seen)
+        AND rank_bounds(s, n, idx1, next_count)
+        AND zero_exactly_null(idx1)
+        AND chain_condition(
+              s,
+              n,
+              mem4,
+              idx1,
+              l1,
+              next_location,
+              next_count)
+
+  updated_case(
+      s: [int -> loc],
+      n: int,
+      idx: [loc -> int],
+      r, l1: loc,
+      mem3: [loc -> loc]): bool =
+    LET count: int = seen(s, idx, 0, n),
+        idx1: [loc -> int] =
+          update_rank(idx, l1, count + 1)
+    IN
+      (valid_cells(s, n)
+        AND inside_memory(s, n, l1)
+        AND l1 /= null_loc
+        AND idx(l1) = -1
+        AND 0 <= count)
+      AND
+      (seen(s, idx1, 0, n) = 1 + count
+        IMPLIES
+          updated_postcondition(
+            s, n, idx, r, l1, mem3))
+
+  nonupdated_case(
+      s: [int -> loc],
+      n: int,
+      idx: [loc -> int],
+      r, l1: loc,
+      mem3: [loc -> loc]): bool =
+    LET count: int = seen(s, idx, 0, n),
+        mem4: [loc -> loc] =
+          update_next(mem3, l1, r)
+    IN
+      l1 /= null_loc
+        AND l1 /= null_loc
+        AND
+          ((0 <= n - count
+              AND n - count < n - count)
+            OR
+           (0 <= 1 + idx(l1)
+              AND
+                1 + idx(mem3(l1))
+                  < 1 + idx(l1)))
+        AND inside_memory(s, n, mem3(l1))
+        AND inside_memory(s, n, l1)
+        AND finite_memory(mem4, s, n)
+        AND loop_invariant(
+              s, n, mem4, idx, l1, mem3(l1))
+
+  list_reversal_vc: bool =
+    FORALL
+      (mem1: [loc -> loc]),
+      (s: [int -> loc]),
+      (n: int),
+      (l: loc):
+      (0 <= n
+        AND valid_cells(s, n)
+        AND finite_memory(mem1, s, n)
+        AND inside_memory(s, n, l))
+      IMPLIES
+        (initial_state(s, n, l, mem1)
+          AND
+         (FORALL
+           (idx: [loc -> int]),
+           (r, l1: loc),
+           (mem3: [loc -> loc]):
+           loop_invariant(s, n, mem3, idx, r, l1)
+             IMPLIES
+               l1 /= null_loc
+                 IMPLIES
+                   IF idx(l1) = -1 THEN
+                     updated_case(
+                       s, n, idx, r, l1, mem3)
+                   ELSE
+                     nonupdated_case(
+                       s, n, idx, r, l1, mem3)
+                   ENDIF))
+
+END linked_list_rev_Termination_list_reversalqtvc

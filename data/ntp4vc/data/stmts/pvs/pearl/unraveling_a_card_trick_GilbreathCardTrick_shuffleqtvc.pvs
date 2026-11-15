@@ -1,0 +1,298 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/unraveling_a_card_trick_GilbreathCardTrick_shuffleqtvc: the
+% verification condition for a loop that riffle-shuffles two reversed card
+% stacks while preserving its shuffle invariants and decreasing variant. This
+% file contains no proof.
+
+unraveling_a_card_trick_GilbreathCardTrick_shuffleqtvc[
+  stack: TYPE+,
+  stack_elts: [stack -> list[int]]
+]: THEORY
+BEGIN
+
+  list_reverse(values: list[int]): RECURSIVE list[int] =
+    CASES values OF
+      null:
+        null,
+      cons(head, tail):
+        append(list_reverse(tail), cons(head, null))
+    ENDCASES
+  MEASURE values BY <<
+
+  stack_length(value: stack): int =
+    length(stack_elts(value))
+
+  shuffle(
+      left, right, combined: list[int]): INDUCTIVE bool =
+    (right = null AND combined = left)
+      OR
+    (left = null AND combined = right)
+      OR
+    (EXISTS
+        (head: int),
+        (left_tail, combined_tail: list[int]):
+      left = cons(head, left_tail)
+        AND combined = cons(head, combined_tail)
+        AND shuffle(left_tail, right, combined_tail))
+      OR
+    (EXISTS
+        (head: int),
+        (right_tail, combined_tail: list[int]):
+      right = cons(head, right_tail)
+        AND combined = cons(head, combined_tail)
+        AND shuffle(left, right_tail, combined_tail))
+
+  loop_invariant(
+      original_left, original_right,
+      remaining_left, remaining_right,
+      left_accumulator, right_accumulator,
+      combined: stack): bool =
+    list_reverse(stack_elts(original_left))
+        =
+      append(
+        list_reverse(stack_elts(remaining_left)),
+        stack_elts(left_accumulator))
+      AND
+    list_reverse(stack_elts(original_right))
+        =
+      append(
+        list_reverse(stack_elts(remaining_right)),
+        stack_elts(right_accumulator))
+      AND
+    shuffle(
+      stack_elts(left_accumulator),
+      stack_elts(right_accumulator),
+      stack_elts(combined))
+
+  top_characterization(
+      values: list[int],
+      top_card: int): bool =
+    CASES values OF
+      null:
+        FALSE,
+      cons(head, tail):
+        top_card = head
+    ENDCASES
+
+  pop_characterization(
+      values: list[int],
+      popped: int,
+      remainder: list[int]): bool =
+    CASES values OF
+      null:
+        FALSE,
+      cons(head, tail):
+        popped = head AND remainder = tail
+    ENDCASES
+
+  left_step(
+      original_left, original_right,
+      remaining_left, remaining_right,
+      left_accumulator, right_accumulator,
+      combined: stack): bool =
+    stack_elts(remaining_left) /= null
+      AND
+    (FORALL (top_card: int):
+      top_characterization(
+        stack_elts(remaining_left),
+        top_card)
+        IMPLIES
+          (FORALL (next_left_accumulator: stack):
+            stack_elts(next_left_accumulator)
+                = cons(top_card, stack_elts(left_accumulator))
+              IMPLIES
+                stack_elts(remaining_left) /= null
+                  AND
+                (FORALL
+                    (next_remaining_left: stack),
+                    (popped: int):
+                  pop_characterization(
+                    stack_elts(remaining_left),
+                    popped,
+                    stack_elts(next_remaining_left))
+                    IMPLIES
+                      (FORALL (next_combined: stack):
+                        stack_elts(next_combined)
+                            = cons(popped, stack_elts(combined))
+                          IMPLIES
+                            ((0
+                                <=
+                              stack_length(remaining_left)
+                                + stack_length(remaining_right))
+                              AND
+                            (stack_length(next_remaining_left)
+                                + stack_length(remaining_right)
+                              <
+                            stack_length(remaining_left)
+                                + stack_length(remaining_right)))
+                              AND
+                            loop_invariant(
+                              original_left,
+                              original_right,
+                              next_remaining_left,
+                              remaining_right,
+                              next_left_accumulator,
+                              right_accumulator,
+                              next_combined)))))
+
+  right_step(
+      original_left, original_right,
+      remaining_left, remaining_right,
+      left_accumulator, right_accumulator,
+      combined: stack): bool =
+    stack_elts(remaining_right) /= null
+      AND
+    (FORALL (top_card: int):
+      top_characterization(
+        stack_elts(remaining_right),
+        top_card)
+        IMPLIES
+          (FORALL (next_right_accumulator: stack):
+            stack_elts(next_right_accumulator)
+                = cons(top_card, stack_elts(right_accumulator))
+              IMPLIES
+                stack_elts(remaining_right) /= null
+                  AND
+                (FORALL
+                    (next_remaining_right: stack),
+                    (popped: int):
+                  pop_characterization(
+                    stack_elts(remaining_right),
+                    popped,
+                    stack_elts(next_remaining_right))
+                    IMPLIES
+                      (FORALL (next_combined: stack):
+                        stack_elts(next_combined)
+                            = cons(popped, stack_elts(combined))
+                          IMPLIES
+                            ((0
+                                <=
+                              stack_length(remaining_left)
+                                + stack_length(remaining_right))
+                              AND
+                            (stack_length(remaining_left)
+                                + stack_length(next_remaining_right)
+                              <
+                            stack_length(remaining_left)
+                                + stack_length(remaining_right)))
+                              AND
+                            loop_invariant(
+                              original_left,
+                              original_right,
+                              remaining_left,
+                              next_remaining_right,
+                              left_accumulator,
+                              next_right_accumulator,
+                              next_combined)))))
+
+  loop_guard_value(
+      remaining_left, remaining_right: stack,
+      guard_value: bool): bool =
+    IF stack_elts(remaining_left) = null THEN
+      guard_value =
+        (IF stack_elts(remaining_right) = null THEN
+           TRUE
+         ELSE
+           FALSE
+         ENDIF)
+    ELSE
+      guard_value = FALSE
+    ENDIF
+
+  branch_guard_value(
+      remaining_left, remaining_right: stack,
+      guard_value: bool): bool =
+    IF stack_elts(remaining_left) /= null THEN
+      stack_elts(remaining_right) = null
+        IMPLIES guard_value = TRUE
+    ELSE
+      guard_value = FALSE
+    ENDIF
+
+  loop_iteration_obligation(
+      original_left, original_right,
+      remaining_left, remaining_right,
+      left_accumulator, right_accumulator,
+      combined: stack): bool =
+    FORALL (loop_guard: bool):
+      loop_guard_value(
+        remaining_left,
+        remaining_right,
+        loop_guard)
+        IMPLIES
+          (IF loop_guard /= TRUE THEN
+             FORALL (branch_guard: bool):
+               branch_guard_value(
+                 remaining_left,
+                 remaining_right,
+                 branch_guard)
+                 IMPLIES
+                   (IF branch_guard = TRUE THEN
+                      left_step(
+                        original_left,
+                        original_right,
+                        remaining_left,
+                        remaining_right,
+                        left_accumulator,
+                        right_accumulator,
+                        combined)
+                    ELSE
+                      right_step(
+                        original_left,
+                        original_right,
+                        remaining_left,
+                        remaining_right,
+                        left_accumulator,
+                        right_accumulator,
+                        combined)
+                    ENDIF)
+           ELSE
+             stack_elts(remaining_left) = null
+               AND stack_elts(remaining_right) = null
+               AND
+             shuffle(
+               list_reverse(stack_elts(original_left)),
+               list_reverse(stack_elts(original_right)),
+               stack_elts(combined))
+           ENDIF)
+
+  shuffle_vc: bool =
+    FORALL
+        (combined, left_accumulator, right_accumulator,
+         original_left, original_right: stack):
+      (stack_elts(combined) = null
+        AND stack_elts(left_accumulator) = null
+        AND stack_elts(right_accumulator) = null)
+        IMPLIES
+          loop_invariant(
+            original_left,
+            original_right,
+            original_left,
+            original_right,
+            left_accumulator,
+            right_accumulator,
+            combined)
+          AND
+          (FORALL
+              (next_right_accumulator, next_left_accumulator,
+               next_combined, next_remaining_right,
+               next_remaining_left: stack):
+            loop_invariant(
+              original_left,
+              original_right,
+              next_remaining_left,
+              next_remaining_right,
+              next_left_accumulator,
+              next_right_accumulator,
+              next_combined)
+              IMPLIES
+                loop_iteration_obligation(
+                  original_left,
+                  original_right,
+                  next_remaining_left,
+                  next_remaining_right,
+                  next_left_accumulator,
+                  next_right_accumulator,
+                  next_combined))
+
+END unraveling_a_card_trick_GilbreathCardTrick_shuffleqtvc

@@ -1,0 +1,112 @@
+% Statement-only formalization of PutnamBench artifact putnam_1999_b2:
+% a complex polynomial satisfying P(x) = Q(x)P''(x) for a quadratic Q has
+% degree-many distinct roots if it has two distinct roots. This file contains
+% no proof.
+
+putnam_1999_b2: THEORY
+BEGIN
+  complex: TYPE = [# real_part: real, imag_part: real #]
+  coefficient_sequence: TYPE = [nat -> complex]
+  complex_sequence: TYPE = [nat -> complex]
+
+  complex_zero: complex =
+    (# real_part := 0, imag_part := 0 #)
+
+  complex_one: complex =
+    (# real_part := 1, imag_part := 0 #)
+
+  complex_add(x, y: complex): complex =
+    (# real_part := real_part(x) + real_part(y),
+       imag_part := imag_part(x) + imag_part(y) #)
+
+  complex_mul(x, y: complex): complex =
+    (# real_part := real_part(x) * real_part(y)
+                       - imag_part(x) * imag_part(y),
+       imag_part := real_part(x) * imag_part(y)
+                       + imag_part(x) * real_part(y) #)
+
+  complex_nat_mul(multiplier: nat, z: complex): complex =
+    (# real_part := multiplier * real_part(z),
+       imag_part := multiplier * imag_part(z) #)
+
+  complex_power(z: complex, exponent: nat): RECURSIVE complex =
+    IF exponent = 0 THEN
+      complex_one
+    ELSE
+      complex_mul(complex_power(z, exponent - 1), z)
+    ENDIF
+  MEASURE exponent
+
+  polynomial_value(
+      coefficients: coefficient_sequence,
+      z: complex,
+      count: nat): RECURSIVE complex =
+    IF count = 0 THEN
+      complex_zero
+    ELSE
+      LET k: nat = count - 1 IN
+        complex_add(
+          polynomial_value(coefficients, z, count - 1),
+          complex_mul(coefficients(k), complex_power(z, k)))
+    ENDIF
+  MEASURE count
+
+  second_derivative_value(
+      coefficients: coefficient_sequence,
+      z: complex,
+      count: nat): RECURSIVE complex =
+    IF count = 0 THEN
+      complex_zero
+    ELSE
+      LET k: nat = count - 1 IN
+        complex_add(
+          second_derivative_value(coefficients, z, count - 1),
+          complex_mul(
+            complex_nat_mul(
+              (k + 2) * (k + 1),
+              coefficients(k + 2)),
+            complex_power(z, k)))
+    ENDIF
+  MEASURE count
+
+  zero_polynomial(coefficients: coefficient_sequence): bool =
+    FORALL (k: nat): coefficients(k) = complex_zero
+
+  canonical_polynomial(
+      coefficients: coefficient_sequence,
+      degree: nat): bool =
+    (degree = 0 AND zero_polynomial(coefficients))
+      OR
+    (coefficients(degree) /= complex_zero
+      AND FORALL (k: nat):
+        degree < k IMPLIES coefficients(k) = complex_zero)
+
+  has_degree_many_distinct_roots(
+      coefficients: coefficient_sequence,
+      degree: nat): bool =
+    EXISTS (roots: complex_sequence):
+      (FORALL (i, j: nat):
+        (i < degree AND j < degree AND i /= j)
+          IMPLIES roots(i) /= roots(j))
+      AND
+      (FORALL (i: nat):
+        i < degree IMPLIES
+          polynomial_value(coefficients, roots(i), degree + 1)
+            = complex_zero)
+
+  putnam_1999_b2: bool =
+    FORALL (P, Q: coefficient_sequence), (degree: nat):
+      (canonical_polynomial(P, degree)
+        AND canonical_polynomial(Q, 2)
+        AND (FORALL (z: complex):
+          polynomial_value(P, z, degree + 1)
+            = complex_mul(
+                polynomial_value(Q, z, 3),
+                second_derivative_value(P, z, degree + 1))))
+      IMPLIES
+        ((EXISTS (x1, x2: complex):
+          x1 /= x2
+            AND polynomial_value(P, x1, degree + 1) = complex_zero
+            AND polynomial_value(P, x2, degree + 1) = complex_zero)
+          IMPLIES has_degree_many_distinct_roots(P, degree))
+END putnam_1999_b2

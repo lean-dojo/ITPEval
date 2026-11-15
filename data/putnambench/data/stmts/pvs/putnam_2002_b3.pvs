@@ -1,0 +1,62 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2002_b3:
+% for every integer n greater than one, 1/e - (1 - 1/n)^n lies strictly
+% between 1/(2ne) and 1/(ne). This file contains no proof.
+
+putnam_2002_b3: THEORY
+BEGIN
+  real_sequence: TYPE = [nat -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  nat_factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * nat_factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  exponential_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        exponential_partial(x, count - 1)
+          + safe_div(
+              x ^ index,
+              nat_factorial(index) :: real)
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  real_exponential(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat):
+            exponential_partial(x, count),
+          value))
+
+  putnam_2002_b3: bool =
+    FORALL (n: nat):
+      n > 1 IMPLIES
+        LET n_real: real = n,
+            e: real = real_exponential(1),
+            difference: real =
+              safe_div(1, e)
+                - (1 - safe_div(1, n_real)) ^ n
+        IN
+          safe_div(1, 2 * n_real * e) < difference
+            AND difference < safe_div(1, n_real * e)
+END putnam_2002_b3

@@ -1,0 +1,65 @@
+% Statement-only formalization of PutnamBench artifact putnam_1969_b3:
+% a real sequence satisfying T(n) * T(n + 1) = n for every n >= 1 and
+% T(n) / T(n + 1) converging to one has pi * T(1)^2 = 2. This file
+% contains no proof.
+
+putnam_1969_b3: THEORY
+BEGIN
+  real_sequence: TYPE = [nat -> real]
+
+  alternating_sign(index: nat): RECURSIVE real =
+    IF index = 0 THEN
+      1
+    ELSE
+      -alternating_sign(index - 1)
+    ENDIF
+  MEASURE index
+
+  leibniz_partial_sum(count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        leibniz_partial_sum(count - 1)
+          + alternating_sign(index)
+              / ((2 * index + 1) :: real)
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  is_pi(value: real): bool =
+    converges_to(
+      LAMBDA (count: nat):
+        4 * leibniz_partial_sum(count),
+      value)
+
+  pi: real =
+    epsilon(
+      LAMBDA (value: real):
+        is_pi(value))
+
+  real_quotient(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  putnam_1969_b3: bool =
+    FORALL (T: real_sequence):
+      ((FORALL (n: nat):
+          n >= 1 IMPLIES
+            T(n) * T(n + 1) = (n :: real))
+        AND converges_to(
+          LAMBDA (n: nat):
+            real_quotient(T(n), T(n + 1)),
+          1))
+      IMPLIES
+        pi * T(1) ^ 2 = 2
+END putnam_1969_b3

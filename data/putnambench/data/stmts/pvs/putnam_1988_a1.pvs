@@ -1,0 +1,84 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1988_a1:
+% the planar region satisfying |x| - |y| <= 1 and |y| <= 1 has Lebesgue area 6.
+% This file contains no proof.
+
+putnam_1988_a1: THEORY
+BEGIN
+  point: TYPE = [# x_coord: real, y_coord: real #]
+  planar_region: TYPE = [point -> bool]
+  real_sequence: TYPE = [nat -> real]
+
+  box: TYPE =
+    [# left: real, right: real, bottom: real, top: real #]
+  box_sequence: TYPE = [nat -> box]
+
+  in_open_box(p: point, b: box): bool =
+    left(b) < x_coord(p)
+      AND x_coord(p) < right(b)
+      AND bottom(b) < y_coord(p)
+      AND y_coord(p) < top(b)
+
+  box_area(b: box): real =
+    IF left(b) < right(b) AND bottom(b) < top(b) THEN
+      (right(b) - left(b)) * (top(b) - bottom(b))
+    ELSE
+      0
+    ENDIF
+
+  partial_box_area(
+      boxes: box_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      partial_box_area(boxes, count - 1)
+        + box_area(boxes(count - 1))
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  covers(region: planar_region, boxes: box_sequence): bool =
+    FORALL (p: point):
+      region(p) IMPLIES
+        EXISTS (index: nat):
+          in_open_box(p, boxes(index))
+
+  cover_has_total_area(
+      region: planar_region,
+      boxes: box_sequence,
+      total: real): bool =
+    covers(region, boxes)
+      AND converges_to(
+        LAMBDA (count: nat):
+          partial_box_area(boxes, count),
+        total)
+
+  has_lebesgue_outer_area(
+      region: planar_region,
+      area: real): bool =
+    0 <= area
+      AND (FORALL (boxes: box_sequence), (total: real):
+        cover_has_total_area(region, boxes, total)
+          IMPLIES area <= total)
+      AND (FORALL (epsilon_value: posreal):
+        EXISTS (boxes: box_sequence), (total: real):
+          cover_has_total_area(region, boxes, total)
+            AND total < area + epsilon_value)
+
+  putnam_1988_a1_solution: real = 6
+
+  putnam_1988_a1: bool =
+    FORALL (R: planar_region):
+      R = (LAMBDA (p: point):
+        abs(x_coord(p)) - abs(y_coord(p)) <= 1
+          AND abs(y_coord(p)) <= 1)
+      IMPLIES
+        has_lebesgue_outer_area(
+          R, putnam_1988_a1_solution)
+END putnam_1988_a1

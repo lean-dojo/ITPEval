@@ -1,0 +1,107 @@
+% Statement-only formalization of the VERINA corpus artifact
+% verina_advanced_54, catalog title "missingNumber": summing a duplicate-free
+% list of naturals from 0 through its length and returning the unique omitted
+% number by triangular-sum subtraction. This file contains no proof.
+
+verina_advanced_54: THEORY
+BEGIN
+
+  nat_list_length(values: list[nat]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        nat_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  nat_member(
+      value: nat,
+      values: list[nat]): RECURSIVE bool =
+    CASES values OF
+      null:
+        FALSE,
+      cons(head, tail):
+        value = head OR nat_member(value, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  no_duplicates(values: list[nat]): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        NOT nat_member(head, tail)
+          AND no_duplicates(tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  all_at_most(
+      values: list[nat],
+      upper_bound: nat): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        head <= upper_bound
+          AND all_at_most(tail, upper_bound)
+    ENDCASES
+  MEASURE values BY <<
+
+  missingNumber_precond(nums: list[nat]): bool =
+    all_at_most(nums, nat_list_length(nums))
+      AND no_duplicates(nums)
+
+  nat_sum_fold(
+      values: list[nat],
+      accumulator: nat): RECURSIVE nat =
+    CASES values OF
+      null:
+        accumulator,
+      cons(head, tail):
+        nat_sum_fold(tail, accumulator + head)
+    ENDCASES
+  MEASURE values BY <<
+
+  % Exact floor division by two on natural numbers.
+  nat_half(value: nat): RECURSIVE nat =
+    IF value < 2 THEN
+      0
+    ELSE
+      nat_half(value - 2) + 1
+    ENDIF
+  MEASURE value
+
+  % Lean natural-number subtraction is truncated at zero.
+  nat_subtract(first, second: nat): nat =
+    IF first >= second THEN first - second ELSE 0 ENDIF
+
+  % The Lean precondition proof argument is computationally irrelevant. This
+  % definition is its exact proof-erased executable computation.
+  missingNumber(nums: list[nat]): nat =
+    LET n: nat = nat_list_length(nums),
+        expectedSum: nat = nat_half(n * (n + 1)),
+        actualSum: nat = nat_sum_fold(nums, 0)
+    IN
+      nat_subtract(expectedSum, actualSum)
+
+  missingNumber_postcond(
+      nums: list[nat],
+      result: nat): bool =
+    LET n: nat = nat_list_length(nums)
+    IN
+      result <= n
+        AND NOT nat_member(result, nums)
+        AND (FORALL (x: nat):
+          (x <= n AND x /= result)
+            IMPLIES nat_member(x, nums))
+
+  missingNumber_spec_satisfied: bool =
+    FORALL (nums: list[nat]):
+      missingNumber_precond(nums)
+        IMPLIES
+          missingNumber_postcond(
+            nums,
+            missingNumber(nums))
+
+END verina_advanced_54

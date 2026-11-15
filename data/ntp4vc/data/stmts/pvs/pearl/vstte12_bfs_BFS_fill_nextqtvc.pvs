@@ -1,0 +1,332 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/vstte12_bfs_BFS_fill_nextqtvc: the breadth-first-search fill-next
+% verification condition for preserving shortest-path frontiers, successor
+% closure, finite-set updates, and loop progress. This file contains no proof.
+
+vstte12_bfs_BFS_fill_nextqtvc[
+  vertex, set_value: TYPE+,
+  successor: [vertex -> finite_set[vertex]],
+  to_fset: [set_value -> finite_set[vertex]],
+  choose1: [set_value -> vertex]
+]: THEORY
+BEGIN
+
+  IMPORTING finite_sets[vertex]
+
+  path(
+      source, destination: vertex,
+      path_length: int): INDUCTIVE bool =
+    (source = destination AND path_length = 0)
+      OR
+    (EXISTS (previous: vertex), (previous_length: int):
+      path(source, previous, previous_length)
+        AND successor(previous)(destination)
+        AND path_length = previous_length + 1)
+
+  shortest_path(
+      source, destination: vertex,
+      path_length: int): bool =
+    path(source, destination, path_length)
+      AND
+    (FORALL (other_length: int):
+      other_length < path_length
+        IMPLIES
+          NOT path(source, destination, other_length))
+
+  inv(
+      source, target: vertex,
+      visited, current, next_set: finite_set[vertex],
+      depth: int): bool =
+    subset?(current, visited)
+      AND
+    (FORALL (x: vertex):
+      current(x)
+        IMPLIES shortest_path(source, x, depth))
+      AND
+    subset?(next_set, visited)
+      AND
+    (FORALL (x: vertex):
+      next_set(x)
+        IMPLIES shortest_path(source, x, depth + 1))
+      AND
+    (FORALL (x: vertex), (path_length: int):
+      path(source, x, path_length)
+        IMPLIES
+          path_length <= depth
+            IMPLIES visited(x))
+      AND
+    (FORALL (x: vertex):
+      visited(x)
+        IMPLIES
+          (EXISTS (path_length: int):
+            path(source, x, path_length)
+              AND path_length <= depth + 1))
+      AND
+    (FORALL (x: vertex):
+      shortest_path(source, x, depth + 1)
+        IMPLIES next_set(x) OR NOT visited(x))
+      AND
+    (visited(target)
+      IMPLIES current(target) OR next_set(target))
+
+  closed_after_frontiers(
+      visited, current, next_set: finite_set[vertex],
+      x: vertex): bool =
+    visited(x)
+      IMPLIES
+        NOT current(x)
+          IMPLIES
+            NOT next_set(x)
+              IMPLIES
+                (FORALL (y: vertex):
+                  successor(x)(y)
+                    IMPLIES visited(y))
+
+  set_specification: bool =
+    FORALL (selected_set: set_value):
+      to_fset(selected_set) /= emptyset[vertex]
+        IMPLIES
+          to_fset(selected_set)(choose1(selected_set))
+
+  fill_next_vc: bool =
+    set_specification
+      IMPLIES
+        (FORALL
+            (source, target: vertex),
+            (visited, current, next_set: set_value),
+            (depth: int),
+            (selected: vertex),
+            (accumulator: set_value):
+          inv(
+            source, target,
+            to_fset(visited),
+            to_fset(current),
+            to_fset(next_set),
+            depth)
+            IMPLIES
+          shortest_path(source, selected, depth)
+            IMPLIES
+          (FORALL (x: vertex):
+            x /= selected
+              IMPLIES
+                closed_after_frontiers(
+                  to_fset(visited),
+                  to_fset(current),
+                  to_fset(next_set),
+                  x))
+            IMPLIES
+          to_fset(accumulator) = successor(selected)
+            IMPLIES
+              inv(
+                source, target,
+                to_fset(visited),
+                to_fset(current),
+                to_fset(next_set),
+                depth)
+              AND
+              subset?(
+                to_fset(accumulator),
+                successor(selected))
+              AND
+              subset?(
+                difference(
+                  successor(selected),
+                  to_fset(accumulator)),
+                to_fset(visited))
+              AND
+              (FORALL (x: vertex):
+                x /= selected
+                  IMPLIES
+                    closed_after_frontiers(
+                      to_fset(visited),
+                      to_fset(current),
+                      to_fset(next_set),
+                      x))
+              AND
+              (FORALL
+                  (accumulator1, next1, visited1: set_value):
+                (inv(
+                   source, target,
+                   to_fset(visited1),
+                   to_fset(current),
+                   to_fset(next1),
+                   depth)
+                  AND
+                  subset?(
+                    to_fset(accumulator1),
+                    successor(selected))
+                  AND
+                  subset?(
+                    difference(
+                      successor(selected),
+                      to_fset(accumulator1)),
+                    to_fset(visited1))
+                  AND
+                  (FORALL (x: vertex):
+                    x /= selected
+                      IMPLIES
+                        closed_after_frontiers(
+                          to_fset(visited1),
+                          to_fset(current),
+                          to_fset(next1),
+                          x)))
+                  IMPLIES
+                    IF to_fset(accumulator1)
+                         /= emptyset[vertex]
+                    THEN
+                      to_fset(accumulator1)
+                        /= emptyset[vertex]
+                      AND
+                      (FORALL (accumulator2: set_value):
+                        LET w: vertex = choose1(accumulator1)
+                        IN
+                          (to_fset(accumulator1)(w)
+                            AND
+                           to_fset(accumulator2)
+                             = remove(
+                                 w,
+                                 to_fset(accumulator1)))
+                            IMPLIES
+                              IF NOT to_fset(visited1)(w)
+                              THEN
+                                (FORALL (visited2: set_value):
+                                  (to_fset(visited2)
+                                     = add(
+                                         w,
+                                         to_fset(visited1))
+                                    AND
+                                   (IF to_fset(visited1)(w)
+                                    THEN
+                                      card(to_fset(visited2))
+                                        =
+                                      card(to_fset(visited1))
+                                    ELSE
+                                      (card(to_fset(visited2))
+                                         :: int)
+                                        =
+                                      (card(to_fset(visited1))
+                                         :: int)
+                                        + 1
+                                    ENDIF))
+                                    IMPLIES
+                                      (FORALL (next2: set_value):
+                                        (to_fset(next2)
+                                           = add(
+                                               w,
+                                               to_fset(next1))
+                                          AND
+                                         (IF to_fset(next1)(w)
+                                          THEN
+                                            card(to_fset(next2))
+                                              =
+                                            card(to_fset(next1))
+                                          ELSE
+                                            (card(to_fset(next2))
+                                               :: int)
+                                              =
+                                            (card(to_fset(next1))
+                                               :: int)
+                                              + 1
+                                          ENDIF))
+                                          IMPLIES
+                                            ((0
+                                                <=
+                                              (card(
+                                                 to_fset(
+                                                   accumulator1))
+                                                 :: int))
+                                              AND
+                                             card(
+                                               to_fset(
+                                                 accumulator2))
+                                               <
+                                             card(
+                                               to_fset(
+                                                 accumulator1)))
+                                            AND
+                                            inv(
+                                              source, target,
+                                              to_fset(visited2),
+                                              to_fset(current),
+                                              to_fset(next2),
+                                              depth)
+                                            AND
+                                            subset?(
+                                              to_fset(accumulator2),
+                                              successor(selected))
+                                            AND
+                                            subset?(
+                                              difference(
+                                                successor(selected),
+                                                to_fset(
+                                                  accumulator2)),
+                                              to_fset(visited2))
+                                            AND
+                                            (FORALL (x: vertex):
+                                              x /= selected
+                                                IMPLIES
+                                                  closed_after_frontiers(
+                                                    to_fset(
+                                                      visited2),
+                                                    to_fset(
+                                                      current),
+                                                    to_fset(next2),
+                                                    x))))
+                              ELSE
+                                ((0
+                                    <=
+                                  (card(
+                                     to_fset(accumulator1))
+                                     :: int))
+                                  AND
+                                 card(to_fset(accumulator2))
+                                   <
+                                 card(to_fset(accumulator1)))
+                                AND
+                                inv(
+                                  source, target,
+                                  to_fset(visited1),
+                                  to_fset(current),
+                                  to_fset(next1),
+                                  depth)
+                                AND
+                                subset?(
+                                  to_fset(accumulator2),
+                                  successor(selected))
+                                AND
+                                subset?(
+                                  difference(
+                                    successor(selected),
+                                    to_fset(accumulator2)),
+                                  to_fset(visited1))
+                                AND
+                                (FORALL (x: vertex):
+                                  x /= selected
+                                    IMPLIES
+                                      closed_after_frontiers(
+                                        to_fset(visited1),
+                                        to_fset(current),
+                                        to_fset(next1),
+                                        x))
+                              ENDIF)
+                    ELSE
+                      inv(
+                        source, target,
+                        to_fset(visited1),
+                        to_fset(current),
+                        to_fset(next1),
+                        depth)
+                      AND
+                      subset?(
+                        successor(selected),
+                        to_fset(visited1))
+                      AND
+                      (FORALL (x: vertex):
+                        closed_after_frontiers(
+                          to_fset(visited1),
+                          to_fset(current),
+                          to_fset(next1),
+                          x))
+                    ENDIF))
+
+END vstte12_bfs_BFS_fill_nextqtvc

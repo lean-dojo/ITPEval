@@ -1,0 +1,88 @@
+% Statement-only formalization of PutnamBench artifact putnam_1964_b1:
+% for a positive-integer sequence whose reciprocal series converges, the
+% number of terms at most n divided by n tends to zero. This file contains
+% no proof.
+
+putnam_1964_b1: THEORY
+BEGIN
+  natural_sequence: TYPE = [nat -> nat]
+  real_sequence: TYPE = [nat -> real]
+  natural_set: TYPE = [nat -> bool]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  partial_sum(values: real_sequence, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      partial_sum(values, count - 1) + values(count - 1)
+    ENDIF
+  MEASURE count
+
+  series_converges(values: real_sequence): bool =
+    EXISTS (total: real):
+      FORALL (epsilon_value: posreal):
+        EXISTS (cutoff: nat):
+          FORALL (count: nat):
+            cutoff <= count IMPLIES
+              abs(partial_sum(values, count) - total) < epsilon_value
+
+  reciprocal_terms(a: natural_sequence): real_sequence =
+    LAMBDA (index: nat):
+      safe_div(1, a(index) :: real)
+
+  injective_below(
+      enumeration: natural_sequence,
+      bound: nat): bool =
+    FORALL (i, j: nat):
+      i < bound AND j < bound
+        AND enumeration(i) = enumeration(j)
+      IMPLIES i = j
+
+  enumerates_exactly(
+      enumeration: natural_sequence,
+      set_value: natural_set,
+      bound: nat): bool =
+    FORALL (index: nat):
+      set_value(index)
+        IFF
+          EXISTS (position: nat):
+            position < bound AND enumeration(position) = index
+
+  has_cardinality(set_value: natural_set, cardinality: nat): bool =
+    EXISTS (enumeration: natural_sequence):
+      injective_below(enumeration, cardinality)
+        AND enumerates_exactly(enumeration, set_value, cardinality)
+
+  terms_at_most(a: natural_sequence, bound: nat): natural_set =
+    LAMBDA (index: nat):
+      a(index) <= bound
+
+  counts_terms_at_most(
+      a, b: natural_sequence): bool =
+    FORALL (bound: nat):
+      has_cardinality(terms_at_most(a, bound), b(bound))
+
+  tends_to_zero(values: real_sequence): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(values(index)) < epsilon_value
+
+  count_ratios(b: natural_sequence): real_sequence =
+    LAMBDA (index: nat):
+      safe_div(b(index) :: real, index :: real)
+
+  putnam_1964_b1: bool =
+    FORALL (a, b: natural_sequence):
+      ((FORALL (index: nat): 0 < a(index))
+        AND series_converges(reciprocal_terms(a))
+        AND counts_terms_at_most(a, b))
+      IMPLIES tends_to_zero(count_ratios(b))
+END putnam_1964_b1

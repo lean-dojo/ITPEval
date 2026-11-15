@@ -1,0 +1,129 @@
+% Statement-only formalization of the VERINA corpus artifact verina_basic_67
+% (verina__pvs__verina_basic_67), catalog title "IsPalindrome": deciding
+% whether a finite list of Unicode scalar characters reads identically from
+% both ends, with the exact recursive program and correctness contract.
+% This file contains no proof.
+
+verina_basic_67: THEORY
+BEGIN
+
+  % Lean Char is exactly the type of Unicode scalar values.
+  lean_char: TYPE =
+    {codepoint: nat |
+      codepoint < 1114112
+        AND (codepoint < 55296 OR codepoint >= 57344)}
+
+  lean_char_option: DATATYPE
+  BEGIN
+    NoLeanChar: NoLeanChar?
+    SomeLeanChar(option_value: lean_char): SomeLeanChar?
+  END lean_char_option
+
+  lean_char_list_length(
+      values: list[lean_char]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        lean_char_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  % This is Lean List.get?: an out-of-range lookup returns none.
+  lean_char_list_get_option(
+      index: nat,
+      values: list[lean_char]): RECURSIVE lean_char_option =
+    CASES values OF
+      null:
+        NoLeanChar,
+      cons(head, tail):
+        IF index = 0 THEN
+          SomeLeanChar(head)
+        ELSE
+          lean_char_list_get_option(index - 1, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  % Lean List.get! for characters returns the null character outside the list.
+  lean_char_list_get_bang(
+      index: nat,
+      values: list[lean_char]): RECURSIVE lean_char =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          lean_char_list_get_bang(index - 1, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  IsPalindrome_precond(x: list[lean_char]): bool =
+    TRUE
+
+  isPalindromeHelper(
+      x: list[lean_char],
+      i, j: nat): RECURSIVE bool =
+    IF i < j THEN
+      CASES lean_char_list_get_option(i, x) OF
+        NoLeanChar:
+          FALSE,
+        SomeLeanChar(ci):
+          CASES lean_char_list_get_option(j, x) OF
+            NoLeanChar:
+              FALSE,
+            SomeLeanChar(cj):
+              IF ci /= cj THEN
+                FALSE
+              ELSE
+                isPalindromeHelper(
+                  x,
+                  i + 1,
+                  j - 1)
+              ENDIF
+          ENDCASES
+      ENDCASES
+    ELSE
+      TRUE
+    ENDIF
+  MEASURE j
+
+  % The source precondition proof argument is computationally irrelevant.
+  IsPalindrome(x: list[lean_char]): bool =
+    LET length: nat = lean_char_list_length(x)
+    IN
+      IF length = 0 THEN
+        TRUE
+      ELSE
+        isPalindromeHelper(
+          x,
+          0,
+          length - 1)
+      ENDIF
+
+  % The source proof argument to the postcondition is logically irrelevant.
+  IsPalindrome_postcond(
+      x: list[lean_char],
+      result: bool): bool =
+    result IFF
+      (FORALL (i: nat):
+        i < lean_char_list_length(x)
+          IMPLIES
+            lean_char_list_get_bang(i, x)
+              =
+            lean_char_list_get_bang(
+              lean_char_list_length(x) - i - 1,
+              x))
+
+  IsPalindrome_spec_satisfied: bool =
+    FORALL (x: list[lean_char]):
+      IsPalindrome_precond(x)
+        IMPLIES
+          IsPalindrome_postcond(
+            x,
+            IsPalindrome(x))
+
+END verina_basic_67

@@ -1,0 +1,250 @@
+(** {1 Euler Project, problem 1}
+
+If we list all the natural numbers below 10 that are multiples of 3 or
+5, we get 3, 5, 6 and 9. The sum of these multiples is 23.
+
+Find the sum of all the multiples of 3 or 5 below 1000.*)
+
+theory DivModHints
+
+  use int.Int
+  use int.ComputerDivision
+
+  let ghost mod_div_unique (x y q r:int) : unit
+     requires { x >= 0 /\ y > 0 /\ x = q*y + r /\ 0 <= r < y }
+     ensures { q = div x y /\ r = mod x y }
+  = ()
+
+  let ghost mod_succ_1 (x y:int) : unit
+    requires { x >= 0 /\ y > 0 }
+    requires { mod (x+1) y <> 0 }
+    ensures { mod (x+1) y = (mod x y) + 1 }
+  = ()
+
+  let ghost mod_succ_2 (x y:int) : unit
+     requires { x >= 0 /\ y > 0 }
+     requires { mod (x+1) y = 0 }
+     ensures { mod x y = y-1 }
+  = ()
+
+  let ghost div_succ_1 (x y:int) : unit
+    requires { x >= 0 /\ y > 0 }
+    requires { mod (x+1) y = 0 }
+    ensures  { div (x+1) y = (div x y) + 1 }
+  = ()
+
+  let ghost div_succ_2 (x y:int) : unit
+    requires { x >= 0 /\ y > 0 }
+    requires { mod (x+1) y <> 0 }
+    ensures  { div (x+1) y = (div x y) }
+  = ()
+
+  let ghost mod2_mul2 (x:int) : unit
+    ensures  { mod (2 * x) 2 = 0 }
+  = ()
+
+  let ghost mod2_mul2_aux (x y:int) : unit
+    ensures  { mod (y * (2 * x)) 2 = 0 }
+  = ()
+
+  let ghost mod2_mul2_aux2 (x y z t:int) : unit
+    ensures  { mod (y * (2 * x) + z * (2 * t)) 2 = 0 }
+  = ()
+
+  let ghost div2_mul2 (x:int) : unit
+    ensures  { div (2 * x) 2 = x }
+  = ()
+
+  let ghost div2_mul2_aux (x y:int) : unit
+    ensures  { div (y * (2 * x)) 2 = y * x }
+  = ()
+
+  let ghost div2_add (x y:int) : unit
+    requires { mod x 2 = 0 /\ mod y 2 = 0 }
+    ensures  { div (x+y) 2 = div x 2 + div y 2 }
+  = ()
+
+  let ghost div2_sub (x y:int) : unit
+    requires { mod x 2 = 0 /\ mod y 2 = 0 }
+    ensures  { div (x-y) 2 = div x 2 - div y 2 }
+  = ()
+
+end
+
+theory TriangularNumbers
+
+  use int.Int
+  use int.ComputerDivision
+  use int.Div2
+  use DivModHints as DMH
+
+  let ghost tr_mod_2 (n:int) : unit
+    requires { n >= 0 }
+    ensures  { mod (n*(n+1)) 2 = 0 }
+  = ()
+
+  function tr (n:int) : int =  div (n*(n+1)) 2
+
+  let ghost tr_repr (n:int) : unit
+    requires { n >= 0 }
+    ensures  { n*(n+1) = 2 * tr n }
+  = ()
+
+  let ghost tr_succ (n:int) : unit
+    requires { n >= 0 }
+    ensures  { tr (n+1) = tr n + n + 1 }
+  = ()
+
+end
+
+
+theory SumMultiple
+
+  use int.Int
+  use int.ComputerDivision
+
+  (* [sum_multiple_3_5_lt n] is the sum of all the multiples
+     of 3 or 5 below n] *)
+  function sum_multiple_3_5_lt int : int
+
+  axiom SumEmpty: sum_multiple_3_5_lt 0 = 0
+
+  axiom SumNo : forall n:int. n >= 0 ->
+    mod n 3 <> 0 /\ mod n 5 <> 0 ->
+    sum_multiple_3_5_lt (n+1) = sum_multiple_3_5_lt n
+
+  axiom SumYes: forall n:int. n >= 0 ->
+    mod n 3 = 0 \/ mod n 5 = 0 ->
+    sum_multiple_3_5_lt (n+1) = sum_multiple_3_5_lt n + n
+
+  use TriangularNumbers
+
+  function closed_formula_aux (n:int) : int =
+    let n3 = div n 3 in
+    let n5 = div n 5 in
+    let n15 = div n 15 in
+    3 * tr n3 + 5 * tr n5 - 15 * tr n15
+
+  predicate p (n:int) = sum_multiple_3_5_lt (n+1) = closed_formula_aux n
+
+  use DivModHints as DMH
+
+  let ghost mod_15 (n:int) : unit
+    ensures  { mod n 15 = 0 <-> mod n 3 = 0 /\ mod n 5 = 0 }
+  = ()
+
+  let ghost closed_formula_0 () : unit
+    ensures  { p 0 }
+  = ()
+
+  let ghost closed_formula_n (n:int) : unit
+    requires { n > 0 }
+    requires { p (n-1) }
+    requires { mod n 3 <> 0 /\ mod n 5 <> 0 }
+    ensures  { p n }
+  = ()
+
+  let ghost closed_formula_n_3 (n:int) : unit
+    requires { n > 0 }
+    requires { p (n-1) }
+    requires { mod n 3 = 0 /\ mod n 5 <> 0 }
+    ensures  { p n }
+  = ()
+
+  let ghost closed_formula_n_5 (n:int) : unit
+    requires { n > 0 }
+    requires { p (n-1) }
+    requires { mod n 3 <> 0 /\ mod n 5 = 0 }
+    ensures  { p n }
+  = ()
+
+  let ghost closed_formula_n_15 (n:int) : unit
+    requires { n > 0 }
+    requires { p (n-1) }
+    requires { mod n 3 = 0 /\ mod n 5 = 0 }
+    ensures  { p n }
+  = ()
+
+  constant b : int = 0
+
+  clone int.Induction as I with constant bound = b, predicate p = p
+
+  let ghost closed_formula_ind (n:int) : unit
+    requires { 0 <= n }
+    ensures  { p n }
+  = ()
+
+  function closed_formula (n:int) : int =
+    let n3 = div n 3 in
+    let n5 = div n 5 in
+    let n15 = div n 15 in
+    div (3 * (n3 * (n3+1)) +
+         5 * (n5 * (n5+1)) -
+         15 * (n15 * (n15+1))) 2
+
+  let ghost div_15 (n:int) : unit
+    requires { 0 <= n }
+    ensures  { div n 15 >= 0 }
+  = ()
+
+  let ghost div_5 (n:int) : unit
+    requires { 0 <= n }
+    ensures  { div n 5 >= 0 }
+  = ()
+
+  let ghost div_3 (n:int) : unit
+    requires { 0 <= n }
+    ensures  { div n 3 >= 0 }
+  = ()
+
+  let ghost closed_Formula (n:int) : unit
+    requires { 0 <= n }
+    ensures  { sum_multiple_3_5_lt (n+1) = closed_formula n }
+  = ()
+
+end
+
+module Euler001
+
+  use SumMultiple
+  use int.Int
+  use mach.int.Int
+
+  let solve n
+    requires { n >= 1 }
+    ensures  { result = sum_multiple_3_5_lt n }
+  = let n3 = (n-1) / 3 in
+    let n5 = (n-1) / 5 in
+    let n15 = (n-1) / 15 in
+    (3 * n3 * (n3+1) + 5 * n5 * (n5+1) - 15 * n15 * (n15+1)) / 2
+
+  (** Small test. Run it with
+
+      `why3 execute examples/euler001.mlw --use=Euler001 "run ()"`
+
+      Should return 233168.
+  *)
+  let run () = solve 1000
+
+  (** for the Why3 bench *)
+
+  exception BenchFailure
+
+  let bench () raises { BenchFailure -> true } =
+    let x = run () in
+    if x <> 233168 then raise BenchFailure;
+    x
+
+  (** for extraction *)
+
+(*
+  use io.StdIO
+  use ref.Ref
+
+  let go () =
+    print_string "GO: ";
+    print_int (run ());
+    print_newline ()
+*)
+
+end

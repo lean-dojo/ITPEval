@@ -1,0 +1,237 @@
+% Statement-only formalization of the VERINA corpus artifact
+% verina_advanced_46, catalog title "maxSubarraySum": the specified recursive
+% program computes an integer result and its contract characterizes it as the
+% maximum sum among all contiguous slices, including the empty slice. This file contains no proof.
+
+verina_advanced_46: THEORY
+BEGIN
+
+  maxSubarraySum_precond(numbers: list[int]): bool =
+    TRUE
+
+  int_max(first, second: int): int =
+    IF first >= second THEN first ELSE second ENDIF
+
+  isAllNegative(numbers: list[int]): RECURSIVE bool =
+    CASES numbers OF
+      null:
+        TRUE,
+      cons(x, xs):
+        IF x >= 0 THEN
+          FALSE
+        ELSE
+          isAllNegative(xs)
+        ENDIF
+    ENDCASES
+  MEASURE numbers BY <<
+
+  findMaxProduct(
+      numbers: list[int],
+      currMax, currSum: int): RECURSIVE int =
+    CASES numbers OF
+      null:
+        currMax,
+      cons(x, xs):
+        CASES xs OF
+          null:
+            int_max(currMax, x),
+          cons(y, rest):
+            LET newSum: int =
+                  int_max(y, currSum + y),
+                newMax: int =
+                  int_max(currMax, newSum)
+            IN
+              findMaxProduct(
+                xs,
+                newMax,
+                newSum)
+        ENDCASES
+    ENDCASES
+  MEASURE numbers BY <<
+
+  int_to_nat_as_int(value: int): int =
+    IF value >= 0 THEN value ELSE 0 ENDIF
+
+  maxSubarraySum(numbers: list[int]): int =
+    CASES numbers OF
+      null:
+        0,
+      cons(x, rest):
+        IF isAllNegative(numbers) THEN
+          0
+        ELSE
+          LET initialMax: int = int_max(0, x),
+              startSum: int = int_max(0, x),
+              result: int =
+                findMaxProduct(
+                  numbers,
+                  initialMax,
+                  startSum)
+          IN
+            int_to_nat_as_int(result)
+        ENDIF
+    ENDCASES
+
+  int_list_length(values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        int_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  nat_subtract(first, second: nat): nat =
+    IF first >= second THEN first - second ELSE 0 ENDIF
+
+  int_list_drop(
+      count: nat,
+      values: list[int]): RECURSIVE list[int] =
+    IF count = 0 THEN
+      values
+    ELSE
+      CASES values OF
+        null:
+          null,
+        cons(head, tail):
+          int_list_drop(count - 1, tail)
+      ENDCASES
+    ENDIF
+  MEASURE count
+
+  int_list_take(
+      count: nat,
+      values: list[int]): RECURSIVE list[int] =
+    IF count = 0 THEN
+      null
+    ELSE
+      CASES values OF
+        null:
+          null,
+        cons(head, tail):
+          cons(
+            head,
+            int_list_take(count - 1, tail))
+      ENDCASES
+    ENDIF
+  MEASURE count
+
+  int_list_sum(values: list[int]): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        head + int_list_sum(tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  int_subarray_sum(
+      values: list[int],
+      start, length: nat): int =
+    int_list_sum(
+      int_list_take(
+        length,
+        int_list_drop(start, values)))
+
+  append_int_lists(
+      first, second: list[int]): RECURSIVE list[int] =
+    CASES first OF
+      null:
+        second,
+      cons(head, tail):
+        cons(
+          head,
+          append_int_lists(tail, second))
+    ENDCASES
+  MEASURE first BY <<
+
+  subarray_sums_at_start(
+      values: list[int],
+      start, length, remaining_lengths: nat):
+        RECURSIVE list[int] =
+    IF remaining_lengths = 0 THEN
+      null
+    ELSE
+      cons(
+        int_subarray_sum(values, start, length),
+        subarray_sums_at_start(
+          values,
+          start,
+          length + 1,
+          remaining_lengths - 1))
+    ENDIF
+  MEASURE remaining_lengths
+
+  all_subarray_sums_from(
+      values: list[int],
+      start, remaining_starts, total_length: nat):
+        RECURSIVE list[int] =
+    IF remaining_starts = 0 THEN
+      null
+    ELSE
+      append_int_lists(
+        subarray_sums_at_start(
+          values,
+          start,
+          0,
+          nat_subtract(total_length, start) + 1),
+        all_subarray_sums_from(
+          values,
+          start + 1,
+          remaining_starts - 1,
+          total_length))
+    ENDIF
+  MEASURE remaining_starts
+
+  all_subarray_sums(values: list[int]): list[int] =
+    LET total_length: nat = int_list_length(values)
+    IN
+      all_subarray_sums_from(
+        values,
+        0,
+        total_length + 1,
+        total_length)
+
+  int_list_contains(
+      values: list[int],
+      requested: int): RECURSIVE bool =
+    CASES values OF
+      null:
+        FALSE,
+      cons(head, tail):
+        head = requested
+          OR int_list_contains(tail, requested)
+    ENDCASES
+  MEASURE values BY <<
+
+  int_list_all_at_most(
+      values: list[int],
+      upper_bound: int): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        head <= upper_bound
+          AND int_list_all_at_most(tail, upper_bound)
+    ENDCASES
+  MEASURE values BY <<
+
+  maxSubarraySum_postcond(
+      numbers: list[int],
+      result: int): bool =
+    LET subArraySums: list[int] =
+          all_subarray_sums(numbers)
+    IN
+      int_list_contains(subArraySums, result)
+        AND int_list_all_at_most(
+              subArraySums,
+              result)
+
+  maxSubarraySum_spec_satisfied: bool =
+    FORALL (numbers: list[int]):
+      maxSubarraySum_precond(numbers) IMPLIES
+        maxSubarraySum_postcond(
+          numbers,
+          maxSubarraySum(numbers))
+
+END verina_advanced_46

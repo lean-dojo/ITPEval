@@ -1,0 +1,91 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/queens_bv_Bits_belowqtvc: the unsigned 32-bit verification condition
+% that complementing an all-ones word shifted left by n represents exactly
+% the finite integer interval from zero through n - 1. This file contains no proof.
+
+queens_bv_Bits_belowqtvc[
+  t: TYPE+,
+  bv: [t -> bvec[32]],
+  mdl: [t -> finite_set[int]]
+]: THEORY
+BEGIN
+
+  IMPORTING bv[32], bv_nat[32], finite_sets[int]
+
+  word32: TYPE = bvec[32]
+
+  unsigned(value: word32): nat =
+    bv2nat[32](value)
+
+  integer_bit(value: int, index: below(32)): bool =
+    mod(
+      floor(
+        (mod(value, 4294967296) :: real)
+          / (exp2(index) :: real)),
+      2)
+      = 1
+
+  word32_from_int(value: int): word32 =
+    LAMBDA (index: below(32)):
+      integer_bit(value, index)
+
+  all_ones: word32 =
+    fill[32](TRUE)
+
+  shift_left(value, amount: word32): word32 =
+    word32_from_int(
+      unsigned(value) * exp2(unsigned(amount)))
+
+  bitwise_not(value: word32): word32 =
+    LAMBDA (index: below(32)):
+      NOT value(index)
+
+  bit_at(value: word32, index: int): bool =
+    IF 0 <= index AND index < 32 THEN
+      value(index)
+    ELSE
+      FALSE
+    ENDIF
+
+  interval_member(index: int, upper: nat): bool =
+    0 <= index AND index < upper
+
+  model_is_interval(value: t, upper: nat): bool =
+    FORALL (index: int):
+      mdl(value)(index) IFF interval_member(index, upper)
+
+  t_invariant: bool =
+    FORALL (index: int), (self: t):
+      (((0 <= index AND index < 32)
+        AND bit_at(bv(self), index) = TRUE)
+       IFF mdl(self)(index))
+
+  t_eq(left, right: t): bool =
+    bv(left) = bv(right) AND mdl(left) = mdl(right)
+
+  t_injective: bool =
+    FORALL (left, right: t):
+      t_eq(left, right) IMPLIES left = right
+
+  below_vc: bool =
+    (t_invariant AND t_injective)
+      IMPLIES
+        (FORALL (n: word32):
+          unsigned(n) <= 32
+            IMPLIES
+              LET
+                o2: word32 =
+                  bitwise_not(shift_left(all_ones, n))
+              IN
+                (FORALL (index: int):
+                  (((0 <= index AND index < 32)
+                    AND bit_at(o2, index) = TRUE)
+                   IFF interval_member(index, unsigned(n))))
+                AND
+                (FORALL (result: t):
+                  (bv(result) = o2
+                    AND model_is_interval(result, unsigned(n)))
+                    IMPLIES
+                      model_is_interval(result, unsigned(n))))
+
+END queens_bv_Bits_belowqtvc

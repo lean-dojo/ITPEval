@@ -1,0 +1,94 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1976_a2:
+% for every positive integer n, either F_n or G_n is a polynomial with
+% integer coefficients in P = x^2*y + x*y^2 and Q = x^2 + x*y + y^2.
+% This file contains no proof.
+
+putnam_1976_a2: THEORY
+BEGIN
+  coefficient_table: TYPE = [nat, nat -> int]
+
+  row_value(
+      coefficients: coefficient_table,
+      first_index: nat,
+      second_value: int,
+      count: nat): RECURSIVE int =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET second_index: nat = count - 1 IN
+        row_value(
+          coefficients, first_index, second_value, count - 1)
+          + coefficients(first_index, second_index)
+              * second_value ^ second_index
+    ENDIF
+  MEASURE count
+
+  bivariate_polynomial_value(
+      coefficients: coefficient_table,
+      first_value, second_value: int,
+      first_count, second_count: nat): RECURSIVE int =
+    IF first_count = 0 THEN
+      0
+    ELSE
+      LET first_index: nat = first_count - 1 IN
+        bivariate_polynomial_value(
+          coefficients,
+          first_value,
+          second_value,
+          first_count - 1,
+          second_count)
+          + row_value(
+              coefficients,
+              first_index,
+              second_value,
+              second_count)
+              * first_value ^ first_index
+    ENDIF
+  MEASURE first_count
+
+  finite_polynomial_support(
+      coefficients: coefficient_table,
+      first_count, second_count: nat): bool =
+    FORALL (i, j: nat):
+      (first_count <= i OR second_count <= j)
+        IMPLIES coefficients(i, j) = 0
+
+  P_value(x, y: int): int =
+    x ^ 2 * y + x * y ^ 2
+
+  Q_value(x, y: int): int =
+    x ^ 2 + x * y + y ^ 2
+
+  F_value(n: nat, x, y: int): int =
+    (x + y) ^ n - x ^ n - y ^ n
+
+  G_value(n: nat, x, y: int): int =
+    (x + y) ^ n + x ^ n + y ^ n
+
+  putnam_1976_a2: bool =
+    FORALL (n: nat):
+      n > 0 IMPLIES
+        EXISTS
+            (A: coefficient_table),
+            (first_count, second_count: nat):
+          finite_polynomial_support(
+            A, first_count, second_count)
+            AND
+          ((FORALL (x, y: int):
+              F_value(n, x, y)
+                = bivariate_polynomial_value(
+                    A,
+                    P_value(x, y),
+                    Q_value(x, y),
+                    first_count,
+                    second_count))
+            OR
+           (FORALL (x, y: int):
+              G_value(n, x, y)
+                = bivariate_polynomial_value(
+                    A,
+                    P_value(x, y),
+                    Q_value(x, y),
+                    first_count,
+                    second_count)))
+END putnam_1976_a2

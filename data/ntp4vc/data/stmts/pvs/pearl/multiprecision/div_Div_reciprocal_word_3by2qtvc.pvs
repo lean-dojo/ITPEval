@@ -1,0 +1,190 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/multiprecision/div_Div_reciprocal_word_3by2qtvc: the verification
+% condition for computing a reciprocal approximation for a normalized
+% two-limb 64-bit divisor, including its carry, borrow, product, and final
+% quotient-correction branches. This file contains no proof.
+
+div_Div_reciprocal_word_3by2qtvc: THEORY
+BEGIN
+
+  IMPORTING
+    bv[64],
+    bv_nat[64]
+
+  word64: TYPE = bvec[64]
+
+  radix: int = 18446744073709551616
+  max_word64: int = 18446744073709551615
+
+  unsigned64(value: word64): int =
+    bv2nat[64](value)
+
+  uint64_in_bounds(value: int): bool =
+    0 <= value AND value <= max_word64
+
+  euclidean_div_positive(
+      numerator, denominator: int): int =
+    IF denominator <= 0 THEN
+      0
+    ELSE
+      floor((numerator :: real) / (denominator :: real))
+    ENDIF
+
+  reciprocal(v, d: word64): bool =
+    unsigned64(v)
+      =
+    euclidean_div_positive(
+      radix * radix - 1,
+      unsigned64(d))
+      - radix
+
+  reciprocal_3by2(v, dh, dl: word64): bool =
+    unsigned64(v)
+      =
+    euclidean_div_positive(
+      radix * radix * radix - 1,
+      unsigned64(dl) + radix * unsigned64(dh))
+      - radix
+
+  flag_premise(
+      current, dh, dl, product_low: word64,
+      decision: bool): bool =
+    IF unsigned64(dh) < unsigned64(current) THEN
+      decision = TRUE
+    ELSE
+      EXISTS (equal_flag: bool):
+        ((unsigned64(current) = unsigned64(dh)
+            IMPLIES equal_flag = TRUE)
+          AND
+            (equal_flag = TRUE IMPLIES current = dh))
+          AND
+            (IF equal_flag = TRUE THEN
+               decision =
+                 (IF unsigned64(dl) <= unsigned64(product_low) THEN
+                    TRUE
+                  ELSE
+                    FALSE
+                  ENDIF)
+             ELSE
+               decision = FALSE
+             ENDIF)
+    ENDIF
+
+  final_correction(
+      base, dh, dl: word64,
+      decision: bool): bool =
+    IF decision = TRUE THEN
+      uint64_in_bounds(unsigned64(base) - 1)
+        AND
+          (FORALL (once: word64):
+            unsigned64(once) = unsigned64(base) - 1
+              IMPLIES
+                uint64_in_bounds(unsigned64(once) - 1)
+                  AND
+                    (FORALL (twice: word64):
+                      unsigned64(twice) = unsigned64(once) - 1
+                        IMPLIES reciprocal_3by2(twice, dh, dl)))
+    ELSE
+      uint64_in_bounds(unsigned64(base) - 1)
+        AND
+          (FORALL (once: word64):
+            unsigned64(once) = unsigned64(base) - 1
+              IMPLIES reciprocal_3by2(once, dh, dl))
+    ENDIF
+
+  after_product_high_add(
+      base, current, product_high, product_low,
+      dh, dl: word64): bool =
+    IF unsigned64(current) < unsigned64(product_high) THEN
+      FORALL (decision: bool):
+        flag_premise(current, dh, dl, product_low, decision)
+          IMPLIES final_correction(base, dh, dl, decision)
+    ELSE
+      reciprocal_3by2(base, dh, dl)
+    ENDIF
+
+  multiply_low_and_adjust(
+      base, addend, dh, dl: word64): bool =
+    FORALL (product_low, product_high: word64):
+      unsigned64(product_low) + radix * unsigned64(product_high)
+        = unsigned64(base) * unsigned64(dl)
+      IMPLIES
+        (FORALL (current: word64):
+          unsigned64(current)
+            = mod(
+                unsigned64(addend) + unsigned64(product_high),
+                radix)
+          IMPLIES
+            after_product_high_add(
+              base, current, product_high, product_low, dh, dl))
+
+  carry_and_high_subtraction(
+      o1, o3, dh, dl: word64): bool =
+    uint64_in_bounds(unsigned64(o1) - 1)
+      AND
+        (FORALL (o4: word64):
+          unsigned64(o4) = unsigned64(o1) - 1
+          IMPLIES
+            uint64_in_bounds(unsigned64(o3) - unsigned64(dh))
+              AND
+                (FORALL (o5: word64):
+                  unsigned64(o5)
+                    = unsigned64(o3) - unsigned64(dh)
+                  IMPLIES
+                    uint64_in_bounds(unsigned64(o4) - 1)
+                      AND
+                        (FORALL (o6: word64):
+                          unsigned64(o6) = unsigned64(o4) - 1
+                          IMPLIES
+                            (FORALL (o7: word64):
+                              unsigned64(o7)
+                                = mod(
+                                    unsigned64(o5) - unsigned64(dh),
+                                    radix)
+                              IMPLIES
+                                multiply_low_and_adjust(
+                                  o6, o7, dh, dl)))))
+
+  carry_without_high_subtraction(
+      o1, o3, dh, dl: word64): bool =
+    uint64_in_bounds(unsigned64(o1) - 1)
+      AND
+        (FORALL (o4: word64):
+          unsigned64(o4) = unsigned64(o1) - 1
+          IMPLIES
+            (FORALL (o5: word64):
+              unsigned64(o5)
+                = mod(unsigned64(o3) - unsigned64(dh), radix)
+              IMPLIES multiply_low_and_adjust(o4, o5, dh, dl)))
+
+  after_estimate_add(
+      o1, o3, dh, dl: word64): bool =
+    IF unsigned64(o3) < unsigned64(dl) THEN
+      IF unsigned64(dh) <= unsigned64(o3) THEN
+        carry_and_high_subtraction(o1, o3, dh, dl)
+      ELSE
+        carry_without_high_subtraction(o1, o3, dh, dl)
+      ENDIF
+    ELSE
+      multiply_low_and_adjust(o1, o3, dh, dl)
+    ENDIF
+
+  reciprocal_word_3by2_vc: bool =
+    FORALL (dh, dl: word64):
+      euclidean_div_positive(radix, 2) <= unsigned64(dh)
+      IMPLIES
+        euclidean_div_positive(radix, 2) <= unsigned64(dh)
+          AND
+            (FORALL (o1: word64):
+              reciprocal(o1, dh)
+              IMPLIES
+                (FORALL (o2: word64):
+                  unsigned64(o2)
+                    = mod(unsigned64(dh) * unsigned64(o1), radix)
+                  IMPLIES
+                    (FORALL (o3: word64):
+                      unsigned64(o3)
+                        = mod(unsigned64(o2) + unsigned64(dl), radix)
+                      IMPLIES after_estimate_add(o1, o3, dh, dl))))
+
+END div_Div_reciprocal_word_3by2qtvc

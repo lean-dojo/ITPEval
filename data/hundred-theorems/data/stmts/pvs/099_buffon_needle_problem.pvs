@@ -1,0 +1,302 @@
+% Statement-only formalization of Hundred Theorems artifact 099, "Buffon Needle Problem":
+% for a uniformly positioned and oriented needle dropped across parallel lines, the crossing
+% probability has the standard short-needle and long-needle formulas. This file contains no proof.
+
+buffon_needle_problem_099: THEORY
+BEGIN
+  sample_space: TYPE+
+
+  event: TYPE = [sample_space -> bool]
+  event_sequence: TYPE = [nat -> event]
+  sigma_algebra: TYPE = [event -> bool]
+  probability_measure: TYPE = [event -> real]
+  random_variable: TYPE = [sample_space -> real]
+  real_event: TYPE = [real -> bool]
+  real_event_sequence: TYPE = [nat -> real_event]
+  real_sigma_algebra: TYPE = [real_event -> bool]
+  real_sequence: TYPE = [nat -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  alternating_sign(index: nat): RECURSIVE real =
+    IF index = 0 THEN
+      1
+    ELSE
+      -alternating_sign(index - 1)
+    ENDIF
+  MEASURE index
+
+  finite_sum(values: real_sequence, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      finite_sum(values, count - 1) + values(count - 1)
+    ENDIF
+  MEASURE count
+
+  converges_to(values: real_sequence, limit: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (count: nat):
+          cutoff <= count IMPLIES
+            abs(values(count) - limit) < epsilon_value
+
+  sine_partial_sum(count: nat, x: real): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        sine_partial_sum(count - 1, x)
+          + safe_div(
+              alternating_sign(index) * x ^ (2 * index + 1),
+              factorial(2 * index + 1) :: real)
+    ENDIF
+  MEASURE count
+
+  cosine_partial_sum(count: nat, x: real): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        cosine_partial_sum(count - 1, x)
+          + safe_div(
+              alternating_sign(index) * x ^ (2 * index),
+              factorial(2 * index) :: real)
+    ENDIF
+  MEASURE count
+
+  sine(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat): sine_partial_sum(count, x),
+          value))
+
+  cosine(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat): cosine_partial_sum(count, x),
+          value))
+
+  is_pi(value: real): bool =
+    2 < value
+      AND value < 4
+      AND cosine(value / 2) = 0
+
+  pi: real =
+    epsilon(LAMBDA (value: real): is_pi(value))
+
+  full_event: event =
+    LAMBDA (omega: sample_space): TRUE
+
+  empty_event: event =
+    LAMBDA (omega: sample_space): FALSE
+
+  event_complement(A: event): event =
+    LAMBDA (omega: sample_space):
+      NOT A(omega)
+
+  event_intersection(A, B: event): event =
+    LAMBDA (omega: sample_space):
+      A(omega) AND B(omega)
+
+  countable_union(events: event_sequence): event =
+    LAMBDA (omega: sample_space):
+      EXISTS (index: nat): events(index)(omega)
+
+  pairwise_disjoint(events: event_sequence): bool =
+    FORALL (i, j: nat):
+      i /= j IMPLIES
+        FORALL (omega: sample_space):
+          NOT (events(i)(omega) AND events(j)(omega))
+
+  is_sigma_algebra(Sigma: sigma_algebra): bool =
+    Sigma(full_event)
+      AND (FORALL (A: event):
+        Sigma(A) IMPLIES Sigma(event_complement(A)))
+      AND (FORALL (events: event_sequence):
+        (FORALL (index: nat): Sigma(events(index)))
+          IMPLIES Sigma(countable_union(events)))
+
+  is_probability_measure(
+      M: probability_measure,
+      Sigma: sigma_algebra): bool =
+    is_sigma_algebra(Sigma)
+      AND M(empty_event) = 0
+      AND M(full_event) = 1
+      AND (FORALL (A: event):
+        Sigma(A) IMPLIES
+          0 <= M(A) AND M(A) <= 1)
+      AND (FORALL (events: event_sequence):
+        ((FORALL (index: nat): Sigma(events(index)))
+          AND pairwise_disjoint(events))
+        IMPLIES
+          converges_to(
+            LAMBDA (count: nat):
+              finite_sum(
+                LAMBDA (index: nat): M(events(index)),
+                count),
+            M(countable_union(events))))
+
+  real_full_event: real_event =
+    LAMBDA (value: real): TRUE
+
+  real_event_complement(A: real_event): real_event =
+    LAMBDA (value: real):
+      NOT A(value)
+
+  real_countable_union(events: real_event_sequence): real_event =
+    LAMBDA (value: real):
+      EXISTS (index: nat): events(index)(value)
+
+  is_real_sigma_algebra(
+      BorelSigma: real_sigma_algebra): bool =
+    BorelSigma(real_full_event)
+      AND (FORALL (A: real_event):
+        BorelSigma(A) IMPLIES
+          BorelSigma(real_event_complement(A)))
+      AND (FORALL (events: real_event_sequence):
+        (FORALL (index: nat): BorelSigma(events(index)))
+          IMPLIES BorelSigma(real_countable_union(events)))
+
+  contains_real_lower_rays(
+      BorelSigma: real_sigma_algebra): bool =
+    FORALL (bound: real):
+      BorelSigma(
+        LAMBDA (value: real):
+          value <= bound)
+
+  borel_event(A: real_event): bool =
+    FORALL (BorelSigma: real_sigma_algebra):
+      (is_real_sigma_algebra(BorelSigma)
+        AND contains_real_lower_rays(BorelSigma))
+      IMPLIES BorelSigma(A)
+
+  preimage_event(
+      X: random_variable,
+      A: real_event): event =
+    LAMBDA (omega: sample_space):
+      A(X(omega))
+
+  sublevel_event(
+      X: random_variable,
+      bound: real): event =
+    preimage_event(
+      X,
+      LAMBDA (value: real):
+        value <= bound)
+
+  random_variable_on(
+      Sigma: sigma_algebra,
+      X: random_variable): bool =
+    FORALL (A: real_event):
+      borel_event(A) IMPLIES
+        Sigma(preimage_event(X, A))
+
+  uniform_random_variable(
+      M: probability_measure,
+      Sigma: sigma_algebra,
+      X: random_variable,
+      left_endpoint, right_endpoint: real): bool =
+    random_variable_on(Sigma, X)
+      AND left_endpoint < right_endpoint
+      AND (FORALL (bound: real):
+        M(sublevel_event(X, bound))
+          = IF bound < left_endpoint THEN
+              0
+            ELSIF right_endpoint <= bound THEN
+              1
+            ELSE
+              (bound - left_endpoint)
+                / (right_endpoint - left_endpoint)
+            ENDIF)
+
+  independent_random_variables(
+      M: probability_measure,
+      X, Y: random_variable): bool =
+    FORALL (A, B: real_event):
+      borel_event(A) AND borel_event(B)
+      IMPLIES
+        M(event_intersection(
+          preimage_event(X, A),
+          preimage_event(Y, B)))
+          = M(preimage_event(X, A))
+              * M(preimage_event(Y, B))
+
+  crossing_event(
+      distance, angle: random_variable,
+      needle_length: real): event =
+    LAMBDA (omega: sample_space):
+      distance(omega)
+        <= (needle_length / 2) * sine(angle(omega))
+
+  nonnegative_square_root(
+      radicand, root: real): bool =
+    root >= 0
+      AND root * root = radicand
+
+  principal_arccos(
+      value, angle: real): bool =
+    0 <= angle
+      AND angle <= pi
+      AND cosine(angle) = value
+
+  long_needle_probability(
+      probability_value, needle_length, line_distance: real): bool =
+    EXISTS (root, angle: real):
+      nonnegative_square_root(
+        needle_length * needle_length
+          - line_distance * line_distance,
+        root)
+        AND principal_arccos(
+          safe_div(line_distance, needle_length),
+          angle)
+        AND probability_value
+          = safe_div(2, pi * line_distance)
+              * (needle_length - root
+                  + line_distance * angle)
+
+  buffon_needle_problem: bool =
+    FORALL
+        (M: probability_measure),
+        (Sigma: sigma_algebra),
+        (distance, angle: random_variable),
+        (needle_length, line_distance: real):
+      (is_probability_measure(M, Sigma)
+        AND 0 < needle_length
+        AND 0 < line_distance
+        AND uniform_random_variable(
+          M, Sigma, distance, 0, line_distance / 2)
+        AND uniform_random_variable(
+          M, Sigma, angle, 0, pi)
+        AND independent_random_variables(
+          M, distance, angle))
+      IMPLIES
+        ((needle_length <= line_distance IMPLIES
+          M(crossing_event(
+            distance, angle, needle_length))
+            = safe_div(
+                2 * needle_length,
+                pi * line_distance))
+          AND
+          (line_distance <= needle_length IMPLIES
+            long_needle_probability(
+              M(crossing_event(
+                distance, angle, needle_length)),
+              needle_length,
+              line_distance)))
+END buffon_needle_problem_099

@@ -1,0 +1,203 @@
+% Statement-only formalization of the VERINA corpus artifact verina_basic_86
+% (verina__pvs__verina_basic_86), catalog title "rotate": the executable
+% indexed-update program rotates a finite integer array left by a nonnegative
+% offset and satisfies its exact size-and-index contract. This file contains
+% no proof.
+
+verina_basic_86: THEORY
+BEGIN
+
+  % Finite PVS lists preserve exactly the contents and order of Lean arrays.
+  int_list_length(
+      values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        int_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  % Lean Array.get! on integer arrays returns zero outside the array.
+  int_list_get_bang(
+      index: nat,
+      values: list[int]): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          int_list_get_bang(index - 1, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  % Lean Array.set! replaces an in-bounds entry and leaves an out-of-bounds
+  % array unchanged.
+  int_list_set_bang(
+      index: nat,
+      new_value: int,
+      values: list[int]): RECURSIVE list[int] =
+    CASES values OF
+      null:
+        null[int],
+      cons(head, tail):
+        IF index = 0 THEN
+          cons(new_value, tail)
+        ELSE
+          cons(
+            head,
+            int_list_set_bang(
+              index - 1,
+              new_value,
+              tail))
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  int_list_replicate(
+      count: nat,
+      value: int): RECURSIVE list[int] =
+    IF count = 0 THEN
+      null[int]
+    ELSE
+      cons(
+        value,
+        int_list_replicate(count - 1, value))
+    ENDIF
+  MEASURE count
+
+  % Lean Int.emod returns a nonnegative remainder modulo the divisor's
+  % absolute value and returns the dividend when the divisor is zero.
+  lean_int_emod(
+      dividend, divisor: int): int =
+    IF divisor = 0 THEN
+      dividend
+    ELSE
+      mod(dividend, abs(divisor))
+    ENDIF
+
+  % Lean Int.toNat maps negative integers to zero.
+  lean_int_to_nat(
+      value: int): nat =
+    IF value >= 0 THEN
+      value
+    ELSE
+      0
+    ENDIF
+
+  % Lean natural-number subtraction is truncated at zero.
+  nat_subtract(
+      first, second: nat): nat =
+    IF first >= second THEN
+      first - second
+    ELSE
+      0
+    ENDIF
+
+  rotate_precond(
+      a: list[int],
+      offset: int): bool =
+    offset >= 0
+
+  rotateAux_fuel(
+      a: list[int],
+      offset: int,
+      i, len: nat,
+      b: list[int],
+      fuel: nat): RECURSIVE list[int] =
+    IF fuel = 0 THEN
+      b
+    ELSIF i < len THEN
+      LET idx_int: int =
+            lean_int_emod(
+              (i :: int) + offset,
+              (len :: int)),
+          idx_int_adjusted: int =
+            IF idx_int < 0 THEN
+              idx_int + (len :: int)
+            ELSE
+              idx_int
+            ENDIF,
+          idx_nat: nat =
+            lean_int_to_nat(idx_int_adjusted),
+          new_b: list[int] =
+            int_list_set_bang(
+              i,
+              int_list_get_bang(idx_nat, a),
+              b)
+      IN
+        rotateAux_fuel(
+          a,
+          offset,
+          i + 1,
+          len,
+          new_b,
+          fuel - 1)
+    ELSE
+      b
+    ENDIF
+  MEASURE fuel
+
+  % The source loop runs exactly len - i guarded iterations.
+  rotateAux(
+      a: list[int],
+      offset: int,
+      i, len: nat,
+      b: list[int]): list[int] =
+    rotateAux_fuel(
+      a,
+      offset,
+      i,
+      len,
+      b,
+      nat_subtract(len, i))
+
+  % The source precondition proof argument is computationally irrelevant.
+  rotate(
+      a: list[int],
+      offset: int): list[int] =
+    LET len: nat =
+          int_list_length(a),
+        default_val: int =
+          IF len > 0 THEN
+            int_list_get_bang(0, a)
+          ELSE
+            0
+          ENDIF,
+        b0: list[int] =
+          int_list_replicate(len, default_val)
+    IN
+      rotateAux(a, offset, 0, len, b0)
+
+  % The source precondition proof argument is logically irrelevant here.
+  rotate_postcond(
+      a: list[int],
+      offset: int,
+      result: list[int]): bool =
+    int_list_length(result) = int_list_length(a)
+      AND
+        (FORALL (i: nat):
+          i < int_list_length(a)
+            IMPLIES
+              int_list_get_bang(i, result)
+                =
+              int_list_get_bang(
+                lean_int_to_nat(
+                  lean_int_emod(
+                    (i :: int) + offset,
+                    (int_list_length(a) :: int))),
+                a))
+
+  rotate_spec_satisfied: bool =
+    FORALL (a: list[int], offset: int):
+      rotate_precond(a, offset)
+        IMPLIES
+          rotate_postcond(
+            a,
+            offset,
+            rotate(a, offset))
+
+END verina_basic_86

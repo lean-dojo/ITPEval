@@ -1,0 +1,86 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1986_a6:
+% a real polynomial satisfying the stated identity for distinct positive
+% integer exponents has value at one equal to their product divided by n
+% factorial. This file contains no proof.
+
+putnam_1986_a6: THEORY
+BEGIN
+  real_sequence: TYPE = [nat -> real]
+  natural_sequence: TYPE = [nat -> nat]
+
+  polynomial_value(
+      polynomial: list[real],
+      x: real): RECURSIVE real =
+    CASES polynomial OF
+      null: 0,
+      cons(coefficient, tail):
+        coefficient + x * polynomial_value(tail, x)
+    ENDCASES
+  MEASURE polynomial BY <<
+
+  coefficient_sum(
+      a: real_sequence,
+      b: natural_sequence,
+      x: real,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      coefficient_sum(a, b, x, count - 1)
+        + a(count) * x ^ b(count)
+    ENDIF
+  MEASURE count
+
+  exponent_product(
+      b: natural_sequence,
+      count: nat): RECURSIVE nat =
+    IF count = 0 THEN
+      1
+    ELSE
+      exponent_product(b, count - 1) * b(count)
+    ENDIF
+  MEASURE count
+
+  nat_factorial(n: nat): RECURSIVE nat =
+    IF n = 0 THEN
+      1
+    ELSE
+      n * nat_factorial(n - 1)
+    ENDIF
+  MEASURE n
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  putnam_1986_a6_solution(
+      b: natural_sequence,
+      n: nat): real =
+    safe_div(
+      exponent_product(b, n) :: real,
+      nat_factorial(n) :: real)
+
+  putnam_1986_a6: bool =
+    FORALL
+        (n: nat),
+        (a: real_sequence),
+        (b: natural_sequence),
+        (f: list[real]):
+      (n > 0
+        AND (FORALL (i: nat):
+          (1 <= i AND i <= n) IMPLIES b(i) > 0)
+        AND (FORALL (i, j: nat):
+          (1 <= i AND i <= n
+            AND 1 <= j AND j <= n
+            AND b(i) = b(j))
+          IMPLIES i = j)
+        AND (FORALL (x: real):
+          (1 - x) ^ n * polynomial_value(f, x)
+            = 1 + coefficient_sum(a, b, x, n)))
+      IMPLIES
+        polynomial_value(f, 1)
+          = putnam_1986_a6_solution(b, n)
+END putnam_1986_a6

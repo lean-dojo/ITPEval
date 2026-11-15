@@ -1,0 +1,444 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/verifythis_2019_ghc_sort_Top_sorted_listsqtvc: the recursive
+% verification condition for turning monotonic integer-list segments
+% delimited by ordered cutpoints into nondecreasing lists while preserving
+% occurrence counts across the covered interval. This file contains no proof.
+
+verifythis_2019_ghc_sort_Top_sorted_listsqtvc: THEORY
+BEGIN
+
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  nth_default(values: list[int], index: nat): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          nth_default(tail, index - 1)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  list_reverse(values: list[int]): RECURSIVE list[int] =
+    CASES values OF
+      null:
+        null,
+      cons(head, tail):
+        append(list_reverse(tail), cons(head, null))
+    ENDCASES
+  MEASURE values BY <<
+
+  take_prefix(values: list[int], amount: nat): RECURSIVE list[int] =
+    IF amount = 0 THEN
+      null
+    ELSE
+      CASES values OF
+        null:
+          null,
+        cons(head, tail):
+          cons(head, take_prefix(tail, amount - 1))
+      ENDCASES
+    ENDIF
+  MEASURE amount
+
+  list_member(value: int, values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        FALSE,
+      cons(head, tail):
+        head = value OR list_member(value, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  list_of_lists_member(
+      value: list[int],
+      values: list[list[int]]): RECURSIVE bool =
+    CASES values OF
+      null:
+        FALSE,
+      cons(head, tail):
+        head = value OR list_of_lists_member(value, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  list_occurrences(value: int, values: list[int]): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        (IF head = value THEN 1 ELSE 0 ENDIF)
+          + list_occurrences(value, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  interval_occurrences_span(
+      value: int,
+      values: list[int],
+      lower: int,
+      span: nat): RECURSIVE int =
+    IF span = 0 THEN
+      0
+    ELSE
+      (IF nth_default(values, int_to_nat(lower)) = value
+       THEN 1
+       ELSE 0
+       ENDIF)
+        + interval_occurrences_span(
+            value, values, lower + 1, span - 1)
+    ENDIF
+  MEASURE span
+
+  interval_occurrences(
+      value: int,
+      values: list[int],
+      lower, upper: int): int =
+    interval_occurrences_span(
+      value,
+      values,
+      lower,
+      int_to_nat(upper - lower))
+
+  flatten(lists: list[list[int]]): RECURSIVE list[int] =
+    CASES lists OF
+      null:
+        null,
+      cons(head, tail):
+        append(head, flatten(tail))
+    ENDCASES
+  MEASURE lists BY <<
+
+  strictly_increasing(values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        CASES tail OF
+          null:
+            TRUE,
+          cons(next, rest):
+            head < next AND strictly_increasing(tail)
+        ENDCASES
+    ENDCASES
+  MEASURE values BY <<
+
+  nondecreasing(values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        CASES tail OF
+          null:
+            TRUE,
+          cons(next, rest):
+            head <= next AND nondecreasing(tail)
+        ENDCASES
+    ENDCASES
+  MEASURE values BY <<
+
+  nonincreasing(values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        CASES tail OF
+          null:
+            TRUE,
+          cons(next, rest):
+            next <= head AND nonincreasing(tail)
+        ENDCASES
+    ENDCASES
+  MEASURE values BY <<
+
+  list_permutation(left, right: list[int]): bool =
+    FORALL (value: int):
+      list_occurrences(value, left)
+        = list_occurrences(value, right)
+
+  % The Why3 record is uniquely determined by its list field because its
+  % invariant fixes the ghost sequence to the reverse of that list.
+  list_seq: TYPE = list[int]
+
+  list_of(self: list_seq): list[int] =
+    self
+
+  seq_of(self: list_seq): list[int] =
+    list_reverse(self)
+
+  array_value(values: list[int], index: int): int =
+    nth_default(values, int_to_nat(index))
+
+  strictly_increasing_segment(
+      values: list[int],
+      lower, upper: int): bool =
+    FORALL (z1, z2: int):
+      (lower <= z1 AND z1 < z2 AND z2 < upper)
+        IMPLIES
+          array_value(values, z1) < array_value(values, z2)
+
+  nonincreasing_segment(
+      values: list[int],
+      lower, upper: int): bool =
+    FORALL (z1, z2: int):
+      (lower <= z1 AND z1 < z2 AND z2 < upper)
+        IMPLIES
+          array_value(values, z2) <= array_value(values, z1)
+
+  monotonic_segment(
+      values: list[int],
+      lower, upper: int): bool =
+    strictly_increasing_segment(values, lower, upper)
+      OR nonincreasing_segment(values, lower, upper)
+
+  cut_sequence_nondecreasing(cutp: list_seq): bool =
+    FORALL (x, y: int):
+      (0 <= x
+        AND x < y
+        AND y < length(seq_of(cutp)))
+        IMPLIES
+          nth_default(seq_of(cutp), int_to_nat(x))
+            <= nth_default(seq_of(cutp), int_to_nat(y))
+
+  cutpoints_within_bounds(
+      cutp: list_seq,
+      values: list[int]): bool =
+    FORALL (z: int):
+      list_member(z, list_of(cutp))
+        IMPLIES
+          (0 <= z AND z <= length(values))
+
+  all_segments_monotonic(
+      cutp: list_seq,
+      values: list[int]): bool =
+    FORALL (k: int):
+      (0 <= k AND k < length(seq_of(cutp)) - 1)
+        IMPLIES
+          monotonic_segment(
+            values,
+            nth_default(seq_of(cutp), int_to_nat(k)),
+            nth_default(seq_of(cutp), int_to_nat(k + 1)))
+
+  precondition(
+      values: list[int],
+      cutp: list_seq): bool =
+    0 < length(list_of(cutp))
+      AND cut_sequence_nondecreasing(cutp)
+      AND cutpoints_within_bounds(cutp, values)
+      AND all_segments_monotonic(cutp, values)
+
+  segment_list_spec(
+      seqi, values: list[int],
+      lower, upper: int): bool =
+    (FORALL (x: int):
+      list_occurrences(x, seqi)
+        = interval_occurrences(x, values, lower, upper))
+      AND
+    (FORALL (x: int):
+      list_member(x, seqi)
+        IMPLIES
+          (EXISTS (z: int):
+            (lower <= z AND z < upper)
+              AND array_value(values, z) = x))
+      AND
+    (strictly_increasing_segment(values, lower, upper)
+      IMPLIES strictly_increasing(seqi))
+      AND
+    (nonincreasing_segment(values, lower, upper)
+      IMPLIES nonincreasing(seqi))
+      AND
+    (strictly_increasing(seqi) OR nonincreasing(seqi))
+
+  prefix_without_last(values: list[int]): list[int] =
+    take_prefix(values, int_to_nat(length(values) - 1))
+
+  slice_bounds(values: list[int]): bool =
+    LET last_index: int = length(values) - 1
+    IN
+      (0 <= 0
+        AND 0 <= last_index
+        AND last_index <= length(values))
+
+  slice_spec(
+      whole, part: list[int]): bool =
+    LET last_index: int = length(whole) - 1
+    IN
+      length(part) = last_index - 0
+        AND
+      (FORALL (k: int):
+        (0 <= k AND k < last_index - 0)
+          IMPLIES
+            nth_default(part, int_to_nat(k))
+              = nth_default(whole, int_to_nat(0 + k)))
+
+  tail_matches(cutp, lseq: list_seq): bool =
+    CASES list_of(cutp) OF
+      null:
+        FALSE,
+      cons(head, tail):
+        tail = list_of(lseq)
+    ENDCASES
+
+  all_nondecreasing(lists: list[list[int]]): bool =
+    FORALL (values: list[int]):
+      list_of_lists_member(values, lists)
+        IMPLIES nondecreasing(values)
+
+  occurrence_summary(
+      values: list[int],
+      cut_sequence: list[int],
+      lists: list[list[int]]): bool =
+    FORALL (x: int):
+      list_occurrences(x, flatten(lists))
+        =
+      interval_occurrences(
+        x,
+        values,
+        nth_default(cut_sequence, 0),
+        nth_default(
+          cut_sequence,
+          int_to_nat(length(cut_sequence) - 1)))
+
+  result_spec(
+      values: list[int],
+      cut_sequence: list[int],
+      result: list[list[int]]): bool =
+    all_nondecreasing(result)
+      AND occurrence_summary(values, cut_sequence, result)
+
+  order_list(values: list[int]): list[int] =
+    CASES values OF
+      null:
+        values,
+      cons(first, tail):
+        CASES tail OF
+          null:
+            values,
+          cons(second, rest):
+            IF first < second THEN
+              values
+            ELSE
+              list_reverse(values)
+            ENDIF
+        ENDCASES
+    ENDCASES
+
+  recursive_segment_obligation(
+      cutp: list_seq,
+      values: list[int],
+      h1, h2: int,
+      tail: list[int]): bool =
+    ((0 <= h2 AND h2 <= length(values))
+      AND (0 <= h1 AND h1 <= length(values))
+      AND monotonic_segment(values, h2, h1))
+      AND
+    (FORALL (seqi: list[int]):
+      segment_list_spec(seqi, values, h2, h1)
+        IMPLIES
+          slice_bounds(seq_of(cutp))
+            AND
+          (LET prefix: list[int] =
+             prefix_without_last(seq_of(cutp)),
+               recursive_list: list[int] =
+             cons(h2, tail)
+           IN
+             slice_spec(seq_of(cutp), prefix)
+               IMPLIES
+                 prefix = list_reverse(recursive_list)
+                   AND
+                 (FORALL (lseq: list_seq):
+                   (list_of(lseq) = recursive_list
+                     AND seq_of(lseq) = prefix)
+                     IMPLIES
+                       (tail_matches(cutp, lseq)
+                         AND precondition(values, lseq))
+                       AND
+                       (FORALL (previous: list[list[int]]):
+                         result_spec(
+                           values, seq_of(lseq), previous)
+                           IMPLIES
+                             (strictly_increasing(seqi)
+                               OR nonincreasing(seqi))))))
+
+  recursive_obligation(
+      cutp: list_seq,
+      values: list[int]): bool =
+    CASES list_of(cutp) OF
+      null:
+        TRUE,
+      cons(h1, rest):
+        CASES rest OF
+          null:
+            TRUE,
+          cons(h2, tail):
+            recursive_segment_obligation(
+              cutp, values, h1, h2, tail)
+        ENDCASES
+    ENDCASES
+
+  build_result_branch(
+      cutp: list_seq,
+      values: list[int],
+      h1, h2: int,
+      tail: list[int],
+      result: list[list[int]]): bool =
+    EXISTS (seqi: list[int]):
+      segment_list_spec(seqi, values, h2, h1)
+        AND
+      (LET prefix: list[int] =
+         prefix_without_last(seq_of(cutp)),
+           recursive_list: list[int] =
+         cons(h2, tail)
+       IN
+         slice_spec(seq_of(cutp), prefix)
+           AND
+         (EXISTS (lseq: list_seq):
+           (list_of(lseq) = recursive_list
+             AND seq_of(lseq) = prefix)
+             AND
+           (EXISTS (previous: list[list[int]]):
+             result_spec(values, seq_of(lseq), previous)
+               AND
+             (LET ordered: list[int] = order_list(seqi)
+              IN
+                (nondecreasing(ordered)
+                  AND list_permutation(seqi, ordered))
+                  AND result = cons(ordered, previous)))))
+
+  result_premise(
+      cutp: list_seq,
+      values: list[int],
+      result: list[list[int]]): bool =
+    CASES list_of(cutp) OF
+      null:
+        result = null,
+      cons(h1, rest):
+        CASES rest OF
+          null:
+            result = null,
+          cons(h2, tail):
+            build_result_branch(
+              cutp, values, h1, h2, tail, result)
+        ENDCASES
+    ENDCASES
+
+  result_obligation(
+      cutp: list_seq,
+      values: list[int]): bool =
+    FORALL (result: list[list[int]]):
+      result_premise(cutp, values, result)
+        IMPLIES
+          result_spec(values, seq_of(cutp), result)
+
+  sorted_lists_vc: bool =
+    FORALL
+        (cutp: list_seq),
+        (values: list[int]):
+      precondition(values, cutp)
+        IMPLIES
+          (recursive_obligation(cutp, values)
+            AND result_obligation(cutp, values))
+
+END verifythis_2019_ghc_sort_Top_sorted_listsqtvc

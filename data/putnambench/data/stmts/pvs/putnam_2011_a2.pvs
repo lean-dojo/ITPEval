@@ -1,0 +1,59 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2011_a2:
+% positive real sequences satisfying a recurrence with bounded second sequence
+% have reciprocal-product series converging to 3/2. This file contains no proof.
+
+putnam_2011_a2: THEORY
+BEGIN
+  real_sequence: TYPE = [nat -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  prefix_product(a: real_sequence, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      1
+    ELSE
+      prefix_product(a, count - 1) * a(count - 1)
+    ENDIF
+  MEASURE count
+
+  reciprocal_product_partial_sum(
+      a: real_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      reciprocal_product_partial_sum(a, count - 1)
+        + safe_div(1, prefix_product(a, count))
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  putnam_2011_a2_solution: real = 3 / 2
+
+  putnam_2011_a2: bool =
+    FORALL (a, b: real_sequence):
+      ((FORALL (n: nat): 0 < a(n) AND 0 < b(n))
+        AND a(0) = 1
+        AND b(0) = 1
+        AND (FORALL (n: nat):
+          1 <= n IMPLIES
+            b(n) = b(n - 1) * a(n) - 2)
+        AND (EXISTS (bound: real):
+          FORALL (n: nat): abs(b(n)) <= bound))
+      IMPLIES
+        converges_to(
+          LAMBDA (count: nat):
+            reciprocal_product_partial_sum(a, count),
+          putnam_2011_a2_solution)
+END putnam_2011_a2

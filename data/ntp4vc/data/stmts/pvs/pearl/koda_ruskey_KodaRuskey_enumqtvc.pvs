@@ -1,0 +1,602 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/koda_ruskey_KodaRuskey_enumqtvc: the Koda-Ruskey forest-coloring
+% enumeration verification condition, including recursive stack descent,
+% coloring inversion, and storage of distinct solutions. This file contains
+% no proof.
+
+koda_ruskey_KodaRuskey_enumqtvc: THEORY
+BEGIN
+
+  color: DATATYPE
+  BEGIN
+    White: White?
+    Black: Black?
+  END color
+
+  forest: DATATYPE
+  BEGIN
+    E: E?
+    N(node_index: int, left_forest, right_forest: forest): N?
+  END forest
+
+  coloring: TYPE = [int -> color]
+
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  nth_color_nat(
+      values: list[color],
+      index: nat): RECURSIVE color =
+    CASES values OF
+      null:
+        White,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          nth_color_nat(tail, index - 1)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  nth_color(values: list[color], index: int): color =
+    nth_color_nat(values, int_to_nat(index))
+
+  coloring_of(values: list[color]): coloring =
+    LAMBDA (index: int): nth_color(values, index)
+
+  nth_coloring_nat(
+      values: list[coloring],
+      index: nat): RECURSIVE coloring =
+    CASES values OF
+      null:
+        LAMBDA (ignored: int): White,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          nth_coloring_nat(tail, index - 1)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  nth_coloring(values: list[coloring], index: int): coloring =
+    nth_coloring_nat(values, int_to_nat(index))
+
+  list_set_color(
+      values: list[color],
+      index: nat,
+      value: color): RECURSIVE list[color] =
+    CASES values OF
+      null:
+        null,
+      cons(head, tail):
+        IF index = 0 THEN
+          cons(value, tail)
+        ELSE
+          cons(head, list_set_color(tail, index - 1, value))
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  update_coloring(
+      source: coloring,
+      index: int,
+      value: color): coloring =
+    LAMBDA (position: int):
+      IF position = index THEN value ELSE source(position) ENDIF
+
+  size_forest(values: forest): RECURSIVE int =
+    CASES values OF
+      E:
+        0,
+      N(index, left, right):
+        1 + size_forest(left) + size_forest(right)
+    ENDCASES
+  MEASURE values BY <<
+
+  mem_forest(index: int, values: forest): RECURSIVE bool =
+    CASES values OF
+      E:
+        FALSE,
+      N(root, left, right):
+        root = index
+          OR mem_forest(index, left)
+          OR mem_forest(index, right)
+    ENDCASES
+  MEASURE values BY <<
+
+  between_range_forest(
+      lower, upper: int,
+      values: forest): bool =
+    FORALL (index: int):
+      mem_forest(index, values)
+        IMPLIES lower <= index AND index < upper
+
+  disjoint(left, right: forest): bool =
+    FORALL (index: int):
+      mem_forest(index, left)
+        IMPLIES NOT mem_forest(index, right)
+
+  no_repeated_forest(values: forest): RECURSIVE bool =
+    CASES values OF
+      E:
+        TRUE,
+      N(index, left, right):
+        no_repeated_forest(left)
+          AND no_repeated_forest(right)
+          AND NOT mem_forest(index, left)
+          AND NOT mem_forest(index, right)
+          AND disjoint(left, right)
+    ENDCASES
+  MEASURE values BY <<
+
+  valid_nums_forest(values: forest, bound: int): bool =
+    between_range_forest(0, bound, values)
+      AND no_repeated_forest(values)
+
+  white_forest(
+      values: forest,
+      colors: coloring): RECURSIVE bool =
+    CASES values OF
+      E:
+        TRUE,
+      N(index, left, right):
+        colors(index) = White
+          AND white_forest(left, colors)
+          AND white_forest(right, colors)
+    ENDCASES
+  MEASURE values BY <<
+
+  valid_coloring(
+      values: forest,
+      colors: coloring): RECURSIVE bool =
+    CASES values OF
+      E:
+        TRUE,
+      N(index, left, right):
+        valid_coloring(right, colors)
+          AND
+        (IF colors(index) = White THEN
+           white_forest(left, colors)
+         ELSE
+           valid_coloring(left, colors)
+         ENDIF)
+    ENDCASES
+  MEASURE values BY <<
+
+  mem_stack(
+      index: int,
+      stack: list[forest]): RECURSIVE bool =
+    CASES stack OF
+      null:
+        FALSE,
+      cons(head, tail):
+        mem_forest(index, head) OR mem_stack(index, tail)
+    ENDCASES
+  MEASURE stack BY <<
+
+  size_stack(stack: list[forest]): RECURSIVE int =
+    CASES stack OF
+      null:
+        0,
+      cons(head, tail):
+        size_forest(head) + size_stack(tail)
+    ENDCASES
+  MEASURE stack BY <<
+
+  even_forest(values: forest): RECURSIVE bool =
+    CASES values OF
+      E:
+        FALSE,
+      N(index, left, right):
+        NOT even_forest(left) OR even_forest(right)
+    ENDCASES
+  MEASURE values BY <<
+
+  final_forest(
+      values: forest,
+      colors: coloring): RECURSIVE bool =
+    CASES values OF
+      E:
+        TRUE,
+      N(index, left, right):
+        colors(index) = Black
+          AND final_forest(left, colors)
+          AND
+        (IF NOT even_forest(left) THEN
+           white_forest(right, colors)
+         ELSE
+           final_forest(right, colors)
+         ENDIF)
+    ENDCASES
+  MEASURE values BY <<
+
+  unchanged(
+      stack: list[forest],
+      first, second: coloring): bool =
+    FORALL (index: int):
+      mem_stack(index, stack)
+        IMPLIES first(index) = second(index)
+
+  inverse(
+      stack: list[forest],
+      first, second: coloring): RECURSIVE bool =
+    CASES stack OF
+      null:
+        TRUE,
+      cons(head, tail):
+        ((white_forest(head, first) AND final_forest(head, second))
+          OR
+         (final_forest(head, first) AND white_forest(head, second)))
+          AND
+        (IF even_forest(head) THEN
+           unchanged(tail, first, second)
+         ELSE
+           inverse(tail, first, second)
+         ENDIF)
+    ENDCASES
+  MEASURE stack BY <<
+
+  any_stack(
+      stack: list[forest],
+      colors: coloring): RECURSIVE bool =
+    CASES stack OF
+      null:
+        TRUE,
+      cons(head, tail):
+        (white_forest(head, colors) OR final_forest(head, colors))
+          AND any_stack(tail, colors)
+    ENDCASES
+  MEASURE stack BY <<
+
+  substack(
+      stack: list[forest],
+      whole: forest,
+      colors: coloring): RECURSIVE bool =
+    CASES whole OF
+      E:
+        stack = cons(E, null),
+      N(index, left, right):
+        stack = cons(whole, null)
+          OR substack(stack, right, colors)
+          OR
+        (EXISTS (prefix: list[forest]):
+          substack(prefix, left, colors)
+            AND colors(index) = Black
+            AND stack = append(prefix, cons(right, null)))
+    ENDCASES
+  MEASURE whole BY <<
+
+  count_forest(values: forest): RECURSIVE int =
+    CASES values OF
+      E:
+        1,
+      N(index, left, right):
+        (1 + count_forest(left)) * count_forest(right)
+    ENDCASES
+  MEASURE values BY <<
+
+  count_stack(stack: list[forest]): RECURSIVE int =
+    CASES stack OF
+      null:
+        1,
+      cons(head, tail):
+        count_forest(head) * count_stack(tail)
+    ENDCASES
+  MEASURE stack BY <<
+
+  eq_coloring(
+      bound: int,
+      first, second: coloring): bool =
+    FORALL (index: int):
+      (0 <= index AND index < bound)
+        IMPLIES first(index) = second(index)
+
+  stored_solutions(
+      original_forest: forest,
+      bits: coloring,
+      stack: list[forest],
+      before, after: list[coloring]): bool =
+    LET bound: int = size_forest(original_forest),
+        start: int = length(before),
+        stop: int = length(after)
+    IN
+      stop - start = count_stack(stack)
+        AND
+      (FORALL (position: int):
+        (0 <= position AND position < start)
+          IMPLIES
+            eq_coloring(
+              bound,
+              nth_coloring(after, position),
+              nth_coloring(before, position)))
+        AND
+      (FORALL (position: int):
+        (start <= position AND position < stop)
+          IMPLIES
+            valid_coloring(
+              original_forest,
+              nth_coloring(after, position))
+              AND
+            (FORALL (index: int):
+              (0 <= index AND index < bound)
+                IMPLIES
+                  (NOT mem_stack(index, stack)
+                    IMPLIES
+                      nth_coloring(after, position)(index)
+                        = bits(index)))
+              AND
+            (FORALL (other: int):
+              (start <= other AND other < stop)
+                IMPLIES
+                  (position /= other
+                    IMPLIES
+                      NOT eq_coloring(
+                        bound,
+                        nth_coloring(after, position),
+                        nth_coloring(after, other)))))
+
+  tail_is(
+      stack, expected_tail: list[forest]): bool =
+    CASES stack OF
+      null:
+        FALSE,
+      cons(head, tail):
+        tail = expected_tail
+    ENDCASES
+
+  decreases(
+      stack, next_stack: list[forest]): bool =
+    (0 <= size_stack(stack)
+      AND size_stack(next_stack) < size_stack(stack))
+      OR
+    (size_stack(stack) = size_stack(next_stack)
+      AND tail_is(stack, next_stack))
+
+  state_conditions(
+      original_forest: forest,
+      bits: list[color],
+      stack: list[forest]): bool =
+    size_forest(original_forest) = length(bits)
+      AND valid_nums_forest(original_forest, length(bits))
+      AND substack(stack, original_forest, coloring_of(bits))
+      AND any_stack(stack, coloring_of(bits))
+      AND valid_coloring(original_forest, coloring_of(bits))
+
+  continuation(
+      original_forest: forest,
+      original_bits: list[color],
+      stack: list[forest],
+      before: list[coloring],
+      next_bits: list[color],
+      after: list[coloring]): bool =
+    (FORALL (index: int):
+      NOT mem_stack(index, stack)
+        IMPLIES
+          nth_color(next_bits, index) = nth_color(original_bits, index))
+      AND inverse(
+        stack,
+        coloring_of(original_bits),
+        coloring_of(next_bits))
+      AND valid_coloring(original_forest, coloring_of(next_bits))
+      AND stored_solutions(
+        original_forest,
+        coloring_of(next_bits),
+        stack,
+        before,
+        after)
+
+  recursive_continuation(
+      original_forest: forest,
+      original_bits: list[color],
+      original_stack, next_stack: list[forest],
+      before: list[coloring]): bool =
+    FORALL
+        (next_bits: list[color]),
+        (after: list[coloring]):
+      length(next_bits) = length(original_bits)
+        IMPLIES
+          (continuation(
+            original_forest,
+            original_bits,
+            next_stack,
+            before,
+            next_bits,
+            after)
+            IMPLIES
+              continuation(
+                original_forest,
+                original_bits,
+                original_stack,
+                before,
+                next_bits,
+                after))
+
+  updated_continuation(
+      original_forest: forest,
+      original_bits, current_bits: list[color],
+      original_stack, updated_stack: list[forest],
+      before, current_visited: list[coloring],
+      index: int,
+      new_color: color): bool =
+    LET updated_bits: list[color] =
+          list_set_color(current_bits, int_to_nat(index), new_color)
+    IN
+      length(updated_bits) = length(current_bits)
+        IMPLIES
+          (eq_coloring(
+              length(current_bits),
+              coloring_of(updated_bits),
+              update_coloring(
+                coloring_of(current_bits), index, new_color))
+            IMPLIES
+              ((decreases(original_stack, updated_stack)
+                  AND state_conditions(
+                    original_forest, updated_bits, updated_stack))
+                AND
+              (FORALL
+                  (next_bits: list[color]),
+                  (next_visited: list[coloring]):
+                length(next_bits) = length(updated_bits)
+                  IMPLIES
+                    (continuation(
+                      original_forest,
+                      updated_bits,
+                      updated_stack,
+                      current_visited,
+                      next_bits,
+                      next_visited)
+                      IMPLIES
+                        continuation(
+                          original_forest,
+                          original_bits,
+                          original_stack,
+                          before,
+                          next_bits,
+                          next_visited)))))
+
+  node_continuation(
+      original_forest: forest,
+      original_bits: list[color],
+      original_stack, next_stack, updated_stack: list[forest],
+      before: list[coloring],
+      index: int,
+      new_color: color): bool =
+    FORALL
+        (current_bits: list[color]),
+        (current_visited: list[coloring]):
+      length(current_bits) = length(original_bits)
+        IMPLIES
+          (continuation(
+            original_forest,
+            original_bits,
+            next_stack,
+            before,
+            current_bits,
+            current_visited)
+            IMPLIES
+              ((0 <= index AND index < length(current_bits))
+                AND
+              updated_continuation(
+                original_forest,
+                original_bits,
+                current_bits,
+                original_stack,
+                updated_stack,
+                before,
+                current_visited,
+                index,
+                new_color)))
+
+  empty_leaf_case(
+      original_forest: forest,
+      bits: list[color],
+      stack: list[forest],
+      visited: list[coloring]): bool =
+    LET original_coloring: coloring = coloring_of(bits),
+        extended: list[coloring] =
+          append(visited, cons(original_coloring, null))
+    IN
+      (length(extended) = 1 + length(visited)
+        AND nth_coloring(extended, length(visited))
+          = original_coloring
+        AND
+        (FORALL (index: int):
+          (0 <= index AND index < length(visited))
+            IMPLIES
+              nth_coloring(extended, index)
+                = nth_coloring(visited, index)))
+        IMPLIES
+          (inverse(stack, original_coloring, original_coloring)
+            AND valid_coloring(original_forest, original_coloring)
+            AND stored_solutions(
+              original_forest,
+              original_coloring,
+              stack,
+              visited,
+              extended))
+
+  enum_body(
+      original_forest: forest,
+      bits: list[color],
+      stack: list[forest],
+      visited: list[coloring]): bool =
+    CASES stack OF
+      null:
+        FALSE,
+      cons(head, tail):
+        CASES head OF
+          E:
+            CASES tail OF
+              null:
+                empty_leaf_case(
+                  original_forest, bits, stack, visited),
+              cons(next_head, next_tail):
+                (decreases(stack, tail)
+                  AND state_conditions(original_forest, bits, tail)
+                  AND tail /= null)
+                  AND recursive_continuation(
+                    original_forest,
+                    bits,
+                    stack,
+                    tail,
+                    visited)
+            ENDCASES,
+          N(index, left, right):
+            (0 <= index AND index < length(bits))
+              AND
+            (IF nth_color(bits, index) = White THEN
+               LET next_stack: list[forest] = cons(right, tail),
+                   updated_stack: list[forest] =
+                     cons(left, cons(right, tail))
+               IN
+                 (decreases(stack, next_stack)
+                   AND state_conditions(
+                     original_forest, bits, next_stack))
+                   AND node_continuation(
+                     original_forest,
+                     bits,
+                     stack,
+                     next_stack,
+                     updated_stack,
+                     visited,
+                     index,
+                     Black)
+             ELSE
+               LET next_stack: list[forest] =
+                     cons(left, cons(right, tail)),
+                   updated_stack: list[forest] = cons(right, tail)
+               IN
+                 (decreases(stack, next_stack)
+                   AND state_conditions(
+                     original_forest, bits, next_stack))
+                   AND node_continuation(
+                     original_forest,
+                     bits,
+                     stack,
+                     next_stack,
+                     updated_stack,
+                     visited,
+                     index,
+                     White)
+             ENDIF)
+        ENDCASES
+    ENDCASES
+
+  enum_vc: bool =
+    FORALL
+        (original_forest: forest),
+        (bits: list[color]),
+        (stack: list[forest]),
+        (visited: list[coloring]):
+      (size_forest(original_forest) = length(bits)
+        AND valid_nums_forest(original_forest, length(bits))
+        AND substack(stack, original_forest, coloring_of(bits))
+        AND stack /= null
+        AND any_stack(stack, coloring_of(bits))
+        AND valid_coloring(original_forest, coloring_of(bits)))
+      IMPLIES
+        enum_body(original_forest, bits, stack, visited)
+
+END koda_ruskey_KodaRuskey_enumqtvc

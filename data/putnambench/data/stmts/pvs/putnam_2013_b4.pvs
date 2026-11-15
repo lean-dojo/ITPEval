@@ -1,0 +1,126 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2013_b4:
+% the variance of a product of two continuous real functions on [0, 1] is
+% bounded using their variances and maximum absolute values. This file contains
+% no proof.
+
+putnam_2013_b4: THEORY
+BEGIN
+  real_function: TYPE = [real -> real]
+  real_sequence: TYPE = [nat -> real]
+
+  continuous_on_unit_interval(f: real_function): bool =
+    FORALL (x: real):
+      (0 <= x AND x <= 1) IMPLIES
+        FORALL (epsilon_value: posreal):
+          EXISTS (delta: posreal):
+            FORALL (y: real):
+              (0 <= y
+                AND y <= 1
+                AND abs(y - x) < delta)
+              IMPLIES
+                abs(f(y) - f(x)) < epsilon_value
+
+  valid_tagged_partition(
+      points, tags: real_sequence,
+      count: nat): bool =
+    count > 0
+      AND points(0) = 0
+      AND points(count) = 1
+      AND FORALL (index: nat):
+        index < count IMPLIES
+          (points(index) < points(index + 1)
+            AND points(index) <= tags(index)
+            AND tags(index) <= points(index + 1))
+
+  mesh_less_than(
+      points: real_sequence,
+      count: nat,
+      bound: real): bool =
+    FORALL (index: nat):
+      index < count IMPLIES
+        points(index + 1) - points(index) < bound
+
+  riemann_sum(
+      f: real_function,
+      points, tags: real_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      riemann_sum(f, points, tags, count - 1)
+        + f(tags(count - 1))
+            * (points(count) - points(count - 1))
+    ENDIF
+  MEASURE count
+
+  has_unit_interval_integral(
+      f: real_function,
+      integral_value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (mesh_bound: posreal):
+        FORALL
+            (points, tags: real_sequence),
+            (count: nat):
+          (valid_tagged_partition(points, tags, count)
+            AND mesh_less_than(points, count, mesh_bound))
+          IMPLIES
+            abs(
+              riemann_sum(f, points, tags, count)
+                - integral_value)
+              < epsilon_value
+
+  unit_interval_integral(f: real_function): real =
+    IF EXISTS (integral_value: real):
+        has_unit_interval_integral(f, integral_value)
+    THEN
+      epsilon(
+        LAMBDA (integral_value: real):
+          has_unit_interval_integral(f, integral_value))
+    ELSE
+      0
+    ENDIF
+
+  mean(f: real_function): real =
+    unit_interval_integral(f)
+
+  variance(f: real_function): real =
+    unit_interval_integral(
+      LAMBDA (x: real):
+        (f(x) - mean(f)) ^ 2)
+
+  is_maximum_absolute_value(
+      f: real_function,
+      maximum_value: real): bool =
+    (EXISTS (x: real):
+      0 <= x
+        AND x <= 1
+        AND maximum_value = abs(f(x)))
+      AND
+        (FORALL (x: real):
+          (0 <= x AND x <= 1)
+            IMPLIES abs(f(x)) <= maximum_value)
+
+  maximum_absolute_value(f: real_function): real =
+    IF EXISTS (maximum_value: real):
+        is_maximum_absolute_value(f, maximum_value)
+    THEN
+      epsilon(
+        LAMBDA (maximum_value: real):
+          is_maximum_absolute_value(f, maximum_value))
+    ELSE
+      0
+    ENDIF
+
+  pointwise_product(
+      f, g: real_function): real_function =
+    LAMBDA (x: real): f(x) * g(x)
+
+  putnam_2013_b4: bool =
+    FORALL (f, g: real_function):
+      (continuous_on_unit_interval(f)
+        AND continuous_on_unit_interval(g))
+      IMPLIES
+        variance(pointwise_product(f, g))
+          <= 2 * variance(f) * maximum_absolute_value(g) ^ 2
+            + 2 * variance(g) * maximum_absolute_value(f) ^ 2
+END putnam_2013_b4

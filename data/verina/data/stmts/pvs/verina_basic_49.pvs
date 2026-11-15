@@ -1,0 +1,98 @@
+% Statement-only formalization of the VERINA corpus artifact verina_basic_49,
+% catalog title "findFirstOdd": a deterministic left-to-right scan of a
+% nonempty integer array returns the index of its first odd entry, or none
+% when no odd entry exists. This file contains no proof.
+
+verina_basic_49: THEORY
+BEGIN
+
+  nat_option: DATATYPE
+  BEGIN
+    NoNat: NoNat?
+    SomeNat(option_value: nat): SomeNat?
+  END nat_option
+
+  % Finite PVS lists preserve exactly the contents and order of Lean arrays.
+  int_list_length(
+      values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        int_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  % Lean Array.get! on integer arrays returns zero outside the array.
+  int_list_get_bang(
+      index: nat,
+      values: list[int]): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          int_list_get_bang(index - 1, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  isOdd(value: int): bool =
+    mod(value, 2) /= 0
+
+  findFirstOdd_precond(
+      a: list[int]): bool =
+    int_list_length(a) > 0
+
+  % This is exactly the source's toList.zipIdx.find? scan followed by mapping
+  % the first matching pair to its index.
+  find_first_odd_from(
+      remaining: list[int],
+      index: nat): RECURSIVE nat_option =
+    CASES remaining OF
+      null:
+        NoNat,
+      cons(value, rest):
+        IF isOdd(value) THEN
+          SomeNat(index)
+        ELSE
+          find_first_odd_from(rest, index + 1)
+        ENDIF
+    ENDCASES
+  MEASURE remaining BY <<
+
+  % The source precondition proof argument is computationally irrelevant.
+  findFirstOdd(
+      a: list[int]): nat_option =
+    find_first_odd_from(a, 0)
+
+  findFirstOdd_postcond(
+      a: list[int],
+      result: nat_option): bool =
+    CASES result OF
+      NoNat:
+        FORALL (i: nat):
+          i < int_list_length(a)
+            IMPLIES
+              NOT isOdd(int_list_get_bang(i, a)),
+      SomeNat(idx):
+        idx < int_list_length(a)
+          AND isOdd(int_list_get_bang(idx, a))
+          AND
+            (FORALL (j: nat):
+              j < idx
+                IMPLIES
+                  NOT isOdd(int_list_get_bang(j, a)))
+    ENDCASES
+
+  findFirstOdd_spec_satisfied: bool =
+    FORALL (a: list[int]):
+      findFirstOdd_precond(a)
+        IMPLIES
+          findFirstOdd_postcond(
+            a,
+            findFirstOdd(a))
+
+END verina_basic_49

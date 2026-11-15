@@ -1,0 +1,99 @@
+% Statement-only formalization of "Sum of an Arithmetic Series" from Hundred
+% Theorems item 068: the inclusive partial sum of terms a + i*d has the standard
+% triangular-number form in a semiring, with its natural-number specialization.
+% This file contains no proof.
+
+sum_of_an_arithmetic_series_068[
+  Carrier: TYPE+,
+  zero, one: Carrier,
+  semiring_add, semiring_multiply: [Carrier, Carrier -> Carrier]
+]: THEORY
+BEGIN
+  semiring_laws: bool =
+    (FORALL (a, b, c: Carrier):
+      semiring_add(semiring_add(a, b), c)
+        = semiring_add(a, semiring_add(b, c)))
+      AND (FORALL (a, b: Carrier):
+        semiring_add(a, b) = semiring_add(b, a))
+      AND (FORALL (a: Carrier):
+        semiring_add(zero, a) = a
+          AND semiring_add(a, zero) = a)
+      AND (FORALL (a, b, c: Carrier):
+        semiring_multiply(semiring_multiply(a, b), c)
+          = semiring_multiply(a, semiring_multiply(b, c)))
+      AND (FORALL (a: Carrier):
+        semiring_multiply(one, a) = a
+          AND semiring_multiply(a, one) = a)
+      AND (FORALL (a, b, c: Carrier):
+        semiring_multiply(a, semiring_add(b, c))
+          = semiring_add(
+              semiring_multiply(a, b),
+              semiring_multiply(a, c)))
+      AND (FORALL (a, b, c: Carrier):
+        semiring_multiply(semiring_add(a, b), c)
+          = semiring_add(
+              semiring_multiply(a, c),
+              semiring_multiply(b, c)))
+      AND (FORALL (a: Carrier):
+        semiring_multiply(zero, a) = zero
+          AND semiring_multiply(a, zero) = zero)
+
+  multiple(coefficient: nat, value: Carrier): RECURSIVE Carrier =
+    IF coefficient = 0 THEN
+      zero
+    ELSE
+      semiring_add(
+        multiple(coefficient - 1, value),
+        value)
+    ENDIF
+  MEASURE coefficient
+
+  triangular_number(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      0
+    ELSE
+      triangular_number(index - 1) + index
+    ENDIF
+  MEASURE index
+
+  semiring_arithmetic_partial_sum(
+      a, d: Carrier,
+      count: nat): RECURSIVE Carrier =
+    IF count = 0 THEN
+      zero
+    ELSE
+      semiring_add(
+        semiring_arithmetic_partial_sum(a, d, count - 1),
+        semiring_add(
+          a,
+          multiple(count - 1, d)))
+    ENDIF
+  MEASURE count
+
+  semiring_arithmetic_series: bool =
+    semiring_laws IMPLIES
+      FORALL (a, d: Carrier), (n: nat):
+        semiring_arithmetic_partial_sum(a, d, n + 1)
+          = semiring_add(
+              multiple(n + 1, a),
+              multiple(triangular_number(n), d))
+
+  natural_prefix_sum(f: [nat -> nat], count: nat): RECURSIVE nat =
+    IF count = 0 THEN
+      0
+    ELSE
+      natural_prefix_sum(f, count - 1) + f(count - 1)
+    ENDIF
+  MEASURE count
+
+  natural_arithmetic_series: bool =
+    FORALL (a, d, n: nat):
+      2 * natural_prefix_sum(
+        (LAMBDA (i: nat): a + d * i),
+        n + 1)
+        = (n + 1) * (2 * a + n * d)
+
+  sum_of_an_arithmetic_series: bool =
+    semiring_arithmetic_series
+      AND natural_arithmetic_series
+END sum_of_an_arithmetic_series_068

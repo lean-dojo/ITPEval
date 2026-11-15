@@ -1,0 +1,68 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2018_b2:
+% the polynomial n + (n - 1)z + ... + z^(n - 1) has no zero in the closed
+% complex unit disk when n is positive. This file contains no proof.
+
+putnam_2018_b2: THEORY
+BEGIN
+  complex: TYPE = [# real_part: real, imag_part: real #]
+
+  complex_zero: complex =
+    (# real_part := 0, imag_part := 0 #)
+
+  complex_one: complex =
+    (# real_part := 1, imag_part := 0 #)
+
+  complex_of_nat(value: nat): complex =
+    (# real_part := value, imag_part := 0 #)
+
+  complex_add(x, y: complex): complex =
+    (# real_part := real_part(x) + real_part(y),
+       imag_part := imag_part(x) + imag_part(y) #)
+
+  complex_mul(x, y: complex): complex =
+    (# real_part := real_part(x) * real_part(y)
+                       - imag_part(x) * imag_part(y),
+       imag_part := real_part(x) * imag_part(y)
+                       + imag_part(x) * real_part(y) #)
+
+  complex_power(z: complex, exponent: nat): RECURSIVE complex =
+    IF exponent = 0 THEN
+      complex_one
+    ELSE
+      complex_mul(complex_power(z, exponent - 1), z)
+    ENDIF
+  MEASURE exponent
+
+  polynomial_coefficient(n, i: nat): nat =
+    IF i <= n THEN n - i ELSE 0 ENDIF
+
+  weighted_polynomial_sum(
+      n: nat,
+      z: complex,
+      count: nat): RECURSIVE complex =
+    IF count = 0 THEN
+      complex_zero
+    ELSE
+      LET i: nat = count - 1 IN
+        complex_add(
+          weighted_polynomial_sum(n, z, count - 1),
+          complex_mul(
+            complex_of_nat(polynomial_coefficient(n, i)),
+            complex_power(z, i)))
+    ENDIF
+  MEASURE count
+
+  polynomial_value(n: nat, z: complex): complex =
+    weighted_polynomial_sum(n, z, n)
+
+  in_closed_unit_disk(z: complex): bool =
+    real_part(z) * real_part(z)
+      + imag_part(z) * imag_part(z) <= 1
+
+  putnam_2018_b2: bool =
+    FORALL (n: nat):
+      n > 0 IMPLIES
+        FORALL (z: complex):
+          in_closed_unit_disk(z) IMPLIES
+            polynomial_value(n, z) /= complex_zero
+END putnam_2018_b2

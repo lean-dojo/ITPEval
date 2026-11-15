@@ -1,0 +1,237 @@
+% Statement-only formalization of the Babel-formal artifact polynomial: roots,
+% factorization, and degree bounds in an integral-domain-style polynomial context.
+% This file contains no proof.
+
+polynomial[
+  R: TYPE+,
+  P: TYPE+,
+  zeroR: R,
+  oneR: R,
+  oppR: [R -> R],
+  addR: [R, R -> R],
+  mulR: [R, R -> R],
+  zeroP: P,
+  oneP: P,
+  oppP: [P -> P],
+  addP: [P, P -> P],
+  mulP: [P, P -> P],
+  degree: [P -> nat],
+  monomial: [nat, R -> P],
+  eval: [P, R -> R]
+]: THEORY
+BEGIN
+  mynat_add(n, m: nat): nat = n + m
+
+  mynat_le(n, m: nat): bool = n <= m
+
+  inL(a: R, xs: list[R]): RECURSIVE bool =
+    CASES xs OF
+      null: FALSE,
+      cons(b, ys): a = b OR inL(a, ys)
+    ENDCASES
+  MEASURE xs BY <<
+
+  noDupL(xs: list[R]): RECURSIVE bool =
+    CASES xs OF
+      null: TRUE,
+      cons(a, ys): NOT inL(a, ys) AND noDupL(ys)
+    ENDCASES
+  MEASURE xs BY <<
+
+  lengthL(xs: list[R]): RECURSIVE nat =
+    CASES xs OF
+      null: 0,
+      cons(a, ys): lengthL(ys) + 1
+    ENDCASES
+  MEASURE xs BY <<
+
+  mynat_add_O_left: bool =
+    FORALL (m: nat): mynat_add(0, m) = m
+
+  mynat_add_S_left: bool =
+    FORALL (n, m: nat):
+      mynat_add(n + 1, m) = mynat_add(n, m) + 1
+
+  mynat_zero_le: bool =
+    FORALL (n: nat): mynat_le(0, n)
+
+  mynat_add_zero_r: bool =
+    FORALL (n: nat): mynat_add(n, 0) = n
+
+  mynat_succ_le_succ: bool =
+    FORALL (n, m: nat):
+      mynat_le(n, m) IMPLIES mynat_le(n + 1, m + 1)
+
+  mynat_add_S_r: bool =
+    FORALL (m, n: nat):
+      mynat_add(m, n + 1) = mynat_add(m, n) + 1
+
+  mynat_add_comm: bool =
+    FORALL (n, m: nat): mynat_add(n, m) = mynat_add(m, n)
+
+  X: P = monomial(1, oneR)
+
+  C(c: R): P = monomial(0, c)
+
+  X_minus(a: R): P = addP(X, C(oppR(a)))
+
+  is_root(a: R, p: P): bool = eval(p, a) = zeroR
+
+  poly_of_roots(xs: list[R]): RECURSIVE P =
+    CASES xs OF
+      null: oneP,
+      cons(a, ys): mulP(X_minus(a), poly_of_roots(ys))
+    ENDCASES
+  MEASURE xs BY <<
+
+  ringR_laws: bool =
+    NOT (oneR = zeroR)
+      AND (FORALL (x, y: R): addR(x, y) = addR(y, x))
+      AND (FORALL (x, y, z: R):
+        addR(addR(x, y), z) = addR(x, addR(y, z)))
+      AND (FORALL (x: R): addR(x, zeroR) = x)
+      AND (FORALL (x: R): addR(x, oppR(x)) = zeroR)
+      AND (FORALL (x, y: R): mulR(x, y) = mulR(y, x))
+      AND (FORALL (x, y, z: R):
+        mulR(mulR(x, y), z) = mulR(x, mulR(y, z)))
+      AND (FORALL (x: R): mulR(x, oneR) = x)
+      AND (FORALL (x, y, z: R):
+        mulR(x, addR(y, z)) =
+          addR(mulR(x, y), mulR(x, z)))
+      AND (FORALL (x: R): mulR(x, zeroR) = zeroR)
+      AND (FORALL (x, y: R):
+        mulR(x, y) = zeroR IMPLIES
+          x = zeroR OR y = zeroR)
+
+  ringP_laws: bool =
+    NOT (oneP = zeroP)
+      AND (FORALL (x, y: P): addP(x, y) = addP(y, x))
+      AND (FORALL (x, y, z: P):
+        addP(addP(x, y), z) = addP(x, addP(y, z)))
+      AND (FORALL (x: P): addP(x, zeroP) = x)
+      AND (FORALL (x: P): addP(x, oppP(x)) = zeroP)
+      AND (FORALL (x, y: P): mulP(x, y) = mulP(y, x))
+      AND (FORALL (x, y, z: P):
+        mulP(mulP(x, y), z) = mulP(x, mulP(y, z)))
+      AND (FORALL (x: P): mulP(x, oneP) = x)
+      AND (FORALL (x, y, z: P):
+        mulP(x, addP(y, z)) =
+          addP(mulP(x, y), mulP(x, z)))
+      AND (FORALL (x: P): mulP(x, zeroP) = zeroP)
+      AND (FORALL (x, y: P):
+        mulP(x, y) = zeroP IMPLIES
+          x = zeroP OR y = zeroP)
+
+  polynomial_laws: bool =
+    C(zeroR) = zeroP
+      AND C(oneR) = oneP
+      AND degree(zeroP) = 0
+      AND (FORALL (p, q: P), (x: R):
+        eval(addP(p, q), x) =
+          addR(eval(p, x), eval(q, x)))
+      AND (FORALL (p, q: P), (x: R):
+        eval(mulP(p, q), x) =
+          mulR(eval(p, x), eval(q, x)))
+      AND (FORALL (c, x: R): eval(C(c), x) = c)
+      AND (FORALL (x: R): eval(X, x) = x)
+      AND (FORALL (c: R):
+        NOT (c = zeroR) IMPLIES degree(C(c)) = 0)
+      AND (FORALL (p: P):
+        (degree(p) = 0) =
+          (EXISTS (c: R): p = C(c)))
+      AND (FORALL (a: R): degree(X_minus(a)) = 1)
+      AND (FORALL (p, q: P):
+        NOT (p = zeroP) AND NOT (q = zeroP) IMPLIES
+          degree(mulP(p, q)) =
+            mynat_add(degree(p), degree(q)))
+      AND (FORALL (p: P), (a: R):
+        EXISTS (q, r: P):
+          p = addP(mulP(q, X_minus(a)), r)
+            AND degree(r) = 0)
+
+  polynomial_context: bool =
+    ringR_laws
+      AND ringP_laws
+      AND polynomial_laws
+
+  sub_eq_zero_l: bool =
+    ringR_laws IMPLIES
+      (FORALL (a, b: R):
+        addR(a, oppR(b)) = zeroR IMPLIES a = b)
+
+  root_factor: bool =
+    polynomial_context IMPLIES
+      (FORALL (p: P), (a: R):
+        is_root(a, p) IMPLIES
+          (EXISTS (q: P): p = mulP(q, X_minus(a))))
+
+  root_transfer: bool =
+    polynomial_context IMPLIES
+      (FORALL (p, q: P), (a, b: R):
+        p = mulP(q, X_minus(a))
+          AND NOT (b = a)
+          AND is_root(b, p)
+        IMPLIES is_root(b, q))
+
+  roots_le_degree: bool =
+    polynomial_context IMPLIES
+      (FORALL (p: P), (xs: list[R]):
+        noDupL(xs)
+          AND (FORALL (a: R):
+            inL(a, xs) IMPLIES is_root(a, p))
+          AND NOT (p = zeroP)
+        IMPLIES mynat_le(lengthL(xs), degree(p)))
+
+  X_minus_nonzero: bool =
+    polynomial_context IMPLIES
+      (FORALL (a: R): NOT (X_minus(a) = zeroP))
+
+  constant_root_zero: bool =
+    polynomial_context IMPLIES
+      (FORALL (p: P), (a: R):
+        degree(p) = 0
+          AND is_root(a, p)
+        IMPLIES p = zeroP)
+
+  root_of_product: bool =
+    polynomial_context IMPLIES
+      (FORALL (p, q: P), (a: R):
+        is_root(a, mulP(p, q)) IMPLIES
+          is_root(a, p) OR is_root(a, q))
+
+  root_scale_constant: bool =
+    polynomial_context IMPLIES
+      (FORALL (p: P), (c, a: R):
+        NOT (c = zeroR) IMPLIES
+          (is_root(a, p) =
+            is_root(a, mulP(C(c), p))))
+
+  poly_of_roots_nonzero: bool =
+    polynomial_context IMPLIES
+      (FORALL (xs: list[R]):
+        NOT (poly_of_roots(xs) = zeroP))
+
+  deg_poly_of_roots: bool =
+    polynomial_context IMPLIES
+      (FORALL (xs: list[R]):
+        degree(poly_of_roots(xs)) = lengthL(xs))
+
+  root_factor_list: bool =
+    polynomial_context IMPLIES
+      (FORALL (p: P), (xs: list[R]):
+        noDupL(xs)
+          AND (FORALL (a: R):
+            inL(a, xs) IMPLIES is_root(a, p))
+        IMPLIES
+          (EXISTS (q: P):
+            p = mulP(q, poly_of_roots(xs))))
+
+  degree_factorisation: bool =
+    polynomial_context IMPLIES
+      (FORALL (p, q: P), (xs: list[R]):
+        p = mulP(q, poly_of_roots(xs))
+          AND NOT (q = zeroP)
+        IMPLIES
+          degree(p) =
+            mynat_add(degree(q), lengthL(xs)))
+END polynomial

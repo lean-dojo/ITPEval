@@ -1,0 +1,322 @@
+% Statement-only formalization of the Thousand Theorems artifact Q1816952
+% (thousand-theorems__pvs__Q1816952), "Schur's lemma": over an algebraically
+% closed field, a simple object in a linear preadditive category with kernels
+% and finite-dimensional endomorphisms has a one-dimensional endomorphism
+% space. This file contains no proof.
+
+Q1816952_schur_s_lemma[
+  Object, Morphism, Scalar: TYPE+,
+  X: Object,
+  dom, cod: [Morphism -> Object],
+  id_arrow: [Object -> Morphism],
+  comp_arrow: [Morphism, Morphism -> Morphism],
+  zero_arrow: [Object, Object -> Morphism],
+  add_arrow: [Morphism, Morphism -> Morphism],
+  neg_arrow: [Morphism -> Morphism],
+  scale_arrow: [Scalar, Morphism -> Morphism],
+  zero_scalar, one_scalar: Scalar,
+  add_scalar, mul_scalar: [Scalar, Scalar -> Scalar],
+  neg_scalar, inv_scalar: [Scalar -> Scalar]
+]: THEORY
+BEGIN
+  q1816952_hom(
+      f: Morphism,
+      source_object, target_object: Object): bool =
+    dom(f) = source_object
+      AND cod(f) = target_object
+
+  q1816952_scalar_list_has_nonzero(
+      coefficients: list[Scalar]): RECURSIVE bool =
+    CASES coefficients OF
+      null: FALSE,
+      cons(head, tail):
+        head /= zero_scalar
+          OR q1816952_scalar_list_has_nonzero(tail)
+    ENDCASES
+  MEASURE coefficients BY <<
+
+  q1816952_nonconstant_polynomial(
+      coefficients: list[Scalar]): bool =
+    CASES coefficients OF
+      null: FALSE,
+      cons(constant_coefficient, higher_coefficients):
+        q1816952_scalar_list_has_nonzero(higher_coefficients)
+    ENDCASES
+
+  q1816952_polynomial_value(
+      coefficients: list[Scalar],
+      x: Scalar): RECURSIVE Scalar =
+    CASES coefficients OF
+      null: zero_scalar,
+      cons(head, tail):
+        add_scalar(
+          head,
+          mul_scalar(
+            x,
+            q1816952_polynomial_value(tail, x)))
+    ENDCASES
+  MEASURE coefficients BY <<
+
+  q1816952_field_laws: bool =
+    zero_scalar /= one_scalar
+      AND (FORALL (a, b: Scalar):
+        add_scalar(a, b) = add_scalar(b, a))
+      AND (FORALL (a, b, c: Scalar):
+        add_scalar(add_scalar(a, b), c)
+          = add_scalar(a, add_scalar(b, c)))
+      AND (FORALL (a: Scalar):
+        add_scalar(a, zero_scalar) = a)
+      AND (FORALL (a: Scalar):
+        add_scalar(a, neg_scalar(a)) = zero_scalar)
+      AND (FORALL (a, b: Scalar):
+        mul_scalar(a, b) = mul_scalar(b, a))
+      AND (FORALL (a, b, c: Scalar):
+        mul_scalar(mul_scalar(a, b), c)
+          = mul_scalar(a, mul_scalar(b, c)))
+      AND (FORALL (a: Scalar):
+        mul_scalar(a, one_scalar) = a)
+      AND (FORALL (a, b, c: Scalar):
+        mul_scalar(a, add_scalar(b, c))
+          = add_scalar(
+              mul_scalar(a, b),
+              mul_scalar(a, c)))
+      AND (FORALL (a: Scalar):
+        a /= zero_scalar IMPLIES
+          mul_scalar(a, inv_scalar(a)) = one_scalar)
+
+  q1816952_algebraically_closed: bool =
+    FORALL (coefficients: list[Scalar]):
+      q1816952_nonconstant_polynomial(coefficients)
+        IMPLIES
+          EXISTS (root: Scalar):
+            q1816952_polynomial_value(coefficients, root)
+              = zero_scalar
+
+  q1816952_category_laws: bool =
+    (FORALL (A: Object):
+      q1816952_hom(id_arrow(A), A, A))
+      AND (FORALL (A, B, C: Object),
+                  (f, g: Morphism):
+        q1816952_hom(f, A, B)
+          AND q1816952_hom(g, B, C)
+        IMPLIES
+          q1816952_hom(comp_arrow(g, f), A, C))
+      AND (FORALL (A, B, C, D: Object),
+                  (f, g, h: Morphism):
+        q1816952_hom(f, A, B)
+          AND q1816952_hom(g, B, C)
+          AND q1816952_hom(h, C, D)
+        IMPLIES
+          comp_arrow(h, comp_arrow(g, f))
+            = comp_arrow(comp_arrow(h, g), f))
+      AND (FORALL (A, B: Object), (f: Morphism):
+        q1816952_hom(f, A, B)
+          IMPLIES comp_arrow(id_arrow(B), f) = f)
+      AND (FORALL (A, B: Object), (f: Morphism):
+        q1816952_hom(f, A, B)
+          IMPLIES comp_arrow(f, id_arrow(A)) = f)
+
+  q1816952_preadditive_laws: bool =
+    (FORALL (A, B: Object):
+      q1816952_hom(zero_arrow(A, B), A, B))
+      AND (FORALL (A, B: Object), (f: Morphism):
+        q1816952_hom(f, A, B)
+          IMPLIES q1816952_hom(neg_arrow(f), A, B))
+      AND (FORALL (A, B: Object), (f, g: Morphism):
+        q1816952_hom(f, A, B)
+          AND q1816952_hom(g, A, B)
+        IMPLIES q1816952_hom(add_arrow(f, g), A, B))
+      AND (FORALL (A, B: Object), (f, g: Morphism):
+        q1816952_hom(f, A, B)
+          AND q1816952_hom(g, A, B)
+        IMPLIES add_arrow(f, g) = add_arrow(g, f))
+      AND (FORALL (A, B: Object), (f, g, h: Morphism):
+        q1816952_hom(f, A, B)
+          AND q1816952_hom(g, A, B)
+          AND q1816952_hom(h, A, B)
+        IMPLIES
+          add_arrow(add_arrow(f, g), h)
+            = add_arrow(f, add_arrow(g, h)))
+      AND (FORALL (A, B: Object), (f: Morphism):
+        q1816952_hom(f, A, B)
+          IMPLIES add_arrow(f, zero_arrow(A, B)) = f)
+      AND (FORALL (A, B: Object), (f: Morphism):
+        q1816952_hom(f, A, B)
+          IMPLIES
+            add_arrow(f, neg_arrow(f))
+              = zero_arrow(A, B))
+      AND (FORALL (A, B, C: Object),
+                  (f, g, h: Morphism):
+        q1816952_hom(f, A, B)
+          AND q1816952_hom(g, A, B)
+          AND q1816952_hom(h, B, C)
+        IMPLIES
+          comp_arrow(h, add_arrow(f, g))
+            = add_arrow(
+                comp_arrow(h, f),
+                comp_arrow(h, g)))
+      AND (FORALL (A, B, C: Object),
+                  (f, g, h: Morphism):
+        q1816952_hom(f, A, B)
+          AND q1816952_hom(g, B, C)
+          AND q1816952_hom(h, B, C)
+        IMPLIES
+          comp_arrow(add_arrow(g, h), f)
+            = add_arrow(
+                comp_arrow(g, f),
+                comp_arrow(h, f)))
+
+  q1816952_linear_category_laws: bool =
+    (FORALL (A, B: Object),
+            (a: Scalar),
+            (f: Morphism):
+      q1816952_hom(f, A, B)
+        IMPLIES q1816952_hom(scale_arrow(a, f), A, B))
+      AND (FORALL (A, B: Object),
+                  (a: Scalar),
+                  (f, g: Morphism):
+        q1816952_hom(f, A, B)
+          AND q1816952_hom(g, A, B)
+        IMPLIES
+          scale_arrow(a, add_arrow(f, g))
+            = add_arrow(
+                scale_arrow(a, f),
+                scale_arrow(a, g)))
+      AND (FORALL (A, B: Object),
+                  (a, b: Scalar),
+                  (f: Morphism):
+        q1816952_hom(f, A, B)
+        IMPLIES
+          scale_arrow(add_scalar(a, b), f)
+            = add_arrow(
+                scale_arrow(a, f),
+                scale_arrow(b, f)))
+      AND (FORALL (A, B: Object),
+                  (a, b: Scalar),
+                  (f: Morphism):
+        q1816952_hom(f, A, B)
+        IMPLIES
+          scale_arrow(mul_scalar(a, b), f)
+            = scale_arrow(a, scale_arrow(b, f)))
+      AND (FORALL (A, B: Object), (f: Morphism):
+        q1816952_hom(f, A, B)
+          IMPLIES scale_arrow(one_scalar, f) = f)
+      AND (FORALL (A, B: Object), (f: Morphism):
+        q1816952_hom(f, A, B)
+          IMPLIES
+            scale_arrow(zero_scalar, f)
+              = zero_arrow(A, B))
+      AND (FORALL (A, B, C: Object),
+                  (a: Scalar),
+                  (f, g: Morphism):
+        q1816952_hom(f, A, B)
+          AND q1816952_hom(g, B, C)
+        IMPLIES
+          scale_arrow(a, comp_arrow(g, f))
+            = comp_arrow(scale_arrow(a, g), f))
+      AND (FORALL (A, B, C: Object),
+                  (a: Scalar),
+                  (f, g: Morphism):
+        q1816952_hom(f, A, B)
+          AND q1816952_hom(g, B, C)
+        IMPLIES
+          scale_arrow(a, comp_arrow(g, f))
+            = comp_arrow(g, scale_arrow(a, f)))
+
+  q1816952_is_monomorphism(m: Morphism): bool =
+    FORALL (Z: Object), (f, g: Morphism):
+      q1816952_hom(f, Z, dom(m))
+        AND q1816952_hom(g, Z, dom(m))
+        AND comp_arrow(m, f) = comp_arrow(m, g)
+      IMPLIES f = g
+
+  q1816952_is_isomorphism(m: Morphism): bool =
+    EXISTS (inverse: Morphism):
+      q1816952_hom(inverse, cod(m), dom(m))
+        AND comp_arrow(inverse, m) = id_arrow(dom(m))
+        AND comp_arrow(m, inverse) = id_arrow(cod(m))
+
+  q1816952_simple_object(A: Object): bool =
+    id_arrow(A) /= zero_arrow(A, A)
+      AND (FORALL (B: Object), (m: Morphism):
+        q1816952_hom(m, B, A)
+          AND q1816952_is_monomorphism(m)
+        IMPLIES
+          m = zero_arrow(B, A)
+            OR q1816952_is_isomorphism(m))
+
+  q1816952_has_kernels: bool =
+    FORALL (A, B: Object), (f: Morphism):
+      q1816952_hom(f, A, B)
+      IMPLIES
+        EXISTS (K: Object), (kernel_arrow: Morphism):
+          q1816952_hom(kernel_arrow, K, A)
+            AND comp_arrow(f, kernel_arrow)
+              = zero_arrow(K, B)
+            AND (FORALL (Z: Object), (g: Morphism):
+              q1816952_hom(g, Z, A)
+                AND comp_arrow(f, g) = zero_arrow(Z, B)
+              IMPLIES
+                EXISTS (lift: Morphism):
+                  q1816952_hom(lift, Z, K)
+                    AND comp_arrow(kernel_arrow, lift) = g
+                    AND (FORALL (other_lift: Morphism):
+                      q1816952_hom(other_lift, Z, K)
+                        AND comp_arrow(
+                          kernel_arrow,
+                          other_lift) = g
+                      IMPLIES other_lift = lift))
+
+  q1816952_linear_combination(
+      vectors: [nat -> Morphism],
+      coefficients: [nat -> Scalar],
+      count: nat): RECURSIVE Morphism =
+    IF count = 0 THEN
+      zero_arrow(X, X)
+    ELSE
+      add_arrow(
+        q1816952_linear_combination(
+          vectors,
+          coefficients,
+          count - 1),
+        scale_arrow(
+          coefficients(count - 1),
+          vectors(count - 1)))
+    ENDIF
+  MEASURE count
+
+  q1816952_finite_dimensional_endomorphisms: bool =
+    EXISTS
+        (spanning_count: nat),
+        (vectors: [nat -> Morphism]):
+      (FORALL (index: nat):
+        index < spanning_count
+          IMPLIES q1816952_hom(vectors(index), X, X))
+        AND (FORALL (f: Morphism):
+          q1816952_hom(f, X, X)
+            IMPLIES
+              EXISTS (coefficients: [nat -> Scalar]):
+                q1816952_linear_combination(
+                  vectors,
+                  coefficients,
+                  spanning_count) = f)
+
+  q1816952_endomorphism_dimension_one: bool =
+    id_arrow(X) /= zero_arrow(X, X)
+      AND (FORALL (f: Morphism):
+        q1816952_hom(f, X, X)
+          IMPLIES
+            EXISTS (c: Scalar):
+              f = scale_arrow(c, id_arrow(X)))
+
+  schur_s_lemma: bool =
+    (q1816952_field_laws
+      AND q1816952_algebraically_closed
+      AND q1816952_category_laws
+      AND q1816952_preadditive_laws
+      AND q1816952_linear_category_laws
+      AND q1816952_has_kernels
+      AND q1816952_simple_object(X)
+      AND q1816952_finite_dimensional_endomorphisms)
+    IMPLIES q1816952_endomorphism_dimension_one
+END Q1816952_schur_s_lemma

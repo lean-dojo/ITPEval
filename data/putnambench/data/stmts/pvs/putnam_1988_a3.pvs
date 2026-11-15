@@ -1,0 +1,121 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1988_a3:
+% the real exponents for which the series with terms
+% ((1/n) / sin(1/n) - 1)^x converges are exactly those greater than one half.
+% This file contains no proof.
+
+putnam_1988_a3: THEORY
+BEGIN
+  real_sequence: TYPE = [nat -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  nat_factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * nat_factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  sine_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        sine_partial(x, count - 1)
+          + safe_div(
+              ((-1 :: real) ^ index) * x ^ (2 * index + 1),
+              nat_factorial(2 * index + 1) :: real)
+    ENDIF
+  MEASURE count
+
+  sine(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat):
+            sine_partial(x, count),
+          value))
+
+  exponential_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        exponential_partial(x, count - 1)
+          + safe_div(
+              x ^ index,
+              nat_factorial(index) :: real)
+    ENDIF
+  MEASURE count
+
+  real_exponential(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat):
+            exponential_partial(x, count),
+          value))
+
+  natural_log(x: real): real =
+    IF x > 0 THEN
+      epsilon(
+        LAMBDA (value: real):
+          real_exponential(value) = x)
+    ELSE
+      0
+    ENDIF
+
+  real_power(base, exponent: real): real =
+    IF base > 0 THEN
+      real_exponential(exponent * natural_log(base))
+    ELSIF base = 0 AND exponent = 0 THEN
+      1
+    ELSE
+      0
+    ENDIF
+
+  series_term(x: real, index: nat): real =
+    LET n: nat = index + 1,
+        angle: real = safe_div(1, n :: real)
+    IN
+      real_power(
+        safe_div(angle, sine(angle)) - 1,
+        x)
+
+  partial_sum(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      partial_sum(x, count - 1)
+        + series_term(x, count - 1)
+    ENDIF
+  MEASURE count
+
+  series_converges(x: real): bool =
+    EXISTS (total: real):
+      converges_to(
+        LAMBDA (count: nat):
+          partial_sum(x, count),
+        total)
+
+  putnam_1988_a3_solution(x: real): bool =
+    x > 1 / 2
+
+  putnam_1988_a3: bool =
+    FORALL (x: real):
+      series_converges(x)
+        IFF putnam_1988_a3_solution(x)
+END putnam_1988_a3

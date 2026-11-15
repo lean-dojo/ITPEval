@@ -1,0 +1,127 @@
+% Statement-only formalization of the Thousand Theorems artifact Q1568811,
+% "Hahn decomposition theorem": every signed measure on an arbitrary measurable
+% space has complementary measurable positive and negative sets. This file
+% contains no proof.
+
+hahn_decomposition_theorem_Q1568811[
+  A: TYPE+,
+  carrier: [A -> bool]
+]: THEORY
+BEGIN
+  event: TYPE = [A -> bool]
+  event_sequence: TYPE = [nat -> event]
+  sigma_algebra: TYPE = [event -> bool]
+  signed_measure: TYPE = [event -> real]
+  real_sequence: TYPE = [nat -> real]
+
+  full_event: event = carrier
+
+  empty_event: event =
+    LAMBDA (omega: A): FALSE
+
+  event_complement(E: event): event =
+    LAMBDA (omega: A):
+      carrier(omega) AND NOT E(omega)
+
+  countable_union(events: event_sequence): event =
+    LAMBDA (omega: A):
+      carrier(omega)
+        AND EXISTS (index: nat): events(index)(omega)
+
+  event_subset(E, F: event): bool =
+    FORALL (omega: A):
+      E(omega) IMPLIES F(omega)
+
+  carrier_event(E: event): bool =
+    event_subset(E, carrier)
+
+  pairwise_disjoint(events: event_sequence): bool =
+    FORALL (left_index, right_index: nat):
+      left_index /= right_index IMPLIES
+        FORALL (omega: A):
+          carrier(omega) IMPLIES
+            NOT (events(left_index)(omega)
+              AND events(right_index)(omega))
+
+  finite_real_sum(values: real_sequence, count: nat):
+      RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      finite_real_sum(values, count - 1)
+        + values(count - 1)
+    ENDIF
+  MEASURE count
+
+  converges_to_real(values: real_sequence, limit: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(values(index) - limit) < epsilon_value
+
+  is_sigma_algebra(Sigma: sigma_algebra): bool =
+    (FORALL (E: event):
+      Sigma(E) IMPLIES carrier_event(E))
+      AND Sigma(full_event)
+      AND (FORALL (E: event):
+        Sigma(E) IMPLIES Sigma(event_complement(E)))
+      AND (FORALL (events: event_sequence):
+        (FORALL (index: nat): Sigma(events(index)))
+          IMPLIES Sigma(countable_union(events)))
+
+  is_signed_measure(
+      S: signed_measure,
+      Sigma: sigma_algebra): bool =
+    is_sigma_algebra(Sigma)
+      AND S(empty_event) = 0
+      AND (FORALL (events: event_sequence):
+        ((FORALL (index: nat): Sigma(events(index)))
+          AND pairwise_disjoint(events))
+        IMPLIES
+          converges_to_real(
+            LAMBDA (count: nat):
+              finite_real_sum(
+                LAMBDA (index: nat): S(events(index)),
+                count),
+            S(countable_union(events))))
+
+  positive_on(
+      S: signed_measure,
+      Sigma: sigma_algebra,
+      E: event): bool =
+    FORALL (F: event):
+      Sigma(F) AND event_subset(F, E)
+        IMPLIES 0 <= S(F)
+
+  negative_on(
+      S: signed_measure,
+      Sigma: sigma_algebra,
+      E: event): bool =
+    FORALL (F: event):
+      Sigma(F) AND event_subset(F, E)
+        IMPLIES S(F) <= 0
+
+  complementary(E, F: event): bool =
+    carrier_event(E)
+      AND carrier_event(F)
+      AND (FORALL (omega: A):
+        carrier(omega) IMPLIES
+          (E(omega) IFF NOT F(omega)))
+
+  hahn_decomposition_theorem: bool =
+    FORALL
+        (S: signed_measure),
+        (Sigma: sigma_algebra):
+      is_signed_measure(S, Sigma)
+        IMPLIES
+          EXISTS (positive_part, negative_part: event):
+            Sigma(positive_part)
+              AND positive_on(
+                S, Sigma, positive_part)
+              AND Sigma(negative_part)
+              AND negative_on(
+                S, Sigma, negative_part)
+              AND complementary(
+                positive_part, negative_part)
+END hahn_decomposition_theorem_Q1568811

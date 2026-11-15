@@ -1,0 +1,72 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/foveoos11_cm/tree_max_TreeMax_maxqtvc: the verification condition for
+% maximum computation on a nonempty integer-labeled binary tree, combining
+% maximum invariants from its subtrees. This file contains no proof.
+
+tree_max_TreeMax_maxqtvc: THEORY
+BEGIN
+
+  tree: DATATYPE
+  BEGIN
+    Null: Null?
+    Tree(
+      root_value: int,
+      left_subtree: tree,
+      right_subtree: tree): Tree?
+  END tree
+
+  tree_mem(element: int, values: tree): RECURSIVE bool =
+    CASES values OF
+      Null:
+        FALSE,
+      Tree(value, left, right):
+        value = element
+          OR tree_mem(element, left)
+          OR tree_mem(element, right)
+    ENDCASES
+  MEASURE values BY <<
+
+  ge_tree(bound: int, values: tree): RECURSIVE bool =
+    CASES values OF
+      Null:
+        TRUE,
+      Tree(value, left, right):
+        value <= bound
+          AND ge_tree(bound, left)
+          AND ge_tree(bound, right)
+    ENDCASES
+  MEASURE values BY <<
+
+  max_vc: bool =
+    FORALL (values: tree):
+      values /= Null
+        IMPLIES
+          (CASES values OF
+             Null:
+               FALSE,
+             Tree(value, left, right):
+               TRUE
+           ENDCASES)
+          AND
+          (FORALL (result: int):
+            (CASES values OF
+               Null:
+                 FALSE,
+               Tree(value, left, right):
+                 EXISTS (right_maximum: int):
+                   (ge_tree(right_maximum, right)
+                     AND value <= right_maximum
+                     AND
+                       (right_maximum = value
+                         OR tree_mem(right_maximum, right)))
+                     AND ge_tree(result, left)
+                     AND right_maximum <= result
+                     AND
+                       (result = right_maximum
+                         OR tree_mem(result, left))
+             ENDCASES)
+              IMPLIES
+                ge_tree(result, values)
+                  AND tree_mem(result, values))
+
+END tree_max_TreeMax_maxqtvc

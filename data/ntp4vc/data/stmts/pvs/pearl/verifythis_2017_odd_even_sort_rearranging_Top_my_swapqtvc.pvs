@@ -1,0 +1,101 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/verifythis_2017_odd_even_sort_rearranging_Top_my_swapqtvc: the
+% odd-even-sort swap verification condition, asserting that swapping an
+% inverted pair at bounded indices strictly decreases its integer entropy.
+% This file contains no proof.
+
+verifythis_2017_odd_even_sort_rearranging_Top_my_swapqtvc: THEORY
+BEGIN
+
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  nth_default(values: list[int], index: nat): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          nth_default(tail, index - 1)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  list_set(
+      values: list[int],
+      index: nat,
+      value: int): RECURSIVE list[int] =
+    CASES values OF
+      null:
+        null,
+      cons(head, tail):
+        IF index = 0 THEN
+          cons(value, tail)
+        ELSE
+          cons(head, list_set(tail, index - 1, value))
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  entropy_span(
+      values: list[int],
+      maximum, index: int,
+      count: nat): RECURSIVE int =
+    IF count = 0 THEN
+      0
+    ELSE
+      index
+        * (maximum
+           - nth_default(values, int_to_nat(index)))
+        + entropy_span(
+            values, maximum, index + 1, count - 1)
+    ENDIF
+  MEASURE count
+
+  entropy(values: list[int], maximum: int): int =
+    entropy_span(values, maximum, 0, length(values))
+
+  array_exchange(
+      before, after: list[int],
+      first_index, second_index: int): bool =
+    after =
+      list_set(
+        list_set(
+          before,
+          int_to_nat(first_index),
+          nth_default(
+            before, int_to_nat(second_index))),
+        int_to_nat(second_index),
+        nth_default(
+          before, int_to_nat(first_index)))
+
+  my_swap_vc: bool =
+    FORALL
+        (a: list[int]),
+        (j, i, maximum: int):
+      nth_default(a, int_to_nat(j))
+        < nth_default(a, int_to_nat(i))
+        IMPLIES
+      0 <= i
+        IMPLIES
+      i < j
+        IMPLIES
+      j < length(a)
+        IMPLIES
+          0 <= i
+            AND i < length(a)
+            AND 0 <= j
+            AND j < length(a)
+            AND
+          (FORALL (a1: list[int]):
+            length(a1) = length(a)
+              IMPLIES
+            array_exchange(a, a1, i, j)
+              IMPLIES
+                array_exchange(a, a1, i, j)
+                  AND entropy(a1, maximum)
+                        < entropy(a, maximum))
+
+END verifythis_2017_odd_even_sort_rearranging_Top_my_swapqtvc

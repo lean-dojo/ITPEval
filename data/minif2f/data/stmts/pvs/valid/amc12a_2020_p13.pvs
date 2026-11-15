@@ -1,0 +1,69 @@
+% Statement-only formalization of miniF2F valid problem amc12a_2020_p13: a nested
+% positive-real reciprocal-power identity implying b = 3. This file contains no proof.
+
+amc12a_2020_p13: THEORY
+BEGIN
+  safe_div(x, y: real): real =
+    IF y = 0 THEN 0 ELSE x / y ENDIF
+
+  nat_factorial(n: nat): RECURSIVE nat =
+    IF n = 0 THEN
+      1
+    ELSE
+      n * nat_factorial(n - 1)
+    ENDIF
+  MEASURE n
+
+  exponential_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET j: nat = count - 1 IN
+        exponential_partial(x, count - 1)
+          + safe_div(x ^ j, nat_factorial(j) :: real)
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: [nat -> real], value: real): bool =
+    FORALL (eps: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < eps
+
+  exponential_value(x, value: real): bool =
+    converges_to(
+      (LAMBDA (count: nat): exponential_partial(x, count)),
+      value)
+
+  real_power_value(base, exponent, value: real): bool =
+    base > 0
+      AND EXISTS (log_base: real):
+        exponential_value(log_base, base)
+          AND exponential_value(exponent * log_base, value)
+
+  amc12a_2020_p13: bool =
+    FORALL (a, b, c: nat):
+      FORALL (n: real):
+        (n > 0
+          AND n /= 1
+          AND 1 < a
+          AND 1 < b
+          AND 1 < c
+          AND EXISTS
+            (n_to_one_over_c, middle_base, middle_power,
+             outer_base, left_side, n_power_25, right_side: real):
+              real_power_value(
+                n, safe_div(1, c :: real), n_to_one_over_c)
+                AND middle_base = n * n_to_one_over_c
+                AND real_power_value(
+                  middle_base, safe_div(1, b :: real), middle_power)
+                AND outer_base = n * middle_power
+                AND real_power_value(
+                  outer_base, safe_div(1, a :: real), left_side)
+                AND n_power_25 = n ^ 25
+                AND real_power_value(
+                  n_power_25, safe_div(1, 36), right_side)
+                AND left_side = right_side)
+        IMPLIES b = 3
+END amc12a_2020_p13

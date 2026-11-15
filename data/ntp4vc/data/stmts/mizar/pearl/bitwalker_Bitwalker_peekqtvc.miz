@@ -1,0 +1,177 @@
+:: Statement-only formalization of the NTP4VC corpus artifact
+:: pearl/bitwalker_Bitwalker_peekqtvc: the bit-stream peek verification
+:: condition preserves the loop invariant for assembling up to 64 bits from
+:: a finite sequence of 8-bit words. This file contains no proof.
+
+environ
+  vocabularies TARSKI, XBOOLE_0, SUBSET_1, RELAT_1, FUNCT_1,
+    FUNCT_2, ZFMISC_1, NUMBERS, XREAL_0, CARD_1, XXREAL_0,
+    ARYTM_1, ARYTM_3, REAL_1, INT_1, NAT_1, VALUED_0,
+    VALUED_1, ORDINAL1, FINSEQ_1, FINSEQ_2, MCART_1, MARGREL1,
+    XBOOLEAN, NEWTON;
+  notations TARSKI, XBOOLE_0, SUBSET_1, ZFMISC_1, XTUPLE_0,
+    MCART_1, RELAT_1, FUNCT_1, RELSET_1, FUNCT_2, ORDINAL1,
+    CARD_1, NUMBERS, XCMPLX_0, XREAL_0, REAL_1, INT_1, NAT_1,
+    NAT_D, NEWTON, XXREAL_0, FINSEQ_1, FINSEQ_2, MARGREL1,
+    XBOOLEAN;
+  constructors FUNCT_1, RELSET_1, FUNCT_2, CARD_1, REAL_1,
+    INT_1, XXREAL_0, ZFMISC_1, MCART_1, NAT_1, NAT_D, NEWTON,
+    FINSEQ_1, FINSEQ_2, MARGREL1;
+  registrations XBOOLE_0, SUBSET_1, RELAT_1, FUNCT_1, RELSET_1,
+    FUNCT_2, CARD_1, XXREAL_0, MEMBERED, VALUED_0,
+    VALUED_1, XCMPLX_0, XREAL_0, ORDINAL1, INT_1, NAT_1,
+    FINSEQ_1, FINSEQ_2, MARGREL1, NEWTON;
+  requirements REAL, NUMERALS, SUBSET, BOOLE, ARITHM;
+  equalities XBOOLEAN;
+
+begin
+
+::$P-
+theorem
+  for wlen,start being Nat,
+      addr being FinSequence of NAT,
+      Bit being Function of [:NAT,INT:],BOOLEAN,
+      Nth8 being Function of INT,BOOLEAN st
+    wlen < (2 |^ 32) &
+    start < (2 |^ 32) &
+    (for q being Nat st q in dom addr holds
+      ex b being Nat st b = addr.q & b < 256) &
+    (for w being Nat, p being Integer holds
+      (Bit.[w,p] = TRUE iff
+        ex k being Nat st
+          ((p < 0 & k = 0) or (0 <= p & k = p)) &
+          (w div (2 |^ k)) mod 2 = 1)) &
+    (for p being Integer holds
+      (Nth8.p = TRUE iff
+        ex q,k,b being Nat st
+          (((p div 8) < 0 & q = 0) or
+           (0 <= (p div 8) & q = p div 8)) &
+          k = 7 - (p mod 8) &
+          q < len addr &
+          b = addr.(q + 1) &
+          Bit.[b,k] = TRUE)) &
+    wlen <= 64 &
+    start + wlen < (2 |^ 32) &
+    8 * len addr < (2 |^ 32)
+  holds
+    (start + wlen < (2 |^ 32) or
+      start + wlen <= ((2 |^ 32) - 1)) &
+    (((start + wlen) mod (2 |^ 32) = start + wlen) implies
+      ((8 * len addr < (start + wlen) mod (2 |^ 32) implies
+        (start + wlen <= 8 * len addr implies
+          (for i being Integer st 0 <= i & i < wlen holds
+            Bit.[0,i] =
+              Nth8.(start + wlen - i - 1)) &
+          (for i being Integer st wlen <= i & i < 64 holds
+            Bit.[0,i] = FALSE))) &
+       (not 8 * len addr < (start + wlen) mod (2 |^ 32) implies
+        (wlen <= 64 or 64 >= wlen) &
+        (((64 + (2 |^ 32) - wlen) mod (2 |^ 32) =
+            64 - wlen) implies
+          (((0 <= 0 & 0 <= wlen) &
+            (for j being Integer st wlen - 0 <= j & j < wlen holds
+              Bit.[0,j] =
+                Nth8.(start + wlen - j - 1)) &
+            (for j being Integer st 0 <= j & j < wlen - 0 holds
+              Bit.[0,j] = FALSE) &
+            (for j being Integer st wlen <= j & j < 64 holds
+              Bit.[0,j] = FALSE)) &
+           (for i,retval being Nat st
+              i < (2 |^ 32) &
+              retval < (2 |^ 64)
+            holds
+              (((0 <= i & i <= wlen) &
+                (for j being Integer st
+                   wlen - i <= j & j < wlen
+                 holds
+                   Bit.[retval,j] =
+                     Nth8.(start + wlen - j - 1)) &
+                (for j being Integer st
+                   0 <= j & j < wlen - i
+                 holds
+                   Bit.[retval,j] = FALSE) &
+                (for j being Integer st
+                   wlen <= j & j < 64
+                 holds
+                   Bit.[retval,j] = FALSE))
+               implies
+                ((i < wlen implies
+                  (start + i < (2 |^ 32) or
+                    start + i <= ((2 |^ 32) - 1)) &
+                  (((start + i) mod (2 |^ 32) =
+                      start + i) implies
+                    ((8 * len addr < (2 |^ 32) &
+                      (start + i) mod (2 |^ 32) <
+                        8 * len addr) &
+                     ((64 + (2 |^ 32) - wlen) mod (2 |^ 32) +
+                          i < (2 |^ 32) or
+                       (64 + (2 |^ 32) - wlen) mod (2 |^ 32) +
+                          i <= ((2 |^ 32) - 1)) &
+                     ((((64 + (2 |^ 32) - wlen) mod (2 |^ 32) +
+                           i) mod (2 |^ 32) =
+                         (64 + (2 |^ 32) - wlen) mod (2 |^ 32) +
+                           i) implies
+                       ((64 + (2 |^ 32) - wlen) mod (2 |^ 32) +
+                            i) mod (2 |^ 32) < 64 &
+                       (for o1 being Nat st
+                          o1 < (2 |^ 64)
+                        holds
+                          (((for i1 being Integer st
+                               (0 <= i1 & i1 < 64) &
+                               not i1 =
+                                 63 -
+                                   ((64 + (2 |^ 32) - wlen)
+                                      mod (2 |^ 32) + i)
+                                     mod (2 |^ 32)
+                             holds
+                               Bit.[o1,i1] = Bit.[retval,i1]) &
+                            Nth8.((start + i) mod (2 |^ 32)) =
+                              Bit.[o1,
+                                63 -
+                                  ((64 + (2 |^ 32) - wlen)
+                                     mod (2 |^ 32) + i)
+                                    mod (2 |^ 32)])
+                           implies
+                            (i + 1 < (2 |^ 32) or
+                              i + 1 <= ((2 |^ 32) - 1)) &
+                            (((i + 1) mod (2 |^ 32) = i + 1)
+                             implies
+                              ((0 <= wlen - i &
+                                wlen - ((i + 1) mod (2 |^ 32)) <
+                                  wlen - i) &
+                               (0 <= (i + 1) mod (2 |^ 32) &
+                                (i + 1) mod (2 |^ 32) <= wlen) &
+                               (for j being Integer st
+                                  wlen -
+                                      ((i + 1) mod (2 |^ 32))
+                                    <= j & j < wlen
+                                holds
+                                  Bit.[o1,j] =
+                                    Nth8.(start + wlen - j - 1)) &
+                               (for j being Integer st
+                                  0 <= j &
+                                  j <
+                                    wlen -
+                                      ((i + 1) mod (2 |^ 32))
+                                holds
+                                  Bit.[o1,j] = FALSE) &
+                               (for j being Integer st
+                                  wlen <= j & j < 64
+                                holds
+                                  Bit.[o1,j] = FALSE))))))))) &
+                 (not i < wlen implies
+                  ((8 * len addr < start + wlen implies
+                    retval = 0) &
+                   (start + wlen <= 8 * len addr implies
+                    (for i1 being Integer st
+                       0 <= i1 & i1 < wlen
+                     holds
+                       Bit.[retval,i1] =
+                         Nth8.(start + wlen - i1 - 1)) &
+                    (for i1 being Integer st
+                       wlen <= i1 & i1 < 64
+                     holds
+                       Bit.[retval,i1] = FALSE))))))))))))
+proof
+end;
+::$P+

@@ -1,0 +1,94 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2013_b2:
+% nonnegative finite cosine polynomials whose coefficients at multiples of
+% three vanish have attained maximum value 3 at zero. This file contains no proof.
+
+putnam_2013_b2: THEORY
+BEGIN
+  real_function: TYPE = [real -> real]
+  real_sequence: TYPE = [nat -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  cosine_partial(argument: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        cosine_partial(argument, count - 1)
+          + safe_div(
+              ((-1 :: real) ^ index) * argument ^ (2 * index),
+              factorial(2 * index) :: real)
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  cosine(argument: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat):
+            cosine_partial(argument, count),
+          value))
+
+  pi: real =
+    epsilon(
+      LAMBDA (value: real):
+        3 < value
+          AND value < 4
+          AND cosine(value / 2) = 0)
+
+  cosine_sum(
+      coefficients: real_sequence,
+      x: real,
+      degree: nat): RECURSIVE real =
+    IF degree = 0 THEN
+      0
+    ELSE
+      cosine_sum(coefficients, x, degree - 1)
+        + coefficients(degree)
+            * cosine(2 * pi * (degree :: real) * x)
+    ENDIF
+  MEASURE degree
+
+  admissible_cosine_polynomial(f: real_function): bool =
+    EXISTS (degree: nat), (coefficients: real_sequence):
+      degree >= 1
+        AND (FORALL (index: nat):
+          (index <= degree AND mod(index, 3) = 0)
+            IMPLIES coefficients(index) = 0)
+        AND (FORALL (x: real):
+          f(x) = 1 + cosine_sum(coefficients, x, degree)
+            AND f(x) >= 0)
+
+  attainable_value(value: real): bool =
+    EXISTS (f: real_function):
+      admissible_cosine_polynomial(f)
+        AND f(0) = value
+
+  putnam_2013_b2_solution: real = 3
+
+  putnam_2013_b2: bool =
+    attainable_value(putnam_2013_b2_solution)
+      AND (FORALL (f: real_function):
+        admissible_cosine_polynomial(f)
+          IMPLIES f(0) <= putnam_2013_b2_solution)
+END putnam_2013_b2

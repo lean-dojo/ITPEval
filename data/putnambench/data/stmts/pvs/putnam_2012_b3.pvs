@@ -1,0 +1,76 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2012_b3:
+% every round-robin tournament on 2n teams admits a choice of one winning team
+% from each day with no team chosen twice. This file contains no proof.
+
+putnam_2012_b3: THEORY
+BEGIN
+  matchup_table: TYPE = [nat, nat -> nat]
+  win_table: TYPE = [nat, nat -> bool]
+  choice_function: TYPE = [nat -> nat]
+
+  team_count(n: posnat): nat = 2 * n
+
+  day_count(n: posnat): nat = 2 * n - 1
+
+  valid_daily_matchups(
+      n: posnat,
+      matchups: matchup_table): bool =
+    FORALL (day, team: nat):
+      day < day_count(n) AND team < team_count(n)
+        IMPLIES
+          matchups(day, team) < team_count(n)
+            AND matchups(day, team) /= team
+            AND matchups(day, matchups(day, team)) = team
+
+  complete_round_robin(
+      n: posnat,
+      matchups: matchup_table): bool =
+    FORALL (first_team, second_team: nat):
+      first_team < team_count(n)
+        AND second_team < team_count(n)
+        AND first_team /= second_team
+      IMPLIES
+        EXISTS (day: nat):
+          day < day_count(n)
+            AND matchups(day, first_team) = second_team
+
+  consistent_results(
+      n: posnat,
+      matchups: matchup_table,
+      wins: win_table): bool =
+    FORALL (day, team: nat):
+      day < day_count(n) AND team < team_count(n)
+        IMPLIES
+          wins(day, team)
+            = NOT wins(day, matchups(day, team))
+
+  injective_on_days(
+      n: posnat,
+      choices: choice_function): bool =
+    FORALL (first_day, second_day: nat):
+      first_day < day_count(n)
+        AND second_day < day_count(n)
+        AND choices(first_day) = choices(second_day)
+      IMPLIES first_day = second_day
+
+  winning_representatives_exist(
+      n: posnat,
+      wins: win_table): bool =
+    EXISTS (choices: choice_function):
+      (FORALL (day: nat):
+        day < day_count(n)
+          IMPLIES
+            choices(day) < team_count(n)
+              AND wins(day, choices(day)))
+        AND injective_on_days(n, choices)
+
+  putnam_2012_b3: bool =
+    FORALL
+        (n: posnat),
+        (matchups: matchup_table),
+        (wins: win_table):
+      (valid_daily_matchups(n, matchups)
+        AND complete_round_robin(n, matchups)
+        AND consistent_results(n, matchups, wins))
+      IMPLIES winning_representatives_exist(n, wins)
+END putnam_2012_b3

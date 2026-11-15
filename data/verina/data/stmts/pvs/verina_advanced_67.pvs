@@ -1,0 +1,183 @@
+% Statement-only formalization of the VERINA corpus artifact
+% verina_advanced_67, catalog title "runLengthEncode": executable run-length
+% encoding of a finite Unicode-scalar string, with positive run counts,
+% distinct adjacent run characters, and exact decoding. This file contains no proof.
+
+verina_advanced_67: THEORY
+BEGIN
+
+  % Lean String.data is represented extensionally by its finite list of
+  % Unicode scalar characters, preserving the full source string domain.
+  lean_char: TYPE =
+    {codepoint: nat |
+      codepoint < 1114112
+        AND (codepoint < 55296 OR codepoint >= 57344)}
+
+  lean_string: TYPE = list[lean_char]
+
+  rle_pair: TYPE =
+    [# run_char: lean_char,
+       run_count: nat #]
+
+  runLengthEncode_precond(s: lean_string): bool =
+    TRUE
+
+  reverse_rle_acc(
+      values, accumulator: list[rle_pair]):
+        RECURSIVE list[rle_pair] =
+    CASES values OF
+      null:
+        accumulator,
+      cons(head, tail):
+        reverse_rle_acc(
+          tail,
+          cons(head, accumulator))
+    ENDCASES
+  MEASURE values BY <<
+
+  reverse_rle(values: list[rle_pair]): list[rle_pair] =
+    reverse_rle_acc(values, null[rle_pair])
+
+  encodeAux(
+      accumulator: list[rle_pair],
+      remaining: lean_string): RECURSIVE list[rle_pair] =
+    CASES remaining OF
+      null:
+        reverse_rle(accumulator),
+      cons(head, tail):
+        CASES accumulator OF
+          null:
+            encodeAux(
+              cons(
+                (# run_char := head,
+                   run_count := 1 #),
+                null[rle_pair]),
+              tail),
+          cons(current, accumulator_tail):
+            IF run_char(current) = head THEN
+              encodeAux(
+                cons(
+                  (# run_char := run_char(current),
+                     run_count := run_count(current) + 1 #),
+                  accumulator_tail),
+                tail)
+            ELSE
+              encodeAux(
+                cons(
+                  (# run_char := head,
+                     run_count := 1 #),
+                  cons(current, accumulator_tail)),
+                tail)
+            ENDIF
+        ENDCASES
+    ENDCASES
+  MEASURE remaining BY <<
+
+  % The proof-valued True precondition argument is computationally irrelevant.
+  % This is the exact proof-erased accumulator computation from the source.
+  runLengthEncode(s: lean_string): list[rle_pair] =
+    encodeAux(null[rle_pair], s)
+
+  append_chars(
+      first, second: lean_string): RECURSIVE lean_string =
+    CASES first OF
+      null:
+        second,
+      cons(head, tail):
+        cons(
+          head,
+          append_chars(tail, second))
+    ENDCASES
+  MEASURE first BY <<
+
+  replicate_char(
+      count: nat,
+      requested: lean_char): RECURSIVE lean_string =
+    IF count = 0 THEN
+      null[lean_char]
+    ELSE
+      cons(
+        requested,
+        replicate_char(count - 1, requested))
+    ENDIF
+  MEASURE count
+
+  decodeRLE(values: list[rle_pair]): RECURSIVE lean_string =
+    CASES values OF
+      null:
+        null[lean_char],
+      cons(head, tail):
+        append_chars(
+          replicate_char(
+            run_count(head),
+            run_char(head)),
+          decodeRLE(tail))
+    ENDCASES
+  MEASURE values BY <<
+
+  rle_member(
+      requested: rle_pair,
+      values: list[rle_pair]): RECURSIVE bool =
+    CASES values OF
+      null:
+        FALSE,
+      cons(head, tail):
+        head = requested
+          OR rle_member(requested, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  rle_list_length(values: list[rle_pair]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        rle_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  default_rle_pair: rle_pair =
+    (# run_char := 0,
+       run_count := 0 #)
+
+  % This preserves Lean List.get! by returning the inhabited default pair
+  % outside the list; the postcondition only observes in-range indices.
+  rle_list_get_bang(
+      index: nat,
+      values: list[rle_pair]): RECURSIVE rle_pair =
+    CASES values OF
+      null:
+        default_rle_pair,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          rle_list_get_bang(index - 1, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  runLengthEncode_postcond(
+      s: lean_string,
+      result: list[rle_pair]): bool =
+    (FORALL (pair: rle_pair):
+      rle_member(pair, result)
+        IMPLIES run_count(pair) > 0)
+      AND
+    (FORALL (i: nat):
+      i < rle_list_length(result) - 1
+        IMPLIES
+          run_char(rle_list_get_bang(i, result))
+            /=
+          run_char(rle_list_get_bang(i + 1, result)))
+      AND decodeRLE(result) = s
+
+  runLengthEncode_spec_satisfied: bool =
+    FORALL (s: lean_string):
+      runLengthEncode_precond(s)
+        IMPLIES
+          runLengthEncode_postcond(
+            s,
+            runLengthEncode(s))
+
+END verina_advanced_67

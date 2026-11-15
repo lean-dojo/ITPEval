@@ -1,0 +1,60 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2022_a2:
+% for each n >= 2, the largest possible number of negative coefficients in
+% the square of a real polynomial of degree n is 2*n - 2. This file contains
+% no proof.
+
+putnam_2022_a2: THEORY
+BEGIN
+  polynomial: TYPE = [nat -> real]
+
+  has_exact_degree(p: polynomial, degree: nat): bool =
+    p(degree) /= 0
+      AND FORALL (index: nat):
+        degree < index IMPLIES p(index) = 0
+
+  convolution_prefix(
+      p: polynomial,
+      degree, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      convolution_prefix(p, degree, count - 1)
+        + IF count <= degree + 1 THEN
+            p(count - 1) * p(degree - (count - 1))
+          ELSE
+            0
+          ENDIF
+    ENDIF
+  MEASURE count
+
+  square_coefficient(p: polynomial, degree: nat): real =
+    convolution_prefix(p, degree, degree + 1)
+
+  negative_square_coefficient_count(
+      p: polynomial,
+      count: nat): RECURSIVE nat =
+    IF count = 0 THEN
+      0
+    ELSE
+      negative_square_coefficient_count(p, count - 1)
+        + IF square_coefficient(p, count - 1) < 0 THEN 1 ELSE 0 ENDIF
+    ENDIF
+  MEASURE count
+
+  putnam_2022_a2_solution(n: nat): nat =
+    IF n < 2 THEN 0 ELSE 2 * n - 2 ENDIF
+
+  putnam_2022_a2: bool =
+    FORALL (n: nat):
+      n >= 2 IMPLIES
+        (FORALL (p: polynomial):
+          has_exact_degree(p, n)
+            IMPLIES
+              negative_square_coefficient_count(p, 2 * n + 1)
+                <= putnam_2022_a2_solution(n))
+        AND
+        (EXISTS (p: polynomial):
+          has_exact_degree(p, n)
+            AND negative_square_coefficient_count(p, 2 * n + 1)
+              = putnam_2022_a2_solution(n))
+END putnam_2022_a2

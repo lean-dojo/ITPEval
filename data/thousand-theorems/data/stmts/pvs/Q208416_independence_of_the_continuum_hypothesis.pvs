@@ -1,0 +1,558 @@
+% Statement-only formalization of the Thousand Theorems corpus artifact Q208416,
+% "Independence of the continuum hypothesis": neither the fixed first-order
+% sentence expressing CH nor its negation is derivable from the fixed ZFC theory.
+% This file contains no proof.
+
+q208416_term: DATATYPE
+BEGIN
+  q208416_var(variable_index: nat): q208416_var?
+  q208416_empty: q208416_empty?
+  q208416_pair(pair_left, pair_right: q208416_term): q208416_pair?
+  q208416_omega: q208416_omega?
+  q208416_powerset(powerset_arg: q208416_term): q208416_powerset?
+  q208416_union(union_arg: q208416_term): q208416_union?
+END q208416_term
+
+q208416_formula: DATATYPE
+BEGIN
+  IMPORTING q208416_term
+  q208416_false: q208416_false?
+  q208416_eq(equal_left, equal_right: q208416_term): q208416_eq?
+  q208416_mem(member_left, member_right: q208416_term): q208416_mem?
+  q208416_imp(
+      implication_left,
+      implication_right: q208416_formula): q208416_imp?
+  q208416_all(universal_body: q208416_formula): q208416_all?
+END q208416_formula
+
+Q208416_independence_of_the_continuum_hypothesis: THEORY
+BEGIN
+  IMPORTING q208416_term, q208416_formula
+
+  term: TYPE = q208416_term
+  fm: TYPE = q208416_formula
+  formula_set: TYPE = [fm -> bool]
+
+  variable(index: nat): term =
+    q208416_var(index)
+
+  negate(A: fm): fm =
+    q208416_imp(A, q208416_false)
+
+  conjoin(A, B: fm): fm =
+    negate(q208416_imp(A, negate(B)))
+
+  disjoin(A, B: fm): fm =
+    q208416_imp(negate(A), B)
+
+  biconditional(A, B: fm): fm =
+    conjoin(q208416_imp(A, B), q208416_imp(B, A))
+
+  existential(A: fm): fm =
+    negate(q208416_all(negate(A)))
+
+  lift_term_at(
+      t: term,
+      amount: nat,
+      cutoff: nat): RECURSIVE term =
+    CASES t OF
+      q208416_var(index):
+        q208416_var(
+          IF cutoff <= index THEN index + amount ELSE index ENDIF),
+      q208416_empty:
+        q208416_empty,
+      q208416_pair(left, right):
+        q208416_pair(
+          lift_term_at(left, amount, cutoff),
+          lift_term_at(right, amount, cutoff)),
+      q208416_omega:
+        q208416_omega,
+      q208416_powerset(arg):
+        q208416_powerset(lift_term_at(arg, amount, cutoff)),
+      q208416_union(arg):
+        q208416_union(lift_term_at(arg, amount, cutoff))
+    ENDCASES
+  MEASURE t BY <<
+
+  substitute_term(
+      t: term,
+      replacement: term,
+      index: nat): RECURSIVE term =
+    CASES t OF
+      q208416_var(variable_index):
+        IF variable_index < index THEN
+          q208416_var(variable_index)
+        ELSIF variable_index = index THEN
+          lift_term_at(replacement, index, 0)
+        ELSE
+          q208416_var(variable_index - 1)
+        ENDIF,
+      q208416_empty:
+        q208416_empty,
+      q208416_pair(left, right):
+        q208416_pair(
+          substitute_term(left, replacement, index),
+          substitute_term(right, replacement, index)),
+      q208416_omega:
+        q208416_omega,
+      q208416_powerset(arg):
+        q208416_powerset(
+          substitute_term(arg, replacement, index)),
+      q208416_union(arg):
+        q208416_union(
+          substitute_term(arg, replacement, index))
+    ENDCASES
+  MEASURE t BY <<
+
+  lift_formula_at(
+      A: fm,
+      amount: nat,
+      cutoff: nat): RECURSIVE fm =
+    CASES A OF
+      q208416_false:
+        q208416_false,
+      q208416_eq(left, right):
+        q208416_eq(
+          lift_term_at(left, amount, cutoff),
+          lift_term_at(right, amount, cutoff)),
+      q208416_mem(left, right):
+        q208416_mem(
+          lift_term_at(left, amount, cutoff),
+          lift_term_at(right, amount, cutoff)),
+      q208416_imp(left, right):
+        q208416_imp(
+          lift_formula_at(left, amount, cutoff),
+          lift_formula_at(right, amount, cutoff)),
+      q208416_all(body):
+        q208416_all(
+          lift_formula_at(body, amount, cutoff + 1))
+    ENDCASES
+  MEASURE A BY <<
+
+  substitute_formula(
+      A: fm,
+      replacement: term,
+      index: nat): RECURSIVE fm =
+    CASES A OF
+      q208416_false:
+        q208416_false,
+      q208416_eq(left, right):
+        q208416_eq(
+          substitute_term(left, replacement, index),
+          substitute_term(right, replacement, index)),
+      q208416_mem(left, right):
+        q208416_mem(
+          substitute_term(left, replacement, index),
+          substitute_term(right, replacement, index)),
+      q208416_imp(left, right):
+        q208416_imp(
+          substitute_formula(left, replacement, index),
+          substitute_formula(right, replacement, index)),
+      q208416_all(body):
+        q208416_all(
+          substitute_formula(body, replacement, index + 1))
+    ENDCASES
+  MEASURE A BY <<
+
+  term_bounded(bound: nat, t: term): RECURSIVE bool =
+    CASES t OF
+      q208416_var(index):
+        index < bound,
+      q208416_empty:
+        TRUE,
+      q208416_pair(left, right):
+        term_bounded(bound, left)
+          AND term_bounded(bound, right),
+      q208416_omega:
+        TRUE,
+      q208416_powerset(arg):
+        term_bounded(bound, arg),
+      q208416_union(arg):
+        term_bounded(bound, arg)
+    ENDCASES
+  MEASURE t BY <<
+
+  formula_bounded(bound: nat, A: fm): RECURSIVE bool =
+    CASES A OF
+      q208416_false:
+        TRUE,
+      q208416_eq(left, right):
+        term_bounded(bound, left)
+          AND term_bounded(bound, right),
+      q208416_mem(left, right):
+        term_bounded(bound, left)
+          AND term_bounded(bound, right),
+      q208416_imp(left, right):
+        formula_bounded(bound, left)
+          AND formula_bounded(bound, right),
+      q208416_all(body):
+        formula_bounded(bound + 1, body)
+    ENDCASES
+  MEASURE A BY <<
+
+  universal_closure(count: nat, A: fm): RECURSIVE fm =
+    IF count = 0 THEN
+      A
+    ELSE
+      q208416_all(universal_closure(count - 1, A))
+    ENDIF
+  MEASURE count
+
+  subset_formula(left, right: term): fm =
+    q208416_all(
+      q208416_imp(
+        q208416_mem(
+          variable(0),
+          lift_term_at(left, 1, 0)),
+        q208416_mem(
+          variable(0),
+          lift_term_at(right, 1, 0))))
+
+  transitive_formula: fm =
+    q208416_all(
+      q208416_imp(
+        q208416_mem(variable(0), variable(1)),
+        subset_formula(variable(0), variable(1))))
+
+  epsilon_trichotomy_formula: fm =
+    q208416_all(
+      q208416_imp(
+        q208416_mem(variable(0), variable(1)),
+        q208416_all(
+          q208416_imp(
+            q208416_mem(variable(0), variable(2)),
+            disjoin(
+              disjoin(
+                q208416_eq(variable(1), variable(0)),
+                q208416_mem(variable(1), variable(0))),
+              q208416_mem(variable(0), variable(1)))))))
+
+  epsilon_well_founded_formula: fm =
+    q208416_all(
+      q208416_imp(
+        subset_formula(variable(0), variable(1)),
+        q208416_imp(
+          negate(q208416_eq(variable(0), q208416_empty)),
+          existential(
+            conjoin(
+              q208416_mem(variable(0), variable(1)),
+              q208416_all(
+                q208416_imp(
+                  q208416_mem(variable(0), variable(2)),
+                  negate(
+                    q208416_mem(
+                      variable(0), variable(1))))))))))
+
+  ordinal_formula: fm =
+    conjoin(
+      conjoin(
+        epsilon_trichotomy_formula,
+        epsilon_well_founded_formula),
+      transitive_formula)
+
+  axiom_emptyset: fm =
+    q208416_all(
+      negate(
+        q208416_mem(variable(0), q208416_empty)))
+
+  axiom_ordered_pairs: fm =
+    q208416_all(
+      q208416_all(
+        q208416_all(
+          q208416_all(
+            biconditional(
+              q208416_eq(
+                q208416_pair(variable(3), variable(2)),
+                q208416_pair(variable(1), variable(0))),
+              conjoin(
+                q208416_eq(variable(3), variable(1)),
+                q208416_eq(variable(2), variable(0))))))))
+
+  axiom_extensionality: fm =
+    q208416_all(
+      q208416_all(
+        q208416_imp(
+          q208416_all(
+            biconditional(
+              q208416_mem(variable(0), variable(2)),
+              q208416_mem(variable(0), variable(1)))),
+          q208416_eq(variable(1), variable(0)))))
+
+  axiom_union: fm =
+    q208416_all(
+      q208416_all(
+        biconditional(
+          q208416_mem(
+            variable(0),
+            q208416_union(variable(1))),
+          existential(
+            conjoin(
+              q208416_mem(variable(0), variable(2)),
+              q208416_mem(variable(1), variable(0)))))))
+
+  axiom_powerset: fm =
+    q208416_all(
+      q208416_all(
+        biconditional(
+          q208416_mem(
+            variable(0),
+            q208416_powerset(variable(1))),
+          q208416_all(
+            q208416_imp(
+              q208416_mem(variable(0), variable(1)),
+              q208416_mem(variable(0), variable(2)))))))
+
+  axiom_infinity: fm =
+    conjoin(
+      conjoin(
+        q208416_mem(q208416_empty, q208416_omega),
+        q208416_all(
+          q208416_imp(
+            q208416_mem(variable(0), q208416_omega),
+            existential(
+              conjoin(
+                q208416_mem(variable(0), q208416_omega),
+                q208416_mem(variable(1), variable(0))))))),
+      conjoin(
+        existential(
+          conjoin(
+            ordinal_formula,
+            q208416_eq(q208416_omega, variable(0)))),
+        q208416_all(
+          q208416_imp(
+            ordinal_formula,
+            q208416_imp(
+              conjoin(
+                q208416_mem(q208416_empty, variable(0)),
+                q208416_all(
+                  q208416_imp(
+                    q208416_mem(variable(0), variable(1)),
+                    existential(
+                      conjoin(
+                        q208416_mem(variable(0), variable(2)),
+                        q208416_mem(
+                          variable(1), variable(0))))))),
+              subset_formula(
+                q208416_omega, variable(0)))))))
+
+  axiom_regularity: fm =
+    q208416_all(
+      q208416_imp(
+        negate(
+          q208416_eq(variable(0), q208416_empty)),
+        existential(
+          conjoin(
+            q208416_mem(variable(0), variable(1)),
+            q208416_all(
+              q208416_imp(
+                q208416_mem(variable(0), variable(2)),
+                negate(
+                  q208416_mem(
+                    variable(0), variable(1)))))))))
+
+  zorns_lemma: fm =
+    q208416_all(
+      q208416_imp(
+        negate(
+          q208416_eq(variable(0), q208416_empty)),
+        q208416_imp(
+          q208416_all(
+            q208416_imp(
+              conjoin(
+                subset_formula(variable(0), variable(1)),
+                q208416_all(
+                  q208416_all(
+                    q208416_imp(
+                      conjoin(
+                        q208416_mem(variable(1), variable(2)),
+                        q208416_mem(variable(0), variable(2))),
+                      disjoin(
+                        subset_formula(
+                          variable(1), variable(0)),
+                        subset_formula(
+                          variable(0), variable(1))))))),
+              q208416_mem(
+                q208416_union(variable(0)),
+                variable(1)))),
+          existential(
+            conjoin(
+              q208416_mem(variable(0), variable(1)),
+              q208416_all(
+                q208416_imp(
+                  q208416_mem(variable(0), variable(2)),
+                  q208416_imp(
+                    subset_formula(
+                      variable(1), variable(0)),
+                    q208416_eq(
+                      variable(1), variable(0))))))))))
+
+  collection_axiom(
+      parameter_count: nat,
+      phi: fm): fm =
+    universal_closure(
+      parameter_count + 1,
+      q208416_imp(
+        q208416_all(
+          q208416_imp(
+            q208416_mem(variable(0), variable(1)),
+            existential(
+              lift_formula_at(phi, 1, 2)))),
+        existential(
+          conjoin(
+            q208416_all(
+              q208416_imp(
+                q208416_mem(variable(0), variable(2)),
+                existential(
+                  conjoin(
+                    q208416_mem(variable(0), variable(2)),
+                    lift_formula_at(phi, 2, 2))))),
+            q208416_all(
+              q208416_imp(
+                q208416_mem(variable(0), variable(1)),
+                existential(
+                  conjoin(
+                    q208416_mem(variable(0), variable(3)),
+                    substitute_formula(
+                      lift_formula_at(phi, 3, 2),
+                      variable(1),
+                      0)))))))))
+
+  ZFC(A: fm): bool =
+    A = axiom_emptyset
+      OR A = axiom_ordered_pairs
+      OR A = axiom_extensionality
+      OR A = axiom_union
+      OR A = axiom_powerset
+      OR A = axiom_infinity
+      OR A = axiom_regularity
+      OR A = zorns_lemma
+      OR
+        EXISTS
+            (parameter_count: nat),
+            (phi: fm):
+          formula_bounded(parameter_count + 2, phi)
+            AND A = collection_axiom(parameter_count, phi)
+
+  is_function_formula: fm =
+    q208416_all(
+      q208416_all(
+        q208416_all(
+          q208416_all(
+            q208416_imp(
+              conjoin(
+                q208416_mem(
+                  q208416_pair(variable(3), variable(1)),
+                  variable(4)),
+                q208416_mem(
+                  q208416_pair(variable(2), variable(0)),
+                  variable(4))),
+              q208416_imp(
+                q208416_eq(variable(3), variable(2)),
+                q208416_eq(variable(1), variable(0))))))))
+
+  is_total_reversed_formula: fm =
+    q208416_all(
+      q208416_imp(
+        q208416_mem(variable(0), variable(2)),
+        existential(
+          conjoin(
+            q208416_mem(variable(0), variable(4)),
+            q208416_mem(
+              q208416_pair(variable(1), variable(0)),
+              variable(2))))))
+
+  is_reversed_function_formula: fm =
+    conjoin(
+      is_function_formula,
+      is_total_reversed_formula)
+
+  at_most_formula: fm =
+    existential(
+      existential(
+        conjoin(
+          conjoin(
+            subset_formula(variable(1), variable(3)),
+            is_reversed_function_formula),
+          q208416_all(
+            q208416_imp(
+              q208416_mem(variable(0), variable(3)),
+              existential(
+                conjoin(
+                  q208416_mem(variable(0), variable(3)),
+                  q208416_mem(
+                    q208416_pair(
+                      variable(0), variable(1)),
+                    variable(2)))))))))
+
+  CH: fm =
+    q208416_all(
+      q208416_imp(
+        ordinal_formula,
+        disjoin(
+          substitute_formula(
+            at_most_formula,
+            q208416_omega,
+            1),
+          substitute_formula(
+            at_most_formula,
+            q208416_powerset(q208416_omega),
+            0))))
+
+  insert_formula(A: fm, Gamma: formula_set): formula_set =
+    LAMBDA (B: fm):
+      B = A OR Gamma(B)
+
+  lifted_context(Gamma: formula_set): formula_set =
+    LAMBDA (B: fm):
+      EXISTS (A: fm):
+        Gamma(A)
+          AND B = lift_formula_at(A, 1, 0)
+
+  prf(Gamma: formula_set, A: fm): INDUCTIVE bool =
+    Gamma(A)
+      OR
+    (EXISTS (antecedent, consequent: fm):
+      A = q208416_imp(antecedent, consequent)
+        AND prf(
+          insert_formula(antecedent, Gamma),
+          consequent))
+      OR
+    (EXISTS (antecedent: fm):
+      prf(Gamma, q208416_imp(antecedent, A))
+        AND prf(Gamma, antecedent))
+      OR
+    prf(
+      insert_formula(negate(A), Gamma),
+      q208416_false)
+      OR
+    (EXISTS (body: fm):
+      A = q208416_all(body)
+        AND prf(lifted_context(Gamma), body))
+      OR
+    (EXISTS (body: fm), (t: term):
+      prf(Gamma, q208416_all(body))
+        AND A = substitute_formula(body, t, 0))
+      OR
+    (EXISTS (t: term):
+      A = q208416_eq(t, t))
+      OR
+    (EXISTS
+        (left, right: term),
+        (body: fm):
+      prf(Gamma, q208416_eq(left, right))
+        AND prf(
+          Gamma,
+          substitute_formula(body, left, 0))
+        AND A =
+          substitute_formula(body, right, 0))
+
+  provable(T: formula_set, A: fm): bool =
+    prf(T, A)
+
+  independent(T: formula_set, A: fm): bool =
+    NOT provable(T, A)
+      AND NOT provable(T, negate(A))
+
+  independence_of_CH: bool =
+    independent(ZFC, CH)
+END Q208416_independence_of_the_continuum_hypothesis

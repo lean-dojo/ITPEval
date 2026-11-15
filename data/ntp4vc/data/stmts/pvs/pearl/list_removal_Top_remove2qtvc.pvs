@@ -1,0 +1,135 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/list_removal_Top_remove2qtvc: a linked-list removal verification
+% condition preserving pointer-chain segments across a single-cell update.
+% This file contains no proof.
+
+list_removal_Top_remove2qtvc[
+  loc: TYPE+,
+  mem: TYPE+,
+  null_loc: loc,
+  head_loc: loc,
+  entry_loc: loc,
+  list_rel: [[loc -> loc], loc, int, loc -> bool]
+]: THEORY
+BEGIN
+
+  update_pointer(
+      mem1: [loc -> loc],
+      point, value: loc): [loc -> loc] =
+    mem1 WITH [(point) := value]
+
+  list_specification: bool =
+    FORALL
+        (n: int),
+        (mem1: [loc -> loc]),
+        (x, y: loc):
+      0 <= n
+        IMPLIES
+          (IF n = 0 THEN
+             list_rel(mem1, x, n, y) IFF x = y
+           ELSE
+             list_rel(mem1, x, n, y)
+               IFF
+                 x /= null_loc
+                   AND
+                 list_rel(mem1, mem1(x), n - 1, y)
+           ENDIF)
+
+  remove2_vc: bool =
+    (head_loc /= null_loc
+      AND entry_loc /= null_loc
+      AND head_loc /= entry_loc
+      AND list_specification)
+      IMPLIES
+        FORALL
+            (n1, n2: int),
+            (mem1: [loc -> loc]):
+          (0 < n1
+            AND 0 < n2
+            AND list_rel(mem1, head_loc, n1, entry_loc)
+            AND list_rel(mem1, entry_loc, n2, null_loc))
+            IMPLIES
+              (0 < 1
+                AND 1 <= n1
+                AND head_loc /= null_loc
+                AND list_rel(mem1, head_loc, 1 - 1, head_loc)
+                AND
+                  list_rel(
+                    mem1,
+                    mem1(head_loc),
+                    n1 - 1,
+                    entry_loc)
+                AND list_rel(mem1, entry_loc, n2, null_loc)
+                AND
+                  (FORALL
+                      (n: int),
+                      (ind: loc):
+                    ((0 < n AND n <= n1)
+                      AND ind /= null_loc
+                      AND
+                        list_rel(
+                          mem1,
+                          head_loc,
+                          n - 1,
+                          ind)
+                      AND
+                        list_rel(
+                          mem1,
+                          mem1(ind),
+                          n1 - n,
+                          entry_loc)
+                      AND
+                        list_rel(
+                          mem1,
+                          entry_loc,
+                          n2,
+                          null_loc))
+                      IMPLIES
+                        (ind /= null_loc
+                          AND
+                            (IF mem1(ind) /= entry_loc THEN
+                               ind /= null_loc
+                                 AND
+                               (0 <= n1 - n
+                                 AND
+                                   n1 - (n + 1)
+                                     < n1 - n)
+                                 AND
+                               (0 < n + 1
+                                 AND n + 1 <= n1)
+                                 AND
+                               mem1(ind) /= null_loc
+                                 AND
+                               list_rel(
+                                 mem1,
+                                 head_loc,
+                                 n + 1 - 1,
+                                 mem1(ind))
+                                 AND
+                               list_rel(
+                                 mem1,
+                                 mem1(mem1(ind)),
+                                 n1 - (n + 1),
+                                 entry_loc)
+                                 AND
+                               list_rel(
+                                 mem1,
+                                 entry_loc,
+                                 n2,
+                                 null_loc)
+                             ELSE
+                               LET o1: loc = entry_loc IN
+                                 o1 /= null_loc
+                                   AND ind /= null_loc
+                                   AND
+                                     list_rel(
+                                       update_pointer(
+                                         mem1,
+                                         ind,
+                                         mem1(o1)),
+                                       head_loc,
+                                       n1 + n2 - 1,
+                                       null_loc)
+                             ENDIF))))
+
+END list_removal_Top_remove2qtvc

@@ -1,0 +1,243 @@
+% Statement-only formalization of the Thousand Theorems corpus artifact Q1420905
+% (thousand-theorems__pvs__Q1420905), "Hilbert's theorem 90": in a finite
+% cyclic Galois field extension, every norm-one element is a quotient y/g(y)
+% for a nonzero element y and a generating automorphism g. This file contains
+% no proof.
+
+Q1420905_hilbert_s_theorem_90[
+  K, L: TYPE+,
+  zeroK, oneK: K,
+  addK, mulK: [K, K -> K],
+  negK, invK: [K -> K],
+  zeroL, oneL: L,
+  addL, mulL: [L, L -> L],
+  negL, invL: [L -> L],
+  algebra_map: [K -> L]
+]: THEORY
+BEGIN
+
+  endomorphism: TYPE = [L -> L]
+  automorphism_list: TYPE = list[endomorphism]
+
+  field_laws_K: bool =
+    (FORALL (a, b: K): addK(a, b) = addK(b, a))
+      AND (FORALL (a, b, c: K):
+        addK(addK(a, b), c) = addK(a, addK(b, c)))
+      AND (FORALL (a: K):
+        addK(a, zeroK) = a
+          AND addK(a, negK(a)) = zeroK)
+      AND (FORALL (a, b: K): mulK(a, b) = mulK(b, a))
+      AND (FORALL (a, b, c: K):
+        mulK(mulK(a, b), c) = mulK(a, mulK(b, c)))
+      AND (FORALL (a: K): mulK(a, oneK) = a)
+      AND (FORALL (a, b, c: K):
+        mulK(a, addK(b, c)) =
+          addK(mulK(a, b), mulK(a, c)))
+      AND zeroK /= oneK
+      AND invK(zeroK) = zeroK
+      AND (FORALL (a: K):
+        a /= zeroK IMPLIES mulK(a, invK(a)) = oneK)
+
+  field_laws_L: bool =
+    (FORALL (x, y: L): addL(x, y) = addL(y, x))
+      AND (FORALL (x, y, z: L):
+        addL(addL(x, y), z) = addL(x, addL(y, z)))
+      AND (FORALL (x: L):
+        addL(x, zeroL) = x
+          AND addL(x, negL(x)) = zeroL)
+      AND (FORALL (x, y: L): mulL(x, y) = mulL(y, x))
+      AND (FORALL (x, y, z: L):
+        mulL(mulL(x, y), z) = mulL(x, mulL(y, z)))
+      AND (FORALL (x: L): mulL(x, oneL) = x)
+      AND (FORALL (x, y, z: L):
+        mulL(x, addL(y, z)) =
+          addL(mulL(x, y), mulL(x, z)))
+      AND zeroL /= oneL
+      AND invL(zeroL) = zeroL
+      AND (FORALL (x: L):
+        x /= zeroL IMPLIES mulL(x, invL(x)) = oneL)
+
+  algebra_embedding_laws: bool =
+    algebra_map(zeroK) = zeroL
+      AND algebra_map(oneK) = oneL
+      AND (FORALL (a, b: K):
+        algebra_map(addK(a, b)) =
+          addL(algebra_map(a), algebra_map(b)))
+      AND (FORALL (a, b: K):
+        algebra_map(mulK(a, b)) =
+          mulL(algebra_map(a), algebra_map(b)))
+      AND (FORALL (a, b: K):
+        algebra_map(a) = algebra_map(b) IMPLIES a = b)
+
+  same_length(coefficients: list[K], basis: list[L]): RECURSIVE bool =
+    CASES basis OF
+      null:
+        CASES coefficients OF
+          null: TRUE,
+          cons(coefficient, coefficient_tail): FALSE
+        ENDCASES,
+      cons(vector, vector_tail):
+        CASES coefficients OF
+          null: FALSE,
+          cons(coefficient, coefficient_tail):
+            same_length(coefficient_tail, vector_tail)
+        ENDCASES
+    ENDCASES
+  MEASURE basis BY <<
+
+  linear_combination(
+      coefficients: list[K],
+      basis: list[L]): RECURSIVE L =
+    CASES basis OF
+      null: zeroL,
+      cons(vector, vector_tail):
+        CASES coefficients OF
+          null: zeroL,
+          cons(coefficient, coefficient_tail):
+            addL(
+              mulL(algebra_map(coefficient), vector),
+              linear_combination(coefficient_tail, vector_tail))
+        ENDCASES
+    ENDCASES
+  MEASURE basis BY <<
+
+  all_coefficients_zero(coefficients: list[K]): RECURSIVE bool =
+    CASES coefficients OF
+      null: TRUE,
+      cons(coefficient, coefficient_tail):
+        coefficient = zeroK
+          AND all_coefficients_zero(coefficient_tail)
+    ENDCASES
+  MEASURE coefficients BY <<
+
+  basis_length(basis: list[L]): RECURSIVE nat =
+    CASES basis OF
+      null: 0,
+      cons(vector, vector_tail): 1 + basis_length(vector_tail)
+    ENDCASES
+  MEASURE basis BY <<
+
+  basis_laws(basis: list[L]): bool =
+    (FORALL (x: L):
+      EXISTS (coefficients: list[K]):
+        same_length(coefficients, basis)
+          AND linear_combination(coefficients, basis) = x)
+      AND
+    (FORALL (coefficients: list[K]):
+      same_length(coefficients, basis)
+        AND linear_combination(coefficients, basis) = zeroL
+      IMPLIES
+        all_coefficients_zero(coefficients))
+
+  is_automorphism(phi: endomorphism): bool =
+    phi(zeroL) = zeroL
+      AND phi(oneL) = oneL
+      AND (FORALL (x, y: L):
+        phi(addL(x, y)) = addL(phi(x), phi(y)))
+      AND (FORALL (x, y: L):
+        phi(mulL(x, y)) = mulL(phi(x), phi(y)))
+      AND (FORALL (a: K):
+        phi(algebra_map(a)) = algebra_map(a))
+      AND (FORALL (x, y: L):
+        phi(x) = phi(y) IMPLIES x = y)
+      AND (FORALL (y: L):
+        EXISTS (x: L): phi(x) = y)
+
+  function_member(
+      phi: endomorphism,
+      automorphisms: automorphism_list): RECURSIVE bool =
+    CASES automorphisms OF
+      null: FALSE,
+      cons(head, tail):
+        head = phi OR function_member(phi, tail)
+    ENDCASES
+  MEASURE automorphisms BY <<
+
+  no_duplicate_functions(
+      automorphisms: automorphism_list): RECURSIVE bool =
+    CASES automorphisms OF
+      null: TRUE,
+      cons(head, tail):
+        NOT function_member(head, tail)
+          AND no_duplicate_functions(tail)
+    ENDCASES
+  MEASURE automorphisms BY <<
+
+  automorphism_count(
+      automorphisms: automorphism_list): RECURSIVE nat =
+    CASES automorphisms OF
+      null: 0,
+      cons(head, tail): 1 + automorphism_count(tail)
+    ENDCASES
+  MEASURE automorphisms BY <<
+
+  exact_automorphism_enumeration(
+      automorphisms: automorphism_list): bool =
+    no_duplicate_functions(automorphisms)
+      AND (FORALL (phi: endomorphism):
+        function_member(phi, automorphisms)
+          IFF is_automorphism(phi))
+
+  identity_map: endomorphism =
+    LAMBDA (x: L): x
+
+  compose(phi, psi: endomorphism): endomorphism =
+    LAMBDA (x: L): phi(psi(x))
+
+  automorphism_power(
+      phi: endomorphism,
+      exponent: nat): RECURSIVE endomorphism =
+    IF exponent = 0 THEN
+      identity_map
+    ELSE
+      compose(phi, automorphism_power(phi, exponent - 1))
+    ENDIF
+  MEASURE exponent
+
+  is_power_of(
+      generator, phi: endomorphism): bool =
+    EXISTS (exponent: nat):
+      automorphism_power(generator, exponent) = phi
+
+  cyclic_automorphism_group: bool =
+    EXISTS (generator: endomorphism):
+      is_automorphism(generator)
+        AND (FORALL (phi: endomorphism):
+          is_automorphism(phi) IMPLIES
+            is_power_of(generator, phi))
+
+  generates_automorphism_group(g: endomorphism): bool =
+    is_automorphism(g)
+      AND (FORALL (phi: endomorphism):
+        is_automorphism(phi) IMPLIES is_power_of(g, phi))
+
+  automorphism_product(
+      x: L,
+      automorphisms: automorphism_list): RECURSIVE L =
+    CASES automorphisms OF
+      null: oneL,
+      cons(phi, tail):
+        mulL(phi(x), automorphism_product(x, tail))
+    ENDCASES
+  MEASURE automorphisms BY <<
+
+  hilbert_s_theorem_90: bool =
+    FORALL (basis: list[L]),
+        (automorphisms: automorphism_list),
+        (g: endomorphism),
+        (x: L):
+      (field_laws_K
+        AND field_laws_L
+        AND algebra_embedding_laws
+        AND basis_laws(basis)
+        AND exact_automorphism_enumeration(automorphisms)
+        AND automorphism_count(automorphisms) = basis_length(basis)
+        AND cyclic_automorphism_group
+        AND generates_automorphism_group(g)
+        AND automorphism_product(x, automorphisms) = oneL)
+      IMPLIES
+        EXISTS (y: L):
+          y /= zeroL
+            AND mulL(y, invL(g(y))) = x
+
+END Q1420905_hilbert_s_theorem_90

@@ -1,0 +1,84 @@
+% Statement-only formalization of "Ptolemy's Theorem" from Hundred Theorems
+% artifact 095: the side and diagonal lengths of a cyclic quadrilateral in
+% cyclic order satisfy Ptolemy's metric identity. This file contains no proof.
+
+ptolemy_s_theorem_095[
+  V: TYPE+,
+  zero: V,
+  vadd: [V, V -> V],
+  vneg: [V -> V],
+  scale: [real, V -> V],
+  inner: [V, V -> real]
+]: THEORY
+BEGIN
+  vector_space_laws: bool =
+    (FORALL (u, v: V): vadd(u, v) = vadd(v, u))
+      AND (FORALL (u, v, w: V):
+        vadd(vadd(u, v), w) = vadd(u, vadd(v, w)))
+      AND (FORALL (u: V): vadd(u, zero) = u)
+      AND (FORALL (u: V): vadd(u, vneg(u)) = zero)
+      AND (FORALL (a: real), (u, v: V):
+        scale(a, vadd(u, v)) = vadd(scale(a, u), scale(a, v)))
+      AND (FORALL (a, b: real), (u: V):
+        scale(a + b, u) = vadd(scale(a, u), scale(b, u)))
+      AND (FORALL (a, b: real), (u: V):
+        scale(a * b, u) = scale(a, scale(b, u)))
+      AND (FORALL (u: V): scale(1, u) = u)
+      AND (FORALL (u: V): scale(0, u) = zero)
+      AND (FORALL (u: V): vneg(u) = scale(-1, u))
+
+  inner_product_laws: bool =
+    (FORALL (u, v, w: V):
+      inner(vadd(u, v), w) = inner(u, w) + inner(v, w))
+      AND (FORALL (a: real), (u, v: V):
+        inner(scale(a, u), v) = a * inner(u, v))
+      AND (FORALL (u, v: V): inner(u, v) = inner(v, u))
+      AND (FORALL (u: V): 0 <= inner(u, u))
+      AND (FORALL (u: V): inner(u, u) = 0 IFF u = zero)
+
+  real_inner_product_space: bool =
+    vector_space_laws AND inner_product_laws
+
+  displacement(P, Q: V): V =
+    vadd(Q, vneg(P))
+
+  squared_distance(P, Q: V): real =
+    inner(displacement(P, Q), displacement(P, Q))
+
+  distance_value(length: real, P, Q: V): bool =
+    0 <= length AND length * length = squared_distance(P, Q)
+
+  on_sphere(P, center: V, radius: real): bool =
+    distance_value(radius, P, center)
+
+  between(M, A, B: V): bool =
+    EXISTS (u: real):
+      0 <= u
+        AND u <= 1
+        AND M = vadd(scale(1 - u, A), scale(u, B))
+
+  cyclic_quadrilateral_in_order(A, B, C, D: V): bool =
+    EXISTS (center, intersection: V), (radius: real):
+      on_sphere(A, center, radius)
+        AND on_sphere(B, center, radius)
+        AND on_sphere(C, center, radius)
+        AND on_sphere(D, center, radius)
+        AND between(intersection, A, C)
+        AND between(intersection, B, D)
+
+  ptolemy_distance_identity(A, B, C, D: V): bool =
+    EXISTS (ab, bc, cd, da, ac, bd: real):
+      distance_value(ab, A, B)
+        AND distance_value(bc, B, C)
+        AND distance_value(cd, C, D)
+        AND distance_value(da, D, A)
+        AND distance_value(ac, A, C)
+        AND distance_value(bd, B, D)
+        AND ab * cd + bc * da = ac * bd
+
+  ptolemy_s_theorem: bool =
+    real_inner_product_space IMPLIES
+      (FORALL (A, B, C, D: V):
+        cyclic_quadrilateral_in_order(A, B, C, D)
+          IMPLIES ptolemy_distance_identity(A, B, C, D))
+END ptolemy_s_theorem_095

@@ -1,0 +1,195 @@
+% Statement-only formalization of the VERINA corpus artifact verina_basic_79
+% (verina__pvs__verina_basic_79), catalog title "onlineMax": the executable
+% integer-array scan computes the maximum of the first x entries and returns
+% the first later index exceeding it, or the final index if none does, under
+% the complete correctness contract. This file contains no proof.
+
+verina_basic_79: THEORY
+BEGIN
+
+  int_nat_pair: TYPE =
+    [# first_value: int,
+       second_value: nat #]
+
+  % Finite PVS lists preserve exactly the contents and order of Lean arrays.
+  int_list_length(
+      values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        int_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  % Lean Array.get! on integer arrays returns zero outside the array.
+  int_list_get_bang(
+      index: nat,
+      values: list[int]): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          int_list_get_bang(index - 1, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  % Lean natural subtraction is truncated at zero.
+  nat_subtract(
+      first, second: nat): nat =
+    IF first >= second THEN
+      first - second
+    ELSE
+      0
+    ENDIF
+
+  last_index(
+      size: nat): nat =
+    nat_subtract(size, 1)
+
+  onlineMax_precond(
+      a: list[int],
+      x: nat): bool =
+    int_list_length(a) > 0
+      AND x > 0
+      AND x < int_list_length(a)
+
+  % Fuel is exactly the number of source indices remaining below x.
+  findBest_loop(
+      a: list[int],
+      x, i: nat,
+      best: int,
+      fuel: nat): RECURSIVE int =
+    IF fuel = 0 THEN
+      best
+    ELSIF i < x THEN
+      LET candidate: int =
+            int_list_get_bang(i, a),
+          new_best: int =
+            IF candidate > best THEN
+              candidate
+            ELSE
+              best
+            ENDIF
+      IN
+        findBest_loop(
+          a,
+          x,
+          i + 1,
+          new_best,
+          fuel - 1)
+    ELSE
+      best
+    ENDIF
+  MEASURE fuel
+
+  findBest(
+      a: list[int],
+      x, i: nat,
+      best: int): int =
+    findBest_loop(
+      a,
+      x,
+      i,
+      best,
+      nat_subtract(x, i))
+
+  % Fuel is exactly the number of in-bounds source indices from i onward.
+  % The source parameter x is retained even though findP does not inspect it.
+  findP_loop(
+      a: list[int],
+      x: nat,
+      m: int,
+      i, fuel: nat): RECURSIVE nat =
+    IF fuel = 0 THEN
+      last_index(int_list_length(a))
+    ELSIF i < int_list_length(a) THEN
+      IF int_list_get_bang(i, a) > m THEN
+        i
+      ELSE
+        findP_loop(
+          a,
+          x,
+          m,
+          i + 1,
+          fuel - 1)
+      ENDIF
+    ELSE
+      last_index(int_list_length(a))
+    ENDIF
+  MEASURE fuel
+
+  findP(
+      a: list[int],
+      x: nat,
+      m: int,
+      i: nat): nat =
+    findP_loop(
+      a,
+      x,
+      m,
+      i,
+      nat_subtract(int_list_length(a), i))
+
+  % The source precondition proof argument is computationally irrelevant.
+  onlineMax(
+      a: list[int],
+      x: nat): int_nat_pair =
+    LET best: int =
+          int_list_get_bang(0, a),
+        m: int =
+          findBest(a, x, 1, best),
+        p: nat =
+          findP(a, x, m, x)
+    IN
+      (# first_value := m,
+         second_value := p #)
+
+  % The source proof argument to the postcondition is logically irrelevant.
+  onlineMax_postcond(
+      a: list[int],
+      x: nat,
+      result: int_nat_pair): bool =
+    LET m: int = first_value(result),
+        p: nat = second_value(result),
+        size: nat = int_list_length(a)
+    IN
+      (x <= p AND p < size)
+        AND
+          (FORALL (i: nat):
+            i < x
+              IMPLIES
+                int_list_get_bang(i, a) <= m)
+        AND
+          (EXISTS (i: nat):
+            i < x
+              AND int_list_get_bang(i, a) = m)
+        AND
+          (FORALL (i: nat):
+            (x <= i AND i < p)
+              IMPLIES
+                int_list_get_bang(i, a) <= m)
+        AND
+          (int_list_get_bang(p, a) > m
+            OR
+              (p = last_index(size)
+                AND
+                  (FORALL (i: nat):
+                    (x <= i AND i < size)
+                      IMPLIES
+                        int_list_get_bang(i, a) <= m)))
+
+  onlineMax_spec_satisfied: bool =
+    FORALL (a: list[int], x: nat):
+      onlineMax_precond(a, x)
+        IMPLIES
+          onlineMax_postcond(
+            a,
+            x,
+            onlineMax(a, x))
+
+END verina_basic_79

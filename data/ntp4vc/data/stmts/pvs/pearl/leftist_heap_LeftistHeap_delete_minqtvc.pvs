@@ -1,0 +1,163 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/leftist_heap_LeftistHeap_delete_minqtvc: the leftist-heap delete-min
+% verification condition for heap order, rank invariants, size, and element
+% occurrences. This file contains no proof.
+
+leftist_heap_LeftistHeap_delete_minqtvc[
+  elt: TYPE+,
+  heap: TYPE+
+]: THEORY
+BEGIN
+
+  tree: DATATYPE
+  BEGIN
+    Empty: Empty?
+    Node(
+      stored_rank: int,
+      left_subtree: tree,
+      root_element: elt,
+      right_subtree: tree): Node?
+  END tree
+
+  preorder_laws(leq: [elt, elt -> bool]): bool =
+    (FORALL (x: elt): leq(x, x))
+      AND
+    (FORALL (x, y, z: elt):
+      (leq(x, y) AND leq(y, z)) IMPLIES leq(x, z))
+      AND
+    (FORALL (x, y: elt): leq(x, y) OR leq(y, x))
+
+  tree_size(values: tree): RECURSIVE int =
+    CASES values OF
+      Empty:
+        0,
+      Node(rank_value, left, root, right):
+        1 + tree_size(left) + tree_size(right)
+    ENDCASES
+  MEASURE values BY <<
+
+  occ(element: elt, values: tree): RECURSIVE int =
+    CASES values OF
+      Empty:
+        0,
+      Node(rank_value, left, root, right):
+        (IF element = root THEN 1 ELSE 0 ENDIF)
+          + occ(element, left)
+          + occ(element, right)
+    ENDCASES
+  MEASURE values BY <<
+
+  tree_mem(element: elt, values: tree): bool =
+    0 < occ(element, values)
+
+  le_root(
+      leq: [elt, elt -> bool],
+      element: elt,
+      values: tree): bool =
+    CASES values OF
+      Empty:
+        TRUE,
+      Node(rank_value, left, root, right):
+        leq(element, root)
+    ENDCASES
+
+  is_heap(
+      leq: [elt, elt -> bool],
+      values: tree): RECURSIVE bool =
+    CASES values OF
+      Empty:
+        TRUE,
+      Node(rank_value, left, root, right):
+        le_root(leq, root, left)
+          AND is_heap(leq, left)
+          AND le_root(leq, root, right)
+          AND is_heap(leq, right)
+    ENDCASES
+  MEASURE values BY <<
+
+  heap_rank(values: tree): RECURSIVE int =
+    CASES values OF
+      Empty:
+        0,
+      Node(rank_value, left, root, right):
+        1 + min(heap_rank(left), heap_rank(right))
+    ENDCASES
+  MEASURE values BY <<
+
+  leftist(values: tree): RECURSIVE bool =
+    CASES values OF
+      Empty:
+        TRUE,
+      Node(rank_value, left, root, right):
+        rank_value = 1 + min(heap_rank(left), heap_rank(right))
+          AND leftist(left)
+          AND leftist(right)
+          AND heap_rank(right) <= heap_rank(left)
+    ENDCASES
+  MEASURE values BY <<
+
+  leftist_heap(
+      leq: [elt, elt -> bool],
+      values: tree): bool =
+    is_heap(leq, values) AND leftist(values)
+
+  minimum_law(minimum_fn: [tree -> elt]): bool =
+    FORALL
+        (rank_value: int),
+        (left: tree),
+        (root: elt),
+        (right: tree):
+      minimum_fn(Node(rank_value, left, root, right)) = root
+
+  is_minimum(
+      leq: [elt, elt -> bool],
+      element: elt,
+      values: tree): bool =
+    tree_mem(element, values)
+      AND
+    (FORALL (other: elt):
+      tree_mem(other, values) IMPLIES leq(element, other))
+
+  delete_min_vc: bool =
+    FORALL
+        (leq: [elt, elt -> bool]),
+        (minimum_fn: [tree -> elt]),
+        (h: tree):
+      (preorder_laws(leq)
+        AND minimum_law(minimum_fn)
+        AND 0 < tree_size(h)
+        AND leftist_heap(leq, h))
+      IMPLIES
+        ((CASES h OF
+            Empty:
+              FALSE,
+            Node(rank_value, left, root, right):
+              leftist_heap(leq, left)
+                AND leftist_heap(leq, right)
+          ENDCASES)
+          AND
+        (FORALL (result: tree):
+          (CASES h OF
+            Empty:
+              FALSE,
+            Node(rank_value, left, root, right):
+              tree_size(result)
+                  = tree_size(left) + tree_size(right)
+                AND
+              (FORALL (element: elt):
+                occ(element, result)
+                  = occ(element, left) + occ(element, right))
+                AND leftist_heap(leq, result)
+          ENDCASES)
+          IMPLIES
+            (occ(minimum_fn(h), result)
+                = occ(minimum_fn(h), h) - 1
+              AND
+            (FORALL (element: elt):
+              NOT element = minimum_fn(h)
+                IMPLIES
+                  occ(element, result) = occ(element, h))
+              AND tree_size(result) = tree_size(h) - 1
+              AND leftist_heap(leq, result))))
+
+END leftist_heap_LeftistHeap_delete_minqtvc

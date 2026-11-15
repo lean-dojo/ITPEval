@@ -1,0 +1,355 @@
+% Statement-only formalization of the Thousand Theorems artifact Q720469
+% (thousand-theorems__pvs__Q720469), "Chevalley–Warning theorem": over a
+% finite field of characteristic p, p divides the number of common zeros of a
+% finite polynomial family when its total-degree sum is smaller than the
+% number of variables. This file contains no proof.
+
+Q720469_chevalley_warning_theorem[
+  Sigma, Iota: TYPE,
+  K: TYPE+,
+  zero_K, one_K: K,
+  neg_K, inv_K: [K -> K],
+  add_K, mul_K: [K, K -> K],
+  char_p: nat
+]: THEORY
+BEGIN
+
+  monomial: TYPE = [Sigma -> nat]
+  raw_polynomial: TYPE = [monomial -> K]
+  polynomial_family: TYPE = [Iota -> raw_polynomial]
+  point: TYPE = [Sigma -> K]
+
+  nat_cast(value: nat): RECURSIVE K =
+    IF value = 0 THEN
+      zero_K
+    ELSE
+      add_K(nat_cast(value - 1), one_K)
+    ENDIF
+  MEASURE value
+
+  field_laws: bool =
+    zero_K /= one_K
+      AND (FORALL (a, b: K):
+        add_K(a, b) = add_K(b, a))
+      AND (FORALL (a, b, c: K):
+        add_K(add_K(a, b), c) = add_K(a, add_K(b, c)))
+      AND (FORALL (a: K):
+        add_K(a, zero_K) = a
+          AND add_K(a, neg_K(a)) = zero_K)
+      AND (FORALL (a, b: K):
+        mul_K(a, b) = mul_K(b, a))
+      AND (FORALL (a, b, c: K):
+        mul_K(mul_K(a, b), c) = mul_K(a, mul_K(b, c)))
+      AND (FORALL (a: K):
+        mul_K(a, one_K) = a)
+      AND (FORALL (a, b, c: K):
+        mul_K(a, add_K(b, c))
+          = add_K(mul_K(a, b), mul_K(a, c)))
+      AND inv_K(zero_K) = zero_K
+      AND (FORALL (a: K):
+        a /= zero_K IMPLIES mul_K(a, inv_K(a)) = one_K)
+
+  field_has_characteristic_p: bool =
+    char_p > 0
+      AND nat_cast(char_p) = zero_K
+      AND (FORALL (value: nat):
+        value > 0 AND value < char_p
+          IMPLIES nat_cast(value) /= zero_K)
+
+  variable_member(
+      variable: Sigma,
+      variables: list[Sigma]): RECURSIVE bool =
+    CASES variables OF
+      null: FALSE,
+      cons(head, tail):
+        variable = head OR variable_member(variable, tail)
+    ENDCASES
+  MEASURE variables BY <<
+
+  no_duplicate_variables(
+      variables: list[Sigma]): RECURSIVE bool =
+    CASES variables OF
+      null: TRUE,
+      cons(head, tail):
+        NOT variable_member(head, tail)
+          AND no_duplicate_variables(tail)
+    ENDCASES
+  MEASURE variables BY <<
+
+  variable_list_length(
+      variables: list[Sigma]): RECURSIVE nat =
+    CASES variables OF
+      null: 0,
+      cons(head, tail):
+        1 + variable_list_length(tail)
+    ENDCASES
+  MEASURE variables BY <<
+
+  monomial_supported_on(
+      value: monomial,
+      variables: list[Sigma]): bool =
+    FORALL (variable: Sigma):
+      NOT variable_member(variable, variables)
+        IMPLIES value(variable) = 0
+
+  monomial_member(
+      value: monomial,
+      monomials: list[monomial]): RECURSIVE bool =
+    CASES monomials OF
+      null: FALSE,
+      cons(head, tail):
+        value = head OR monomial_member(value, tail)
+    ENDCASES
+  MEASURE monomials BY <<
+
+  no_duplicate_monomials(
+      monomials: list[monomial]): RECURSIVE bool =
+    CASES monomials OF
+      null: TRUE,
+      cons(head, tail):
+        NOT monomial_member(head, tail)
+          AND no_duplicate_monomials(tail)
+    ENDCASES
+  MEASURE monomials BY <<
+
+  exact_support_over(
+      polynomial: raw_polynomial,
+      support: list[monomial],
+      variables: list[Sigma]): bool =
+    no_duplicate_monomials(support)
+      AND (FORALL (value: monomial):
+        monomial_member(value, support)
+          IFF polynomial(value) /= zero_K)
+      AND (FORALL (value: monomial):
+        monomial_member(value, support)
+          IMPLIES monomial_supported_on(value, variables))
+
+  is_polynomial_over(
+      polynomial: raw_polynomial,
+      variables: list[Sigma]): bool =
+    EXISTS (support: list[monomial]):
+      exact_support_over(polynomial, support, variables)
+
+  monomial_degree(
+      value: monomial,
+      variables: list[Sigma]): RECURSIVE nat =
+    CASES variables OF
+      null: 0,
+      cons(head, tail):
+        value(head) + monomial_degree(value, tail)
+    ENDCASES
+  MEASURE variables BY <<
+
+  maximum_monomial_degree(
+      support: list[monomial],
+      variables: list[Sigma]): RECURSIVE nat =
+    CASES support OF
+      null: 0,
+      cons(head, tail):
+        LET head_degree: nat = monomial_degree(head, variables),
+            tail_degree: nat =
+              maximum_monomial_degree(tail, variables)
+        IN
+          IF head_degree < tail_degree THEN
+            tail_degree
+          ELSE
+            head_degree
+          ENDIF
+    ENDCASES
+  MEASURE support BY <<
+
+  total_degree_value(
+      polynomial: raw_polynomial,
+      variables: list[Sigma],
+      degree: nat): bool =
+    EXISTS (support: list[monomial]):
+        exact_support_over(polynomial, support, variables)
+          AND degree =
+            maximum_monomial_degree(support, variables)
+
+  field_power(value: K, exponent: nat): RECURSIVE K =
+    IF exponent = 0 THEN
+      one_K
+    ELSE
+      mul_K(field_power(value, exponent - 1), value)
+    ENDIF
+  MEASURE exponent
+
+  monomial_value(
+      assignment: point,
+      value: monomial,
+      variables: list[Sigma]): RECURSIVE K =
+    CASES variables OF
+      null: one_K,
+      cons(head, tail):
+        mul_K(
+          field_power(assignment(head), value(head)),
+          monomial_value(assignment, value, tail))
+    ENDCASES
+  MEASURE variables BY <<
+
+  polynomial_sum(
+      polynomial: raw_polynomial,
+      assignment: point,
+      support: list[monomial],
+      variables: list[Sigma]): RECURSIVE K =
+    CASES support OF
+      null: zero_K,
+      cons(head, tail):
+        add_K(
+          mul_K(
+            polynomial(head),
+            monomial_value(assignment, head, variables)),
+          polynomial_sum(
+            polynomial,
+            assignment,
+            tail,
+            variables))
+    ENDCASES
+  MEASURE support BY <<
+
+  evaluates_to(
+      polynomial: raw_polynomial,
+      assignment: point,
+      variables: list[Sigma],
+      value: K): bool =
+    EXISTS (support: list[monomial]):
+        exact_support_over(polynomial, support, variables)
+          AND value =
+            polynomial_sum(
+              polynomial,
+              assignment,
+              support,
+              variables)
+
+  index_member(
+      index: Iota,
+      indices: list[Iota]): RECURSIVE bool =
+    CASES indices OF
+      null: FALSE,
+      cons(head, tail):
+        index = head OR index_member(index, tail)
+    ENDCASES
+  MEASURE indices BY <<
+
+  no_duplicate_indices(
+      indices: list[Iota]): RECURSIVE bool =
+    CASES indices OF
+      null: TRUE,
+      cons(head, tail):
+        NOT index_member(head, tail)
+          AND no_duplicate_indices(tail)
+    ENDCASES
+  MEASURE indices BY <<
+
+  degree_sum_value(
+      indices: list[Iota],
+      family: polynomial_family,
+      variables: list[Sigma],
+      total: nat): RECURSIVE bool =
+    CASES indices OF
+      null:
+        total = 0,
+      cons(head, tail):
+        EXISTS (head_degree, tail_total: nat):
+          total_degree_value(
+            family(head),
+            variables,
+            head_degree)
+            AND degree_sum_value(
+              tail,
+              family,
+              variables,
+              tail_total)
+            AND total = head_degree + tail_total
+    ENDCASES
+  MEASURE indices BY <<
+
+  same_on_variables(
+      left, right: point,
+      variables: list[Sigma]): RECURSIVE bool =
+    CASES variables OF
+      null: TRUE,
+      cons(head, tail):
+        left(head) = right(head)
+          AND same_on_variables(left, right, tail)
+    ENDCASES
+  MEASURE variables BY <<
+
+  common_solution(
+      variables: list[Sigma],
+      indices: list[Iota],
+      family: polynomial_family,
+      assignment: point): bool =
+    FORALL (index: Iota):
+      index_member(index, indices)
+        IMPLIES evaluates_to(
+          family(index),
+          assignment,
+          variables,
+          zero_K)
+
+  has_solution_cardinality(
+      variables: list[Sigma],
+      indices: list[Iota],
+      family: polynomial_family,
+      cardinality: nat): bool =
+    EXISTS (enumeration: [below(cardinality) -> point]):
+      (FORALL (left, right: below(cardinality)):
+        same_on_variables(
+          enumeration(left),
+          enumeration(right),
+          variables)
+          IMPLIES left = right)
+        AND
+      (FORALL (assignment: point):
+        common_solution(
+          variables,
+          indices,
+          family,
+          assignment)
+          IFF
+        EXISTS (position: below(cardinality)):
+          same_on_variables(
+            enumeration(position),
+            assignment,
+            variables))
+
+  nat_divides(divisor, value: nat): bool =
+    EXISTS (quotient: nat):
+      value = divisor * quotient
+
+  chevalley_warning_theorem: bool =
+    (is_finite_type[K]
+      AND field_laws
+      AND field_has_characteristic_p)
+    IMPLIES
+      FORALL
+        (variables: list[Sigma]),
+        (indices: list[Iota]),
+        (family: polynomial_family):
+          (no_duplicate_variables(variables)
+            AND no_duplicate_indices(indices)
+            AND (FORALL (index: Iota):
+              is_polynomial_over(
+                family(index),
+                variables))
+            AND
+              EXISTS (degree_sum: nat):
+                degree_sum_value(
+                  indices,
+                  family,
+                  variables,
+                  degree_sum)
+                  AND degree_sum
+                    < variable_list_length(variables))
+          IMPLIES
+            EXISTS (solution_count: nat):
+              has_solution_cardinality(
+                variables,
+                indices,
+                family,
+                solution_count)
+                AND nat_divides(char_p, solution_count)
+
+END Q720469_chevalley_warning_theorem

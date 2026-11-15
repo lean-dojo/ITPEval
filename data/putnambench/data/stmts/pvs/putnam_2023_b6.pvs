@@ -1,0 +1,180 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2023_b6:
+% the determinant of the n-by-n integer matrix whose (i,j)-entry counts
+% nonnegative solutions of ai + bj = n has the stated parity-dependent value.
+% This file contains no proof.
+
+putnam_2023_b6: THEORY
+BEGIN
+  integer_matrix: TYPE = [nat, nat -> int]
+
+  quotient_aux(
+      numerator, denominator, fuel: nat): RECURSIVE nat =
+    IF fuel = 0
+        OR denominator = 0
+        OR numerator < denominator THEN
+      0
+    ELSE
+      1
+        + quotient_aux(
+            numerator - denominator,
+            denominator,
+            fuel - 1)
+    ENDIF
+  MEASURE fuel
+
+  remainder_aux(
+      numerator, denominator, fuel: nat): RECURSIVE nat =
+    IF fuel = 0
+        OR denominator = 0
+        OR numerator < denominator THEN
+      numerator
+    ELSE
+      remainder_aux(
+        numerator - denominator,
+        denominator,
+        fuel - 1)
+    ENDIF
+  MEASURE fuel
+
+  safe_ndiv(numerator, denominator: nat): nat =
+    quotient_aux(
+      numerator,
+      denominator,
+      numerator + 1)
+
+  safe_mod(numerator, denominator: nat): nat =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      remainder_aux(
+        numerator,
+        denominator,
+        numerator + 1)
+    ENDIF
+
+  count_true(
+      property: [nat -> bool],
+      count: nat): RECURSIVE nat =
+    IF count = 0 THEN
+      0
+    ELSE
+      count_true(property, count - 1)
+        + IF property(count - 1) THEN 1 ELSE 0 ENDIF
+    ENDIF
+  MEASURE count
+
+  pair_first(code, n: nat): nat =
+    safe_ndiv(code, n + 1)
+
+  pair_second(code, n: nat): nat =
+    safe_mod(code, n + 1)
+
+  is_solution_pair(code, n, i, j: nat): bool =
+    code < (n + 1) ^ 2
+      AND pair_first(code, n) * (i + 1)
+        + pair_second(code, n) * (j + 1)
+        = n
+
+  solution_pair_count(n, i, j: nat): nat =
+    count_true(
+      (LAMBDA (code: nat):
+        is_solution_pair(code, n, i, j)),
+      (n + 1) ^ 2)
+
+  has_putnam_entries(S: integer_matrix, n: nat): bool =
+    FORALL (i, j: nat):
+      (i < n AND j < n)
+        IMPLIES
+          S(i, j) = (solution_pair_count(n, i, j) :: int)
+
+  function_code_count(size: nat): nat =
+    IF size = 0 THEN 1 ELSE size ^ size ENDIF
+
+  permutation_entry(code, row, size: nat): nat =
+    IF size = 0 THEN
+      0
+    ELSE
+      safe_mod(safe_ndiv(code, size ^ row), size)
+    ENDIF
+
+  permutation_code(code, size: nat): bool =
+    code < function_code_count(size)
+      AND (FORALL (row_1, row_2: nat):
+        (row_1 < size
+          AND row_2 < size
+          AND permutation_entry(code, row_1, size)
+            = permutation_entry(code, row_2, size))
+        IMPLIES row_1 = row_2)
+
+  pair_row(pair, size: nat): nat =
+    safe_ndiv(pair, size)
+
+  pair_column(pair, size: nat): nat =
+    safe_mod(pair, size)
+
+  inversion_at(code, pair, size: nat): bool =
+    pair_row(pair, size) < size
+      AND pair_column(pair, size) < size
+      AND pair_row(pair, size) < pair_column(pair, size)
+      AND permutation_entry(code, pair_row(pair, size), size)
+        > permutation_entry(code, pair_column(pair, size), size)
+
+  inversion_count(code, size: nat): nat =
+    count_true(
+      (LAMBDA (pair: nat): inversion_at(code, pair, size)),
+      size * size)
+
+  permutation_sign(code, size: nat): int =
+    IF mod(inversion_count(code, size), 2) = 0 THEN
+      1
+    ELSE
+      -1
+    ENDIF
+
+  permutation_product(
+      S: integer_matrix,
+      code, size, count: nat): RECURSIVE int =
+    IF count = 0 THEN
+      1
+    ELSE
+      permutation_product(S, code, size, count - 1)
+        * S(
+            count - 1,
+            permutation_entry(code, count - 1, size))
+    ENDIF
+  MEASURE count
+
+  determinant_sum(
+      S: integer_matrix,
+      size, limit: nat): RECURSIVE int =
+    IF limit = 0 THEN
+      0
+    ELSE
+      LET code: nat = limit - 1 IN
+        determinant_sum(S, size, limit - 1)
+          + IF permutation_code(code, size) THEN
+              permutation_sign(code, size)
+                * permutation_product(S, code, size, size)
+            ELSE
+              0
+            ENDIF
+    ENDIF
+  MEASURE limit
+
+  determinant(S: integer_matrix, size: nat): int =
+    determinant_sum(S, size, function_code_count(size))
+
+  ceiling_half(n: nat): nat =
+    safe_ndiv(n + 1, 2)
+
+  putnam_2023_b6_solution(n: nat): int =
+    (-1 :: int) ^ (ceiling_half(n) + 1)
+      * 2
+      * (ceiling_half(n) :: int)
+
+  putnam_2023_b6: bool =
+    FORALL (n: nat), (S: integer_matrix):
+      (n > 0 AND has_putnam_entries(S, n))
+        IMPLIES
+          determinant(S, n) = putnam_2023_b6_solution(n)
+END putnam_2023_b6

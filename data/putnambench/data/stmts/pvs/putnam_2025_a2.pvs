@@ -1,0 +1,114 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2025_a2:
+% the greatest lower and least upper real coefficients bounding sin(x) by
+% multiples of x(pi-x) on [0,pi] are 1/pi and 4/pi^2. This file contains no proof.
+
+putnam_2025_a2: THEORY
+BEGIN
+  real_sequence: TYPE = [nat -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  nat_factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * nat_factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  sine_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        sine_partial(x, count - 1)
+          + safe_div(
+              ((-1 :: real) ^ index) * x ^ (2 * index + 1),
+              nat_factorial(2 * index + 1) :: real)
+    ENDIF
+  MEASURE count
+
+  cosine_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        cosine_partial(x, count - 1)
+          + safe_div(
+              ((-1 :: real) ^ index) * x ^ (2 * index),
+              nat_factorial(2 * index) :: real)
+    ENDIF
+  MEASURE count
+
+  sine(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat): sine_partial(x, count),
+          value))
+
+  cosine(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat): cosine_partial(x, count),
+          value))
+
+  is_pi(value: real): bool =
+    3 < value
+      AND value < 4
+      AND cosine(value / 2) = 0
+
+  pi: real =
+    epsilon(
+      LAMBDA (value: real):
+        is_pi(value))
+
+  lower_coefficient(a: real): bool =
+    FORALL (x: real):
+      (0 <= x AND x <= pi)
+        IMPLIES a * x * (pi - x) <= sine(x)
+
+  upper_coefficient(b: real): bool =
+    FORALL (x: real):
+      (0 <= x AND x <= pi)
+        IMPLIES sine(x) <= b * x * (pi - x)
+
+  greatest_lower_coefficient(a: real): bool =
+    lower_coefficient(a)
+      AND FORALL (candidate: real):
+        lower_coefficient(candidate)
+          IMPLIES candidate <= a
+
+  least_upper_coefficient(b: real): bool =
+    upper_coefficient(b)
+      AND FORALL (candidate: real):
+        upper_coefficient(candidate)
+          IMPLIES b <= candidate
+
+  putnam_2025_a2_lower_solution: real =
+    safe_div(1, pi)
+
+  putnam_2025_a2_upper_solution: real =
+    safe_div(4, pi ^ 2)
+
+  putnam_2025_a2: bool =
+    FORALL (a, b: real):
+      (a = putnam_2025_a2_lower_solution
+        AND b = putnam_2025_a2_upper_solution)
+      IFF
+        (greatest_lower_coefficient(a)
+          AND least_upper_coefficient(b))
+END putnam_2025_a2

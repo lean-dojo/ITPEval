@@ -1,0 +1,67 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% frama_c/klibc_string/memccpy_Why3_ide_VCmemccpy_loop_inv_2_established_part2_goal4:
+% a memccpy loop-invariant verification condition asserting that a destination
+% address precedes its positive integer shift. This file contains no proof.
+
+memccpy_Why3_ide_VCmemccpy_loop_inv_2_established_part2_goal4: THEORY
+BEGIN
+  addr: TYPE = [# base: int, offset: int #]
+  integer_memory: TYPE = [addr -> int]
+  allocation_table: TYPE = [int -> int]
+  address_relation: TYPE = [addr, addr -> bool]
+
+  shift(p: addr, k: int): addr =
+    (# base := base(p), offset := offset(p) + k #)
+
+  valid_rw(malloc: allocation_table, p: addr, size: int): bool =
+    0 < size IMPLIES
+      0 < base(p)
+        AND 0 <= offset(p)
+        AND offset(p) + size <= malloc(base(p))
+
+  separated(p: addr, p_size: int, q: addr, q_size: int): bool =
+    p_size <= 0
+      OR q_size <= 0
+      OR base(p) /= base(q)
+      OR offset(q) + q_size <= offset(p)
+      OR offset(p) + p_size <= offset(q)
+
+  is_uint32(value: int): bool =
+    0 <= value AND value < 4294967296
+
+  is_sint32(value: int): bool =
+    -2147483648 <= value AND value < 2147483648
+
+  address_order_axiom(addr_le: address_relation): bool =
+    FORALL (p, q: addr):
+      base(p) = base(q) IMPLIES
+        (addr_le(p, q) IFF offset(p) <= offset(q))
+
+  goal4: bool =
+    FORALL
+      (region: [int -> int]),
+      (linked: [allocation_table -> bool]),
+      (sconst: [integer_memory -> bool]),
+      (addr_le: address_relation),
+      (a, a_1: addr),
+      (i, i_1: int),
+      (t: allocation_table),
+      (t_1: integer_memory):
+      address_order_axiom(addr_le) IMPLIES
+      LET a_2: addr = shift(a, 0),
+          a_3: addr = shift(a_1, 0)
+      IN
+        0 < i IMPLIES
+        region(base(a)) <= 0 IMPLIES
+        region(base(a_1)) <= 0 IMPLIES
+        -128 <= i_1 IMPLIES
+        i_1 <= 127 IMPLIES
+        linked(t) IMPLIES
+        sconst(t_1) IMPLIES
+        is_uint32(i) IMPLIES
+        is_sint32(i_1) IMPLIES
+        valid_rw(t, a_2, i) IMPLIES
+        valid_rw(t, a_3, i) IMPLIES
+        separated(a_2, i, a_3, i) IMPLIES
+        addr_le(a_1, shift(a_1, i))
+END memccpy_Why3_ide_VCmemccpy_loop_inv_2_established_part2_goal4

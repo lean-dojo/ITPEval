@@ -1,0 +1,133 @@
+% Statement-only formalization of the Thousand Theorems corpus artifact Q1065257
+% (thousand-theorems__pvs__Q1065257), "Squeeze theorem": functions eventually
+% bounded below and above by functions tending to the same point also tend to
+% that point. This file contains no proof.
+
+squeeze_theorem_Q1065257[
+  alpha: TYPE,
+  beta: TYPE,
+  leq: [alpha, alpha -> bool],
+  open_sets: [[alpha -> bool] -> bool]
+]: THEORY
+BEGIN
+  alpha_set: TYPE = [alpha -> bool]
+  beta_set: TYPE = [beta -> bool]
+  alpha_set_family: TYPE = [alpha_set -> bool]
+  beta_filter: TYPE = [beta_set -> bool]
+
+  empty_alpha_set: alpha_set =
+    LAMBDA (x: alpha): FALSE
+
+  whole_alpha_set: alpha_set =
+    LAMBDA (x: alpha): TRUE
+
+  alpha_intersection(A, B: alpha_set): alpha_set =
+    LAMBDA (x: alpha): A(x) AND B(x)
+
+  alpha_union(F: alpha_set_family): alpha_set =
+    LAMBDA (x: alpha):
+      EXISTS (U: alpha_set): F(U) AND U(x)
+
+  alpha_subset(A, B: alpha_set): bool =
+    FORALL (x: alpha): A(x) IMPLIES B(x)
+
+  beta_subset(A, B: beta_set): bool =
+    FORALL (x: beta): A(x) IMPLIES B(x)
+
+  beta_intersection(A, B: beta_set): beta_set =
+    LAMBDA (x: beta): A(x) AND B(x)
+
+  whole_beta_set: beta_set =
+    LAMBDA (x: beta): TRUE
+
+  strict_less(x, y: alpha): bool =
+    leq(x, y) AND NOT leq(y, x)
+
+  upper_ray(a: alpha): alpha_set =
+    LAMBDA (x: alpha): strict_less(a, x)
+
+  lower_ray(a: alpha): alpha_set =
+    LAMBDA (x: alpha): strict_less(x, a)
+
+  preorder_laws: bool =
+    (FORALL (x: alpha): leq(x, x))
+      AND
+        (FORALL (x, y, z: alpha):
+          leq(x, y) AND leq(y, z) IMPLIES leq(x, z))
+
+  topology_laws(candidate_open: [alpha_set -> bool]): bool =
+    candidate_open(empty_alpha_set)
+      AND candidate_open(whole_alpha_set)
+      AND
+        (FORALL (A, B: alpha_set):
+          candidate_open(A) AND candidate_open(B)
+            IMPLIES candidate_open(alpha_intersection(A, B)))
+      AND
+        (FORALL (F: alpha_set_family):
+          (FORALL (U: alpha_set):
+            F(U) IMPLIES candidate_open(U))
+          IMPLIES candidate_open(alpha_union(F)))
+
+  contains_interval_subbasis(
+      candidate_open: [alpha_set -> bool]): bool =
+    (FORALL (a: alpha): candidate_open(upper_ray(a)))
+      AND (FORALL (a: alpha): candidate_open(lower_ray(a)))
+
+  generated_order_open(U: alpha_set): bool =
+    FORALL (candidate_open: [alpha_set -> bool]):
+      topology_laws(candidate_open)
+        AND contains_interval_subbasis(candidate_open)
+        IMPLIES candidate_open(U)
+
+  order_topology_law: bool =
+    topology_laws(open_sets)
+      AND
+        (FORALL (U: alpha_set):
+          open_sets(U) IFF generated_order_open(U))
+
+  filter_laws(eventually_sets: beta_filter): bool =
+    eventually_sets(whole_beta_set)
+      AND
+        (FORALL (A, B: beta_set):
+          eventually_sets(A) AND beta_subset(A, B)
+            IMPLIES eventually_sets(B))
+      AND
+        (FORALL (A, B: beta_set):
+          eventually_sets(A) AND eventually_sets(B)
+            IMPLIES eventually_sets(beta_intersection(A, B)))
+
+  neighborhood(U: alpha_set, a: alpha): bool =
+    EXISTS (V: alpha_set):
+      open_sets(V) AND V(a) AND alpha_subset(V, U)
+
+  preimage(u: [beta -> alpha], U: alpha_set): beta_set =
+    LAMBDA (x: beta): U(u(x))
+
+  tendsto(
+      u: [beta -> alpha],
+      eventually_sets: beta_filter,
+      a: alpha): bool =
+    FORALL (U: alpha_set):
+      neighborhood(U, a)
+        IMPLIES eventually_sets(preimage(u, U))
+
+  eventually_le(
+      u, v: [beta -> alpha],
+      eventually_sets: beta_filter): bool =
+    eventually_sets(
+      LAMBDA (x: beta): leq(u(x), v(x)))
+
+  squeeze_theorem: bool =
+    preorder_laws AND order_topology_law
+      IMPLIES
+        FORALL
+            (f, g, h: [beta -> alpha]),
+            (eventually_sets: beta_filter),
+            (a: alpha):
+          (filter_laws(eventually_sets)
+            AND tendsto(g, eventually_sets, a)
+            AND tendsto(h, eventually_sets, a)
+            AND eventually_le(g, f, eventually_sets)
+            AND eventually_le(f, h, eventually_sets))
+          IMPLIES tendsto(f, eventually_sets, a)
+END squeeze_theorem_Q1065257

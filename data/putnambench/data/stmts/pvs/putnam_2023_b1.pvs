@@ -1,0 +1,136 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2023_b1:
+% the configurations reachable by diagonal legal coin moves on an m-by-n
+% grid are counted by the binomial coefficient (m+n-2 choose m-1). This file
+% contains no proof.
+
+putnam_2023_b1: THEORY
+BEGIN
+  configuration: TYPE = [nat, nat -> bool]
+  configuration_set: TYPE = [configuration -> bool]
+  configuration_enumeration: TYPE = [nat -> configuration]
+  history: TYPE = list[configuration]
+
+  initial_configuration(m, n: nat): configuration =
+    LAMBDA (i, j: nat):
+      i < m - 1 AND j < n - 1
+
+  legal_move(
+      m, n: nat,
+      before, after: configuration): bool =
+    EXISTS (i, j: nat):
+      i < m - 1
+        AND j < n - 1
+        AND before(i, j)
+        AND NOT before(i + 1, j)
+        AND NOT before(i, j + 1)
+        AND NOT before(i + 1, j + 1)
+        AND NOT after(i, j)
+        AND NOT after(i + 1, j)
+        AND NOT after(i, j + 1)
+        AND after(i + 1, j + 1)
+        AND (FORALL (i_prime, j_prime: nat):
+          ((i_prime /= i OR j_prime /= j)
+            AND (i_prime /= i + 1 OR j_prime /= j)
+            AND (i_prime /= i OR j_prime /= j + 1)
+            AND (i_prime /= i + 1 OR j_prime /= j + 1))
+          IMPLIES
+            before(i_prime, j_prime) = after(i_prime, j_prime))
+
+  legal_chain(m, n: nat, moves: history): RECURSIVE bool =
+    CASES moves OF
+      null: TRUE,
+      cons(current, tail):
+        CASES tail OF
+          null: TRUE,
+          cons(next, remainder):
+            legal_move(m, n, current, next)
+              AND legal_chain(m, n, tail)
+        ENDCASES
+    ENDCASES
+  MEASURE moves BY <<
+
+  legal_history(m, n: nat, moves: history): bool =
+    CASES moves OF
+      null: FALSE,
+      cons(first, tail):
+        first = initial_configuration(m, n)
+          AND legal_chain(m, n, moves)
+    ENDCASES
+
+  ends_at(moves: history, final: configuration): RECURSIVE bool =
+    CASES moves OF
+      null: FALSE,
+      cons(current, tail):
+        CASES tail OF
+          null: final = current,
+          cons(next, remainder): ends_at(tail, final)
+        ENDCASES
+    ENDCASES
+  MEASURE moves BY <<
+
+  reachable_configuration(
+      m, n: nat,
+      final: configuration): bool =
+    EXISTS (moves: history):
+      legal_history(m, n, moves)
+        AND ends_at(moves, final)
+
+  reachable_configurations(m, n: nat): configuration_set =
+    LAMBDA (final: configuration):
+      reachable_configuration(m, n, final)
+
+  injective_below(
+      enumeration: configuration_enumeration,
+      cardinality: nat): bool =
+    FORALL (i, j: nat):
+      (i < cardinality
+        AND j < cardinality
+        AND enumeration(i) = enumeration(j))
+      IMPLIES i = j
+
+  enumerates_exactly(
+      enumeration: configuration_enumeration,
+      set_value: configuration_set,
+      cardinality: nat): bool =
+    FORALL (config: configuration):
+      set_value(config)
+        IFF
+          EXISTS (position: nat):
+            position < cardinality
+              AND enumeration(position) = config
+
+  has_cardinality(
+      set_value: configuration_set,
+      cardinality: nat): bool =
+    EXISTS (enumeration: configuration_enumeration):
+      injective_below(enumeration, cardinality)
+        AND enumerates_exactly(
+          enumeration, set_value, cardinality)
+
+  binomial_coefficient(n, k: nat): RECURSIVE nat =
+    IF k = 0 THEN
+      1
+    ELSIF n = 0 THEN
+      0
+    ELSE
+      binomial_coefficient(n - 1, k - 1)
+        + binomial_coefficient(n - 1, k)
+    ENDIF
+  MEASURE n
+
+  natural_predecessor(value: nat): nat =
+    IF value = 0 THEN 0 ELSE value - 1 ENDIF
+
+  putnam_2023_b1_solution(m, n: nat): nat =
+    binomial_coefficient(
+      natural_predecessor(natural_predecessor(m + n)),
+      natural_predecessor(m))
+
+  putnam_2023_b1: bool =
+    FORALL (m, n: nat):
+      (m > 0 AND n > 0)
+      IMPLIES
+        has_cardinality(
+          reachable_configurations(m, n),
+          putnam_2023_b1_solution(m, n))
+END putnam_2023_b1

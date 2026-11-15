@@ -1,0 +1,782 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/schorr_waite_SchorrWaite_schorr_waiteqtvc: the Schorr-Waite
+% graph-marking verification condition, including its stack/path invariants,
+% state transitions, termination variant, and reachability result.
+% This file contains no proof.
+
+schorr_waite_SchorrWaite_schorr_waiteqtvc[
+  loc: TYPE+,
+  null_loc: loc
+]: THEORY
+BEGIN
+
+  IMPORTING finite_sets[loc]
+
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  nth_loc(values: list[loc], index: int): RECURSIVE loc =
+    CASES values OF
+      null:
+        null_loc,
+      cons(head, tail):
+        IF int_to_nat(index) = 0 THEN
+          head
+        ELSE
+          nth_loc(tail, int_to_nat(index) - 1)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  list_tail(values: list[loc]): list[loc] =
+    CASES values OF
+      null:
+        null,
+      cons(head, tail):
+        tail
+    ENDCASES
+
+  not_in_stack(node: loc, stack: list[loc]): bool =
+    FORALL (index: int):
+      (0 <= index AND index < length(stack))
+        IMPLIES node /= nth_loc(stack, index)
+
+  last(stack: list[loc]): loc =
+    nth_loc(stack, length(stack) - 1)
+
+  distinct(stack: list[loc]): bool =
+    FORALL (left_index, right_index: int):
+      (0 <= left_index
+        AND left_index < length(stack)
+        AND 0 <= right_index
+        AND right_index < length(stack)
+        AND left_index /= right_index)
+          IMPLIES
+            nth_loc(stack, left_index)
+              /= nth_loc(stack, right_index)
+
+  edge(
+      source, destination: loc,
+      left_map, right_map: [loc -> loc]): bool =
+    source /= null_loc
+      AND
+        (left_map(source) = destination
+          OR right_map(source) = destination)
+
+  path(
+      left_map, right_map: [loc -> loc],
+      source, destination: loc,
+      values: list[loc]): RECURSIVE bool =
+    CASES values OF
+      null:
+        source = destination,
+      cons(head, tail):
+        head = source
+          AND
+            (EXISTS (next_node: loc):
+              edge(source, next_node, left_map, right_map)
+                AND
+                  path(
+                    left_map,
+                    right_map,
+                    next_node,
+                    destination,
+                    tail))
+    ENDCASES
+  MEASURE values BY <<
+
+  reachable(
+      left_map, right_map: [loc -> loc],
+      source, destination: loc): bool =
+    EXISTS (values: list[loc]):
+      path(left_map, right_map, source, destination, values)
+
+  update_loc_map(
+      mapping: [loc -> loc],
+      point, value: loc): [loc -> loc] =
+    mapping WITH [(point) := value]
+
+  update_bool_map(
+      mapping: [loc -> bool],
+      point: loc,
+      value: bool): [loc -> bool] =
+    mapping WITH [(point) := value]
+
+  update_path_map(
+      mapping: [loc -> list[loc]],
+      point: loc,
+      value: list[loc]): [loc -> list[loc]] =
+    mapping WITH [(point) := value]
+
+  loop_invariant(
+      root: loc,
+      graph: finite_set[loc],
+      left_original, right_original: [loc -> loc],
+      stack: list[loc],
+      p, t: loc,
+      path_from_root: [loc -> list[loc]],
+      right_current, left_current: [loc -> loc],
+      color, marked: [loc -> bool],
+      unmarked_nodes, color_false_nodes: finite_set[loc],
+      current_path: list[loc]): bool =
+    (FORALL (node: loc):
+      graph(node)
+        IMPLIES
+          (not_in_stack(node, stack)
+            OR
+              (EXISTS (index: int):
+                nth_loc(stack, index) = node)))
+    AND not_in_stack(null_loc, stack)
+    AND ((length(stack) = 0) <=> (p = null_loc))
+    AND (p /= null_loc IMPLIES graph(p))
+    AND
+      (length(stack) /= 0
+        IMPLIES nth_loc(stack, 0) = p)
+    AND
+      (FORALL (node: loc):
+        (graph(node) AND NOT marked(node))
+          IMPLIES unmarked_nodes(node))
+    AND
+      (FORALL (node: loc):
+        (graph(node) AND NOT color(node))
+          IMPLIES color_false_nodes(node))
+    AND
+      (FORALL (index: int):
+        (0 <= index AND index < length(stack))
+          IMPLIES graph(nth_loc(stack, index)))
+    AND
+      (FORALL (index: int):
+        (0 <= index AND index < length(stack) - 1)
+          IMPLIES
+            (LET child: loc = nth_loc(stack, index),
+                 parent: loc = nth_loc(stack, index + 1)
+             IN
+               (color(parent)
+                 IMPLIES
+                   (left_original(parent) = left_current(parent)
+                     AND right_original(parent) = child))
+               AND
+               ((NOT color(parent))
+                 IMPLIES
+                   (left_original(parent) = child
+                     AND
+                       right_original(parent)
+                         = right_current(parent)))))
+    AND path_from_root(root) = null
+    AND
+      (FORALL (node: loc):
+        (graph(node) AND not_in_stack(node, stack))
+          IMPLIES
+            (left_current(node) = left_original(node)
+              AND right_current(node) = right_original(node)))
+    AND
+      (length(stack) /= 0
+        IMPLIES
+          (LET first: loc = last(stack) IN
+             IF color(first) THEN
+               right_current(first) = null_loc
+             ELSE
+               left_current(first) = null_loc
+             ENDIF))
+    AND
+      (length(stack) /= 0
+        IMPLIES last(stack) = root)
+    AND
+      (FORALL (index: int):
+        (0 <= index AND index < length(stack) - 1)
+          IMPLIES
+            (LET node: loc = nth_loc(stack, index) IN
+               IF color(node) THEN
+                 right_current(node) = nth_loc(stack, index + 1)
+               ELSE
+                 left_current(node) = nth_loc(stack, index + 1)
+               ENDIF))
+    AND
+      (FORALL (index: int):
+        (0 <= index AND index < length(stack))
+          IMPLIES marked(nth_loc(stack, index)))
+    AND distinct(stack)
+    AND
+      (FORALL (index: int):
+        (0 <= index AND index < length(stack))
+          IMPLIES
+            (LET node: loc = nth_loc(stack, index) IN
+               IF color(node) THEN
+                 left_current(node) = left_original(node)
+               ELSE
+                 right_current(node) = right_original(node)
+               ENDIF))
+    AND
+      (length(stack) /= 0
+        IMPLIES
+          (IF color(p) THEN
+             right_original(p) = t
+           ELSE
+             left_original(p) = t
+           ENDIF))
+    AND
+      (FORALL (index: int):
+        (0 < index AND index < length(stack))
+          IMPLIES
+            (LET node: loc = nth_loc(stack, index) IN
+               IF color(node) THEN
+                 nth_loc(stack, index - 1) = right_original(node)
+               ELSE
+                 nth_loc(stack, index - 1) = left_original(node)
+               ENDIF))
+    AND
+      (p /= null_loc
+        IMPLIES
+          path(
+            left_original,
+            right_original,
+            root,
+            p,
+            current_path))
+    AND
+      (FORALL (node: loc):
+        (graph(node) AND marked(node))
+          IMPLIES
+            reachable(
+              left_original,
+              right_original,
+              root,
+              node))
+    AND (p = null_loc IMPLIES t = root)
+    AND
+      (FORALL (node: loc):
+        (graph(node) AND marked(node))
+          IMPLIES
+            path(
+              left_original,
+              right_original,
+              root,
+              node,
+              path_from_root(node)))
+    AND
+      (FORALL (node: loc):
+        (graph(node)
+          AND node /= null_loc
+          AND marked(node)
+          AND not_in_stack(node, stack))
+            IMPLIES
+              ((left_current(node) /= null_loc
+                  IMPLIES marked(left_current(node)))
+                AND
+                (right_current(node) /= null_loc
+                  IMPLIES marked(right_current(node)))))
+    AND
+      (FORALL (index: int):
+        (0 <= index AND index < length(stack))
+          IMPLIES
+            (LET node: loc = nth_loc(stack, index) IN
+               color(node)
+                 IMPLIES
+                   ((left_current(node) /= null_loc
+                       IMPLIES marked(left_current(node)))
+                     AND
+                     (right_current(node) /= null_loc
+                       IMPLIES marked(right_current(node))))))
+
+  variant_decreases(
+      old_unmarked, new_unmarked: finite_set[loc],
+      old_color_false, new_color_false: finite_set[loc],
+      old_stack, new_stack: list[loc]): bool =
+    (0 <= (card(old_unmarked) :: int)
+      AND
+        (card(new_unmarked) :: int)
+          < (card(old_unmarked) :: int))
+    OR
+      (card(new_unmarked) = card(old_unmarked)
+        AND
+          ((0 <= (card(old_color_false) :: int)
+              AND
+                (card(new_color_false) :: int)
+                  < (card(old_color_false) :: int))
+            OR
+              (card(new_color_false) = card(old_color_false)
+                AND
+                  0 <= (length(old_stack) :: int)
+                AND
+                  (length(new_stack) :: int)
+                    < (length(old_stack) :: int))))
+
+  state_obligation(
+      root: loc,
+      graph: finite_set[loc],
+      left_original, right_original: [loc -> loc],
+      old_stack: list[loc],
+      old_unmarked, old_color_false: finite_set[loc],
+      new_stack: list[loc],
+      new_p, new_t: loc,
+      new_path_from_root: [loc -> list[loc]],
+      new_right, new_left: [loc -> loc],
+      new_color, new_marked: [loc -> bool],
+      new_unmarked, new_color_false: finite_set[loc],
+      new_current_path: list[loc]): bool =
+    variant_decreases(
+      old_unmarked,
+      new_unmarked,
+      old_color_false,
+      new_color_false,
+      old_stack,
+      new_stack)
+    AND
+      loop_invariant(
+        root,
+        graph,
+        left_original,
+        right_original,
+        new_stack,
+        new_p,
+        new_t,
+        new_path_from_root,
+        new_right,
+        new_left,
+        new_color,
+        new_marked,
+        new_unmarked,
+        new_color_false,
+        new_current_path)
+
+  pop_obligation(
+      root: loc,
+      graph: finite_set[loc],
+      left_original, right_original: [loc -> loc],
+      stack: list[loc],
+      p, t: loc,
+      path_from_root: [loc -> list[loc]],
+      right_current, left_current: [loc -> loc],
+      color, marked: [loc -> bool],
+      unmarked_nodes, color_false_nodes: finite_set[loc]): bool =
+    0 < length(stack)
+      AND
+        (LET shorter_stack: list[loc] = list_tail(stack)
+         IN
+           ((FORALL (node: loc):
+              not_in_stack(node, stack)
+                IMPLIES not_in_stack(node, shorter_stack))
+             IMPLIES
+               (p /= null_loc
+                 AND p /= null_loc
+                 AND
+                   state_obligation(
+                     root,
+                     graph,
+                     left_original,
+                     right_original,
+                     stack,
+                     unmarked_nodes,
+                     color_false_nodes,
+                     shorter_stack,
+                     right_current(p),
+                     p,
+                     path_from_root,
+                     update_loc_map(right_current, p, t),
+                     left_current,
+                     color,
+                     marked,
+                     unmarked_nodes,
+                     color_false_nodes,
+                     path_from_root(right_current(p))))))
+
+  swing_obligation(
+      root: loc,
+      graph: finite_set[loc],
+      left_original, right_original: [loc -> loc],
+      stack: list[loc],
+      p, t: loc,
+      current_path: list[loc],
+      path_from_root: [loc -> list[loc]],
+      right_current, left_current: [loc -> loc],
+      color, marked: [loc -> bool],
+      unmarked_nodes, color_false_nodes: finite_set[loc]): bool =
+    p /= null_loc
+      AND p /= null_loc
+      AND p /= null_loc
+      AND p /= null_loc
+      AND p /= null_loc
+      AND
+        state_obligation(
+          root,
+          graph,
+          left_original,
+          right_original,
+          stack,
+          unmarked_nodes,
+          color_false_nodes,
+          stack,
+          p,
+          right_current(p),
+          path_from_root,
+          update_loc_map(right_current, p, left_current(p)),
+          update_loc_map(left_current, p, t),
+          update_bool_map(color, p, TRUE),
+          marked,
+          unmarked_nodes,
+          remove(p, color_false_nodes),
+          current_path)
+
+  push_shape(
+      t: loc,
+      stack, larger_stack: list[loc]): bool =
+    length(larger_stack) = 1 + length(stack)
+      AND nth_loc(larger_stack, 0) = t
+      AND
+        (FORALL (index: int):
+          (0 < index AND index <= length(stack))
+            IMPLIES
+              nth_loc(larger_stack, index)
+                = nth_loc(stack, index - 1))
+
+  push_state(
+      root: loc,
+      graph: finite_set[loc],
+      left_original, right_original: [loc -> loc],
+      stack, larger_stack: list[loc],
+      p, t: loc,
+      new_current_path: list[loc],
+      path_from_root: [loc -> list[loc]],
+      right_current, left_current: [loc -> loc],
+      color, marked: [loc -> bool],
+      unmarked_nodes, color_false_nodes: finite_set[loc]): bool =
+    state_obligation(
+      root,
+      graph,
+      left_original,
+      right_original,
+      stack,
+      unmarked_nodes,
+      color_false_nodes,
+      larger_stack,
+      t,
+      left_current(t),
+      update_path_map(path_from_root, t, new_current_path),
+      right_current,
+      update_loc_map(left_current, t, p),
+      update_bool_map(color, t, FALSE),
+      update_bool_map(marked, t, TRUE),
+      remove(t, unmarked_nodes),
+      add(t, color_false_nodes),
+      new_current_path)
+
+  push_obligation(
+      root: loc,
+      graph: finite_set[loc],
+      left_original, right_original: [loc -> loc],
+      stack: list[loc],
+      p, t: loc,
+      current_path: list[loc],
+      path_from_root: [loc -> list[loc]],
+      right_current, left_current: [loc -> loc],
+      color, marked: [loc -> bool],
+      unmarked_nodes, color_false_nodes: finite_set[loc]): bool =
+    LET larger_stack: list[loc] = cons(t, stack) IN
+      push_shape(t, stack, larger_stack)
+        IMPLIES
+          (t /= null_loc
+            AND t /= null_loc
+            AND t /= null_loc
+            AND
+              (IF t /= root THEN
+                 t /= null_loc
+                   AND t /= null_loc
+                   AND
+                     push_state(
+                       root,
+                       graph,
+                       left_original,
+                       right_original,
+                       stack,
+                       larger_stack,
+                       p,
+                       t,
+                       append(current_path, cons(p, null)),
+                       path_from_root,
+                       right_current,
+                       left_current,
+                       color,
+                       marked,
+                       unmarked_nodes,
+                       color_false_nodes)
+               ELSE
+                 t /= null_loc
+                   AND t /= null_loc
+                   AND
+                     push_state(
+                       root,
+                       graph,
+                       left_original,
+                       right_original,
+                       stack,
+                       larger_stack,
+                       p,
+                       t,
+                       null,
+                       path_from_root,
+                       right_current,
+                       left_current,
+                       color,
+                       marked,
+                       unmarked_nodes,
+                       color_false_nodes)
+               ENDIF))
+
+  final_postcondition(
+      root: loc,
+      graph: finite_set[loc],
+      left_original, right_original: [loc -> loc],
+      right_current, left_current: [loc -> loc],
+      marked: [loc -> bool]): bool =
+    (FORALL (node: loc):
+      graph(node)
+        IMPLIES
+          (left_original(node) = left_current(node)
+            AND right_original(node) = right_current(node)))
+    AND
+      (FORALL (node: loc):
+        (graph(node) AND marked(node))
+          IMPLIES
+            reachable(
+              left_original,
+              right_original,
+              root,
+              node))
+    AND marked(root)
+    AND
+      (FORALL (node: loc):
+        (graph(node) AND marked(node))
+          IMPLIES
+            ((left_current(node) /= null_loc
+                IMPLIES marked(left_current(node)))
+              AND
+              (right_current(node) /= null_loc
+                IMPLIES marked(right_current(node)))))
+
+  guard_value(
+      value: bool,
+      p, t: loc,
+      marked: [loc -> bool]): bool =
+    IF p /= null_loc THEN
+      value = TRUE
+    ELSIF t /= null_loc THEN
+      value = (IF marked(t) THEN FALSE ELSE TRUE ENDIF)
+    ELSE
+      value = FALSE
+    ENDIF
+
+  marked_or_null_value(
+      value: bool,
+      t: loc,
+      marked: [loc -> bool]): bool =
+    IF t = null_loc THEN
+      value = TRUE
+    ELSE
+      value = marked(t)
+    ENDIF
+
+  loop_step(
+      root: loc,
+      graph: finite_set[loc],
+      left_original, right_original: [loc -> loc],
+      stack: list[loc],
+      p, t: loc,
+      current_path: list[loc],
+      path_from_root: [loc -> list[loc]],
+      right_current, left_current: [loc -> loc],
+      color, marked: [loc -> bool],
+      unmarked_nodes, color_false_nodes: finite_set[loc]): bool =
+    loop_invariant(
+      root,
+      graph,
+      left_original,
+      right_original,
+      stack,
+      p,
+      t,
+      path_from_root,
+      right_current,
+      left_current,
+      color,
+      marked,
+      unmarked_nodes,
+      color_false_nodes,
+      current_path)
+      IMPLIES
+        (FORALL (guard: bool):
+          guard_value(guard, p, t, marked)
+            IMPLIES
+              (IF guard THEN
+                 FORALL (marked_or_null: bool):
+                   marked_or_null_value(marked_or_null, t, marked)
+                     IMPLIES
+                       (IF marked_or_null THEN
+                          p /= null_loc
+                            AND
+                              (IF color(p) THEN
+                                 pop_obligation(
+                                   root,
+                                   graph,
+                                   left_original,
+                                   right_original,
+                                   stack,
+                                   p,
+                                   t,
+                                   path_from_root,
+                                   right_current,
+                                   left_current,
+                                   color,
+                                   marked,
+                                   unmarked_nodes,
+                                   color_false_nodes)
+                               ELSE
+                                 swing_obligation(
+                                   root,
+                                   graph,
+                                   left_original,
+                                   right_original,
+                                   stack,
+                                   p,
+                                   t,
+                                   current_path,
+                                   path_from_root,
+                                   right_current,
+                                   left_current,
+                                   color,
+                                   marked,
+                                   unmarked_nodes,
+                                   color_false_nodes)
+                               ENDIF)
+                        ELSE
+                          push_obligation(
+                            root,
+                            graph,
+                            left_original,
+                            right_original,
+                            stack,
+                            p,
+                            t,
+                            current_path,
+                            path_from_root,
+                            right_current,
+                            left_current,
+                            color,
+                            marked,
+                            unmarked_nodes,
+                            color_false_nodes)
+                        ENDIF)
+               ELSE
+                 final_postcondition(
+                   root,
+                   graph,
+                   left_original,
+                   right_original,
+                   right_current,
+                   left_current,
+                   marked)
+               ENDIF))
+
+  graph_well_formed(
+      graph: finite_set[loc],
+      left_map, right_map: [loc -> loc]): bool =
+    FORALL (node: loc):
+      graph(node)
+        IMPLIES
+          (node /= null_loc
+            AND
+              (left_map(node) = null_loc
+                OR graph(left_map(node)))
+            AND
+              (right_map(node) = null_loc
+                OR graph(right_map(node))))
+
+  initially_unmarked(
+      graph: finite_set[loc],
+      marked: [loc -> bool]): bool =
+    FORALL (node: loc):
+      graph(node) IMPLIES NOT marked(node)
+
+  initial_obligation(
+      root: loc,
+      graph: finite_set[loc],
+      left_original, right_original: [loc -> loc],
+      color, marked: [loc -> bool],
+      path_from_root: [loc -> list[loc]]): bool =
+    root /= null_loc
+      AND
+        loop_invariant(
+          root,
+          graph,
+          left_original,
+          right_original,
+          null,
+          null_loc,
+          root,
+          update_path_map(path_from_root, root, null),
+          right_original,
+          left_original,
+          color,
+          marked,
+          graph,
+          graph,
+          null)
+
+  loop_obligation(
+      root: loc,
+      graph: finite_set[loc],
+      left_original, right_original: [loc -> loc]): bool =
+    FORALL
+        (color_false_nodes, unmarked_nodes: finite_set[loc]),
+        (current_path, stack: list[loc]),
+        (p, t: loc),
+        (path_from_root: [loc -> list[loc]]),
+        (right_current, left_current: [loc -> loc]),
+        (color, marked: [loc -> bool]):
+      loop_step(
+        root,
+        graph,
+        left_original,
+        right_original,
+        stack,
+        p,
+        t,
+        current_path,
+        path_from_root,
+        right_current,
+        left_current,
+        color,
+        marked,
+        unmarked_nodes,
+        color_false_nodes)
+
+  schorr_waite_vc: bool =
+    FORALL
+        (root: loc),
+        (graph: finite_set[loc]),
+        (left_original, right_original: [loc -> loc]),
+        (marked, color: [loc -> bool]),
+        (path_from_root: [loc -> list[loc]]):
+      (root /= null_loc
+        AND graph(root)
+        AND graph_well_formed(
+              graph,
+              left_original,
+              right_original)
+        AND initially_unmarked(graph, marked))
+        IMPLIES
+          (initial_obligation(
+             root,
+             graph,
+             left_original,
+             right_original,
+             color,
+             marked,
+             path_from_root)
+            AND
+              loop_obligation(
+                root,
+                graph,
+                left_original,
+                right_original))
+
+END schorr_waite_SchorrWaite_schorr_waiteqtvc

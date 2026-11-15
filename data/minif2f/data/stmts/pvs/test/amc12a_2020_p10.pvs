@@ -1,0 +1,76 @@
+% Statement-only formalization of miniF2F test problem amc12a_2020_p10. This file contains no
+% proof.
+
+amc12a_2020_p10: THEORY
+BEGIN
+  safe_div(x, y: real): real =
+    IF y = 0 THEN 0 ELSE x / y ENDIF
+
+  nat_factorial(n: nat): RECURSIVE nat =
+    IF n = 0 THEN
+      1
+    ELSE
+      n * nat_factorial(n - 1)
+    ENDIF
+  MEASURE n
+
+  exponential_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET j: nat = count - 1 IN
+        exponential_partial(x, count - 1)
+          + safe_div(x^j, nat_factorial(j) :: real)
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: [nat -> real], value: real): bool =
+    FORALL (eps: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < eps
+
+  exponential_value(x, value: real): bool =
+    converges_to(
+      (LAMBDA (count: nat): exponential_partial(x, count)),
+      value)
+
+  natural_log_value(argument, value: real): bool =
+    argument > 0 AND exponential_value(value, argument)
+
+  log_base_value(base, argument, value: real): bool =
+    base > 0
+      AND base /= 1
+      AND argument > 0
+      AND EXISTS (log_argument, log_base: real):
+        natural_log_value(argument, log_argument)
+          AND natural_log_value(base, log_base)
+          AND value = safe_div(log_argument, log_base)
+
+  decimal_digit_sum_aux(fuel, n: nat): RECURSIVE int =
+    IF fuel = 0 OR n = 0 THEN
+      0
+    ELSE
+      (n :: int) - 10 * (ndiv(n, 10) :: int)
+        + decimal_digit_sum_aux(fuel - 1, ndiv(n, 10))
+    ENDIF
+  MEASURE fuel
+
+  decimal_digit_sum(n: nat): int =
+    decimal_digit_sum_aux(n + 1, n)
+
+  nested_log_equation(n: nat): bool =
+    EXISTS
+      (log_16_n, log_2_log_16_n, log_4_n, log_4_log_4_n: real):
+        log_base_value(16, n :: real, log_16_n)
+          AND log_base_value(2, log_16_n, log_2_log_16_n)
+          AND log_base_value(4, n :: real, log_4_n)
+          AND log_base_value(4, log_4_n, log_4_log_4_n)
+          AND log_2_log_16_n = log_4_log_4_n
+
+  amc12a_2020_p10: bool =
+    FORALL (n: nat):
+      (n > 1 AND nested_log_equation(n))
+        IMPLIES decimal_digit_sum(n) = 13
+END amc12a_2020_p10

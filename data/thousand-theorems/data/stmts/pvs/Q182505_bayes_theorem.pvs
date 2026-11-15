@@ -1,0 +1,188 @@
+% Statement-only formalization of the Thousand Theorems artifact Q182505,
+% "Bayes' theorem": conditional probabilities under an arbitrary finite measure
+% satisfy the measure-theoretic Bayes identity for measurable events. This file
+% contains no proof.
+
+Q182505_bayes_theorem[Omega: TYPE]: THEORY
+BEGIN
+  event: TYPE = [Omega -> bool]
+  event_sequence: TYPE = [nat -> event]
+  sigma_algebra: TYPE = [event -> bool]
+
+  measure_value: TYPE =
+    [# infinite_flag: bool, finite_part: real #]
+  measure_value_sequence: TYPE = [nat -> measure_value]
+  measure_map: TYPE = [event -> measure_value]
+  real_sequence: TYPE = [nat -> real]
+
+  zero_measure_value: measure_value =
+    (# infinite_flag := FALSE, finite_part := 0 #)
+
+  infinite_measure_value: measure_value =
+    (# infinite_flag := TRUE, finite_part := 0 #)
+
+  finite_measure_value(value: real): measure_value =
+    (# infinite_flag := FALSE, finite_part := value #)
+
+  canonical_measure_value(value: measure_value): bool =
+    IF infinite_flag(value) THEN
+      finite_part(value) = 0
+    ELSE
+      finite_part(value) >= 0
+    ENDIF
+
+  measure_value_is_zero(value: measure_value): bool =
+    NOT infinite_flag(value)
+      AND finite_part(value) = 0
+
+  measure_value_product(
+      left, right: measure_value): measure_value =
+    IF measure_value_is_zero(left)
+        OR measure_value_is_zero(right) THEN
+      zero_measure_value
+    ELSIF infinite_flag(left)
+        OR infinite_flag(right) THEN
+      infinite_measure_value
+    ELSE
+      finite_measure_value(
+        finite_part(left) * finite_part(right))
+    ENDIF
+
+  measure_value_inverse(value: measure_value): measure_value =
+    IF infinite_flag(value) THEN
+      zero_measure_value
+    ELSIF finite_part(value) = 0 THEN
+      infinite_measure_value
+    ELSE
+      finite_measure_value(1 / finite_part(value))
+    ENDIF
+
+  full_event: event =
+    LAMBDA (omega: Omega): TRUE
+
+  empty_event: event =
+    LAMBDA (omega: Omega): FALSE
+
+  event_complement(E: event): event =
+    LAMBDA (omega: Omega): NOT E(omega)
+
+  event_intersection(E, F: event): event =
+    LAMBDA (omega: Omega): E(omega) AND F(omega)
+
+  countable_union(events: event_sequence): event =
+    LAMBDA (omega: Omega):
+      EXISTS (index: nat): events(index)(omega)
+
+  pairwise_disjoint(events: event_sequence): bool =
+    FORALL (left_index, right_index: nat):
+      left_index /= right_index IMPLIES
+        FORALL (omega: Omega):
+          NOT (events(left_index)(omega)
+            AND events(right_index)(omega))
+
+  finite_real_sum(
+      values: real_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      finite_real_sum(values, count - 1)
+        + values(count - 1)
+    ENDIF
+  MEASURE count
+
+  converges_to_real(values: real_sequence, limit: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(values(index) - limit) < epsilon_value
+
+  unbounded_above(values: real_sequence): bool =
+    FORALL (bound: real):
+      EXISTS (index: nat):
+        bound < values(index)
+
+  partial_measure_sum(
+      values: measure_value_sequence,
+      count: nat): real =
+    finite_real_sum(
+      LAMBDA (index: nat):
+        finite_part(values(index)),
+      count)
+
+  extended_nonnegative_sum(
+      values: measure_value_sequence,
+      total: measure_value): bool =
+    canonical_measure_value(total)
+      AND (FORALL (index: nat):
+        canonical_measure_value(values(index)))
+      AND IF infinite_flag(total) THEN
+        (EXISTS (index: nat):
+          infinite_flag(values(index)))
+          OR ((FORALL (index: nat):
+                NOT infinite_flag(values(index)))
+            AND unbounded_above(
+              LAMBDA (count: nat):
+                partial_measure_sum(values, count)))
+      ELSE
+        (FORALL (index: nat):
+          NOT infinite_flag(values(index)))
+          AND converges_to_real(
+            LAMBDA (count: nat):
+              partial_measure_sum(values, count),
+            finite_part(total))
+      ENDIF
+
+  is_sigma_algebra(Sigma: sigma_algebra): bool =
+    Sigma(full_event)
+      AND (FORALL (E: event):
+        Sigma(E) IMPLIES Sigma(event_complement(E)))
+      AND (FORALL (events: event_sequence):
+        (FORALL (index: nat): Sigma(events(index)))
+          IMPLIES Sigma(countable_union(events)))
+
+  is_measure(
+      M: measure_map,
+      Sigma: sigma_algebra): bool =
+    is_sigma_algebra(Sigma)
+      AND measure_value_is_zero(M(empty_event))
+      AND (FORALL (E: event):
+        Sigma(E) IMPLIES canonical_measure_value(M(E)))
+      AND (FORALL (events: event_sequence):
+        ((FORALL (index: nat): Sigma(events(index)))
+          AND pairwise_disjoint(events))
+        IMPLIES
+          extended_nonnegative_sum(
+            LAMBDA (index: nat): M(events(index)),
+            M(countable_union(events))))
+
+  finite_measure(
+      M: measure_map,
+      Sigma: sigma_algebra): bool =
+    is_measure(M, Sigma)
+      AND NOT infinite_flag(M(full_event))
+
+  conditional_probability(
+      M: measure_map,
+      observed, given: event): measure_value =
+    measure_value_product(
+      measure_value_inverse(M(given)),
+      M(event_intersection(given, observed)))
+
+  bayes_theorem: bool =
+    FORALL
+        (M: measure_map),
+        (Sigma: sigma_algebra),
+        (s, t: event):
+      (finite_measure(M, Sigma)
+        AND Sigma(s)
+        AND Sigma(t))
+      IMPLIES
+        conditional_probability(M, t, s)
+          = measure_value_product(
+              measure_value_product(
+                measure_value_inverse(M(s)),
+                conditional_probability(M, s, t)),
+              M(t))
+END Q182505_bayes_theorem

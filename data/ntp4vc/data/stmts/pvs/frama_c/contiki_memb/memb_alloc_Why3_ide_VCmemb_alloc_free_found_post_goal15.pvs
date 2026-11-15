@@ -1,0 +1,139 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% frama_c/contiki_memb/memb_alloc_Why3_ide_VCmemb_alloc_free_found_post_goal15:
+% a Contiki memb-allocation verification condition asserting that a free slot
+% is marked occupied, its payload address is returned, and other slots are unchanged.
+% This file contains no proof.
+
+memb_alloc_Why3_ide_VCmemb_alloc_free_found_post_goal15: THEORY
+BEGIN
+  addr: TYPE = [# base: int, offset: int #]
+  pointer_memory: TYPE = [addr -> addr]
+  integer_memory: TYPE = [addr -> int]
+  allocation_table: TYPE = [int -> int]
+
+  shift(p: addr, k: int): addr =
+    (# base := base(p), offset := offset(p) + k #)
+
+  valid_rw(m: allocation_table, p: addr, n: int): bool =
+    n > 0 IMPLIES
+      base(p) > 0 AND
+      offset(p) >= 0 AND
+      offset(p) + n <= m(base(p))
+
+  valid_rd(m: allocation_table, p: addr, n: int): bool =
+    n > 0 IMPLIES
+      base(p) /= 0 AND
+      offset(p) >= 0 AND
+      offset(p) + n <= m(base(p))
+
+  separated(p: addr, a: int, q: addr, b: int): bool =
+    a <= 0 OR
+    b <= 0 OR
+    base(p) /= base(q) OR
+    offset(q) + b <= offset(p) OR
+    offset(p) + a <= offset(q)
+
+  framed(
+      region: [int -> int],
+      m: pointer_memory): bool =
+    FORALL (p: addr): region(base(m(p))) <= 0
+
+  is_sint32(x: int): bool =
+    -2147483648 <= x AND x < 2147483648
+
+  is_uint16(x: int): bool =
+    0 <= x AND x < 65536
+
+  p_valid_memb(
+      malloc_0: allocation_table,
+      mptr_0: pointer_memory,
+      mint_0: integer_memory,
+      m: addr): bool =
+    LET x: int = mint_0(shift(m, 0)) IN
+    LET x_1: int = mint_0(shift(m, 1)) IN
+    LET x_2: int = x_1 * x IN
+    LET a: addr = mptr_0(shift(m, 2)) IN
+    LET a_1: addr = mptr_0(shift(m, 3)) IN
+    LET a_2: addr = shift(a, 0) IN
+    LET a_3: addr = shift(a_1, 0) IN
+      x > 0 AND
+      x_2 <= 2147483647 AND
+      valid_rw(malloc_0, m, 4) AND
+      valid_rw(malloc_0, a, 1) AND
+      valid_rw(malloc_0, a_1, 1) AND
+      valid_rw(malloc_0, a_2, x_1) AND
+      valid_rw(malloc_0, a_3, x_2) AND
+      separated(a_2, x_1, a_3, x_2)
+
+  goal15: bool =
+    FORALL
+      (region: [int -> int]),
+      (linked: [allocation_table -> bool]),
+      (sconst: [integer_memory -> bool]),
+      (a_1: addr),
+      (t_4: pointer_memory),
+      (t_1: integer_memory),
+      (i_2: int),
+      (t_3: integer_memory),
+      (i, i_1: int),
+      (t: allocation_table),
+      (t_2: integer_memory),
+      (a: addr):
+      LET a_2: addr = shift(a_1, 2) IN
+      LET a_3: addr = t_4(a_2) IN
+      LET a_4: addr = shift(a_1, 1) IN
+      LET x: int = t_1(a_4) IN
+      LET a_5: addr = shift(a_1, 0) IN
+      LET x_1: int = t_1(a_5) IN
+      LET a_6: addr = shift(a_3, i_2) IN
+      LET a_7: addr = shift(a_1, 3) IN
+      LET a_8: addr = t_4(a_7) IN
+      LET x_2: int = i_2 * x_1 IN
+        t_3(shift(a_3, i)) = 0 IMPLIES
+        0 <= i IMPLIES
+        0 <= i_1 IMPLIES
+        i < x IMPLIES
+        i_1 <= x IMPLIES
+        region(base(a_1)) <= 0 IMPLIES
+        framed(region, t_4) IMPLIES
+        linked(t) IMPLIES
+        sconst(t_3) IMPLIES
+        is_sint32(i_1) IMPLIES
+        is_sint32(i_2) IMPLIES
+        is_uint16(x) IMPLIES
+        is_uint16(x_1) IMPLIES
+        p_valid_memb(t, t_4, t_1, a_1) IMPLIES
+        valid_rd(t, a_4, 1) IMPLIES
+        (IF i_1 < x THEN
+           i_2 = i_1 AND
+           t_3(a_6) = 0 AND
+           (t_3 WITH [(a_6) := 1]) = t_2 AND
+           shift(a_8, x_2) = a AND
+           -2147483648 <= x_2 AND
+           x_2 <= 2147483647 AND
+           valid_rd(t, a_2, 1) AND
+           valid_rd(t, a_7, 1) AND
+           valid_rd(t, a_5, 1) AND
+           valid_rd(t, a_6, 1) AND
+           valid_rw(t, a_6, 1)
+         ELSE
+           t_3 = t_2 AND
+           (# base := 0, offset := 0 #) = a
+         ENDIF) IMPLIES
+        (FORALL (i_3: int):
+          0 <= i_3 IMPLIES
+          i_3 < i_1 IMPLIES
+          t_3(shift(a_3, i_3)) /= 0) IMPLIES
+        (EXISTS (i_3: int):
+          LET a_9: addr = shift(a_3, i_3) IN
+            t_2(a_9) = 1 AND
+            t_3(a_9) = 0 AND
+            shift(a_8, i_3 * x_1) = a AND
+            0 <= i_3 AND
+            i_3 < x AND
+            (FORALL (i_4: int):
+              LET a_10: addr = shift(a_3, i_4) IN
+                ((0 <= i_4 AND i_4 < i_3) OR
+                 (i_3 < i_4 AND i_4 < x)) IMPLIES
+                t_3(a_10) = t_2(a_10)))
+END memb_alloc_Why3_ide_VCmemb_alloc_free_found_post_goal15

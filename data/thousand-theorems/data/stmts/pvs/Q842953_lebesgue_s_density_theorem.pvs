@@ -1,0 +1,396 @@
+% Statement-only formalization of the Thousand Theorems corpus artifact Q842953,
+% "Lebesgue's density theorem": in a second-countable Besicovitch metric space,
+% almost every point of an arbitrary set has density one for every locally finite
+% Borel measure. This file contains no proof.
+
+lebesgue_s_density_theorem_Q842953[
+  X: TYPE,
+  distance: [X, X -> real]
+]: THEORY
+BEGIN
+  event: TYPE = [X -> bool]
+  event_sequence: TYPE = [nat -> event]
+  sigma_algebra: TYPE = [event -> bool]
+  center_sequence: TYPE = [nat -> X]
+  radius_sequence: TYPE = [nat -> real]
+
+  measure_value: TYPE =
+    [# infinite_flag: bool, finite_part: real #]
+  measure_value_sequence: TYPE = [nat -> measure_value]
+  measure_map: TYPE = [event -> measure_value]
+  real_sequence: TYPE = [nat -> real]
+
+  zero_measure_value: measure_value =
+    (# infinite_flag := FALSE, finite_part := 0 #)
+
+  one_measure_value: measure_value =
+    (# infinite_flag := FALSE, finite_part := 1 #)
+
+  infinite_measure_value: measure_value =
+    (# infinite_flag := TRUE, finite_part := 0 #)
+
+  finite_measure_value(value: real): measure_value =
+    (# infinite_flag := FALSE, finite_part := value #)
+
+  canonical_measure_value(value: measure_value): bool =
+    IF infinite_flag(value) THEN
+      finite_part(value) = 0
+    ELSE
+      finite_part(value) >= 0
+    ENDIF
+
+  measure_value_is_zero(value: measure_value): bool =
+    NOT infinite_flag(value)
+      AND finite_part(value) = 0
+
+  measure_value_le(left, right: measure_value): bool =
+    canonical_measure_value(left)
+      AND canonical_measure_value(right)
+      AND IF infinite_flag(right) THEN
+        TRUE
+      ELSIF infinite_flag(left) THEN
+        FALSE
+      ELSE
+        finite_part(left) <= finite_part(right)
+      ENDIF
+
+  measure_value_add(left, right: measure_value): measure_value =
+    IF infinite_flag(left) OR infinite_flag(right) THEN
+      infinite_measure_value
+    ELSE
+      finite_measure_value(
+        finite_part(left) + finite_part(right))
+    ENDIF
+
+  measure_value_divide(
+      numerator, denominator: measure_value): measure_value =
+    IF measure_value_is_zero(numerator) THEN
+      zero_measure_value
+    ELSIF measure_value_is_zero(denominator) THEN
+      infinite_measure_value
+    ELSIF infinite_flag(denominator) THEN
+      zero_measure_value
+    ELSIF infinite_flag(numerator) THEN
+      infinite_measure_value
+    ELSE
+      finite_measure_value(
+        finite_part(numerator) / finite_part(denominator))
+    ENDIF
+
+  full_event: event =
+    LAMBDA (x: X): TRUE
+
+  empty_event: event =
+    LAMBDA (x: X): FALSE
+
+  event_complement(E: event): event =
+    LAMBDA (x: X): NOT E(x)
+
+  event_intersection(E, F: event): event =
+    LAMBDA (x: X): E(x) AND F(x)
+
+  event_difference(E, F: event): event =
+    LAMBDA (x: X): E(x) AND NOT F(x)
+
+  event_subset(E, F: event): bool =
+    FORALL (x: X):
+      E(x) IMPLIES F(x)
+
+  countable_union(events: event_sequence): event =
+    LAMBDA (x: X):
+      EXISTS (index: nat): events(index)(x)
+
+  finite_real_sum(values: real_sequence, count: nat):
+      RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      finite_real_sum(values, count - 1)
+        + values(count - 1)
+    ENDIF
+  MEASURE count
+
+  converges_to_real(values: real_sequence, limit: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(values(index) - limit) < epsilon_value
+
+  unbounded_above(values: real_sequence): bool =
+    FORALL (bound: real):
+      EXISTS (index: nat):
+        bound < values(index)
+
+  partial_measure_sum(
+      values: measure_value_sequence,
+      count: nat): real =
+    finite_real_sum(
+      LAMBDA (index: nat):
+        finite_part(values(index)),
+      count)
+
+  extended_nonnegative_sum(
+      values: measure_value_sequence,
+      total: measure_value): bool =
+    canonical_measure_value(total)
+      AND (FORALL (index: nat):
+        canonical_measure_value(values(index)))
+      AND IF infinite_flag(total) THEN
+        (EXISTS (index: nat):
+          infinite_flag(values(index)))
+          OR ((FORALL (index: nat):
+                NOT infinite_flag(values(index)))
+            AND unbounded_above(
+              LAMBDA (count: nat):
+                partial_measure_sum(values, count)))
+      ELSE
+        (FORALL (index: nat):
+          NOT infinite_flag(values(index)))
+          AND converges_to_real(
+            LAMBDA (count: nat):
+              partial_measure_sum(values, count),
+            finite_part(total))
+      ENDIF
+
+  is_sigma_algebra(Sigma: sigma_algebra): bool =
+    Sigma(full_event)
+      AND (FORALL (E: event):
+        Sigma(E) IMPLIES Sigma(event_complement(E)))
+      AND (FORALL (events: event_sequence):
+        (FORALL (index: nat): Sigma(events(index)))
+          IMPLIES Sigma(countable_union(events)))
+
+  countably_subadditive(M: measure_map): bool =
+    FORALL
+        (events: event_sequence),
+        (total: measure_value):
+      extended_nonnegative_sum(
+        LAMBDA (index: nat): M(events(index)),
+        total)
+      IMPLIES
+        measure_value_le(M(countable_union(events)), total)
+
+  pairwise_disjoint(events: event_sequence): bool =
+    FORALL (left_index, right_index: nat):
+      left_index /= right_index IMPLIES
+        event_intersection(
+          events(left_index),
+          events(right_index)) = empty_event
+
+  countably_additive_on_sigma(
+      M: measure_map,
+      Sigma: sigma_algebra): bool =
+    FORALL
+        (events: event_sequence),
+        (total: measure_value):
+      (FORALL (index: nat): Sigma(events(index)))
+        AND pairwise_disjoint(events)
+        AND extended_nonnegative_sum(
+          LAMBDA (index: nat): M(events(index)),
+          total)
+      IMPLIES
+        M(countable_union(events)) = total
+
+  monotone_measure(M: measure_map): bool =
+    FORALL (E, F: event):
+      event_subset(E, F) IMPLIES
+        measure_value_le(M(E), M(F))
+
+  canonical_outer_extension(
+      M: measure_map,
+      Sigma: sigma_algebra): bool =
+    FORALL
+        (E: event),
+        (lower_bound: measure_value):
+      (canonical_measure_value(lower_bound)
+        AND (FORALL (A: event):
+          Sigma(A) AND event_subset(E, A)
+            IMPLIES
+              measure_value_le(lower_bound, M(A))))
+      IMPLIES
+        measure_value_le(lower_bound, M(E))
+
+  caratheodory_measurable(
+      M: measure_map,
+      E: event): bool =
+    FORALL (A: event):
+      M(A)
+        = measure_value_add(
+            M(event_intersection(A, E)),
+            M(event_difference(A, E)))
+
+  is_measure(
+      M: measure_map,
+      Sigma: sigma_algebra): bool =
+    is_sigma_algebra(Sigma)
+      AND (FORALL (E: event):
+        canonical_measure_value(M(E)))
+      AND measure_value_is_zero(M(empty_event))
+      AND monotone_measure(M)
+      AND countably_subadditive(M)
+      AND countably_additive_on_sigma(M, Sigma)
+      AND canonical_outer_extension(M, Sigma)
+      AND (FORALL (E: event):
+        Sigma(E) IMPLIES caratheodory_measurable(M, E))
+
+  metric_space: bool =
+    (FORALL (x, y: X):
+      distance(x, y) >= 0)
+      AND (FORALL (x, y: X):
+        distance(x, y) = 0 IFF x = y)
+      AND (FORALL (x, y: X):
+        distance(x, y) = distance(y, x))
+      AND (FORALL (x, y, z: X):
+        distance(x, z)
+          <= distance(x, y) + distance(y, z))
+
+  open_ball(center: X, radius: real): event =
+    LAMBDA (x: X):
+      distance(x, center) < radius
+
+  closed_ball(center: X, radius: real): event =
+    LAMBDA (x: X):
+      distance(x, center) <= radius
+
+  metric_open(U: event): bool =
+    FORALL (x: X):
+      U(x) IMPLIES
+        EXISTS (epsilon_value: posreal):
+          event_subset(
+            open_ball(x, epsilon_value),
+            U)
+
+  second_countable_metric: bool =
+    EXISTS (basis: event_sequence):
+      (FORALL (index: nat):
+        metric_open(basis(index)))
+        AND (FORALL (U: event), (x: X):
+          metric_open(U) AND U(x)
+            IMPLIES
+              EXISTS (index: nat):
+                basis(index)(x)
+                  AND event_subset(basis(index), U))
+
+  generated_borel_sigma(Sigma: sigma_algebra): bool =
+    is_sigma_algebra(Sigma)
+      AND (FORALL (U: event):
+        metric_open(U) IMPLIES Sigma(U))
+      AND (FORALL (other_sigma: sigma_algebra):
+        (is_sigma_algebra(other_sigma)
+          AND (FORALL (U: event):
+            metric_open(U) IMPLIES other_sigma(U)))
+        IMPLIES
+          FORALL (E: event):
+            Sigma(E) IMPLIES other_sigma(E))
+
+  locally_finite_measure(M: measure_map): bool =
+    FORALL (x: X):
+      EXISTS (epsilon_value: posreal):
+        NOT infinite_flag(M(open_ball(x, epsilon_value)))
+
+  satellite_configuration(
+      N: nat,
+      tau: real,
+      centers: center_sequence,
+      radii: radius_sequence): bool =
+    (FORALL (index: nat):
+      index <= N IMPLIES
+        0 < radii(index))
+      AND (FORALL (left_index, right_index: nat):
+        left_index <= N
+          AND right_index <= N
+          AND left_index /= right_index
+        IMPLIES
+          ((radii(left_index)
+              <= distance(
+                centers(left_index),
+                centers(right_index))
+            AND radii(right_index)
+              <= tau * radii(left_index))
+          OR
+          (radii(right_index)
+              <= distance(
+                centers(right_index),
+                centers(left_index))
+            AND radii(left_index)
+              <= tau * radii(right_index))))
+      AND (FORALL (index: nat):
+        index < N IMPLIES
+          radii(index)
+              <= distance(centers(index), centers(N))
+            AND radii(N) <= tau * radii(index))
+      AND (FORALL (index: nat):
+        index < N IMPLIES
+          distance(centers(index), centers(N))
+            <= radii(index) + radii(N))
+
+  has_besicovitch_covering: bool =
+    EXISTS (N: nat), (tau: real):
+      1 < tau
+        AND NOT EXISTS
+            (centers: center_sequence),
+            (radii: radius_sequence):
+          satellite_configuration(
+            N, tau, centers, radii)
+
+  almost_everywhere_restrict(
+      M: measure_map,
+      Sigma: sigma_algebra,
+      source_set: event,
+      property_value: [X -> bool]): bool =
+    measure_value_is_zero(
+      M(event_intersection(
+        source_set,
+        LAMBDA (x: X):
+          NOT property_value(x))))
+
+  density_ratio(
+      M: measure_map,
+      source_set: event,
+      x: X,
+      radius: real): measure_value =
+    measure_value_divide(
+      M(event_intersection(
+        source_set,
+        closed_ball(x, radius))),
+      M(closed_ball(x, radius)))
+
+  density_one_at(
+      M: measure_map,
+      source_set: event,
+      x: X): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (delta: posreal):
+        FORALL (radius: real):
+          0 < radius AND radius < delta
+            IMPLIES
+              NOT infinite_flag(
+                density_ratio(M, source_set, x, radius))
+                AND abs(
+                  finite_part(
+                    density_ratio(
+                      M, source_set, x, radius))
+                    - finite_part(one_measure_value))
+                  < epsilon_value
+
+  lebesgue_s_density_theorem: bool =
+    metric_space
+      AND second_countable_metric
+      AND has_besicovitch_covering
+    IMPLIES
+      FORALL
+          (M: measure_map),
+          (Sigma: sigma_algebra),
+          (source_set: event):
+        (is_measure(M, Sigma)
+          AND generated_borel_sigma(Sigma)
+          AND locally_finite_measure(M))
+        IMPLIES
+          almost_everywhere_restrict(
+            M,
+            Sigma,
+            source_set,
+            LAMBDA (x: X):
+              density_one_at(M, source_set, x))
+END lebesgue_s_density_theorem_Q842953

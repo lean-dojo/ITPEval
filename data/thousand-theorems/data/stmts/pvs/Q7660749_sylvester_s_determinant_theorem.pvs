@@ -1,0 +1,321 @@
+% Statement-only formalization of Thousand Theorems artifact Q7660749,
+% "Sylvester's determinant theorem": over an arbitrary commutative ring, the
+% determinants of I + A B and I + B A are equal for rectangular matrices
+% indexed by arbitrary finite types. This file contains no proof.
+
+Q7660749_sylvester_s_determinant_theorem[
+  M, N: TYPE,
+  R: TYPE+,
+  zero, one: R,
+  neg: [R -> R],
+  add, mul: [R, R -> R]
+]: THEORY
+BEGIN
+  IMPORTING finite_sets[M], finite_sets[N]
+
+  matrix: TYPE = [nat, nat -> R]
+  matrix_mn: TYPE = [M, N -> R]
+  matrix_nm: TYPE = [N, M -> R]
+
+  commutative_ring_laws: bool =
+    (FORALL (x, y, z: R):
+      add(add(x, y), z) = add(x, add(y, z)))
+      AND (FORALL (x, y: R):
+        add(x, y) = add(y, x))
+      AND (FORALL (x: R):
+        add(zero, x) = x
+          AND add(x, zero) = x)
+      AND (FORALL (x: R):
+        add(neg(x), x) = zero
+          AND add(x, neg(x)) = zero)
+      AND (FORALL (x, y, z: R):
+        mul(mul(x, y), z) = mul(x, mul(y, z)))
+      AND (FORALL (x, y: R):
+        mul(x, y) = mul(y, x))
+      AND (FORALL (x: R):
+        mul(one, x) = x
+          AND mul(x, one) = x)
+      AND (FORALL (x, y, z: R):
+        mul(x, add(y, z)) =
+          add(mul(x, y), mul(x, z)))
+      AND (FORALL (x, y, z: R):
+        mul(add(x, y), z) =
+          add(mul(x, z), mul(y, z)))
+
+  ring_sum(values: [nat -> R], count: nat): RECURSIVE R =
+    IF count = 0 THEN
+      zero
+    ELSE
+      add(
+        ring_sum(values, count - 1),
+        values(count - 1))
+    ENDIF
+  MEASURE count
+
+  quotient_aux(
+      numerator, denominator, fuel: nat): RECURSIVE nat =
+    IF fuel = 0
+        OR denominator = 0
+        OR numerator < denominator THEN
+      0
+    ELSE
+      1
+        + quotient_aux(
+            numerator - denominator,
+            denominator,
+            fuel - 1)
+    ENDIF
+  MEASURE fuel
+
+  remainder_aux(
+      numerator, denominator, fuel: nat): RECURSIVE nat =
+    IF fuel = 0
+        OR denominator = 0
+        OR numerator < denominator THEN
+      numerator
+    ELSE
+      remainder_aux(
+        numerator - denominator,
+        denominator,
+        fuel - 1)
+    ENDIF
+  MEASURE fuel
+
+  safe_ndiv(numerator, denominator: nat): nat =
+    quotient_aux(
+      numerator,
+      denominator,
+      numerator + 1)
+
+  safe_mod(numerator, denominator: nat): nat =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      remainder_aux(
+        numerator,
+        denominator,
+        numerator + 1)
+    ENDIF
+
+  function_code_count(dimension: nat): nat =
+    IF dimension = 0 THEN
+      1
+    ELSE
+      dimension ^ dimension
+    ENDIF
+
+  permutation_entry(
+      dimension, code, row: nat): nat =
+    IF dimension = 0 THEN
+      0
+    ELSE
+      safe_mod(
+        safe_ndiv(code, dimension ^ row),
+        dimension)
+    ENDIF
+
+  permutation_code(dimension, code: nat): bool =
+    code < function_code_count(dimension)
+      AND (FORALL (row_1, row_2: nat):
+        (row_1 < dimension
+          AND row_2 < dimension
+          AND permutation_entry(dimension, code, row_1)
+            = permutation_entry(dimension, code, row_2))
+        IMPLIES row_1 = row_2)
+
+  pair_row(dimension, pair: nat): nat =
+    safe_ndiv(pair, dimension)
+
+  pair_column(dimension, pair: nat): nat =
+    safe_mod(pair, dimension)
+
+  inversion_at(
+      dimension, code, pair: nat): bool =
+    pair_row(dimension, pair) < dimension
+      AND pair_column(dimension, pair) < dimension
+      AND pair_row(dimension, pair)
+        < pair_column(dimension, pair)
+      AND permutation_entry(
+            dimension,
+            code,
+            pair_row(dimension, pair))
+        > permutation_entry(
+            dimension,
+            code,
+            pair_column(dimension, pair))
+
+  count_true(
+      property: [nat -> bool],
+      count: nat): RECURSIVE nat =
+    IF count = 0 THEN
+      0
+    ELSE
+      count_true(property, count - 1)
+        + IF property(count - 1) THEN 1 ELSE 0 ENDIF
+    ENDIF
+  MEASURE count
+
+  inversion_count(dimension, code: nat): nat =
+    count_true(
+      (LAMBDA (pair: nat):
+        inversion_at(dimension, code, pair)),
+      dimension * dimension)
+
+  permutation_sign(dimension, code: nat): R =
+    IF mod(inversion_count(dimension, code), 2) = 0 THEN
+      one
+    ELSE
+      neg(one)
+    ENDIF
+
+  permutation_product(
+      A: matrix,
+      dimension, code, count: nat): RECURSIVE R =
+    IF count = 0 THEN
+      one
+    ELSE
+      mul(
+        permutation_product(
+          A,
+          dimension,
+          code,
+          count - 1),
+        A(
+          count - 1,
+          permutation_entry(
+            dimension,
+            code,
+            count - 1)))
+    ENDIF
+  MEASURE count
+
+  determinant_sum(
+      A: matrix,
+      dimension, limit: nat): RECURSIVE R =
+    IF limit = 0 THEN
+      zero
+    ELSE
+      LET code: nat = limit - 1 IN
+        add(
+          determinant_sum(A, dimension, limit - 1),
+          IF permutation_code(dimension, code) THEN
+            mul(
+              permutation_sign(dimension, code),
+              permutation_product(
+                A,
+                dimension,
+                code,
+                dimension))
+          ELSE
+            zero
+          ENDIF)
+    ENDIF
+  MEASURE limit
+
+  determinant(A: matrix, dimension: nat): R =
+    determinant_sum(
+      A,
+      dimension,
+      function_code_count(dimension))
+
+  identity_matrix(dimension: nat): matrix =
+    (LAMBDA (row, column: nat):
+      IF row < dimension
+          AND column < dimension
+          AND row = column THEN
+        one
+      ELSE
+        zero
+      ENDIF)
+
+  matrix_add(A, B: matrix): matrix =
+    (LAMBDA (row, column: nat):
+      add(A(row, column), B(row, column)))
+
+  matrix_multiply(
+      A, B: matrix,
+      inner_dimension: nat): matrix =
+    (LAMBDA (row, column: nat):
+      ring_sum(
+        (LAMBDA (index: nat):
+          mul(A(row, index), B(index, column))),
+        inner_dimension))
+
+  encode_mn(
+      A: matrix_mn,
+      m_count, n_count: nat,
+      m_enumeration: [below(m_count) -> M],
+      n_enumeration: [below(n_count) -> N]): matrix =
+    (LAMBDA (row, column: nat):
+      IF row < m_count AND column < n_count THEN
+        A(
+          m_enumeration(row),
+          n_enumeration(column))
+      ELSE
+        zero
+      ENDIF)
+
+  encode_nm(
+      B: matrix_nm,
+      m_count, n_count: nat,
+      m_enumeration: [below(m_count) -> M],
+      n_enumeration: [below(n_count) -> N]): matrix =
+    (LAMBDA (row, column: nat):
+      IF row < n_count AND column < m_count THEN
+        B(
+          n_enumeration(row),
+          m_enumeration(column))
+      ELSE
+        zero
+      ENDIF)
+
+  sylvester_determinant_theorem: bool =
+    (is_finite_type[M]
+      AND is_finite_type[N]
+      AND commutative_ring_laws)
+    IMPLIES
+      (FORALL (A: matrix_mn), (B: matrix_nm):
+        FORALL (m_count, n_count: nat):
+          FORALL
+            (m_enumeration: [below(m_count) -> M]),
+            (n_enumeration: [below(n_count) -> N]):
+              (bijective?(m_enumeration)
+                AND bijective?(n_enumeration))
+              IMPLIES
+                determinant(
+                  matrix_add(
+                    identity_matrix(m_count),
+                    matrix_multiply(
+                      encode_mn(
+                        A,
+                        m_count,
+                        n_count,
+                        m_enumeration,
+                        n_enumeration),
+                      encode_nm(
+                        B,
+                        m_count,
+                        n_count,
+                        m_enumeration,
+                        n_enumeration),
+                      n_count)),
+                  m_count)
+                = determinant(
+                    matrix_add(
+                      identity_matrix(n_count),
+                      matrix_multiply(
+                        encode_nm(
+                          B,
+                          m_count,
+                          n_count,
+                          m_enumeration,
+                          n_enumeration),
+                        encode_mn(
+                          A,
+                          m_count,
+                          n_count,
+                          m_enumeration,
+                          n_enumeration),
+                        m_count)),
+                    n_count))
+END Q7660749_sylvester_s_determinant_theorem

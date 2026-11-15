@@ -1,0 +1,103 @@
+% Statement-only formalization of the VERINA corpus artifact verina_basic_17,
+% catalog title "toLowercase": mapping ASCII uppercase characters in a
+% Unicode-scalar string to lowercase while preserving all other characters
+% and the string length. This file contains no proof.
+
+verina_basic_17: THEORY
+BEGIN
+
+  % String.toList observes a Lean string as its finite list of Unicode scalar
+  % characters, preserving the full extensional source string domain.
+  lean_char: TYPE =
+    {codepoint: nat |
+      codepoint < 1114112
+        AND (codepoint < 55296 OR codepoint >= 57344)}
+
+  lean_string: TYPE = list[lean_char]
+
+  lean_valid_char_code(codepoint: nat): bool =
+    codepoint < 1114112
+      AND (codepoint < 55296 OR codepoint >= 57344)
+
+  % Lean Char.ofNat returns NUL when its argument is not a Unicode scalar.
+  lean_char_of_nat(codepoint: nat): lean_char =
+    IF lean_valid_char_code(codepoint) THEN codepoint ELSE 0 ENDIF
+
+  isUpperCase(c: lean_char): bool =
+    c >= 65 AND c <= 90
+
+  shift32(c: lean_char): lean_char =
+    lean_char_of_nat(c + 32)
+
+  lean_string_length(s: lean_string): RECURSIVE nat =
+    CASES s OF
+      null:
+        0,
+      cons(head, tail):
+        lean_string_length(tail) + 1
+    ENDCASES
+  MEASURE s BY <<
+
+  % Lean List.get! for characters returns NUL outside the list.
+  lean_char_list_get_bang(
+      index: nat,
+      values: list[lean_char]): RECURSIVE lean_char =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          lean_char_list_get_bang(index - 1, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  toLowercase_precond(s: lean_string): bool =
+    TRUE
+
+  lowercase_chars(
+      values: list[lean_char]): RECURSIVE list[lean_char] =
+    CASES values OF
+      null:
+        null[lean_char],
+      cons(head, tail):
+        cons(
+          IF isUpperCase(head) THEN shift32(head) ELSE head ENDIF,
+          lowercase_chars(tail))
+    ENDCASES
+  MEASURE values BY <<
+
+  % The source precondition proof argument is computationally irrelevant.
+  % This recursion is exactly the proof-erased List.map implementation.
+  toLowercase(s: lean_string): lean_string =
+    lowercase_chars(s)
+
+  toLowercase_postcond(
+      s: lean_string,
+      result: lean_string): bool =
+    lean_string_length(result) = lean_string_length(s)
+      AND
+        (FORALL (i: nat):
+          i < lean_string_length(s)
+            IMPLIES
+              ((isUpperCase(lean_char_list_get_bang(i, s))
+                  IMPLIES
+                    lean_char_list_get_bang(i, result)
+                      = shift32(lean_char_list_get_bang(i, s)))
+                AND
+               (NOT isUpperCase(lean_char_list_get_bang(i, s))
+                  IMPLIES
+                    lean_char_list_get_bang(i, result)
+                      = lean_char_list_get_bang(i, s))))
+
+  toLowercase_spec_satisfied: bool =
+    FORALL (s: lean_string):
+      toLowercase_precond(s)
+        IMPLIES
+          toLowercase_postcond(
+            s,
+            toLowercase(s))
+
+END verina_basic_17

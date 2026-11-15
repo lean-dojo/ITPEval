@@ -1,0 +1,475 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/edit_distance_EditDistance_distanceqtvc: the dynamic-programming
+% verification condition establishing a minimum insertion/deletion edit
+% distance through suffix and table invariants. This file contains no proof.
+
+edit_distance_EditDistance_distanceqtvc[
+  char: TYPE+,
+  char_default: char,
+  suffix: [list[char], int -> list[char]]
+]: THEORY
+BEGIN
+
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  nth_int(values: list[int], index: int): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF int_to_nat(index) = 0 THEN
+          head
+        ELSE
+          nth_int(tail, int_to_nat(index) - 1)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  nth_char(values: list[char], index: int): RECURSIVE char =
+    CASES values OF
+      null:
+        char_default,
+      cons(head, tail):
+        IF int_to_nat(index) = 0 THEN
+          head
+        ELSE
+          nth_char(tail, int_to_nat(index) - 1)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  list_set(
+      values: list[int],
+      index: nat,
+      value: int): RECURSIVE list[int] =
+    CASES values OF
+      null:
+        null,
+      cons(head, tail):
+        IF index = 0 THEN
+          cons(value, tail)
+        ELSE
+          cons(head, list_set(tail, index - 1, value))
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  set_function_equal(
+      values: list[int],
+      index, value: int): bool =
+    FORALL (argument: int):
+      nth_int(
+        list_set(values, int_to_nat(index), value),
+        argument)
+      =
+      IF argument = index THEN
+        value
+      ELSE
+        nth_int(values, argument)
+      ENDIF
+
+  int_min(left, right: int): int =
+    IF left <= right THEN left ELSE right ENDIF
+
+  dist_derivation: DATATYPE
+  BEGIN
+    DistEps: DistEps?
+    DistAddLeft(
+      added_left: char,
+      previous_left: dist_derivation): DistAddLeft?
+    DistAddRight(
+      added_right: char,
+      previous_right: dist_derivation): DistAddRight?
+    DistContext(
+      context_symbol: char,
+      previous_context: dist_derivation): DistContext?
+  END dist_derivation
+
+  left_word(
+      derivation: dist_derivation): RECURSIVE list[char] =
+    CASES derivation OF
+      DistEps:
+        null,
+      DistAddLeft(symbol, previous):
+        cons(symbol, left_word(previous)),
+      DistAddRight(symbol, previous):
+        left_word(previous),
+      DistContext(symbol, previous):
+        cons(symbol, left_word(previous))
+    ENDCASES
+  MEASURE derivation BY <<
+
+  right_word(
+      derivation: dist_derivation): RECURSIVE list[char] =
+    CASES derivation OF
+      DistEps:
+        null,
+      DistAddLeft(symbol, previous):
+        right_word(previous),
+      DistAddRight(symbol, previous):
+        cons(symbol, right_word(previous)),
+      DistContext(symbol, previous):
+        cons(symbol, right_word(previous))
+    ENDCASES
+  MEASURE derivation BY <<
+
+  derivation_distance(
+      derivation: dist_derivation): RECURSIVE int =
+    CASES derivation OF
+      DistEps:
+        0,
+      DistAddLeft(symbol, previous):
+        derivation_distance(previous) + 1,
+      DistAddRight(symbol, previous):
+        derivation_distance(previous) + 1,
+      DistContext(symbol, previous):
+        derivation_distance(previous)
+    ENDCASES
+  MEASURE derivation BY <<
+
+  dist(
+      left, right: list[char],
+      distance: int): bool =
+    EXISTS (derivation: dist_derivation):
+      left_word(derivation) = left
+        AND right_word(derivation) = right
+        AND derivation_distance(derivation) = distance
+
+  min_dist(
+      left, right: list[char],
+      distance: int): bool =
+    dist(left, right, distance)
+      AND
+    (FORALL (other: int):
+      dist(left, right, other)
+        IMPLIES distance <= other)
+
+  suffix_laws: bool =
+    (FORALL (word: list[char]):
+      suffix(word, length(word)) = null)
+      AND
+    (FORALL (index: int), (word: list[char]):
+      (0 <= index AND index < length(word))
+        IMPLIES
+          suffix(word, index)
+            =
+          cons(
+            nth_char(word, index),
+            suffix(word, index + 1)))
+
+  min_suffix(
+      word1, word2: list[char],
+      index1, index2, distance: int): bool =
+    min_dist(
+      suffix(word1, index1),
+      suffix(word2, index2),
+      distance)
+
+  in_bounds(values: list[int], index: int): bool =
+    0 <= index AND index < length(values)
+
+  char_in_bounds(values: list[char], index: int): bool =
+    0 <= index AND index < length(values)
+
+  update_condition(
+      values: list[int],
+      index, value: int,
+      conclusion: bool): bool =
+    LET updated: list[int] =
+      list_set(values, int_to_nat(index), value)
+    IN
+      length(updated) = length(values)
+        IMPLIES
+          set_function_equal(values, index, value)
+            IMPLIES conclusion
+
+  descending_prefix(
+      values: list[int],
+      word2_length, upper: int): bool =
+    FORALL (index: int):
+      (0 <= index AND index < upper)
+        IMPLIES
+          nth_int(values, index) = word2_length - index
+
+  row_invariant(
+      word1, word2: list[char],
+      word2_length, row: int,
+      values: list[int]): bool =
+    FORALL (column: int):
+      (0 <= column AND column <= word2_length)
+        IMPLIES
+          min_suffix(
+            word1, word2, row, column,
+            nth_int(values, column))
+
+  segment_invariant(
+      word1, word2: list[char],
+      word2_length, row, split: int,
+      values: list[int],
+      old_value: int): bool =
+    (FORALL (column: int):
+      (split < column AND column <= word2_length)
+        IMPLIES
+          min_suffix(
+            word1, word2, row, column,
+            nth_int(values, column)))
+      AND
+    (FORALL (column: int):
+      (0 <= column AND column <= split)
+        IMPLIES
+          min_suffix(
+            word1, word2, row + 1, column,
+            nth_int(values, column)))
+      AND
+    min_suffix(
+      word1, word2, row + 1, split + 1, old_value)
+
+  after_update(
+      word1, word2: list[char],
+      word2_length, row, column: int,
+      before, after: list[int]): bool =
+    segment_invariant(
+      word1, word2, word2_length, row,
+      column - 1, after, nth_int(before, column))
+
+  cell_step(
+      word1, word2: list[char],
+      word2_length, row, column, old_value: int,
+      values: list[int]): bool =
+    in_bounds(values, column)
+      AND char_in_bounds(word2, column)
+      AND char_in_bounds(word1, row)
+      AND
+    IF nth_char(word1, row) = nth_char(word2, column) THEN
+      in_bounds(values, column)
+        AND
+      LET updated: list[int] =
+        list_set(values, int_to_nat(column), old_value)
+      IN
+        update_condition(
+          values, column, old_value,
+          after_update(
+            word1, word2, word2_length,
+            row, column, values, updated))
+    ELSE
+      LET next_column: int = column + 1 IN
+        in_bounds(values, next_column)
+          AND in_bounds(values, column)
+          AND
+        LET new_value: int =
+          int_min(
+            nth_int(values, column),
+            nth_int(values, next_column)) + 1,
+            updated: list[int] =
+          list_set(values, int_to_nat(column), new_value)
+        IN
+          in_bounds(values, column)
+            AND
+          update_condition(
+            values, column, new_value,
+            after_update(
+              word1, word2, word2_length,
+              row, column, values, updated))
+    ENDIF
+
+  column_loop(
+      word1, word2: list[char],
+      word2_length, row, column_upper: int,
+      initial_values: list[int]): bool =
+    FORALL (old_value: int), (values: list[int]):
+      length(values) = length(initial_values)
+        IMPLIES
+          ((FORALL (column: int):
+            ((column <= column_upper AND 0 <= column)
+              AND
+             (FORALL (k: int):
+               (column < k AND k <= word2_length)
+                 IMPLIES
+                   min_suffix(
+                     word1, word2, row, k,
+                     nth_int(values, k)))
+              AND
+             (FORALL (k: int):
+               (0 <= k AND k <= column)
+                 IMPLIES
+                   min_suffix(
+                     word1, word2, row + 1, k,
+                     nth_int(values, k)))
+              AND
+             min_suffix(
+               word1, word2, row + 1,
+               column + 1, old_value))
+              IMPLIES
+                cell_step(
+                  word1, word2, word2_length,
+                  row, column, old_value, values))
+            AND
+          (segment_invariant(
+             word1, word2, word2_length,
+             row, 0 - 1, values, old_value)
+            IMPLIES
+              row_invariant(
+                word1, word2, word2_length,
+                row - 1 + 1, values)))
+
+  row_step(
+      word1, word2: list[char],
+      word2_length, row: int,
+      values: list[int]): bool =
+    in_bounds(values, word2_length)
+      AND in_bounds(values, word2_length)
+      AND
+    LET new_value: int =
+      nth_int(values, word2_length) + 1,
+        updated: list[int] =
+      list_set(
+        values, int_to_nat(word2_length), new_value)
+    IN
+      in_bounds(values, word2_length)
+        AND
+      update_condition(
+        values, word2_length, new_value,
+        LET column_upper: int = word2_length - 1 IN
+          ((0 - 1 <= column_upper)
+            IMPLIES
+              (segment_invariant(
+                 word1, word2, word2_length,
+                 row, column_upper, updated,
+                 nth_int(values, word2_length))
+                AND
+               column_loop(
+                 word1, word2, word2_length,
+                 row, column_upper, updated)))
+            AND
+          ((column_upper < 0 - 1)
+            IMPLIES
+              row_invariant(
+                word1, word2, word2_length,
+                row - 1 + 1, updated)))
+
+  final_result(
+      word1, word2: list[char],
+      values: list[int]): bool =
+    in_bounds(values, 0)
+      AND
+    min_dist(
+      suffix(word1, 0),
+      suffix(word2, 0),
+      nth_int(values, 0))
+
+  outer_loop(
+      word1, word2: list[char],
+      word1_length, word2_length: int,
+      values: list[int]): bool =
+    LET row_upper: int = word1_length - 1 IN
+      ((0 - 1 <= row_upper)
+        IMPLIES
+          (row_invariant(
+             word1, word2, word2_length,
+             row_upper + 1, values)
+            AND
+           (FORALL (next_values: list[int]):
+             length(next_values) = length(values)
+               IMPLIES
+                 ((FORALL (row: int):
+                   ((row <= row_upper AND 0 <= row)
+                     AND
+                    row_invariant(
+                      word1, word2, word2_length,
+                      row + 1, next_values))
+                     IMPLIES
+                       row_step(
+                         word1, word2, word2_length,
+                         row, next_values))
+                   AND
+                 (row_invariant(
+                    word1, word2, word2_length,
+                    0 - 1 + 1, next_values)
+                   IMPLIES
+                     final_result(
+                       word1, word2, next_values)))))
+        AND
+      ((row_upper < 0 - 1)
+        IMPLIES final_result(word1, word2, values)))
+
+  initialization_step(
+      word2_length, index: int,
+      values: list[int]): bool =
+    LET new_value: int = word2_length - index,
+        updated: list[int] =
+          list_set(values, int_to_nat(index), new_value)
+    IN
+      in_bounds(values, index)
+        AND
+      update_condition(
+        values, index, new_value,
+        descending_prefix(
+          updated, word2_length, index + 1))
+
+  initialization(
+      word1, word2: list[char],
+      word1_length, word2_length: int,
+      values: list[int]): bool =
+    descending_prefix(values, word2_length, 0)
+      AND
+    (FORALL (next_values: list[int]):
+      length(next_values) = length(values)
+        IMPLIES
+          ((FORALL (index: int):
+            ((0 <= index AND index <= word2_length)
+              AND
+             descending_prefix(
+               next_values, word2_length, index))
+              IMPLIES
+                initialization_step(
+                  word2_length, index, next_values))
+            AND
+          (descending_prefix(
+             next_values, word2_length, word2_length + 1)
+            IMPLIES
+              outer_loop(
+                word1, word2,
+                word1_length, word2_length,
+                next_values))))
+
+  initial_array_conclusion(
+      word1, word2: list[char],
+      word1_length, word2_length: int,
+      values: list[int]): bool =
+    ((0 <= word2_length + 1)
+      IMPLIES
+        initialization(
+          word1, word2,
+          word1_length, word2_length,
+          values))
+      AND
+    ((word2_length + 1 < 0)
+      IMPLIES
+        outer_loop(
+          word1, word2,
+          word1_length, word2_length,
+          values))
+
+  distance_vc: bool =
+    suffix_laws
+      IMPLIES
+        (FORALL (word1, word2: list[char]):
+          LET word1_length: int = length(word1),
+              word2_length: int = length(word2),
+              array_length: int = word2_length + 1
+          IN
+            0 <= array_length
+              AND
+            (FORALL (values: list[int]):
+              ((FORALL (index: int):
+                (0 <= index AND index < array_length)
+                  IMPLIES nth_int(values, index) = 0)
+                AND length(values) = array_length)
+                IMPLIES
+                  initial_array_conclusion(
+                    word1, word2,
+                    word1_length, word2_length,
+                    values)))
+
+END edit_distance_EditDistance_distanceqtvc

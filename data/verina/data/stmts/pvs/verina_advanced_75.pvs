@@ -1,0 +1,213 @@
+% Statement-only formalization of the VERINA corpus artifact
+% verina_advanced_75, catalog title "task_code": Kadane's algorithm computes
+% the maximum sum of a nonempty contiguous integer subarray under its full
+% program-verification contract. This file contains no proof.
+
+verina_advanced_75: THEORY
+BEGIN
+
+  int_list_length(values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        int_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  task_code_precond(sequence: list[int]): bool =
+    int_list_length(sequence) > 0
+
+  task_code_fold(
+      remaining: list[int],
+      current, max_so_far: int): RECURSIVE int =
+    CASES remaining OF
+      null:
+        max_so_far,
+      cons(x, xs):
+        LET new_current: int =
+              IF current + x >= x THEN
+                current + x
+              ELSE
+                x
+              ENDIF,
+            new_max: int =
+              IF max_so_far >= new_current THEN
+                max_so_far
+              ELSE
+                new_current
+              ENDIF
+        IN
+          task_code_fold(
+            xs,
+            new_current,
+            new_max)
+    ENDCASES
+  MEASURE remaining BY <<
+
+  % The source proof argument is computationally irrelevant, so the target
+  % function exposes the exact proof-erased list computation.
+  task_code(sequence: list[int]): int =
+    CASES sequence OF
+      null:
+        0,
+      cons(x, xs):
+        task_code_fold(xs, x, x)
+    ENDCASES
+
+  nat_subtract(first, second: nat): nat =
+    IF first >= second THEN first - second ELSE 0 ENDIF
+
+  int_list_drop(
+      count: nat,
+      values: list[int]): RECURSIVE list[int] =
+    IF count = 0 THEN
+      values
+    ELSE
+      CASES values OF
+        null:
+          null[int],
+        cons(head, tail):
+          int_list_drop(count - 1, tail)
+      ENDCASES
+    ENDIF
+  MEASURE count
+
+  int_list_take(
+      count: nat,
+      values: list[int]): RECURSIVE list[int] =
+    IF count = 0 THEN
+      null[int]
+    ELSE
+      CASES values OF
+        null:
+          null[int],
+        cons(head, tail):
+          cons(
+            head,
+            int_list_take(count - 1, tail))
+      ENDCASES
+    ENDIF
+  MEASURE count
+
+  int_list_sum(values: list[int]): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        head + int_list_sum(tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  int_subarray_sum(
+      values: list[int],
+      start, length: nat): int =
+    int_list_sum(
+      int_list_take(
+        length,
+        int_list_drop(start, values)))
+
+  append_int_lists(
+      first, second: list[int]): RECURSIVE list[int] =
+    CASES first OF
+      null:
+        second,
+      cons(head, tail):
+        cons(
+          head,
+          append_int_lists(tail, second))
+    ENDCASES
+  MEASURE first BY <<
+
+  subarray_sums_at_start(
+      values: list[int],
+      start, length, remaining_lengths: nat):
+        RECURSIVE list[int] =
+    IF remaining_lengths = 0 THEN
+      null[int]
+    ELSE
+      cons(
+        int_subarray_sum(values, start, length),
+        subarray_sums_at_start(
+          values,
+          start,
+          length + 1,
+          remaining_lengths - 1))
+    ENDIF
+  MEASURE remaining_lengths
+
+  all_subarray_sums_from(
+      values: list[int],
+      start, remaining_starts, total_length: nat):
+        RECURSIVE list[int] =
+    IF remaining_starts = 0 THEN
+      null[int]
+    ELSE
+      append_int_lists(
+        subarray_sums_at_start(
+          values,
+          start,
+          1,
+          nat_subtract(total_length, start)),
+        all_subarray_sums_from(
+          values,
+          start + 1,
+          remaining_starts - 1,
+          total_length))
+    ENDIF
+  MEASURE remaining_starts
+
+  % The Lean postcondition enumerates all slices and then removes empty lists.
+  % Starting each length enumeration at one gives exactly that filtered list.
+  nonempty_subarray_sums(values: list[int]): list[int] =
+    LET total_length: nat = int_list_length(values)
+    IN
+      all_subarray_sums_from(
+        values,
+        0,
+        total_length + 1,
+        total_length)
+
+  int_list_contains(
+      values: list[int],
+      requested: int): RECURSIVE bool =
+    CASES values OF
+      null:
+        FALSE,
+      cons(head, tail):
+        head = requested
+          OR int_list_contains(tail, requested)
+    ENDCASES
+  MEASURE values BY <<
+
+  int_list_all_at_most(
+      values: list[int],
+      upper_bound: int): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        head <= upper_bound
+          AND int_list_all_at_most(tail, upper_bound)
+    ENDCASES
+  MEASURE values BY <<
+
+  task_code_postcond(
+      sequence: list[int],
+      result: int): bool =
+    LET subarray_sums: list[int] =
+          nonempty_subarray_sums(sequence)
+    IN
+      int_list_contains(subarray_sums, result)
+        AND int_list_all_at_most(
+              subarray_sums,
+              result)
+
+  task_code_spec_satisfied: bool =
+    FORALL (sequence: list[int]):
+      task_code_precond(sequence) IMPLIES
+        task_code_postcond(
+          sequence,
+          task_code(sequence))
+
+END verina_advanced_75

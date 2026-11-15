@@ -1,0 +1,94 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2004_a5:
+% the expected number of side-connected monochromatic regions in a uniformly
+% two-colored nonempty rectangular checkerboard is greater than one eighth
+% of the number of squares. This file contains no proof.
+
+putnam_2004_a5[m, n: posnat]: THEORY
+BEGIN
+  board_size: nat = m * n
+  coloring_count: nat = 2 ^ board_size
+
+  valid_cell(index: nat): bool =
+    index < board_size
+
+  cell_row(index: nat): nat =
+    ndiv(index, n)
+
+  cell_column(index: nat): nat =
+    mod(index, n)
+
+  consecutive(left, right: nat): bool =
+    left + 1 = right OR right + 1 = left
+
+  adjacent(left, right: nat): bool =
+    valid_cell(left)
+      AND valid_cell(right)
+      AND
+        ((cell_row(left) = cell_row(right)
+            AND consecutive(
+              cell_column(left),
+              cell_column(right)))
+          OR
+          (cell_column(left) = cell_column(right)
+            AND consecutive(
+              cell_row(left),
+              cell_row(right))))
+
+  cell_color(code, index: nat): bool =
+    mod(ndiv(code, 2 ^ index), 2) = 1
+
+  connected(code, first, last: nat): bool =
+    valid_cell(first)
+      AND valid_cell(last)
+      AND
+        EXISTS (length: posnat), (path: [nat -> nat]):
+          path(0) = first
+            AND path(length - 1) = last
+            AND
+              (FORALL (index: nat):
+                index < length IMPLIES
+                  valid_cell(path(index))
+                    AND cell_color(code, path(index))
+                      = cell_color(code, first))
+            AND
+              (FORALL (index: nat):
+                index + 1 < length IMPLIES
+                  adjacent(path(index), path(index + 1)))
+
+  region_representative(code, index: nat): bool =
+    valid_cell(index)
+      AND
+        (FORALL (earlier: nat):
+          earlier < index IMPLIES
+            NOT connected(code, index, earlier))
+
+  count_regions_below(
+      code, limit: nat): RECURSIVE nat =
+    IF limit = 0 THEN
+      0
+    ELSE
+      count_regions_below(code, limit - 1)
+        + IF region_representative(code, limit - 1)
+          THEN 1
+          ELSE 0
+          ENDIF
+    ENDIF
+  MEASURE limit
+
+  region_count(code: nat): nat =
+    count_regions_below(code, board_size)
+
+  total_region_count(limit: nat): RECURSIVE nat =
+    IF limit = 0 THEN
+      0
+    ELSE
+      total_region_count(limit - 1)
+        + region_count(limit - 1)
+    ENDIF
+  MEASURE limit
+
+  putnam_2004_a5: bool =
+    (total_region_count(coloring_count) :: real)
+      > (coloring_count :: real)
+          * (board_size :: real) / 8
+END putnam_2004_a5

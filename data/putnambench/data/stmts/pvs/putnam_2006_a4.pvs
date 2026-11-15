@@ -1,0 +1,138 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2006_a4:
+% the average number of endpoint-inclusive local maxima over permutations of
+% n elements is (n + 1)/3 for n greater than one. This file contains no proof.
+
+putnam_2006_a4: THEORY
+BEGIN
+  quotient_aux(
+      numerator, denominator, fuel: nat): RECURSIVE nat =
+    IF fuel = 0
+        OR denominator = 0
+        OR numerator < denominator THEN
+      0
+    ELSE
+      1
+        + quotient_aux(
+            numerator - denominator,
+            denominator,
+            fuel - 1)
+    ENDIF
+  MEASURE fuel
+
+  remainder_aux(
+      numerator, denominator, fuel: nat): RECURSIVE nat =
+    IF fuel = 0
+        OR denominator = 0
+        OR numerator < denominator THEN
+      numerator
+    ELSE
+      remainder_aux(
+        numerator - denominator,
+        denominator,
+        fuel - 1)
+    ENDIF
+  MEASURE fuel
+
+  safe_ndiv(numerator, denominator: nat): nat =
+    quotient_aux(
+      numerator,
+      denominator,
+      numerator + 1)
+
+  safe_mod(numerator, denominator: nat): nat =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      remainder_aux(
+        numerator,
+        denominator,
+        numerator + 1)
+    ENDIF
+
+  function_code_count(n: nat): nat =
+    IF n = 0 THEN 1 ELSE n ^ n ENDIF
+
+  permutation_entry(code, index, n: nat): nat =
+    IF n = 0 THEN
+      0
+    ELSE
+      safe_mod(safe_ndiv(code, n ^ index), n)
+    ENDIF
+
+  permutation_code(code, n: nat): bool =
+    code < function_code_count(n)
+      AND (FORALL (i, j: nat):
+        (i < n
+          AND j < n
+          AND permutation_entry(code, i, n)
+            = permutation_entry(code, j, n))
+        IMPLIES i = j)
+
+  local_maximum_at(code, index, n: nat): bool =
+    index < n
+      AND
+        (index = 0
+          OR permutation_entry(code, index - 1, n)
+            < permutation_entry(code, index, n))
+      AND
+        (index + 1 = n
+          OR permutation_entry(code, index, n)
+            > permutation_entry(code, index + 1, n))
+
+  count_true(
+      property: [nat -> bool],
+      count: nat): RECURSIVE nat =
+    IF count = 0 THEN
+      0
+    ELSE
+      count_true(property, count - 1)
+        + IF property(count - 1) THEN 1 ELSE 0 ENDIF
+    ENDIF
+  MEASURE count
+
+  local_maximum_count(code, n: nat): nat =
+    count_true(
+      (LAMBDA (index: nat):
+        local_maximum_at(code, index, n)),
+      n)
+
+  permutation_count(
+      n, limit: nat): RECURSIVE nat =
+    IF limit = 0 THEN
+      0
+    ELSE
+      LET code: nat = limit - 1 IN
+        permutation_count(n, limit - 1)
+          + IF permutation_code(code, n) THEN 1 ELSE 0 ENDIF
+    ENDIF
+  MEASURE limit
+
+  local_maximum_sum(
+      n, limit: nat): RECURSIVE nat =
+    IF limit = 0 THEN
+      0
+    ELSE
+      LET code: nat = limit - 1 IN
+        local_maximum_sum(n, limit - 1)
+          + IF permutation_code(code, n) THEN
+              local_maximum_count(code, n)
+            ELSE
+              0
+            ENDIF
+    ENDIF
+  MEASURE limit
+
+  putnam_2006_a4_solution(n: nat): real =
+    ((n + 1) :: real) / 3
+
+  putnam_2006_a4: bool =
+    FORALL (n: nat):
+      n > 1 IMPLIES
+        (local_maximum_sum(
+          n,
+          function_code_count(n)) :: real)
+          = putnam_2006_a4_solution(n)
+            * (permutation_count(
+              n,
+              function_code_count(n)) :: real)
+END putnam_2006_a4

@@ -1,0 +1,92 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1984_a6:
+% last nonzero factorial digits at sums of distinct powers of five depend only
+% on the exponent sum, and the induced function has least positive period four
+% from index one. This file contains no proof.
+
+putnam_1984_a6: THEORY
+BEGIN
+  natural_sequence: TYPE = [nat -> nat]
+
+  nat_factorial(n: nat): RECURSIVE nat =
+    IF n = 0 THEN
+      1
+    ELSE
+      n * nat_factorial(n - 1)
+    ENDIF
+  MEASURE n
+
+  power_five_sum(
+      exponents: natural_sequence,
+      count: nat): RECURSIVE nat =
+    IF count = 0 THEN
+      0
+    ELSE
+      power_five_sum(exponents, count - 1)
+        + 5 ^ exponents(count - 1)
+    ENDIF
+  MEASURE count
+
+  exponent_sum(
+      exponents: natural_sequence,
+      count: nat): RECURSIVE nat =
+    IF count = 0 THEN
+      0
+    ELSE
+      exponent_sum(exponents, count - 1)
+        + exponents(count - 1)
+    ENDIF
+  MEASURE count
+
+  injective_below(
+      exponents: natural_sequence,
+      count: nat): bool =
+    FORALL (i, j: nat):
+      (i < count
+        AND j < count
+        AND exponents(i) = exponents(j))
+      IMPLIES i = j
+
+  last_nonzero_factorial_digit(
+      n, digit: nat): bool =
+    EXISTS (trailing_zeros, core, quotient: nat):
+      nat_factorial(n) = 10 ^ trailing_zeros * core
+        AND core = 10 * quotient + digit
+        AND digit > 0
+        AND digit < 10
+
+  periodic_from(
+      start: nat,
+      values: natural_sequence,
+      period: nat): bool =
+    FORALL (index: nat):
+      index >= start IMPLIES
+        values(index) = values(index + period)
+
+  least_positive_period_from(
+      start: nat,
+      values: natural_sequence,
+      period: nat): bool =
+    period > 0
+      AND periodic_from(start, values, period)
+      AND FORALL (other_period: nat):
+        (other_period > 0
+          AND periodic_from(start, values, other_period))
+        IMPLIES period <= other_period
+
+  depends_only_on_exponent_sum(
+      factorial_digit, values: natural_sequence): bool =
+    FORALL (count: nat), (exponents: natural_sequence):
+      (count > 0 AND injective_below(exponents, count))
+      IMPLIES
+        factorial_digit(power_five_sum(exponents, count))
+          = values(exponent_sum(exponents, count))
+
+  putnam_1984_a6: bool =
+    FORALL (factorial_digit: natural_sequence):
+      (FORALL (n: nat):
+        last_nonzero_factorial_digit(n, factorial_digit(n)))
+      IMPLIES
+        EXISTS (values: natural_sequence):
+          depends_only_on_exponent_sum(factorial_digit, values)
+            AND least_positive_period_from(1, values, 4)
+END putnam_1984_a6

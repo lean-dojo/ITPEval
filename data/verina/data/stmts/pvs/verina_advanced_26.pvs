@@ -1,0 +1,293 @@
+% Statement-only formalization of the VERINA corpus artifact
+% verina_advanced_26, catalog title "letterCombinations": computing all
+% telephone-keypad letter combinations for a Unicode-scalar digit string,
+% including the specified invalid-input and correctness contract. This file
+% contains no proof.
+
+verina_advanced_26: THEORY
+BEGIN
+
+  % The Lean program observes String values through toList, isEmpty,
+  % singleton, and append. Finite lists of Unicode scalar values give the
+  % corresponding exact extensional representation.
+  low_unicode_scalar: TYPE =
+    {codepoint: nat | codepoint < 55296}
+
+  high_unicode_scalar_offset: TYPE =
+    {offset: nat | offset < 1056768}
+
+  % LowChar(n) represents code point n; HighChar(k) represents code point
+  % 57344 + k. The two constructors therefore represent exactly the Unicode
+  % scalar values, excluding precisely the surrogate interval.
+  lean_char: DATATYPE
+  BEGIN
+    LowChar(low_codepoint: low_unicode_scalar): LowChar?
+    HighChar(high_offset: high_unicode_scalar_offset): HighChar?
+  END lean_char
+
+  lean_string: TYPE = list[lean_char]
+  lean_string_list: TYPE = list[lean_string]
+
+  digitToLetters(c: lean_char): list[lean_char] =
+    IF c = LowChar(50) THEN
+      cons(LowChar(97), cons(LowChar(98), cons(LowChar(99), null[lean_char])))
+    ELSIF c = LowChar(51) THEN
+      cons(LowChar(100), cons(LowChar(101), cons(LowChar(102), null[lean_char])))
+    ELSIF c = LowChar(52) THEN
+      cons(LowChar(103), cons(LowChar(104), cons(LowChar(105), null[lean_char])))
+    ELSIF c = LowChar(53) THEN
+      cons(LowChar(106), cons(LowChar(107), cons(LowChar(108), null[lean_char])))
+    ELSIF c = LowChar(54) THEN
+      cons(LowChar(109), cons(LowChar(110), cons(LowChar(111), null[lean_char])))
+    ELSIF c = LowChar(55) THEN
+      cons(
+        LowChar(112),
+        cons(
+          LowChar(113),
+          cons(LowChar(114), cons(LowChar(115), null[lean_char]))))
+    ELSIF c = LowChar(56) THEN
+      cons(LowChar(116), cons(LowChar(117), cons(LowChar(118), null[lean_char])))
+    ELSIF c = LowChar(57) THEN
+      cons(
+        LowChar(119),
+        cons(
+          LowChar(120),
+          cons(LowChar(121), cons(LowChar(122), null[lean_char]))))
+    ELSE
+      null
+    ENDIF
+
+  letterCombinations_precond(digits: lean_string): bool =
+    TRUE
+
+  lean_string_append(
+      first, second: lean_string): RECURSIVE lean_string =
+    CASES first OF
+      null:
+        second,
+      cons(head, tail):
+        cons(
+          head,
+          lean_string_append(tail, second))
+    ENDCASES
+  MEASURE first BY <<
+
+  lean_string_list_append(
+      first, second: lean_string_list):
+        RECURSIVE lean_string_list =
+    CASES first OF
+      null:
+        second,
+      cons(head, tail):
+        cons(
+          head,
+          lean_string_list_append(tail, second))
+    ENDCASES
+  MEASURE first BY <<
+
+  singleton_strings(
+      chars: list[lean_char]): RECURSIVE lean_string_list =
+    CASES chars OF
+      null:
+        null,
+      cons(c, rest):
+        cons(
+          cons(c, null[lean_char]),
+          singleton_strings(rest))
+    ENDCASES
+  MEASURE chars BY <<
+
+  prefix_each(
+      c: lean_char,
+      strings: lean_string_list): RECURSIVE lean_string_list =
+    CASES strings OF
+      null:
+        null,
+      cons(s, rest):
+        cons(
+          cons(c, s),
+          prefix_each(c, rest))
+    ENDCASES
+  MEASURE strings BY <<
+
+  flatmap_prefixes(
+      chars: list[lean_char],
+      strings: lean_string_list): RECURSIVE lean_string_list =
+    CASES chars OF
+      null:
+        null,
+      cons(c, rest):
+        lean_string_list_append(
+          prefix_each(c, strings),
+          flatmap_prefixes(rest, strings))
+    ENDCASES
+  MEASURE chars BY <<
+
+  letterCombinations_go(
+      chars: list[lean_char]): RECURSIVE lean_string_list =
+    CASES chars OF
+      null:
+        null,
+      cons(d, ds):
+        LET restCombinations: lean_string_list =
+              letterCombinations_go(ds),
+            currentLetters: list[lean_char] =
+              digitToLetters(d)
+        IN
+          CASES restCombinations OF
+            null:
+              singleton_strings(currentLetters),
+            cons(firstCombination, otherCombinations):
+              flatmap_prefixes(
+                currentLetters,
+                restCombinations)
+          ENDCASES
+    ENDCASES
+  MEASURE chars BY <<
+
+  has_empty_digit_mapping(
+      chars: list[lean_char]): RECURSIVE bool =
+    CASES chars OF
+      null:
+        FALSE,
+      cons(c, rest):
+        digitToLetters(c) = null
+          OR has_empty_digit_mapping(rest)
+    ENDCASES
+  MEASURE chars BY <<
+
+  letterCombinations(digits: lean_string): lean_string_list =
+    IF has_empty_digit_mapping(digits) THEN
+      null
+    ELSE
+      letterCombinations_go(digits)
+    ENDIF
+
+  is_keypad_digit(c: lean_char): bool =
+    c = LowChar(50) OR c = LowChar(51)
+      OR c = LowChar(52) OR c = LowChar(53)
+      OR c = LowChar(54) OR c = LowChar(55)
+      OR c = LowChar(56) OR c = LowChar(57)
+
+  has_invalid_digit(
+      chars: list[lean_char]): RECURSIVE bool =
+    CASES chars OF
+      null:
+        FALSE,
+      cons(c, rest):
+        NOT is_keypad_digit(c)
+          OR has_invalid_digit(rest)
+    ENDCASES
+  MEASURE chars BY <<
+
+  append_char_to_each(
+      chars: list[lean_char],
+      prefix: lean_string): RECURSIVE lean_string_list =
+    CASES chars OF
+      null:
+        null,
+      cons(c, rest):
+        cons(
+          lean_string_append(
+            prefix,
+            cons(c, null[lean_char])),
+          append_char_to_each(rest, prefix))
+    ENDCASES
+  MEASURE chars BY <<
+
+  extend_expected_accumulator(
+      accumulator: lean_string_list,
+      chars: list[lean_char]): RECURSIVE lean_string_list =
+    CASES accumulator OF
+      null:
+        null,
+      cons(prefix, rest):
+        lean_string_list_append(
+          append_char_to_each(chars, prefix),
+          extend_expected_accumulator(rest, chars))
+    ENDCASES
+  MEASURE accumulator BY <<
+
+  expected_combinations_fold(
+      remaining_digits: list[lean_char],
+      accumulator: lean_string_list):
+        RECURSIVE lean_string_list =
+    CASES remaining_digits OF
+      null:
+        accumulator,
+      cons(d, rest):
+        expected_combinations_fold(
+          rest,
+          extend_expected_accumulator(
+            accumulator,
+            digitToLetters(d)))
+    ENDCASES
+  MEASURE remaining_digits BY <<
+
+  expected_combinations(
+      digits: lean_string): lean_string_list =
+    expected_combinations_fold(
+      digits,
+      cons(null[lean_char], null[lean_string]))
+
+  lean_string_list_length(
+      strings: lean_string_list): RECURSIVE nat =
+    CASES strings OF
+      null:
+        0,
+      cons(head, tail):
+        lean_string_list_length(tail) + 1
+    ENDCASES
+  MEASURE strings BY <<
+
+  lean_string_list_contains(
+      requested: lean_string,
+      strings: lean_string_list): RECURSIVE bool =
+    CASES strings OF
+      null:
+        FALSE,
+      cons(head, tail):
+        requested = head
+          OR lean_string_list_contains(requested, tail)
+    ENDCASES
+  MEASURE strings BY <<
+
+  every_string_is_in(
+      strings, allowed: lean_string_list): RECURSIVE bool =
+    CASES strings OF
+      null:
+        TRUE,
+      cons(head, tail):
+        lean_string_list_contains(head, allowed)
+          AND every_string_is_in(tail, allowed)
+    ENDCASES
+  MEASURE strings BY <<
+
+  letterCombinations_postcond(
+      digits: lean_string,
+      result: lean_string_list): bool =
+    CASES digits OF
+      null:
+        result = null,
+      cons(firstDigit, otherDigits):
+        IF has_invalid_digit(digits) THEN
+          result = null
+        ELSE
+          LET expected: lean_string_list =
+            expected_combinations(digits)
+          IN
+            lean_string_list_length(result)
+              = lean_string_list_length(expected)
+              AND every_string_is_in(result, expected)
+              AND every_string_is_in(expected, result)
+        ENDIF
+    ENDCASES
+
+  letterCombinations_spec_satisfied: bool =
+    FORALL (digits: lean_string):
+      letterCombinations_precond(digits) IMPLIES
+        letterCombinations_postcond(
+          digits,
+          letterCombinations(digits))
+
+END verina_advanced_26

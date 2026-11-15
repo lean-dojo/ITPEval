@@ -1,0 +1,131 @@
+% Statement-only formalization of the thousand-theorems corpus artifact
+% Q1752621 (thousand-theorems__pvs__Q1752621), "Sylvester's law of inertia":
+% every quadratic form on a finite-dimensional real vector space is linearly
+% equivalent to a weighted sum of squares with weights -1, 0, or 1. This file
+% contains no proof.
+
+sylvesters_law_of_inertia_Q1752621[
+  n: nat,
+  V: TYPE+,
+  zeroV: V,
+  addV: [V, V -> V],
+  negV: [V -> V],
+  smulV: [real, V -> V],
+  Q: [V -> real]
+]: THEORY
+BEGIN
+  real_sequence: TYPE = [nat -> real]
+  coordinate_map: TYPE = [V -> real_sequence]
+  bilinear_map: TYPE = [V, V -> real]
+
+  zero_sequence: real_sequence =
+    (LAMBDA (index: nat): 0)
+
+  sequence_add(x, y: real_sequence): real_sequence =
+    (LAMBDA (index: nat): x(index) + y(index))
+
+  sequence_scale(a: real, x: real_sequence): real_sequence =
+    (LAMBDA (index: nat): a * x(index))
+
+  supported_below_n(x: real_sequence): bool =
+    FORALL (index: nat):
+      n <= index IMPLIES x(index) = 0
+
+  real_sum(
+      values: real_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      real_sum(values, count - 1) + values(count - 1)
+    ENDIF
+  MEASURE count
+
+  vector_space_laws: bool =
+    (FORALL (u, v: V):
+      addV(u, v) = addV(v, u))
+      AND (FORALL (u, v, w: V):
+        addV(addV(u, v), w) = addV(u, addV(v, w)))
+      AND (FORALL (u: V):
+        addV(u, zeroV) = u)
+      AND (FORALL (u: V):
+        addV(u, negV(u)) = zeroV)
+      AND (FORALL (a: real), (u, v: V):
+        smulV(a, addV(u, v)) =
+          addV(smulV(a, u), smulV(a, v)))
+      AND (FORALL (a, b: real), (u: V):
+        smulV(a + b, u) =
+          addV(smulV(a, u), smulV(b, u)))
+      AND (FORALL (a, b: real), (u: V):
+        smulV(a * b, u) = smulV(a, smulV(b, u)))
+      AND (FORALL (u: V):
+        smulV(1, u) = u)
+      AND (FORALL (u: V):
+        smulV(0, u) = zeroV)
+      AND (FORALL (a: real):
+        smulV(a, zeroV) = zeroV)
+
+  linear_coordinate_map(T: coordinate_map): bool =
+    T(zeroV) = zero_sequence
+      AND (FORALL (u, v: V):
+        T(addV(u, v)) = sequence_add(T(u), T(v)))
+      AND (FORALL (a: real), (u: V):
+        T(smulV(a, u)) = sequence_scale(a, T(u)))
+      AND (FORALL (u: V):
+        supported_below_n(T(u)))
+      AND (FORALL (u, v: V):
+        T(u) = T(v) IMPLIES u = v)
+      AND (FORALL (x: real_sequence):
+        supported_below_n(x) IMPLIES
+          EXISTS (u: V): T(u) = x)
+
+  finite_dimensional_of_dimension_n: bool =
+    EXISTS (coordinates: coordinate_map):
+      linear_coordinate_map(coordinates)
+
+  symmetric_bilinear(B: bilinear_map): bool =
+    (FORALL (u, v, w: V):
+      B(addV(u, v), w) = B(u, w) + B(v, w))
+      AND (FORALL (a: real), (u, v: V):
+        B(smulV(a, u), v) = a * B(u, v))
+      AND (FORALL (u, v: V):
+        B(u, v) = B(v, u))
+
+  real_quadratic_form: bool =
+    EXISTS (B: bilinear_map):
+      symmetric_bilinear(B)
+        AND (FORALL (v: V): Q(v) = B(v, v))
+
+  weighted_sum_value(
+      weights, coordinates: real_sequence): real =
+    real_sum(
+      (LAMBDA (index: nat):
+        weights(index)
+          * coordinates(index)
+          * coordinates(index)),
+      n)
+
+  equivalent_to_weighted_sum_squares(
+      T: coordinate_map,
+      weights: real_sequence): bool =
+    linear_coordinate_map(T)
+      AND (FORALL (v: V):
+        Q(v) = weighted_sum_value(weights, T(v)))
+
+  sylvesters_law_of_inertia: bool =
+    (vector_space_laws
+      AND finite_dimensional_of_dimension_n
+      AND real_quadratic_form)
+    IMPLIES
+      EXISTS
+          (weights: real_sequence),
+          (isometry: coordinate_map):
+        supported_below_n(weights)
+          AND (FORALL (index: nat):
+            index < n IMPLIES
+              (weights(index) = -1
+                OR weights(index) = 0
+                OR weights(index) = 1))
+          AND equivalent_to_weighted_sum_squares(
+            isometry, weights)
+END sylvesters_law_of_inertia_Q1752621

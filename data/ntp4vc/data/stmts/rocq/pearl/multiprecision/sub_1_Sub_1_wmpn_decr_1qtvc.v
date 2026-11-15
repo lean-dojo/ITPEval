@@ -1,0 +1,37 @@
+From Stdlib Require Import Strings.String.
+From Stdlib Require Import String Ascii.
+From Stdlib Require Arith.
+From stdpp Require Import base.
+From stdpp Require Import fin_maps.
+From stdpp Require Import gmap.
+From stdpp Require Import base gmultiset.
+From Stdlib Require Classical.
+From Stdlib Require Import ZArith.
+From stdpp.bitvector Require Import definitions tactics.
+From Stdlib Require Import Sorting.Sorted.
+From Stdlib Require Import Reals.Rbasic_fun.
+From Stdlib Require Import Reals.Abstract.ConstructiveAbs.
+From Stdlib Require Import Reals.Rdefinitions.
+From stdpp Require Import list_relations.
+From stdpp Require Import list_numbers.
+From stdpp Require Import functions.
+From Stdlib Require Import ClassicalEpsilon.
+From stdpp Require Import base decidable.
+From Stdlib Require Import ZArith.Zeuclid.
+From Stdlib Require Import ZArith.Znumtheory.
+From stdpp Require Import propset.
+From Stdlib Require Import Reals.
+Require Import Why3.Base.
+Require Import Why3.why3.Ref.Ref.
+Require Import Why3.map.Const.
+Require Import Why3.map.MapEq.
+Require Import Why3.mach.int.Unsigned.
+Require Import Why3.mach.c.C.
+Require Import multiprecision.types.Config.
+Require Import multiprecision.types.Types.
+Require Import multiprecision.types.Int32Eq.
+Require Import multiprecision.types.UInt64Eq.
+Require Import multiprecision.lemmas.Lemmas.
+Open Scope Z_scope.
+Theorem wmpn_decr_1'vc (x : ptr (bv 64%N)) (sz : bv 32%N) (fact0 : valid x (bv_signed sz)) (fact1 : 0%Z < bv_signed sz) (fact2 : 0%Z ≤ value x (bv_signed sz) - 1%Z) (fact3 : writable x = true) : min x ≤ offset x + 0%Z ∧ offset x + 0%Z ≤ C.max x ∧ (∀(o1 : ptr (bv 64%N)), offset o1 = offset x + 0%Z ∧ plength o1 = plength x ∧ pelts o1 = pelts x ∧ data o1 = data x ∧ min o1 = min x ∧ C.max o1 = C.max x ∧ zone1 o1 = zone1 x ∧ writable o1 = writable x -> ((0%Z ≤ 0%Z ∧ 0%Z ≤ bv_signed sz) ∧ ¬ (0%bv : bv 32%N) = sz ∧ offset o1 = offset x + 0%Z ∧ pelts o1 = pelts x ∧ plength o1 = plength x ∧ (min o1 = min x ∧ C.max o1 = C.max x) ∧ ¬ 1%Z = 0%Z ∧ (0%Z ≤ 1%Z ∧ 1%Z ≤ 1%Z) ∧ value x 0%Z - Z.pow (18446744073709551615%Z + 1%Z) 0%Z * 1%Z = value x 0%Z - 1%Z ∧ writable o1 = true) ∧ (∀(xp : ptr (bv 64%N)) (i : bv 32%N) (lx : bv 64%N) (b : bv 64%N) (x1 : ptr (bv 64%N)), length (data x1) = length (data x) ∧ offset x1 = offset x ∧ min x1 = min x ∧ C.max x1 = C.max x ∧ writable x1 = writable x ∧ zone1 x1 = zone1 x -> (0%Z ≤ bv_signed i ∧ bv_signed i ≤ bv_signed sz) ∧ (i = sz -> ¬ bv_unsigned lx = 0%Z) ∧ offset xp = offset x1 + bv_signed i ∧ pelts xp = pelts x1 ∧ plength xp = plength x1 ∧ (min xp = min x1 ∧ C.max xp = C.max x1) ∧ (¬ bv_unsigned lx = 0%Z) = (bv_unsigned b = 0%Z) ∧ (0%Z ≤ bv_unsigned b ∧ bv_unsigned b ≤ 1%Z) ∧ value x1 (bv_signed i) - Z.pow (18446744073709551615%Z + 1%Z) (bv_signed i) * bv_unsigned b = value x (bv_signed i) - 1%Z ∧ writable xp = true ∧ (∀(j : Z), bv_signed i ≤ j ∧ j < bv_signed sz -> pelts x1 (offset x1 + j) = pelts x (offset x1 + j)) ∧ (∀(j : Z), j < offset x1 ∨ offset x1 + bv_signed sz ≤ j -> pelts x1 j = pelts x j) -> (∀(o2 : bool), (bv_unsigned lx = bv_unsigned (0%bv : bv 64%N) -> o2 = true) ∧ (o2 = true -> lx = (0%bv : bv 64%N)) -> (if decide (o2 = true) then (min xp ≤ offset xp ∧ offset xp < C.max xp) ∧ (∀(res : bv 64%N), bv_unsigned res = ZEuclid.modulo (bv_unsigned (pelts xp (offset xp)) - 1%Z) (18446744073709551615%Z + 1%Z) -> (∀(o3 : bool), (bv_unsigned (pelts xp (offset xp)) = bv_unsigned (0%bv : bv 64%N) -> o3 = true) ∧ (o3 = true -> pelts xp (offset xp) = (0%bv : bv 64%N)) -> (if decide (o3 = true) then ((min xp ≤ offset xp ∧ offset xp < C.max xp) ∧ writable xp = true) ∧ (∀(xp1 : ptr (bv 64%N)) (x2 : ptr (bv 64%N)), data xp1 = data x2 ∧ length (data x2) = length (data xp) ∧ offset xp1 = offset xp ∧ min xp1 = min xp ∧ C.max xp1 = C.max xp ∧ writable xp1 = writable xp ∧ zone1 xp1 = zone1 xp -> data xp1 = data x2 ∧ length (data x2) = length (data xp) ∧ offset xp1 = offset xp ∧ min xp1 = min xp ∧ C.max xp1 = C.max xp ∧ writable xp1 = writable xp ∧ zone1 xp1 = zone1 xp -> length (data x2) = length (data x1) ∧ offset x2 = offset x1 ∧ min x2 = min x1 ∧ C.max x2 = C.max x1 ∧ writable x2 = writable x1 ∧ zone1 x2 = zone1 x1 -> pelts xp1 = fun_updt (pelts xp) (offset xp1) res -> int'32_in_bounds (bv_signed i + 1%Z) ∧ (∀(o4 : bv 32%N), bv_signed o4 = bv_signed i + 1%Z -> (min xp1 ≤ offset xp1 + 1%Z ∧ offset xp1 + 1%Z ≤ C.max xp1) ∧ (∀(o5 : ptr (bv 64%N)), offset o5 = offset xp1 + 1%Z ∧ plength o5 = plength xp1 ∧ pelts o5 = pelts xp1 ∧ data o5 = data xp1 ∧ min o5 = min xp1 ∧ C.max o5 = C.max xp1 ∧ zone1 o5 = zone1 xp1 ∧ writable o5 = writable xp1 -> (0%Z ≤ bv_signed sz - bv_signed i ∧ bv_signed sz - bv_signed o4 < bv_signed sz - bv_signed i) ∧ (0%Z ≤ bv_signed o4 ∧ bv_signed o4 ≤ bv_signed sz) ∧ (o4 = sz -> ¬ bv_unsigned (pelts xp (offset xp)) = 0%Z) ∧ offset o5 = offset x2 + bv_signed o4 ∧ pelts o5 = pelts x2 ∧ plength o5 = plength x2 ∧ (min o5 = min x2 ∧ C.max o5 = C.max x2) ∧ (¬ bv_unsigned (pelts xp (offset xp)) = 0%Z) = (bv_unsigned (1%bv : bv 64%N) = 0%Z) ∧ (0%Z ≤ bv_unsigned (1%bv : bv 64%N) ∧ bv_unsigned (1%bv : bv 64%N) ≤ 1%Z) ∧ value x2 (bv_signed o4) - Z.pow (18446744073709551615%Z + 1%Z) (bv_signed o4) * bv_unsigned (1%bv : bv 64%N) = value x (bv_signed o4) - 1%Z ∧ writable o5 = true ∧ (∀(j : Z), bv_signed o4 ≤ j ∧ j < bv_signed sz -> pelts x2 (offset x2 + j) = pelts x (offset x2 + j)) ∧ (∀(j : Z), j < offset x2 ∨ offset x2 + bv_signed sz ≤ j -> pelts x2 j = pelts x j)))) else ((min xp ≤ offset xp ∧ offset xp < C.max xp) ∧ writable xp = true) ∧ (∀(xp1 : ptr (bv 64%N)) (x2 : ptr (bv 64%N)), data xp1 = data x2 ∧ length (data x2) = length (data xp) ∧ offset xp1 = offset xp ∧ min xp1 = min xp ∧ C.max xp1 = C.max xp ∧ writable xp1 = writable xp ∧ zone1 xp1 = zone1 xp -> data xp1 = data x2 ∧ length (data x2) = length (data xp) ∧ offset xp1 = offset xp ∧ min xp1 = min xp ∧ C.max xp1 = C.max xp ∧ writable xp1 = writable xp ∧ zone1 xp1 = zone1 xp -> length (data x2) = length (data x1) ∧ offset x2 = offset x1 ∧ min x2 = min x1 ∧ C.max x2 = C.max x1 ∧ writable x2 = writable x1 ∧ zone1 x2 = zone1 x1 -> pelts xp1 = fun_updt (pelts xp) (offset xp1) res -> int'32_in_bounds (bv_signed i + 1%Z) ∧ (∀(o4 : bv 32%N), bv_signed o4 = bv_signed i + 1%Z -> (min xp1 ≤ offset xp1 + 1%Z ∧ offset xp1 + 1%Z ≤ C.max xp1) ∧ (∀(o5 : ptr (bv 64%N)), offset o5 = offset xp1 + 1%Z ∧ plength o5 = plength xp1 ∧ pelts o5 = pelts xp1 ∧ data o5 = data xp1 ∧ min o5 = min xp1 ∧ C.max o5 = C.max xp1 ∧ zone1 o5 = zone1 xp1 ∧ writable o5 = writable xp1 -> (0%Z ≤ bv_signed sz - bv_signed i ∧ bv_signed sz - bv_signed o4 < bv_signed sz - bv_signed i) ∧ (0%Z ≤ bv_signed o4 ∧ bv_signed o4 ≤ bv_signed sz) ∧ (o4 = sz -> ¬ bv_unsigned (pelts xp (offset xp)) = 0%Z) ∧ offset o5 = offset x2 + bv_signed o4 ∧ pelts o5 = pelts x2 ∧ plength o5 = plength x2 ∧ (min o5 = min x2 ∧ C.max o5 = C.max x2) ∧ (¬ bv_unsigned (pelts xp (offset xp)) = 0%Z) = (bv_unsigned (0%bv : bv 64%N) = 0%Z) ∧ (0%Z ≤ bv_unsigned (0%bv : bv 64%N) ∧ bv_unsigned (0%bv : bv 64%N) ≤ 1%Z) ∧ value x2 (bv_signed o4) - Z.pow (18446744073709551615%Z + 1%Z) (bv_signed o4) * bv_unsigned (0%bv : bv 64%N) = value x (bv_signed o4) - 1%Z ∧ writable o5 = true ∧ (∀(j : Z), bv_signed o4 ≤ j ∧ j < bv_signed sz -> pelts x2 (offset x2 + j) = pelts x (offset x2 + j)) ∧ (∀(j : Z), j < offset x2 ∨ offset x2 + bv_signed sz ≤ j -> pelts x2 j = pelts x j))))))) else value x1 (bv_signed sz) = value x (bv_signed sz) - 1%Z ∧ (∀(j : Z), j < offset x1 ∨ offset x1 + bv_signed sz ≤ j -> pelts x1 j = pelts x j))))).
+Admitted.

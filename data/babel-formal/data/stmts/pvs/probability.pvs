@@ -1,0 +1,257 @@
+% Statement-only formalization of the Babel-formal artifact probability: event
+% operations, abstract probability laws, independence, and finite disjoint unions.
+% This file contains no proof.
+
+probability[
+  R: TYPE+,
+  Omega: TYPE,
+  zeroR: R,
+  oneR: R,
+  addR: [R, R -> R],
+  mulR: [R, R -> R],
+  oppR: [R -> R],
+  prob: [[Omega -> bool] -> R],
+  cprob: [[Omega -> bool], [Omega -> bool] -> R]
+]: THEORY
+BEGIN
+  event: TYPE = [Omega -> bool]
+
+  ev_false: event =
+    LAMBDA (w: Omega): FALSE
+
+  ev_true: event =
+    LAMBDA (w: Omega): TRUE
+
+  ev_inter(A, B: event): event =
+    LAMBDA (w: Omega): A(w) AND B(w)
+
+  ev_union(A, B: event): event =
+    LAMBDA (w: Omega): A(w) OR B(w)
+
+  ev_compl(A: event): event =
+    LAMBDA (w: Omega): NOT A(w)
+
+  ev_diff(A, B: event): event =
+    LAMBDA (w: Omega): A(w) AND NOT B(w)
+
+  inL(A: event, xs: list[event]): RECURSIVE bool =
+    CASES xs OF
+      null: FALSE,
+      cons(B, ys): A = B OR inL(A, ys)
+    ENDCASES
+  MEASURE xs BY <<
+
+  noDupL(xs: list[event]): RECURSIVE bool =
+    CASES xs OF
+      null: TRUE,
+      cons(A, ys): NOT inL(A, ys) AND noDupL(ys)
+    ENDCASES
+  MEASURE xs BY <<
+
+  disjoint(A, B: event): bool =
+    FORALL (w: Omega): NOT (A(w) AND B(w))
+
+  pairwiseDisjoint(xs: list[event]): RECURSIVE bool =
+    CASES xs OF
+      null: TRUE,
+      cons(A, ys):
+        CASES ys OF
+          null: TRUE,
+          cons(B, zs):
+            disjoint(A, B)
+              AND (FORALL (C: event):
+                inL(C, cons(B, zs)) IMPLIES disjoint(A, C))
+              AND pairwiseDisjoint(cons(B, zs))
+        ENDCASES
+    ENDCASES
+  MEASURE xs BY <<
+
+  bigUnionF(xs: list[event]): RECURSIVE event =
+    CASES xs OF
+      null: ev_false,
+      cons(A, ys): ev_union(A, bigUnionF(ys))
+    ENDCASES
+  MEASURE xs BY <<
+
+  mapProb(xs: list[event]): RECURSIVE list[R] =
+    CASES xs OF
+      null: null,
+      cons(A, ys): cons(prob(A), mapProb(ys))
+    ENDCASES
+  MEASURE xs BY <<
+
+  foldAdd(xs: list[R]): RECURSIVE R =
+    CASES xs OF
+      null: zeroR,
+      cons(x, ys): addR(x, foldAdd(ys))
+    ENDCASES
+  MEASURE xs BY <<
+
+  indep(A, B: event): bool =
+    prob(ev_inter(A, B)) = mulR(prob(A), prob(B))
+
+  ring_laws: bool =
+    NOT (oneR = zeroR)
+      AND (FORALL (x, y: R): addR(x, y) = addR(y, x))
+      AND (FORALL (x, y, z: R):
+        addR(addR(x, y), z) = addR(x, addR(y, z)))
+      AND (FORALL (x: R): addR(x, zeroR) = x)
+      AND (FORALL (x: R): addR(x, oppR(x)) = zeroR)
+      AND (FORALL (x, y: R): mulR(x, y) = mulR(y, x))
+      AND (FORALL (x, y, z: R):
+        mulR(mulR(x, y), z) = mulR(x, mulR(y, z)))
+      AND (FORALL (x: R): mulR(x, oneR) = x)
+      AND (FORALL (x, y, z: R):
+        mulR(x, addR(y, z)) =
+          addR(mulR(x, y), mulR(x, z)))
+      AND (FORALL (x: R): mulR(x, zeroR) = zeroR)
+      AND (FORALL (x, y: R):
+        mulR(x, y) = zeroR IMPLIES x = zeroR OR y = zeroR)
+
+  excluded_middle_assumption: bool =
+    FORALL (p: bool): p OR NOT p
+
+  probability_assumptions: bool =
+    (FORALL (A, B: event):
+      (FORALL (w: Omega): A(w) = B(w)) IMPLIES
+        prob(A) = prob(B))
+      AND prob(ev_false) = zeroR
+      AND prob(ev_true) = oneR
+      AND (FORALL (A, B: event):
+        prob(ev_union(A, B)) =
+          addR(prob(A),
+            addR(prob(B), oppR(prob(ev_inter(A, B))))))
+      AND (FORALL (A: event):
+        prob(ev_compl(A)) = addR(oneR, oppR(prob(A))))
+      AND excluded_middle_assumption
+      AND (FORALL (A, B: event):
+        prob(ev_inter(A, B)) =
+          mulR(cprob(A, B), prob(B)))
+      AND oppR(zeroR) = zeroR
+      AND (FORALL (x: R): oppR(oppR(x)) = x)
+      AND (FORALL (x, y: R):
+        mulR(x, oppR(y)) = oppR(mulR(x, y)))
+      AND (FORALL (x, y: R):
+        mulR(oppR(x), y) = oppR(mulR(x, y)))
+      AND (FORALL (A, B: event):
+        disjoint(A, B) IMPLIES
+          prob(ev_union(A, B)) = addR(prob(A), prob(B)))
+      AND (FORALL (A: event), (xs: list[event]):
+        pairwiseDisjoint(cons(A, xs)) IMPLIES
+          disjoint(A, bigUnionF(xs)))
+
+  probability_context: bool =
+    ring_laws AND probability_assumptions
+
+  ev_inter_comm: bool =
+    FORALL (A, B: event), (w: Omega):
+      ev_inter(A, B)(w) = ev_inter(B, A)(w)
+
+  ev_union_comm: bool =
+    FORALL (A, B: event), (w: Omega):
+      ev_union(A, B)(w) = ev_union(B, A)(w)
+
+  ev_inter_assoc: bool =
+    FORALL (A, B, C: event), (w: Omega):
+      ev_inter(ev_inter(A, B), C)(w) =
+        ev_inter(A, ev_inter(B, C))(w)
+
+  ev_union_assoc: bool =
+    FORALL (A, B, C: event), (w: Omega):
+      ev_union(ev_union(A, B), C)(w) =
+        ev_union(A, ev_union(B, C))(w)
+
+  ev_inter_distrib_left: bool =
+    FORALL (A, B, C: event), (w: Omega):
+      ev_inter(A, ev_union(B, C))(w) =
+        ev_union(ev_inter(A, B), ev_inter(A, C))(w)
+
+  prob_union_comm: bool =
+    probability_context IMPLIES
+      (FORALL (A, B: event):
+        prob(ev_union(A, B)) = prob(ev_union(B, A)))
+
+  prob_union_idem: bool =
+    probability_context IMPLIES
+      (FORALL (A: event):
+        prob(ev_union(A, A)) = prob(A))
+
+  prob_diff: bool =
+    probability_context IMPLIES
+      (FORALL (A, B: event):
+        prob(ev_diff(A, B)) =
+          addR(prob(A), oppR(prob(ev_inter(A, B)))))
+
+  bayes_symm: bool =
+    probability_context IMPLIES
+      (FORALL (A, B: event):
+        mulR(cprob(A, B), prob(B)) =
+          mulR(cprob(B, A), prob(A)))
+
+  law_total_prob: bool =
+    probability_context IMPLIES
+      (FORALL (A, B: event):
+        prob(A) =
+          addR(
+            mulR(cprob(A, B), prob(B)),
+            mulR(cprob(A, ev_compl(B)), prob(ev_compl(B)))))
+
+  prob_union_indep: bool =
+    probability_context IMPLIES
+      (FORALL (A, B: event):
+        indep(A, B) IMPLIES
+          prob(ev_union(A, B)) =
+            addR(prob(A),
+              addR(prob(B),
+                oppR(mulR(prob(A), prob(B))))))
+
+  indep_compl_right: bool =
+    probability_context IMPLIES
+      (FORALL (A, B: event):
+        indep(A, B) IMPLIES indep(A, ev_compl(B)))
+
+  indep_symm: bool =
+    probability_context IMPLIES
+      (FORALL (A, B: event):
+        indep(A, B) IMPLIES indep(B, A))
+
+  indep_compl_left: bool =
+    probability_context IMPLIES
+      (FORALL (A, B: event):
+        indep(A, B) IMPLIES indep(ev_compl(A), B))
+
+  indep_compl_both_assumption: bool =
+    FORALL (A, B: event):
+      indep(A, B) IMPLIES
+        indep(ev_compl(A), ev_compl(B))
+
+  post_independence_context: bool =
+    probability_context AND indep_compl_both_assumption
+
+  prob_bigUnion_disjoint: bool =
+    post_independence_context IMPLIES
+      (FORALL (xs: list[event]):
+        pairwiseDisjoint(xs) IMPLIES
+          prob(bigUnionF(xs)) = foldAdd(mapProb(xs)))
+
+  prob_bigUnion_disjoint_zero: bool =
+    post_independence_context IMPLIES
+      (FORALL (xs: list[event]):
+        pairwiseDisjoint(xs) IMPLIES
+          ((FORALL (A: event):
+            inL(A, xs) IMPLIES prob(A) = zeroR)
+            IMPLIES prob(bigUnionF(xs)) = zeroR))
+
+  inclusion_exclusion_three_assumption: bool =
+    FORALL (A, B, C: event):
+      prob(ev_union(ev_union(A, B), C)) =
+        addR(prob(A),
+          addR(prob(B),
+            addR(prob(C),
+              oppR(
+                addR(prob(ev_inter(A, B)),
+                  addR(prob(ev_inter(A, C)),
+                    addR(prob(ev_inter(B, C)),
+                      oppR(
+                        prob(ev_inter(ev_inter(A, B), C))))))))))
+END probability

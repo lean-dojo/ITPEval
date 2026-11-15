@@ -1,0 +1,670 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/euler_sieve_EulerSieveImpl_createqtvc: the Euler-sieve constructor
+% verification condition for initialized marker, successor, and compressed
+% array state, including loop invariants and the constructor postcondition.
+% This file contains no proof.
+
+euler_sieve_EulerSieveImpl_createqtvc[
+  t: TYPE+,
+  array63: TYPE+,
+  nexts: [t -> list[int]],
+  marked: [t -> list[bool]],
+  arr: [t -> array63],
+  max_value: [t -> bvec[63]],
+  max_arr: [t -> bvec[63]],
+  array_elts: [array63 -> list[int]],
+  array_size: [array63 -> int]
+]: THEORY
+BEGIN
+
+  IMPORTING bv[63], bv_nat[63]
+
+  word63: TYPE = bvec[63]
+
+  signed63(value: word63): int =
+    IF value(62) THEN
+      bv2nat[63](value) - 9223372036854775808
+    ELSE
+      bv2nat[63](value)
+    ENDIF
+
+  int63_max: int = 4611686018427387903
+  int63_min: int = -4611686018427387904
+
+  int63_in_bounds(value: int): bool =
+    int63_min <= value AND value <= int63_max
+
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  trunc_div(numerator, denominator: int): int =
+    IF denominator = 0 THEN
+      0
+    ELSIF numerator * denominator >= 0 THEN
+      floor((numerator :: real) / (denominator :: real))
+    ELSE
+      -floor(-((numerator :: real) / (denominator :: real)))
+    ENDIF
+
+  euclid_div(numerator, denominator: int): int =
+    IF denominator = 0 THEN
+      0
+    ELSIF denominator > 0 THEN
+      floor((numerator :: real) / (denominator :: real))
+    ELSE
+      -floor((numerator :: real) / (-(denominator) :: real))
+    ENDIF
+
+  euclid_mod(numerator, denominator: int): int =
+    numerator - denominator * euclid_div(numerator, denominator)
+
+  integer_divides(divisor, value: int): bool =
+    EXISTS (quotient: int): value = divisor * quotient
+
+  nth_int_default(values: list[int], index: nat): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          nth_int_default(tail, index - 1)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  nth_bool_default(values: list[bool], index: nat): RECURSIVE bool =
+    CASES values OF
+      null:
+        FALSE,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          nth_bool_default(tail, index - 1)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  create_int_list_from(
+      start: int,
+      count: nat,
+      f: [int -> int]): RECURSIVE list[int] =
+    IF count = 0 THEN
+      null
+    ELSE
+      cons(
+        f(start),
+        create_int_list_from(start + 1, count - 1, f))
+    ENDIF
+  MEASURE count
+
+  create_int_list(count: nat, f: [int -> int]): list[int] =
+    create_int_list_from(0, count, f)
+
+  create_bool_list_from(
+      start: int,
+      count: nat,
+      f: [int -> bool]): RECURSIVE list[bool] =
+    IF count = 0 THEN
+      null
+    ELSE
+      cons(
+        f(start),
+        create_bool_list_from(start + 1, count - 1, f))
+    ENDIF
+  MEASURE count
+
+  create_bool_list(count: nat, f: [int -> bool]): list[bool] =
+    create_bool_list_from(0, count, f)
+
+  set_int(
+      values: list[int],
+      index: nat,
+      value: int): RECURSIVE list[int] =
+    CASES values OF
+      null:
+        null,
+      cons(head, tail):
+        IF index = 0 THEN
+          cons(value, tail)
+        ELSE
+          cons(head, set_int(tail, index - 1, value))
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  inv_nexts(values: list[int], n: int): bool =
+    FORALL (i: int):
+      (0 <= i AND i < n)
+        IMPLIES
+          i < nth_int_default(values, int_to_nat(i))
+            AND nth_int_default(values, int_to_nat(i)) <= n
+
+  all_eliminated_marked(
+      marker_values: list[bool],
+      successor_values: list[int]): bool =
+    length(marker_values) = length(successor_values)
+      AND
+    (FORALL (i: int):
+      (0 <= i AND i < length(marker_values))
+        IMPLIES
+          (FORALL (j: int):
+            (i < j
+              AND j
+                < nth_int_default(
+                    successor_values, int_to_nat(i)))
+            IMPLIES
+              nth_bool_default(
+                marker_values, int_to_nat(j)) = TRUE))
+
+  fc(max1: word63, i: int): int =
+    IF i = signed63(max1) THEN
+      signed63(max1) + 1
+    ELSIF i = signed63(max1) - 1 THEN
+      IF euclid_mod(i, 2) = 0 THEN
+        signed63(max1)
+      ELSE
+        signed63(max1) + 1
+      ENDIF
+    ELSIF i < 3 OR euclid_mod(i, 2) = 0 THEN
+      i + 1
+    ELSE
+      i + 2
+    ENDIF
+
+  initial_mark(i: int): bool =
+    i = 0 OR i = 1 OR (2 < i AND euclid_mod(i, 2) = 0)
+
+  fc1(max1, len_arr: word63, i: int): int =
+    IF i = signed63(len_arr) - 1 THEN
+      signed63(max1) + 1
+    ELSIF i = 0 THEN
+      -2
+    ELSE
+      2 * i + 3
+    ENDIF
+
+  state_invariant(
+      successor_values: list[int],
+      marker_values: list[bool],
+      array_value: array63,
+      maximum, array_maximum: word63): bool =
+    signed63(maximum) < int63_max
+      AND 3 <= signed63(maximum)
+      AND length(successor_values) = length(marker_values)
+      AND length(marker_values) = signed63(maximum) + 1
+      AND euclid_div(signed63(maximum) - 1, 2)
+            = signed63(array_maximum)
+      AND length(array_elts(array_value))
+            = signed63(array_maximum) + 1
+      AND inv_nexts(successor_values, length(successor_values))
+      AND all_eliminated_marked(marker_values, successor_values)
+      AND
+    (FORALL (i: int):
+      (3 <= i AND i <= signed63(maximum))
+        IMPLIES euclid_mod(i, 2) = 0
+        IMPLIES
+          nth_bool_default(
+            marker_values, int_to_nat(i)) = TRUE)
+      AND
+    (FORALL (i: int):
+      (3 <= i AND i < signed63(maximum) - 1)
+        IMPLIES euclid_mod(i, 2) = 1
+        IMPLIES
+          euclid_mod(
+            nth_int_default(
+              successor_values, int_to_nat(i)),
+            2) = 1
+          OR
+          nth_int_default(
+            successor_values, int_to_nat(i))
+            = signed63(maximum) + 1)
+      AND
+      nth_int_default(
+        successor_values,
+        int_to_nat(signed63(maximum)))
+        = signed63(maximum) + 1
+      AND
+    (euclid_mod(signed63(maximum) - 1, 2) = 0
+      IMPLIES
+        nth_int_default(
+          successor_values,
+          int_to_nat(signed63(maximum) - 1))
+          = signed63(maximum))
+      AND
+    (euclid_mod(signed63(maximum) - 1, 2) = 1
+      IMPLIES
+        nth_int_default(
+          successor_values,
+          int_to_nat(signed63(maximum) - 1))
+          = signed63(maximum) + 1)
+      AND
+    (FORALL (i: int):
+      (0 <= i AND i <= signed63(array_maximum))
+        IMPLIES
+          -(signed63(maximum) + 1)
+            <= nth_int_default(
+                 array_elts(array_value), int_to_nat(i))
+          AND
+          nth_int_default(
+            array_elts(array_value), int_to_nat(i))
+            <= signed63(maximum) + 1)
+      AND
+    (FORALL (i: int):
+      (0 <= i AND i <= signed63(array_maximum))
+        IMPLIES
+          (nth_bool_default(
+             marker_values, int_to_nat(2 * i + 1)) = TRUE)
+            IFF
+          nth_int_default(
+            array_elts(array_value), int_to_nat(i)) < 0)
+      AND
+    (FORALL (i: int):
+      (0 <= i AND i <= signed63(array_maximum))
+        IMPLIES
+          NOT nth_bool_default(
+            marker_values, int_to_nat(2 * i + 1)) = TRUE
+        IMPLIES
+          nth_int_default(
+            array_elts(array_value), int_to_nat(i))
+            =
+          nth_int_default(
+            successor_values, int_to_nat(2 * i + 1)))
+      AND
+    (FORALL (i: int):
+      (0 <= i AND i <= signed63(array_maximum))
+        IMPLIES
+          nth_bool_default(
+            marker_values, int_to_nat(2 * i + 1)) = TRUE
+        IMPLIES
+          nth_int_default(
+            array_elts(array_value), int_to_nat(i))
+            =
+          -nth_int_default(
+            successor_values, int_to_nat(2 * i + 1)))
+      AND
+    (FORALL (i: int):
+      (0 <= i AND i <= signed63(array_maximum))
+        IMPLIES
+          (i
+             < euclid_div(
+                 abs(nth_int_default(
+                   array_elts(array_value), int_to_nat(i))),
+                 2)
+           AND
+           euclid_div(
+             abs(nth_int_default(
+               array_elts(array_value), int_to_nat(i))),
+             2)
+             <= signed63(array_maximum) + 1)
+          AND
+          abs(nth_int_default(
+            array_elts(array_value), int_to_nat(i)))
+            <= signed63(maximum) + 1)
+      AND
+    (FORALL (i, j: int):
+      (0 <= i AND i <= signed63(array_maximum))
+        IMPLIES
+          (i < j
+            AND j
+              < euclid_div(
+                  abs(nth_int_default(
+                    array_elts(array_value), int_to_nat(i))),
+                  2))
+        IMPLIES
+          nth_int_default(
+            array_elts(array_value), int_to_nat(j)) < 0)
+
+  array_invariant(array_value: array63): bool =
+    0 <= array_size(array_value)
+      AND array_size(array_value) = length(array_elts(array_value))
+      AND length(array_elts(array_value)) <= int63_max
+      AND
+    (FORALL (i: int):
+      (0 <= i AND i < length(array_elts(array_value)))
+        IMPLIES
+          int63_in_bounds(
+            nth_int_default(
+              array_elts(array_value), int_to_nat(i))))
+
+  source_context: bool =
+    (FORALL (array_value: array63):
+      array_invariant(array_value))
+      AND
+    (FORALL (self: t):
+      state_invariant(
+        nexts(self),
+        marked(self),
+        arr(self),
+        max_value(self),
+        max_arr(self)))
+      AND
+    (FORALL (left, right: t):
+      (nexts(left) = nexts(right)
+        AND marked(left) = marked(right)
+        AND arr(left) = arr(right)
+        AND max_value(left) = max_value(right)
+        AND max_arr(left) = max_arr(right))
+      IMPLIES left = right)
+
+  constructor_postcondition(result: t, max1: word63): bool =
+    max_value(result) = max1
+      AND
+      ((nth_bool_default(marked(result), 0)
+          = nth_bool_default(marked(result), 1)
+        AND nth_bool_default(marked(result), 1) = TRUE)
+       AND NOT nth_bool_default(marked(result), 2) = TRUE)
+      AND
+    (FORALL (i: int):
+      (1 <= i
+        AND i <= euclid_div(signed63(max1) - 1, 2))
+      IMPLIES
+        NOT nth_bool_default(
+          marked(result), int_to_nat(2 * i + 1)) = TRUE)
+      AND
+    (FORALL (i: int):
+      (2 <= i
+        AND i <= euclid_div(signed63(max1) + 1, 2))
+      IMPLIES 2 * i <= signed63(max1)
+      IMPLIES
+        nth_bool_default(
+          marked(result), int_to_nat(2 * i)) = TRUE)
+      AND
+    (FORALL (i: int):
+      (1 <= i
+        AND i <= euclid_div(signed63(max1) - 1, 2))
+      IMPLIES 2 * i + 1 < signed63(max1) - 1
+      IMPLIES
+        nth_int_default(
+          nexts(result), int_to_nat(2 * i + 1))
+          = 2 * i + 3)
+      AND
+    (FORALL (i: int):
+      (2 <= i
+        AND i <= euclid_div(signed63(max1) - 1, 2))
+      IMPLIES 2 * i < signed63(max1) - 1
+      IMPLIES
+        nth_int_default(
+          nexts(result), int_to_nat(2 * i))
+          = 2 * i + 1)
+      AND
+    (FORALL (i: int):
+      (0 <= i AND i <= signed63(max1))
+      IMPLIES
+        nth_bool_default(
+          marked(result), int_to_nat(i)) = TRUE
+      IMPLIES
+        i < 2 OR integer_divides(2, i))
+
+  completion_obligation(
+      max1, array_maximum: word63,
+      successor_values: list[int],
+      marker_values: list[bool],
+      array_value: array63): bool =
+    state_invariant(
+      successor_values,
+      marker_values,
+      array_value,
+      max1,
+      array_maximum)
+      AND
+    (FORALL (result: t):
+      (nexts(result) = successor_values
+        AND marked(result) = marker_values
+        AND arr(result) = array_value
+        AND max_value(result) = max1
+        AND max_arr(result) = array_maximum)
+      IMPLIES constructor_postcondition(result, max1))
+
+  finish_obligation(
+      max1: word63,
+      successor_values: list[int],
+      marker_values: list[bool],
+      array_value: array63): bool =
+    int63_in_bounds(signed63(max1) - 1)
+      AND
+    (FORALL (o7: word63):
+      signed63(o7) = signed63(max1) - 1
+      IMPLIES
+        (NOT 2 = 0
+          AND int63_in_bounds(trunc_div(signed63(o7), 2)))
+        AND
+        (FORALL (o8: word63):
+          signed63(o8) = trunc_div(signed63(o7), 2)
+          IMPLIES
+            completion_obligation(
+              max1,
+              o8,
+              successor_values,
+              marker_values,
+              array_value)))
+
+  prefix_matches(
+      array_value: array63,
+      upper: int,
+      f: [int -> int]): bool =
+    FORALL (j: int):
+      (0 <= j AND j < upper)
+      IMPLIES
+        nth_int_default(
+          array_elts(array_value), int_to_nat(j))
+          = f(j)
+
+  array_step_obligation(
+      max1, len_arr, index: word63,
+      f: [int -> int],
+      array_before: array63): bool =
+    int63_in_bounds(signed63(len_arr) - 1)
+      AND
+    (FORALL (o7: word63):
+      signed63(o7) = signed63(len_arr) - 1
+      IMPLIES
+        (signed63(index) = signed63(o7) IMPLIES index = o7)
+      IMPLIES
+        (IF index = o7 THEN
+           int63_in_bounds(signed63(max1) + 1)
+         ELSE
+           int63_in_bounds(2 * signed63(index))
+             AND
+           (FORALL (o8: word63):
+             signed63(o8) = 2 * signed63(index)
+             IMPLIES int63_in_bounds(signed63(o8) + 3))
+         ENDIF)
+        AND
+        (FORALL (o8: word63):
+          (IF index = o7 THEN
+             signed63(o8) = signed63(max1) + 1
+           ELSE
+             EXISTS (o9: word63):
+               signed63(o9) = 2 * signed63(index)
+                 AND signed63(o8) = signed63(o9) + 3
+           ENDIF)
+          IMPLIES
+            (0 <= signed63(index)
+              AND signed63(index)
+                < length(array_elts(array_before)))
+            AND
+            (FORALL (array_after: array63):
+              array_size(array_after) = array_size(array_before)
+              IMPLIES
+                array_elts(array_after)
+                  =
+                set_int(
+                  array_elts(array_before),
+                  int_to_nat(signed63(index)),
+                  signed63(o8))
+              IMPLIES
+                prefix_matches(
+                  array_after,
+                  signed63(index) + 1,
+                  f))))
+
+  positive_array_loop_obligation(
+      max1, len_arr, o6: word63,
+      successor_values: list[int],
+      marker_values: list[bool],
+      f: [int -> int],
+      initial_array: array63): bool =
+    prefix_matches(initial_array, 1, f)
+      AND
+    (FORALL (array_value: array63):
+      array_size(array_value) = array_size(initial_array)
+      IMPLIES
+        (FORALL (index: word63):
+          ((1 <= signed63(index)
+              AND signed63(index) <= signed63(o6))
+            AND
+            prefix_matches(
+              array_value, signed63(index), f))
+          IMPLIES
+            array_step_obligation(
+              max1,
+              len_arr,
+              index,
+              f,
+              array_value))
+        AND
+        (prefix_matches(
+           array_value, signed63(o6) + 1, f)
+         IMPLIES
+           finish_obligation(
+             max1,
+             successor_values,
+             marker_values,
+             array_value)))
+
+  array_initialization_obligation(
+      max1, len_arr: word63,
+      successor_values: list[int],
+      marker_values: list[bool]): bool =
+    LET f: [int -> int] =
+      (LAMBDA (i: int): fc1(max1, len_arr, i))
+    IN
+      0 <= signed63(len_arr)
+        AND
+      (FORALL (initial_array: array63):
+        ((FORALL (i: int):
+           (0 <= i AND i < signed63(len_arr))
+           IMPLIES
+             nth_int_default(
+               array_elts(initial_array), int_to_nat(i)) = -2)
+          AND
+          length(array_elts(initial_array)) = signed63(len_arr))
+        IMPLIES
+          int63_in_bounds(signed63(len_arr) - 1)
+            AND
+          (FORALL (o6: word63):
+            signed63(o6) = signed63(len_arr) - 1
+            IMPLIES
+              (1 <= signed63(o6) + 1
+               IMPLIES
+                 positive_array_loop_obligation(
+                   max1,
+                   len_arr,
+                   o6,
+                   successor_values,
+                   marker_values,
+                   f,
+                   initial_array))
+              AND
+              (signed63(o6) + 1 < 1
+               IMPLIES
+                 finish_obligation(
+                   max1,
+                   successor_values,
+                   marker_values,
+                   initial_array))))
+
+  marker_initialization_obligation(
+      max1, len_arr: word63,
+      len: int,
+      successor_values: list[int]): bool =
+    LET marker_function: [int -> bool] =
+      (LAMBDA (i: int): initial_mark(i))
+    IN
+      0 <= len
+        AND
+      LET marker_values: list[bool] =
+        create_bool_list(int_to_nat(len), marker_function)
+      IN
+        (length(marker_values) = len
+          AND
+         (FORALL (i: int):
+           (0 <= i AND i < len)
+           IMPLIES
+             nth_bool_default(
+               marker_values, int_to_nat(i))
+               = marker_function(i)))
+        IMPLIES
+          array_initialization_obligation(
+            max1,
+            len_arr,
+            successor_values,
+            marker_values)
+
+  successor_initialization_obligation(
+      max1, len_arr: word63,
+      len: int): bool =
+    LET successor_function: [int -> int] =
+      (LAMBDA (i: int): fc(max1, i))
+    IN
+      0 <= len
+        AND
+      LET successor_values: list[int] =
+        create_int_list(int_to_nat(len), successor_function)
+      IN
+        (length(successor_values) = len
+          AND
+         (FORALL (i: int):
+           (0 <= i AND i < len)
+           IMPLIES
+             nth_int_default(
+               successor_values, int_to_nat(i))
+               = successor_function(i)))
+        IMPLIES
+          (FORALL (i: int):
+            NOT i = 0
+            IMPLIES NOT i = 1
+            IMPLIES 2 < i
+            IMPLIES NOT 2 = 0)
+          AND
+          marker_initialization_obligation(
+            max1,
+            len_arr,
+            len,
+            successor_values)
+
+  create_vc: bool =
+    source_context
+      IMPLIES
+    (FORALL (max1: word63):
+      (signed63(max1) < int63_max
+        AND 3 <= signed63(max1))
+      IMPLIES
+        LET len: int = signed63(max1) + 1
+        IN
+          int63_in_bounds(signed63(max1) - 1)
+            AND
+          (FORALL (o2: word63):
+            signed63(o2) = signed63(max1) - 1
+            IMPLIES
+              (NOT 2 = 0
+                AND int63_in_bounds(
+                  trunc_div(signed63(o2), 2)))
+              AND
+              (FORALL (o3: word63):
+                signed63(o3) = trunc_div(signed63(o2), 2)
+                IMPLIES
+                  int63_in_bounds(signed63(o3) + 1)
+                    AND
+                  (FORALL (len_arr: word63):
+                    signed63(len_arr) = signed63(o3) + 1
+                    IMPLIES
+                      successor_initialization_obligation(
+                        max1,
+                        len_arr,
+                        len)))))
+
+END euler_sieve_EulerSieveImpl_createqtvc

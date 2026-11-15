@@ -1,0 +1,60 @@
+% Statement-only formalization of miniF2F artifact amc12a_2003_p24: zero is the
+% greatest value of the specified sum of two real base-logarithms. This file contains no proof.
+
+amc12a_2003_p24: THEORY
+BEGIN
+  safe_div(x, y: real): real =
+    IF y = 0 THEN 0 ELSE x / y ENDIF
+
+  natural_log_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET j: nat = count - 1,
+          ratio: real = safe_div(x - 1, x + 1)
+      IN
+        natural_log_partial(x, count - 1)
+          + 2 * safe_div(
+              ratio ^ (2 * j + 1),
+              (2 * j + 1) :: real)
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: [nat -> real], value: real): bool =
+    FORALL (eps: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < eps
+
+  natural_log_value(argument, value: real): bool =
+    argument > 0
+      AND converges_to(
+        (LAMBDA (count: nat): natural_log_partial(argument, count)),
+        value)
+
+  log_base_value(base, argument, value: real): bool =
+    base > 0
+      AND base /= 1
+      AND argument > 0
+      AND EXISTS (log_argument, log_base: real):
+        natural_log_value(argument, log_argument)
+          AND natural_log_value(base, log_base)
+          AND log_base /= 0
+          AND value = safe_div(log_argument, log_base)
+
+  attainable(y: real): bool =
+    EXISTS (a, b, log_a_a_over_b, log_b_b_over_a: real):
+      1 < b
+        AND b <= a
+        AND log_base_value(
+          a, safe_div(a, b), log_a_a_over_b)
+        AND log_base_value(
+          b, safe_div(b, a), log_b_b_over_a)
+        AND y = log_a_a_over_b + log_b_b_over_a
+
+  amc12a_2003_p24: bool =
+    attainable(0)
+      AND (FORALL (y: real):
+        attainable(y) IMPLIES y <= 0)
+END amc12a_2003_p24

@@ -1,0 +1,109 @@
+% Statement-only formalization of the VERINA corpus artifact verina_advanced_1,
+% "FindSingleNumber": scanning an integer list to return its unique value of
+% multiplicity one when all other listed values have multiplicity two.
+% This file contains no proof.
+
+verina_advanced_1: THEORY
+BEGIN
+
+  filterlist(x: int, nums: list[int]): RECURSIVE list[int] =
+    CASES nums OF
+      null: null,
+      cons(y, ys):
+        IF y = x THEN
+          cons(y, filterlist(x, ys))
+        ELSE
+          filterlist(x, ys)
+        ENDIF
+    ENDCASES
+  MEASURE nums BY <<
+
+  int_list_length(nums: list[int]): RECURSIVE nat =
+    CASES nums OF
+      null: 0,
+      cons(y, ys): int_list_length(ys) + 1
+    ENDCASES
+  MEASURE nums BY <<
+
+  occurrence_count(x: int, nums: list[int]): nat =
+    int_list_length(filterlist(x, nums))
+
+  map_occurrence_counts(
+      original, remaining: list[int]): RECURSIVE list[nat] =
+    CASES remaining OF
+      null: null,
+      cons(x, xs):
+        cons(
+          occurrence_count(x, original),
+          map_occurrence_counts(original, xs))
+    ENDCASES
+  MEASURE remaining BY <<
+
+  valid_multiplicities(counts: list[nat]): RECURSIVE bool =
+    CASES counts OF
+      null: TRUE,
+      cons(count, rest):
+        (count = 1 OR count = 2)
+          AND valid_multiplicities(rest)
+    ENDCASES
+  MEASURE counts BY <<
+
+  nat_occurrence_count(value: nat, values: list[nat]): RECURSIVE nat =
+    CASES values OF
+      null: 0,
+      cons(head, tail):
+        (IF head = value THEN 1 ELSE 0 ENDIF)
+          + nat_occurrence_count(value, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  FindSingleNumber_precond(nums: list[int]): bool =
+    LET numsCount: list[nat] =
+      map_occurrence_counts(nums, nums)
+    IN
+      valid_multiplicities(numsCount)
+        AND nat_occurrence_count(1, numsCount) = 1
+
+  findUnique(
+      nums, remaining: list[int]): RECURSIVE int =
+    CASES remaining OF
+      null: 0,
+      cons(x, xs):
+        LET filtered: list[int] = filterlist(x, nums),
+            count: nat = int_list_length(filtered)
+        IN
+          IF count = 1 THEN
+            x
+          ELSE
+            findUnique(nums, xs)
+          ENDIF
+    ENDCASES
+  MEASURE remaining BY <<
+
+  FindSingleNumber(nums: list[int]): int =
+    findUnique(nums, nums)
+
+  int_member(x: int, nums: list[int]): RECURSIVE bool =
+    CASES nums OF
+      null: FALSE,
+      cons(y, ys): x = y OR int_member(x, ys)
+    ENDCASES
+  MEASURE nums BY <<
+
+  FindSingleNumber_postcond(
+      nums: list[int],
+      result: int): bool =
+    int_list_length(nums) > 0
+      AND occurrence_count(result, nums) = 1
+      AND (FORALL (x: int):
+        int_member(x, nums) IMPLIES
+          x = result OR occurrence_count(x, nums) = 2)
+
+  FindSingleNumber_spec_satisfied: bool =
+    FORALL (nums: list[int]):
+      FindSingleNumber_precond(nums) IMPLIES
+        FindSingleNumber_postcond(
+          nums,
+          FindSingleNumber(nums))
+
+END verina_advanced_1

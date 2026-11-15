@@ -1,0 +1,104 @@
+% Statement-only formalization of the Thousand Theorems artifact Q1047749,
+% "Turán's theorem": a finite simple graph is maximal among graphs with no
+% clique of size r + 1 exactly when it is isomorphic to the canonical complete
+% r-partite Turán graph with parts as equal in size as possible. This file contains no proof.
+
+turan_s_theorem_Q1047749[V: TYPE]: THEORY
+BEGIN
+  graph: TYPE = [V, V -> bool]
+  vertex_pair: TYPE = [# left_vertex: V, right_vertex: V #]
+
+  simple_graph(G: graph): bool =
+    (FORALL (v: V): NOT G(v, v))
+      AND
+    (FORALL (v, w: V): G(v, w) IFF G(w, v))
+
+  injective_vertices(
+      count: nat,
+      vertices: [below(count) -> V]): bool =
+    FORALL (i, j: below(count)):
+      vertices(i) = vertices(j) IMPLIES i = j
+
+  clique_embedding(
+      G: graph,
+      count: nat,
+      vertices: [below(count) -> V]): bool =
+    injective_vertices(count, vertices)
+      AND
+    (FORALL (i, j: below(count)):
+      i /= j IMPLIES G(vertices(i), vertices(j)))
+
+  clique_free(G: graph, count: nat): bool =
+    NOT EXISTS (vertices: [below(count) -> V]):
+      clique_embedding(G, count, vertices)
+
+  % For a loopless symmetric graph, every unordered edge has exactly two
+  % ordered orientations. Comparing ordered-edge counts is therefore
+  % equivalent to comparing the source graph's unordered edge counts.
+  enumerates_ordered_edges(
+      G: graph,
+      count: nat,
+      enumeration: [below(count) -> vertex_pair]): bool =
+    (FORALL (i, j: below(count)):
+      enumeration(i) = enumeration(j) IMPLIES i = j)
+      AND
+    (FORALL (edge: vertex_pair):
+      G(left_vertex(edge), right_vertex(edge))
+        IFF
+      EXISTS (i: below(count)): enumeration(i) = edge)
+
+  has_ordered_edge_count(G: graph, count: nat): bool =
+    EXISTS (enumeration: [below(count) -> vertex_pair]):
+      enumerates_ordered_edges(G, count, enumeration)
+
+  ordered_edge_count_le(H, G: graph): bool =
+    EXISTS (h_count, g_count: nat):
+      has_ordered_edge_count(H, h_count)
+        AND has_ordered_edge_count(G, g_count)
+        AND h_count <= g_count
+
+  is_turan_maximal(G: graph, r: nat): bool =
+    simple_graph(G)
+      AND clique_free(G, r + 1)
+      AND
+    (FORALL (H: graph):
+      simple_graph(H) AND clique_free(H, r + 1)
+        IMPLIES ordered_edge_count_le(H, G))
+
+  bijection_to_below(n: nat, index_of: [V -> below(n)]): bool =
+    (FORALL (v, w: V):
+      index_of(v) = index_of(w) IMPLIES v = w)
+      AND
+    (FORALL (i: below(n)):
+      EXISTS (v: V): index_of(v) = i)
+
+  finite_vertex_type: bool =
+    EXISTS (n: nat):
+      EXISTS (index_of: [V -> below(n)]):
+        bijection_to_below(n, index_of)
+
+  turan_adj(n, r: nat, i, j: below(n)): bool =
+    IF r = 0 THEN
+      i /= j
+    ELSE
+      mod(i, r) /= mod(j, r)
+    ENDIF
+
+  isomorphic_to_turan(G: graph, r: nat): bool =
+    EXISTS (n: nat):
+      EXISTS (index_of: [V -> below(n)]):
+        bijection_to_below(n, index_of)
+          AND
+        (FORALL (v, w: V):
+          G(v, w)
+            IFF turan_adj(n, r, index_of(v), index_of(w)))
+
+  turan_s_theorem: bool =
+    FORALL (G: graph), (r: nat):
+      (simple_graph(G)
+        AND finite_vertex_type
+        AND 0 < r)
+      IMPLIES
+        (is_turan_maximal(G, r)
+          IFF isomorphic_to_turan(G, r))
+END turan_s_theorem_Q1047749

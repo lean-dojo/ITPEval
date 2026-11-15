@@ -1,0 +1,175 @@
+% Statement-only formalization of the VERINA corpus artifact verina_basic_45
+% (verina__pvs__verina_basic_45), catalog title "findProduct": the exact
+% executable integer-list search multiplies the first even entry by the first
+% odd entry under its precondition and match-based correctness contract. This
+% file contains no proof.
+
+verina_basic_45: THEORY
+BEGIN
+
+  nat_option: DATATYPE
+  BEGIN
+    NoNat: NoNat?
+    SomeNat(option_value: nat): SomeNat?
+  END nat_option
+
+  index_pair: TYPE =
+    [# even_index: nat,
+       odd_index: nat #]
+
+  index_pair_option: DATATYPE
+  BEGIN
+    NoIndexPair: NoIndexPair?
+    SomeIndexPair(index_pair_value: index_pair): SomeIndexPair?
+  END index_pair_option
+
+  int_list_length(
+      values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        int_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  % Lean List.get! on integer lists returns zero outside the list.
+  int_list_get_bang(
+      index: nat,
+      values: list[int]): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          int_list_get_bang(index - 1, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  isEven(n: int): bool =
+    mod(n, 2) = 0
+
+  isOdd(n: int): bool =
+    mod(n, 2) /= 0
+
+  contains_even(
+      values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        FALSE,
+      cons(head, tail):
+        isEven(head) OR contains_even(tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  contains_odd(
+      values: list[int]): RECURSIVE bool =
+    CASES values OF
+      null:
+        FALSE,
+      cons(head, tail):
+        isOdd(head) OR contains_odd(tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  find_even_index_from(
+      remaining: list[int],
+      index: nat): RECURSIVE nat_option =
+    CASES remaining OF
+      null:
+        NoNat,
+      cons(head, tail):
+        IF isEven(head) THEN
+          SomeNat(index)
+        ELSE
+          find_even_index_from(tail, index + 1)
+        ENDIF
+    ENDCASES
+  MEASURE remaining BY <<
+
+  find_odd_index_from(
+      remaining: list[int],
+      index: nat): RECURSIVE nat_option =
+    CASES remaining OF
+      null:
+        NoNat,
+      cons(head, tail):
+        IF isOdd(head) THEN
+          SomeNat(index)
+        ELSE
+          find_odd_index_from(tail, index + 1)
+        ENDIF
+    ENDCASES
+  MEASURE remaining BY <<
+
+  find_even_index(
+      values: list[int]): nat_option =
+    find_even_index_from(values, 0)
+
+  find_odd_index(
+      values: list[int]): nat_option =
+    find_odd_index_from(values, 0)
+
+  % These are the source's two independent List.findIdx? calls, paired only
+  % when both searches succeed.
+  firstEvenOddIndices(
+      lst: list[int]): index_pair_option =
+    LET even_result: nat_option = find_even_index(lst),
+        odd_result: nat_option = find_odd_index(lst)
+    IN
+      CASES even_result OF
+        NoNat:
+          NoIndexPair,
+        SomeNat(ei):
+          CASES odd_result OF
+            NoNat:
+              NoIndexPair,
+            SomeNat(oi):
+              SomeIndexPair(
+                (# even_index := ei,
+                   odd_index := oi #))
+          ENDCASES
+      ENDCASES
+
+  findProduct_precond(
+      lst: list[int]): bool =
+    int_list_length(lst) > 1
+      AND contains_even(lst)
+      AND contains_odd(lst)
+
+  % The source precondition proof argument is computationally irrelevant.
+  findProduct(
+      lst: list[int]): int =
+    CASES firstEvenOddIndices(lst) OF
+      NoIndexPair:
+        0,
+      SomeIndexPair(indices):
+        int_list_get_bang(even_index(indices), lst)
+          * int_list_get_bang(odd_index(indices), lst)
+    ENDCASES
+
+  findProduct_postcond(
+      lst: list[int],
+      result: int): bool =
+    CASES firstEvenOddIndices(lst) OF
+      NoIndexPair:
+        TRUE,
+      SomeIndexPair(indices):
+        result
+          =
+            int_list_get_bang(even_index(indices), lst)
+              * int_list_get_bang(odd_index(indices), lst)
+    ENDCASES
+
+  findProduct_spec_satisfied: bool =
+    FORALL (lst: list[int]):
+      findProduct_precond(lst)
+        IMPLIES
+          findProduct_postcond(
+            lst,
+            findProduct(lst))
+
+END verina_basic_45

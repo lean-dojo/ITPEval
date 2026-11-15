@@ -1,0 +1,332 @@
+% Statement-only formalization of the thousand-theorems corpus artifact
+% Q1068976 (thousand-theorems__pvs__Q1068976), "Hilbert's Nullstellensatz":
+% over an algebraically closed field extension, the vanishing ideal of an
+% ideal's zero locus is its radical. This file contains no proof.
+
+hilberts_nullstellensatz_Q1068976[
+  Variable: TYPE,
+  k, K, Poly: TYPE+,
+  zero_k, one_k: k,
+  neg_k: [k -> k],
+  add_k, mul_k: [k, k -> k],
+  inv_k: [k -> k],
+  zero_K, one_K: K,
+  neg_K: [K -> K],
+  add_K, mul_K: [K, K -> K],
+  inv_K: [K -> K],
+  algebra_map: [k -> K],
+  zero_poly, one_poly: Poly,
+  neg_poly: [Poly -> Poly],
+  add_poly, mul_poly: [Poly, Poly -> Poly],
+  coefficient: [Poly, [Variable -> nat] -> k],
+  evaluate: [Poly, [Variable -> K] -> K]
+]: THEORY
+BEGIN
+
+  monomial: TYPE = [Variable -> nat]
+  point: TYPE = [Variable -> K]
+  ideal: TYPE = [Poly -> bool]
+
+  decomposition: TYPE =
+    [# left_monomial: monomial, right_monomial: monomial #]
+
+  zero_monomial: monomial =
+    LAMBDA (v: Variable): 0
+
+  monomial_add(left, right: monomial): monomial =
+    LAMBDA (v: Variable): left(v) + right(v)
+
+  power_K(x: K, exponent: nat): RECURSIVE K =
+    IF exponent = 0 THEN
+      one_K
+    ELSE
+      mul_K(power_K(x, exponent - 1), x)
+    ENDIF
+  MEASURE exponent
+
+  power_poly(p: Poly, exponent: nat): RECURSIVE Poly =
+    IF exponent = 0 THEN
+      one_poly
+    ELSE
+      mul_poly(power_poly(p, exponent - 1), p)
+    ENDIF
+  MEASURE exponent
+
+  in_variable(v: Variable, variables: list[Variable]): RECURSIVE bool =
+    CASES variables OF
+      null: FALSE,
+      cons(head, tail): v = head OR in_variable(v, tail)
+    ENDCASES
+  MEASURE variables BY <<
+
+  no_duplicate_variables(variables: list[Variable]): RECURSIVE bool =
+    CASES variables OF
+      null: TRUE,
+      cons(head, tail):
+        NOT in_variable(head, tail)
+          AND no_duplicate_variables(tail)
+    ENDCASES
+  MEASURE variables BY <<
+
+  exact_variable_list(variables: list[Variable]): bool =
+    no_duplicate_variables(variables)
+      AND (FORALL (v: Variable): in_variable(v, variables))
+
+  in_monomial(m: monomial, monomials: list[monomial]): RECURSIVE bool =
+    CASES monomials OF
+      null: FALSE,
+      cons(head, tail): m = head OR in_monomial(m, tail)
+    ENDCASES
+  MEASURE monomials BY <<
+
+  no_duplicate_monomials(monomials: list[monomial]): RECURSIVE bool =
+    CASES monomials OF
+      null: TRUE,
+      cons(head, tail):
+        NOT in_monomial(head, tail)
+          AND no_duplicate_monomials(tail)
+    ENDCASES
+  MEASURE monomials BY <<
+
+  exact_support(p: Poly, monomials: list[monomial]): bool =
+    no_duplicate_monomials(monomials)
+      AND (FORALL (m: monomial):
+        in_monomial(m, monomials)
+          IFF NOT coefficient(p, m) = zero_k)
+
+  function_exact_support(
+      f: [monomial -> k],
+      monomials: list[monomial]): bool =
+    no_duplicate_monomials(monomials)
+      AND (FORALL (m: monomial):
+        in_monomial(m, monomials)
+          IFF NOT f(m) = zero_k)
+
+  finitely_supported(f: [monomial -> k]): bool =
+    EXISTS (monomials: list[monomial]):
+      function_exact_support(f, monomials)
+
+  in_decomposition(
+      d: decomposition,
+      decompositions: list[decomposition]): RECURSIVE bool =
+    CASES decompositions OF
+      null: FALSE,
+      cons(head, tail):
+        d = head OR in_decomposition(d, tail)
+    ENDCASES
+  MEASURE decompositions BY <<
+
+  no_duplicate_decompositions(
+      decompositions: list[decomposition]): RECURSIVE bool =
+    CASES decompositions OF
+      null: TRUE,
+      cons(head, tail):
+        NOT in_decomposition(head, tail)
+          AND no_duplicate_decompositions(tail)
+    ENDCASES
+  MEASURE decompositions BY <<
+
+  exact_decompositions(
+      m: monomial,
+      decompositions: list[decomposition]): bool =
+    no_duplicate_decompositions(decompositions)
+      AND (FORALL (left, right: monomial):
+        in_decomposition(
+          (# left_monomial := left, right_monomial := right #),
+          decompositions)
+        IFF monomial_add(left, right) = m)
+
+  convolution_sum(
+      p, q: Poly,
+      decompositions: list[decomposition]): RECURSIVE k =
+    CASES decompositions OF
+      null: zero_k,
+      cons(head, tail):
+        add_k(
+          mul_k(
+            coefficient(p, left_monomial(head)),
+            coefficient(q, right_monomial(head))),
+          convolution_sum(p, q, tail))
+    ENDCASES
+  MEASURE decompositions BY <<
+
+  monomial_value(
+      x: point,
+      m: monomial,
+      variables: list[Variable]): RECURSIVE K =
+    CASES variables OF
+      null: one_K,
+      cons(head, tail):
+        mul_K(
+          power_K(x(head), m(head)),
+          monomial_value(x, m, tail))
+    ENDCASES
+  MEASURE variables BY <<
+
+  evaluation_sum(
+      p: Poly,
+      x: point,
+      monomials: list[monomial],
+      variables: list[Variable]): RECURSIVE K =
+    CASES monomials OF
+      null: zero_K,
+      cons(head, tail):
+        add_K(
+          mul_K(
+            algebra_map(coefficient(p, head)),
+            monomial_value(x, head, variables)),
+          evaluation_sum(p, x, tail, variables))
+    ENDCASES
+  MEASURE monomials BY <<
+
+  list_has_nonzero(coefficients: list[K]): RECURSIVE bool =
+    CASES coefficients OF
+      null: FALSE,
+      cons(head, tail):
+        NOT head = zero_K OR list_has_nonzero(tail)
+    ENDCASES
+  MEASURE coefficients BY <<
+
+  univariate_value(coefficients: list[K], x: K): RECURSIVE K =
+    CASES coefficients OF
+      null: zero_K,
+      cons(head, tail):
+        add_K(head, mul_K(x, univariate_value(tail, x)))
+    ENDCASES
+  MEASURE coefficients BY <<
+
+  nonconstant_polynomial(coefficients: list[K]): bool =
+    CASES coefficients OF
+      null: FALSE,
+      cons(constant, higher_coefficients):
+        list_has_nonzero(higher_coefficients)
+    ENDCASES
+
+  field_laws_k: bool =
+    NOT one_k = zero_k
+      AND (FORALL (a, b: k): add_k(a, b) = add_k(b, a))
+      AND (FORALL (a, b, c: k):
+        add_k(add_k(a, b), c) = add_k(a, add_k(b, c)))
+      AND (FORALL (a: k): add_k(a, zero_k) = a)
+      AND (FORALL (a: k): add_k(a, neg_k(a)) = zero_k)
+      AND (FORALL (a, b: k): mul_k(a, b) = mul_k(b, a))
+      AND (FORALL (a, b, c: k):
+        mul_k(mul_k(a, b), c) = mul_k(a, mul_k(b, c)))
+      AND (FORALL (a: k): mul_k(a, one_k) = a)
+      AND (FORALL (a, b, c: k):
+        mul_k(a, add_k(b, c))
+          = add_k(mul_k(a, b), mul_k(a, c)))
+      AND (FORALL (a: k):
+        NOT a = zero_k IMPLIES mul_k(a, inv_k(a)) = one_k)
+
+  field_laws_K: bool =
+    NOT one_K = zero_K
+      AND (FORALL (a, b: K): add_K(a, b) = add_K(b, a))
+      AND (FORALL (a, b, c: K):
+        add_K(add_K(a, b), c) = add_K(a, add_K(b, c)))
+      AND (FORALL (a: K): add_K(a, zero_K) = a)
+      AND (FORALL (a: K): add_K(a, neg_K(a)) = zero_K)
+      AND (FORALL (a, b: K): mul_K(a, b) = mul_K(b, a))
+      AND (FORALL (a, b, c: K):
+        mul_K(mul_K(a, b), c) = mul_K(a, mul_K(b, c)))
+      AND (FORALL (a: K): mul_K(a, one_K) = a)
+      AND (FORALL (a, b, c: K):
+        mul_K(a, add_K(b, c))
+          = add_K(mul_K(a, b), mul_K(a, c)))
+      AND (FORALL (a: K):
+        NOT a = zero_K IMPLIES mul_K(a, inv_K(a)) = one_K)
+
+  algebra_map_laws: bool =
+    algebra_map(zero_k) = zero_K
+      AND algebra_map(one_k) = one_K
+      AND (FORALL (a, b: k):
+        algebra_map(add_k(a, b))
+          = add_K(algebra_map(a), algebra_map(b)))
+      AND (FORALL (a, b: k):
+        algebra_map(mul_k(a, b))
+          = mul_K(algebra_map(a), algebra_map(b)))
+
+  algebraically_closed_K: bool =
+    FORALL (coefficients: list[K]):
+      nonconstant_polynomial(coefficients)
+        IMPLIES EXISTS (x: K):
+          univariate_value(coefficients, x) = zero_K
+
+  polynomial_representation_laws: bool =
+    (FORALL (p, q: Poly):
+      (FORALL (m: monomial):
+        coefficient(p, m) = coefficient(q, m))
+      IMPLIES p = q)
+      AND (FORALL (p: Poly):
+        EXISTS (monomials: list[monomial]):
+          exact_support(p, monomials))
+      AND (FORALL (f: [monomial -> k]):
+        finitely_supported(f)
+          IMPLIES EXISTS (p: Poly):
+            FORALL (m: monomial):
+              coefficient(p, m) = f(m))
+      AND (FORALL (m: monomial):
+        coefficient(zero_poly, m) = zero_k)
+      AND (FORALL (m: monomial):
+        coefficient(one_poly, m)
+          = IF m = zero_monomial THEN one_k ELSE zero_k ENDIF)
+      AND (FORALL (p: Poly), (m: monomial):
+        coefficient(neg_poly(p), m)
+          = neg_k(coefficient(p, m)))
+      AND (FORALL (p, q: Poly), (m: monomial):
+        coefficient(add_poly(p, q), m)
+          = add_k(coefficient(p, m), coefficient(q, m)))
+      AND (FORALL (m: monomial):
+        EXISTS (decompositions: list[decomposition]):
+          exact_decompositions(m, decompositions))
+      AND (FORALL (p, q: Poly), (m: monomial),
+                  (decompositions: list[decomposition]):
+        exact_decompositions(m, decompositions)
+          IMPLIES coefficient(mul_poly(p, q), m)
+            = convolution_sum(p, q, decompositions))
+      AND (EXISTS (variables: list[Variable]):
+        exact_variable_list(variables))
+      AND (FORALL (p: Poly), (x: point),
+                  (monomials: list[monomial]),
+                  (variables: list[Variable]):
+        exact_support(p, monomials)
+          AND exact_variable_list(variables)
+          IMPLIES evaluate(p, x)
+            = evaluation_sum(p, x, monomials, variables))
+
+  is_ideal(I: ideal): bool =
+    I(zero_poly)
+      AND (FORALL (p, q: Poly):
+        I(p) AND I(q) IMPLIES I(add_poly(p, q)))
+      AND (FORALL (p: Poly):
+        I(p) IMPLIES I(neg_poly(p)))
+      AND (FORALL (a, p: Poly):
+        I(p) IMPLIES I(mul_poly(a, p)))
+
+  zero_locus(I: ideal, x: point): bool =
+    FORALL (p: Poly):
+      I(p) IMPLIES evaluate(p, x) = zero_K
+
+  vanishing_ideal_member(I: ideal, p: Poly): bool =
+    FORALL (x: point):
+      zero_locus(I, x) IMPLIES evaluate(p, x) = zero_K
+
+  radical_member(I: ideal, p: Poly): bool =
+    EXISTS (exponent: posnat):
+      I(power_poly(p, exponent))
+
+  hilberts_nullstellensatz: bool =
+    (field_laws_k
+      AND field_laws_K
+      AND algebra_map_laws
+      AND algebraically_closed_K
+      AND is_finite_type[Variable]
+      AND polynomial_representation_laws)
+    IMPLIES
+      FORALL (I: ideal):
+        is_ideal(I) IMPLIES
+          FORALL (p: Poly):
+            vanishing_ideal_member(I, p)
+              IFF radical_member(I, p)
+
+END hilberts_nullstellensatz_Q1068976

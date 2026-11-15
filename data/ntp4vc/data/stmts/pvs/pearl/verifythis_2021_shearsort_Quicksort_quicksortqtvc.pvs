@@ -1,0 +1,121 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/verifythis_2021_shearsort_Quicksort_quicksortqtvc: the top-level
+% quicksort verification condition transferring full-range sortedness and
+% permutation postconditions to an arbitrary finite integer list.
+% This file contains no proof.
+
+verifythis_2021_shearsort_Quicksort_quicksortqtvc: THEORY
+BEGIN
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  nth_default(values: list[int], index: nat): RECURSIVE int =
+    CASES values OF
+      null: 0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          nth_default(tail, index - 1)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  list_take(count: nat, values: list[int]): RECURSIVE list[int] =
+    IF count = 0 THEN
+      null
+    ELSE
+      CASES values OF
+        null: null,
+        cons(head, tail):
+          cons(head, list_take(count - 1, tail))
+      ENDCASES
+    ENDIF
+  MEASURE count
+
+  list_drop(count: nat, values: list[int]): RECURSIVE list[int] =
+    IF count = 0 THEN
+      values
+    ELSE
+      CASES values OF
+        null: null,
+        cons(head, tail):
+          list_drop(count - 1, tail)
+      ENDCASES
+    ENDIF
+  MEASURE count
+
+  nat_minus(left, right: nat): RECURSIVE nat =
+    IF left = 0 OR right = 0 THEN
+      left
+    ELSE
+      nat_minus(left - 1, right - 1)
+    ENDIF
+  MEASURE left + right
+
+  list_slice(values: list[int], lower, upper: nat): list[int] =
+    list_take(nat_minus(upper, lower), list_drop(lower, values))
+
+  occurrence_count(value: int, values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null: 0,
+      cons(head, tail):
+        (IF value = head THEN 1 ELSE 0 ENDIF)
+          + occurrence_count(value, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  list_permutation(left, right: list[int]): bool =
+    FORALL (value: int):
+      occurrence_count(value, left) = occurrence_count(value, right)
+
+  permut_sub_prime(
+      left, right: list[int],
+      lower, upper: nat): bool =
+    length(left) = length(right)
+      AND list_slice(left, 0, lower) = list_slice(right, 0, lower)
+      AND list_slice(left, upper, length(left))
+        = list_slice(right, upper, length(left))
+      AND list_permutation(
+        list_slice(left, lower, upper),
+        list_slice(right, lower, upper))
+
+  sorted_sub(values: list[int], lower, upper: int): bool =
+    FORALL (i1, i2: int):
+      (lower <= i1 AND i1 <= i2 AND i2 < upper)
+        IMPLIES
+          nth_default(values, int_to_nat(i1))
+            <= nth_default(values, int_to_nat(i2))
+
+  sorted(values: list[int]): bool =
+    sorted_sub(values, 0, length(values))
+
+  qs_partition(
+      before, after: list[int],
+      lower, middle, upper, pivot: int): bool =
+    permut_sub_prime(
+      before, after, int_to_nat(lower), int_to_nat(upper))
+      AND
+    (FORALL (j: int):
+      (lower <= j AND j < middle)
+        IMPLIES nth_default(after, int_to_nat(j)) < pivot)
+      AND
+    (FORALL (j: int):
+      (middle < j AND j < upper)
+        IMPLIES pivot <= nth_default(after, int_to_nat(j)))
+      AND
+    nth_default(after, int_to_nat(middle)) = pivot
+
+  quicksort_vc: bool =
+    FORALL (a: list[int]):
+      LET o1: int = length(a) IN
+        (0 <= 0 AND 0 <= o1 AND o1 <= length(a))
+          AND
+        (FORALL (a1: list[int]):
+          length(a1) = length(a)
+            IMPLIES
+          (sorted_sub(a1, 0, o1)
+            AND permut_sub_prime(a, a1, 0, int_to_nat(o1)))
+            IMPLIES
+          (sorted(a1) AND list_permutation(a, a1)))
+END verifythis_2021_shearsort_Quicksort_quicksortqtvc

@@ -1,0 +1,89 @@
+% Statement-only formalization of the VERINA corpus artifact verina_basic_2,
+% catalog title "findSmallest": computing the minimum natural number in an
+% array, or none for an empty array, with its full correctness contract.
+% This file contains no proof.
+
+verina_basic_2: THEORY
+BEGIN
+
+  % A Lean array is represented by its order-preserving toList image. Since
+  % the source program and postcondition use only toList, this is exact.
+  nat_array: TYPE = list[nat]
+
+  array_to_list(s: nat_array): list[nat] =
+    s
+
+  nat_option: DATATYPE
+  BEGIN
+    NoneNat: NoneNat?
+    SomeNat(option_value: nat): SomeNat?
+  END nat_option
+
+  findSmallest_precond(s: nat_array): bool =
+    TRUE
+
+  nat_min(first, second: nat): nat =
+    IF first <= second THEN first ELSE second ENDIF
+
+  % This left fold is the natural-number specialization of List.min?'s
+  % nonempty-list computation.
+  list_min_from(
+      current: nat,
+      remaining: list[nat]): RECURSIVE nat =
+    CASES remaining OF
+      null:
+        current,
+      cons(head, tail):
+        list_min_from(nat_min(current, head), tail)
+    ENDCASES
+  MEASURE remaining BY <<
+
+  % The source precondition proof is computationally irrelevant.
+  findSmallest(s: nat_array): nat_option =
+    CASES array_to_list(s) OF
+      null:
+        NoneNat,
+      cons(head, tail):
+        SomeNat(list_min_from(head, tail))
+    ENDCASES
+
+  nat_member(value: nat, values: list[nat]): RECURSIVE bool =
+    CASES values OF
+      null:
+        FALSE,
+      cons(head, tail):
+        value = head OR nat_member(value, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  is_lower_bound(value: nat, values: list[nat]): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        value <= head AND is_lower_bound(value, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  findSmallest_postcond(
+      s: nat_array,
+      result: nat_option): bool =
+    LET xs: list[nat] = array_to_list(s)
+    IN
+      CASES result OF
+        NoneNat:
+          xs = null,
+        SomeNat(value):
+          nat_member(value, xs)
+            AND is_lower_bound(value, xs)
+      ENDCASES
+
+  findSmallest_spec_satisfied: bool =
+    FORALL (s: nat_array):
+      findSmallest_precond(s)
+        IMPLIES
+          findSmallest_postcond(
+            s,
+            findSmallest(s))
+
+END verina_basic_2

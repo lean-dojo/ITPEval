@@ -1,0 +1,111 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2005_b3:
+% positive differentiable functions on the positive reals satisfying the
+% stated derivative equation are exactly the normalized positive real power
+% functions. This file contains no proof.
+
+putnam_2005_b3: THEORY
+BEGIN
+  real_function: TYPE = [real -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  nat_factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * nat_factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  exponential_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        exponential_partial(x, count - 1)
+          + safe_div(
+              x ^ index,
+              nat_factorial(index) :: real)
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: [nat -> real], value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  exponential_value(argument, value: real): bool =
+    converges_to(
+      (LAMBDA (count: nat):
+        exponential_partial(argument, count)),
+      value)
+
+  natural_log_value(argument, value: real): bool =
+    argument > 0
+      AND exponential_value(value, argument)
+
+  real_power_value(base, exponent, value: real): bool =
+    base > 0
+      AND EXISTS (log_base: real):
+        natural_log_value(base, log_base)
+          AND exponential_value(exponent * log_base, value)
+
+  has_derivative_at(
+      f: real_function,
+      derivative, point: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (delta: posreal):
+        FORALL (h: real):
+          (NOT (h = 0) AND abs(h) < delta)
+            IMPLIES
+              abs(
+                f(point + h) - f(point)
+                  - derivative * h)
+                < epsilon_value * abs(h)
+
+  positive_on_positive_reals(f: real_function): bool =
+    FORALL (x: real):
+      x > 0 IMPLIES f(x) > 0
+
+  differentiable_on_positive_reals(f: real_function): bool =
+    FORALL (x: real):
+      x > 0 IMPLIES
+        EXISTS (derivative: real):
+          has_derivative_at(f, derivative, x)
+
+  satisfies_derivative_equation(f: real_function): bool =
+    EXISTS (a: real):
+      a > 0
+        AND FORALL (x: real):
+          x > 0 IMPLIES
+            has_derivative_at(
+              f,
+              safe_div(x, f(x)),
+              safe_div(a, x))
+
+  putnam_2005_b3_solution(f: real_function): bool =
+    EXISTS (c, d: real):
+      c > 0
+        AND d > 0
+        AND (d = 1 IMPLIES c = 1)
+        AND FORALL (x: real):
+          x > 0 IMPLIES
+            EXISTS (x_to_d: real):
+              real_power_value(x, d, x_to_d)
+                AND f(x) = c * x_to_d
+
+  putnam_2005_b3: bool =
+    FORALL (f: real_function):
+      (positive_on_positive_reals(f)
+        AND differentiable_on_positive_reals(f))
+      IMPLIES
+        (satisfies_derivative_equation(f)
+          IFF putnam_2005_b3_solution(f))
+END putnam_2005_b3

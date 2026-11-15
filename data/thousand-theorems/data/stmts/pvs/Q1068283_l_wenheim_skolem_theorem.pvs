@@ -1,0 +1,490 @@
+% Statement-only formalization of the Thousand Theorems artifact Q1068283,
+% "Löwenheim–Skolem theorem": an infinite first-order structure has, at every
+% infinite cardinal at least the language cardinality, an elementarily embedded
+% structure of that cardinality in one direction or the other. This file contains no proof.
+
+first_order_syntax_Q1068283[Symbol: TYPE]: DATATYPE
+BEGIN
+  variable_node(variable_index: nat): variable_node?
+  application_node(
+      application_symbol: Symbol,
+      application_arguments: first_order_syntax_Q1068283): application_node?
+  argument_nil: argument_nil?
+  argument_cons(
+      argument_head: first_order_syntax_Q1068283,
+      argument_tail: first_order_syntax_Q1068283): argument_cons?
+  equality_node(
+      equality_left: first_order_syntax_Q1068283,
+      equality_right: first_order_syntax_Q1068283): equality_node?
+  relation_node(
+      relation_symbol: Symbol,
+      relation_arguments: first_order_syntax_Q1068283): relation_node?
+  false_node: false_node?
+  implication_node(
+      implication_left: first_order_syntax_Q1068283,
+      implication_right: first_order_syntax_Q1068283): implication_node?
+  universal_node(
+      universal_body: first_order_syntax_Q1068283): universal_node?
+END first_order_syntax_Q1068283
+
+lowenheim_skolem_theorem_Q1068283[
+  Symbol: TYPE,
+  M: TYPE+,
+  K: TYPE+,
+  symbol_is_function: [Symbol -> bool],
+  symbol_arity: [Symbol -> nat],
+  m_function_interpretation: [Symbol, [nat -> M] -> M],
+  m_relation_interpretation: [Symbol, [nat -> M] -> bool]
+]: THEORY
+BEGIN
+  IMPORTING first_order_syntax_Q1068283[Symbol]
+
+  syntax: TYPE = first_order_syntax_Q1068283[Symbol]
+
+  argument_length(node: syntax): RECURSIVE nat =
+    CASES node OF
+      variable_node(index): 0,
+      application_node(symbol, arguments): 0,
+      argument_nil: 0,
+      argument_cons(head, tail): 1 + argument_length(tail),
+      equality_node(left, right): 0,
+      relation_node(symbol, arguments): 0,
+      false_node: 0,
+      implication_node(left, right): 0,
+      universal_node(body): 0
+    ENDCASES
+  MEASURE node BY <<
+
+  % Kinds 0, 1, and 2 respectively denote terms, argument lists, and formulas.
+  % The depth parameter gives the number of enclosing de Bruijn binders.
+  well_formed(node: syntax, kind: nat, depth: nat): RECURSIVE bool =
+    CASES node OF
+      variable_node(index):
+        kind = 0 AND index < depth,
+      application_node(symbol, arguments):
+        kind = 0
+          AND symbol_is_function(symbol)
+          AND argument_length(arguments) = symbol_arity(symbol)
+          AND well_formed(arguments, 1, depth),
+      argument_nil:
+        kind = 1,
+      argument_cons(head, tail):
+        kind = 1
+          AND well_formed(head, 0, depth)
+          AND well_formed(tail, 1, depth),
+      equality_node(left, right):
+        kind = 2
+          AND well_formed(left, 0, depth)
+          AND well_formed(right, 0, depth),
+      relation_node(symbol, arguments):
+        kind = 2
+          AND NOT symbol_is_function(symbol)
+          AND argument_length(arguments) = symbol_arity(symbol)
+          AND well_formed(arguments, 1, depth),
+      false_node:
+        kind = 2,
+      implication_node(left, right):
+        kind = 2
+          AND well_formed(left, 2, depth)
+          AND well_formed(right, 2, depth),
+      universal_node(body):
+        kind = 2
+          AND well_formed(body, 2, depth + 1)
+    ENDCASES
+  MEASURE node BY <<
+
+  syntax_size(node: syntax): RECURSIVE nat =
+    CASES node OF
+      variable_node(index): 1,
+      application_node(symbol, arguments):
+        1 + syntax_size(arguments),
+      argument_nil: 1,
+      argument_cons(head, tail):
+        1 + syntax_size(head) + syntax_size(tail),
+      equality_node(left, right):
+        1 + syntax_size(left) + syntax_size(right),
+      relation_node(symbol, arguments):
+        1 + syntax_size(arguments),
+      false_node: 1,
+      implication_node(left, right):
+        1 + syntax_size(left) + syntax_size(right),
+      universal_node(body):
+        1 + syntax_size(body)
+    ENDCASES
+  MEASURE node BY <<
+
+  canonical_tuple_m(
+      values: [nat -> M],
+      arity: nat,
+      fallback: M): [nat -> M] =
+    LAMBDA (index: nat):
+      IF index < arity THEN values(index) ELSE fallback ENDIF
+
+  m_function_interpretation_respects_arity: bool =
+    FORALL
+        (symbol: Symbol),
+        (left_values, right_values: [nat -> M]):
+      (FORALL (index: nat):
+        index < symbol_arity(symbol) IMPLIES
+          left_values(index) = right_values(index))
+      IMPLIES
+        m_function_interpretation(symbol, left_values)
+          = m_function_interpretation(symbol, right_values)
+
+  m_relation_interpretation_respects_arity: bool =
+    FORALL
+        (symbol: Symbol),
+        (left_values, right_values: [nat -> M]):
+      (FORALL (index: nat):
+        index < symbol_arity(symbol) IMPLIES
+          left_values(index) = right_values(index))
+      IMPLIES
+        (m_relation_interpretation(symbol, left_values)
+          IFF m_relation_interpretation(symbol, right_values))
+
+  evaluate_m_fuel(
+      node: syntax,
+      assignment: [nat -> M],
+      fuel: nat,
+      position: nat): RECURSIVE M =
+    IF fuel = 0 THEN
+      assignment(0)
+    ELSE
+      CASES node OF
+        variable_node(index):
+          assignment(index),
+        application_node(symbol, arguments):
+          m_function_interpretation(
+            symbol,
+            canonical_tuple_m(
+              LAMBDA (index: nat):
+                evaluate_m_fuel(
+                  arguments, assignment, fuel - 1, index),
+              symbol_arity(symbol),
+              assignment(0))),
+        argument_cons(head, tail):
+          IF position = 0 THEN
+            evaluate_m_fuel(head, assignment, fuel - 1, 0)
+          ELSE
+            evaluate_m_fuel(
+              tail, assignment, fuel - 1, position - 1)
+          ENDIF,
+        argument_nil: assignment(0),
+        equality_node(left, right): assignment(0),
+        relation_node(symbol, arguments): assignment(0),
+        false_node: assignment(0),
+        implication_node(left, right): assignment(0),
+        universal_node(body): assignment(0)
+      ENDCASES
+    ENDIF
+  MEASURE fuel
+
+  evaluate_m(node: syntax, assignment: [nat -> M]): M =
+    evaluate_m_fuel(node, assignment, syntax_size(node) + 1, 0)
+
+  holds_m_fuel(
+      phi: syntax,
+      assignment: [nat -> M],
+      fuel: nat): RECURSIVE bool =
+    IF fuel = 0 THEN
+      FALSE
+    ELSE
+      CASES phi OF
+        equality_node(left, right):
+          evaluate_m(left, assignment) = evaluate_m(right, assignment),
+        relation_node(symbol, arguments):
+          m_relation_interpretation(
+            symbol,
+            canonical_tuple_m(
+              LAMBDA (index: nat):
+                evaluate_m_fuel(
+                  arguments, assignment, syntax_size(arguments) + 1, index),
+              symbol_arity(symbol),
+              assignment(0))),
+        false_node:
+          FALSE,
+        implication_node(left, right):
+          holds_m_fuel(left, assignment, fuel - 1)
+            IMPLIES holds_m_fuel(right, assignment, fuel - 1),
+        universal_node(body):
+          FORALL (value: M):
+            holds_m_fuel(
+              body,
+              LAMBDA (other_index: nat):
+                IF other_index = 0 THEN
+                  value
+                ELSE
+                  assignment(other_index - 1)
+                ENDIF,
+              fuel - 1),
+        variable_node(index): FALSE,
+        application_node(symbol, arguments): FALSE,
+        argument_nil: FALSE,
+        argument_cons(head, tail): FALSE
+      ENDCASES
+    ENDIF
+  MEASURE fuel
+
+  holds_m(phi: syntax, assignment: [nat -> M]): bool =
+    holds_m_fuel(
+      phi, assignment, syntax_size(phi) + 1)
+
+  injective_nat_m(map: [nat -> M]): bool =
+    FORALL (left, right: nat):
+      map(left) = map(right) IMPLIES left = right
+
+  injective_nat_k(map: [nat -> K]): bool =
+    FORALL (left, right: nat):
+      map(left) = map(right) IMPLIES left = right
+
+  injective_symbol_k(map: [Symbol -> K]): bool =
+    FORALL (left, right: Symbol):
+      map(left) = map(right) IMPLIES left = right
+
+  source_is_infinite: bool =
+    EXISTS (map: [nat -> M]): injective_nat_m(map)
+
+  kappa_is_infinite: bool =
+    EXISTS (map: [nat -> K]): injective_nat_k(map)
+
+  language_cardinality_at_most_kappa: bool =
+    EXISTS (map: [Symbol -> K]): injective_symbol_k(map)
+
+  canonical_tuple_k(
+      values: [nat -> K],
+      arity: nat,
+      fallback: K): [nat -> K] =
+    LAMBDA (index: nat):
+      IF index < arity THEN values(index) ELSE fallback ENDIF
+
+  k_function_interpretation_respects_arity(
+      k_function_interpretation:
+        [Symbol, [nat -> K] -> K]): bool =
+    FORALL
+        (symbol: Symbol),
+        (left_values, right_values: [nat -> K]):
+      (FORALL (index: nat):
+        index < symbol_arity(symbol) IMPLIES
+          left_values(index) = right_values(index))
+      IMPLIES
+        k_function_interpretation(symbol, left_values)
+          = k_function_interpretation(symbol, right_values)
+
+  k_relation_interpretation_respects_arity(
+      k_relation_interpretation:
+        [Symbol, [nat -> K] -> bool]): bool =
+    FORALL
+        (symbol: Symbol),
+        (left_values, right_values: [nat -> K]):
+      (FORALL (index: nat):
+        index < symbol_arity(symbol) IMPLIES
+          left_values(index) = right_values(index))
+      IMPLIES
+        (k_relation_interpretation(symbol, left_values)
+          IFF k_relation_interpretation(symbol, right_values))
+
+  evaluate_k_fuel(
+      node: syntax,
+      assignment: [nat -> K],
+      k_function_interpretation: [Symbol, [nat -> K] -> K],
+      fuel: nat,
+      position: nat): RECURSIVE K =
+    IF fuel = 0 THEN
+      assignment(0)
+    ELSE
+      CASES node OF
+        variable_node(index):
+          assignment(index),
+        application_node(symbol, arguments):
+          k_function_interpretation(
+            symbol,
+            canonical_tuple_k(
+              LAMBDA (index: nat):
+                evaluate_k_fuel(
+                  arguments,
+                  assignment,
+                  k_function_interpretation,
+                  fuel - 1,
+                  index),
+              symbol_arity(symbol),
+              assignment(0))),
+        argument_cons(head, tail):
+          IF position = 0 THEN
+            evaluate_k_fuel(
+              head,
+              assignment,
+              k_function_interpretation,
+              fuel - 1,
+              0)
+          ELSE
+            evaluate_k_fuel(
+              tail,
+              assignment,
+              k_function_interpretation,
+              fuel - 1,
+              position - 1)
+          ENDIF,
+        argument_nil: assignment(0),
+        equality_node(left, right): assignment(0),
+        relation_node(symbol, arguments): assignment(0),
+        false_node: assignment(0),
+        implication_node(left, right): assignment(0),
+        universal_node(body): assignment(0)
+      ENDCASES
+    ENDIF
+  MEASURE fuel
+
+  evaluate_k(
+      node: syntax,
+      assignment: [nat -> K],
+      k_function_interpretation: [Symbol, [nat -> K] -> K]): K =
+    evaluate_k_fuel(
+      node,
+      assignment,
+      k_function_interpretation,
+      syntax_size(node) + 1,
+      0)
+
+  holds_k_fuel(
+      phi: syntax,
+      assignment: [nat -> K],
+      k_function_interpretation: [Symbol, [nat -> K] -> K],
+      k_relation_interpretation: [Symbol, [nat -> K] -> bool],
+      fuel: nat): RECURSIVE bool =
+    IF fuel = 0 THEN
+      FALSE
+    ELSE
+      CASES phi OF
+        equality_node(left, right):
+          evaluate_k(
+            left, assignment, k_function_interpretation)
+            =
+          evaluate_k(
+            right, assignment, k_function_interpretation),
+        relation_node(symbol, arguments):
+          k_relation_interpretation(
+            symbol,
+            canonical_tuple_k(
+              LAMBDA (index: nat):
+                evaluate_k_fuel(
+                  arguments,
+                  assignment,
+                  k_function_interpretation,
+                  syntax_size(arguments) + 1,
+                  index),
+              symbol_arity(symbol),
+              assignment(0))),
+        false_node:
+          FALSE,
+        implication_node(left, right):
+          holds_k_fuel(
+            left,
+            assignment,
+            k_function_interpretation,
+            k_relation_interpretation,
+            fuel - 1)
+            IMPLIES
+          holds_k_fuel(
+            right,
+            assignment,
+            k_function_interpretation,
+            k_relation_interpretation,
+            fuel - 1),
+        universal_node(body):
+          FORALL (value: K):
+            holds_k_fuel(
+              body,
+              LAMBDA (other_index: nat):
+                IF other_index = 0 THEN
+                  value
+                ELSE
+                  assignment(other_index - 1)
+                ENDIF,
+              k_function_interpretation,
+              k_relation_interpretation,
+              fuel - 1),
+        variable_node(index): FALSE,
+        application_node(symbol, arguments): FALSE,
+        argument_nil: FALSE,
+        argument_cons(head, tail): FALSE
+      ENDCASES
+    ENDIF
+  MEASURE fuel
+
+  holds_k(
+      phi: syntax,
+      assignment: [nat -> K],
+      k_function_interpretation: [Symbol, [nat -> K] -> K],
+      k_relation_interpretation: [Symbol, [nat -> K] -> bool]): bool =
+    holds_k_fuel(
+      phi,
+      assignment,
+      k_function_interpretation,
+      k_relation_interpretation,
+      syntax_size(phi) + 1)
+
+  elementary_embedding_m_to_k(
+      embedding: [M -> K],
+      k_function_interpretation: [Symbol, [nat -> K] -> K],
+      k_relation_interpretation: [Symbol, [nat -> K] -> bool]): bool =
+    (FORALL (left, right: M):
+      embedding(left) = embedding(right) IMPLIES left = right)
+      AND
+    (FORALL (phi: syntax), (depth: nat), (assignment: [nat -> M]):
+      well_formed(phi, 2, depth)
+        IMPLIES
+          (holds_m(phi, assignment)
+            IFF
+           holds_k(
+             phi,
+             LAMBDA (index: nat): embedding(assignment(index)),
+             k_function_interpretation,
+             k_relation_interpretation)))
+
+  elementary_embedding_k_to_m(
+      embedding: [K -> M],
+      k_function_interpretation: [Symbol, [nat -> K] -> K],
+      k_relation_interpretation: [Symbol, [nat -> K] -> bool]): bool =
+    (FORALL (left, right: K):
+      embedding(left) = embedding(right) IMPLIES left = right)
+      AND
+    (FORALL (phi: syntax), (depth: nat), (assignment: [nat -> K]):
+      well_formed(phi, 2, depth)
+        IMPLIES
+          (holds_k(
+             phi,
+             assignment,
+             k_function_interpretation,
+             k_relation_interpretation)
+            IFF
+           holds_m(
+             phi,
+             LAMBDA (index: nat): embedding(assignment(index)))))
+
+  lowenheim_skolem_theorem: bool =
+    (source_is_infinite
+      AND kappa_is_infinite
+      AND language_cardinality_at_most_kappa
+      AND m_function_interpretation_respects_arity
+      AND m_relation_interpretation_respects_arity)
+    IMPLIES
+      EXISTS
+        (k_function_interpretation: [Symbol, [nat -> K] -> K]),
+        (k_relation_interpretation: [Symbol, [nat -> K] -> bool]):
+          k_function_interpretation_respects_arity(
+            k_function_interpretation)
+          AND k_relation_interpretation_respects_arity(
+            k_relation_interpretation)
+          AND (
+          (EXISTS (embedding: [K -> M]):
+            elementary_embedding_k_to_m(
+              embedding,
+              k_function_interpretation,
+              k_relation_interpretation))
+          OR
+          (EXISTS (embedding: [M -> K]):
+            elementary_embedding_m_to_k(
+              embedding,
+              k_function_interpretation,
+              k_relation_interpretation)))
+END lowenheim_skolem_theorem_Q1068283

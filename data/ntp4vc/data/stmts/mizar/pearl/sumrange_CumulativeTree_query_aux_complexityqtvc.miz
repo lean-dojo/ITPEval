@@ -1,0 +1,253 @@
+:: Statement-only formalization of the NTP4VC corpus artifact
+:: pearl/sumrange_CumulativeTree_query_aux_complexityqtvc: the verification
+:: condition for the result and depth-based credit bound of a half-open range
+:: query in an integer cumulative-sum tree. This file contains no proof.
+
+environ
+  vocabularies TARSKI, XBOOLE_0, SUBSET_1, RELAT_1, FUNCT_1,
+    FUNCT_2, PARTFUN1, ZFMISC_1, NUMBERS, XREAL_0, CARD_1,
+    XXREAL_0, ARYTM_1, ARYTM_3, REAL_1, INT_1, NAT_1,
+    VALUED_0, VALUED_1, ORDINAL1, ORDINAL4, FINSEQ_1,
+    FINSEQ_2, MCART_1, MARGREL1, XBOOLEAN;
+  notations TARSKI, XBOOLE_0, SUBSET_1, ZFMISC_1, XTUPLE_0,
+    MCART_1, RELAT_1, FUNCT_1, RELSET_1, PARTFUN1, FUNCT_2,
+    ORDINAL1, CARD_1, NUMBERS, XCMPLX_0, XREAL_0, REAL_1,
+    INT_1, NAT_1, XXREAL_0, FINSEQ_1, FINSEQ_2, MARGREL1;
+  constructors FUNCT_1, RELSET_1, PARTFUN1, FUNCT_2, CARD_1,
+    REAL_1, INT_1, XXREAL_0, ZFMISC_1, MCART_1, NAT_1,
+    FINSEQ_1, FINSEQ_2, MARGREL1;
+  registrations XBOOLE_0, SUBSET_1, RELAT_1, FUNCT_1, RELSET_1,
+    PARTFUN1, FUNCT_2, NUMBERS, CARD_1, XXREAL_0, MEMBERED,
+    VALUED_0, VALUED_1, XCMPLX_0, XREAL_0, ORDINAL1, INT_1,
+    NAT_1, FINSEQ_1, FINSEQ_2, MARGREL1;
+  requirements REAL, NUMERALS, SUBSET, BOOLE, ARITHM;
+  equalities XBOOLEAN;
+
+begin
+
+::$P-
+theorem
+  for Tree being non empty set,
+      leaf being Function of [:INT,[:INT,INT:]:],Tree,
+      node being Function of
+        [:[:INT,[:INT,INT:]:],[:Tree,Tree:]:],Tree,
+      Low,High,ISum being Function of [:INT,[:INT,INT:]:],INT,
+      IndexOf being Function of Tree,[:INT,[:INT,INT:]:],
+      Depth being Function of Tree,INT,
+      Child being Subset of [:Tree,Tree:],
+      nthInt being Function of [:INT*,INT:],INT,
+      rangeSum being Function of [:INT*,[:INT,INT:]:],INT,
+      TreeFor being Subset of
+        [:Tree,[:INT*,[:INT,INT:]:]:],
+      Cost being Function of [:Tree,[:INT,INT:]:],INT,
+      t being Element of Tree,
+      a being FinSequence of INT,
+      i,j,c being Integer
+  st
+    (for lo,hi,s being Integer holds
+       Low.[lo,[hi,s]] = lo &
+       High.[lo,[hi,s]] = hi &
+       ISum.[lo,[hi,s]] = s) &
+    (for ind being Element of [:INT,[:INT,INT:]:],
+         l,r being Element of Tree
+     holds
+       leaf.ind <> node.[ind,[l,r]]) &
+    (for ind,ind2 being Element of [:INT,[:INT,INT:]:] st
+       leaf.ind = leaf.ind2
+     holds
+       ind = ind2) &
+    (for ind,ind2 being Element of [:INT,[:INT,INT:]:],
+         l,l2,r,r2 being Element of Tree st
+       node.[ind,[l,r]] = node.[ind2,[l2,r2]]
+     holds
+       ind = ind2 & l = l2 & r = r2) &
+    (for u being Element of Tree holds
+       (ex ind being Element of [:INT,[:INT,INT:]:] st
+          u = leaf.ind) or
+       ex ind being Element of [:INT,[:INT,INT:]:],
+          l,r being Element of Tree st
+         u = node.[ind,[l,r]]) &
+    (for X being Subset of Tree st
+       (for ind being Element of [:INT,[:INT,INT:]:]
+        holds leaf.ind in X) &
+       (for ind being Element of [:INT,[:INT,INT:]:],
+            l,r being Element of Tree st
+          l in X & r in X
+        holds node.[ind,[l,r]] in X)
+     holds
+       X = Tree) &
+    (for ind being Element of [:INT,[:INT,INT:]:],
+         l,r being Element of Tree
+     holds
+       IndexOf.(leaf.ind) = ind &
+       IndexOf.(node.[ind,[l,r]]) = ind) &
+    (for ind being Element of [:INT,[:INT,INT:]:]
+     holds
+       Depth.(leaf.ind) = 1) &
+    (for ind being Element of [:INT,[:INT,INT:]:],
+         l,r being Element of Tree
+     holds
+       Depth.(node.[ind,[l,r]]) =
+         1 + max(Depth.l,Depth.r)) &
+    (for ind being Element of [:INT,[:INT,INT:]:],
+         u being Element of Tree
+     holds
+       not [u,leaf.ind] in Child) &
+    (for ind being Element of [:INT,[:INT,INT:]:],
+         l,r,u being Element of Tree
+     holds
+       ([u,node.[ind,[l,r]]] in Child iff
+          u = l or u = r)) &
+    (for xs being FinSequence of INT, k being Integer st
+       0 <= k & k < len xs
+     holds
+       nthInt.[xs,k] = xs.(k+1)) &
+    (for xs being FinSequence of INT, lo,hi being Integer st
+       0 <= lo & lo <= hi & hi <= len xs
+     holds
+       (hi <= lo implies
+          rangeSum.[xs,[lo,hi]] = 0) &
+       (not hi <= lo implies
+          for x being Integer st x = nthInt.[xs,lo] holds
+            for rest being Integer st
+              rest = rangeSum.[xs,[lo+1,hi]]
+            holds
+              rangeSum.[xs,[lo,hi]] = x + rest)) &
+    (for ind being Element of [:INT,[:INT,INT:]:],
+         xs being FinSequence of INT,
+         lo,hi being Integer
+     holds
+       ([leaf.ind,[xs,[lo,hi]]] in TreeFor iff
+          Low.ind = lo &
+          High.ind = hi &
+          0 <= lo & lo < hi & hi <= len xs &
+          ISum.ind = rangeSum.[xs,[lo,hi]] &
+          hi = lo + 1)) &
+    (for ind being Element of [:INT,[:INT,INT:]:],
+         l,r being Element of Tree,
+         xs being FinSequence of INT,
+         lo,hi being Integer
+     holds
+       ([node.[ind,[l,r]],[xs,[lo,hi]]] in TreeFor iff
+          Low.ind = lo &
+          High.ind = hi &
+          0 <= lo & lo < hi & hi <= len xs &
+          ISum.ind = rangeSum.[xs,[lo,hi]] &
+          lo = Low.(IndexOf.l) &
+          hi = High.(IndexOf.r) &
+          High.(IndexOf.l) = Low.(IndexOf.r) &
+          lo < High.(IndexOf.l) &
+          High.(IndexOf.l) < hi &
+          High.(IndexOf.l) = (lo + hi) div 2 &
+          [l,[xs,[lo,High.(IndexOf.l)]]] in TreeFor &
+          [r,[xs,[High.(IndexOf.l),hi]]] in TreeFor)) &
+    (for u being Element of Tree,
+         lo,hi being Integer
+     holds
+       (lo = Low.(IndexOf.u) & hi = High.(IndexOf.u)
+        implies Cost.[u,[lo,hi]] = 1) &
+       (((lo = Low.(IndexOf.u) & hi <> High.(IndexOf.u)) or
+         (lo <> Low.(IndexOf.u) & hi = High.(IndexOf.u)))
+        implies Cost.[u,[lo,hi]] = 2 * Depth.u) &
+       (lo <> Low.(IndexOf.u) & hi <> High.(IndexOf.u)
+        implies Cost.[u,[lo,hi]] = 4 * Depth.u)) &
+    [t,[a,[Low.(IndexOf.t),High.(IndexOf.t)]]] in TreeFor &
+    0 <= Low.(IndexOf.t) &
+    Low.(IndexOf.t) <= i &
+    i < j &
+    j <= High.(IndexOf.t) &
+    High.(IndexOf.t) <= len a
+  holds
+    (for ind being Element of [:INT,[:INT,INT:]:] st
+       t = leaf.ind
+     holds
+       ex budget,sumResult being Integer st
+         budget = Cost.[t,[i,j]] &
+         sumResult = rangeSum.[a,[i,j]] &
+         c + 1 - c <= budget &
+         ISum.ind = sumResult) &
+    (for ind being Element of [:INT,[:INT,INT:]:],
+         l,r being Element of Tree st
+       t = node.[ind,[l,r]]
+     holds
+       for o1 being Element of BOOLEAN st
+         ((i = Low.ind & j = High.ind & o1 = TRUE) or
+          (i = Low.ind & j <> High.ind & o1 = FALSE) or
+          (i <> Low.ind & o1 = FALSE))
+       holds
+         (o1 = TRUE implies
+            ex budget,sumResult being Integer st
+              budget = Cost.[t,[i,j]] &
+              sumResult = rangeSum.[a,[i,j]] &
+              c + 1 - c <= budget &
+              ISum.ind = sumResult) &
+         (o1 <> TRUE implies
+            for m being Integer st m = High.(IndexOf.l) holds
+              (j <= m implies
+                 [l,t] in Child &
+                 [l,[a,[Low.(IndexOf.l),High.(IndexOf.l)]]]
+                   in TreeFor &
+                 0 <= Low.(IndexOf.l) &
+                 Low.(IndexOf.l) <= i &
+                 i < j &
+                 j <= High.(IndexOf.l) &
+                 High.(IndexOf.l) <= len a &
+                 (ex childBudget,parentBudget being Integer st
+                    childBudget = Cost.[l,[i,j]] &
+                    parentBudget = Cost.[t,[i,j]] &
+                    (for c1 being Integer st
+                       c1 - (c + 1) <= childBudget
+                     holds
+                       c1 - c <= parentBudget))) &
+              (m < j & m <= i implies
+                 [r,t] in Child &
+                 [r,[a,[Low.(IndexOf.r),High.(IndexOf.r)]]]
+                   in TreeFor &
+                 0 <= Low.(IndexOf.r) &
+                 Low.(IndexOf.r) <= i &
+                 i < j &
+                 j <= High.(IndexOf.r) &
+                 High.(IndexOf.r) <= len a &
+                 (ex childBudget,parentBudget being Integer st
+                    childBudget = Cost.[r,[i,j]] &
+                    parentBudget = Cost.[t,[i,j]] &
+                    (for c1 being Integer st
+                       c1 - (c + 1) <= childBudget
+                     holds
+                       c1 - c <= parentBudget))) &
+              (m < j & i < m implies
+                 [r,t] in Child &
+                 [r,[a,[Low.(IndexOf.r),High.(IndexOf.r)]]]
+                   in TreeFor &
+                 0 <= Low.(IndexOf.r) &
+                 Low.(IndexOf.r) <= m &
+                 m < j &
+                 j <= High.(IndexOf.r) &
+                 High.(IndexOf.r) <= len a &
+                 (ex rightBudget,leftBudget,parentBudget,
+                     leftSum,rightSum,wholeSum being Integer st
+                    rightBudget = Cost.[r,[m,j]] &
+                    leftBudget = Cost.[l,[i,m]] &
+                    parentBudget = Cost.[t,[i,j]] &
+                    leftSum = rangeSum.[a,[i,m]] &
+                    rightSum = rangeSum.[a,[m,j]] &
+                    wholeSum = rangeSum.[a,[i,j]] &
+                    (for c1 being Integer st
+                       c1 - (c + 1) <= rightBudget
+                     holds
+                       [l,t] in Child &
+                       [l,[a,[Low.(IndexOf.l),High.(IndexOf.l)]]]
+                         in TreeFor &
+                       0 <= Low.(IndexOf.l) &
+                       Low.(IndexOf.l) <= i &
+                       i < m &
+                       m <= High.(IndexOf.l) &
+                       High.(IndexOf.l) <= len a &
+                       (for c2 being Integer st
+                          c2 - c1 <= leftBudget
+                        holds
+                          c2 - c <= parentBudget &
+                          leftSum + rightSum = wholeSum))))))
+proof
+end;
+::$P+

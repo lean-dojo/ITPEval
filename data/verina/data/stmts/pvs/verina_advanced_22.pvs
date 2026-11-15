@@ -1,0 +1,111 @@
+% Statement-only formalization of the VERINA corpus artifact
+% verina_advanced_22, "isPeakValley": deciding whether an integer list strictly
+% increases to a peak and then strictly decreases, with both parts nonempty.
+% This file contains no proof.
+
+verina_advanced_22: THEORY
+BEGIN
+
+  isPeakValley_precond(lst: list[int]): bool =
+    TRUE
+
+  isPeakValley_aux(
+      l: list[int],
+      increasing, startedDecreasing: bool): RECURSIVE bool =
+    CASES l OF
+      null:
+        increasing AND startedDecreasing,
+      cons(x, tail):
+        CASES tail OF
+          null:
+            increasing AND startedDecreasing,
+          cons(y, rest):
+            IF x < y THEN
+              IF startedDecreasing THEN
+                FALSE
+              ELSE
+                isPeakValley_aux(
+                  cons(y, rest),
+                  TRUE,
+                  startedDecreasing)
+              ENDIF
+            ELSIF x > y THEN
+              IF increasing THEN
+                isPeakValley_aux(
+                  cons(y, rest),
+                  increasing,
+                  TRUE)
+              ELSE
+                FALSE
+              ENDIF
+            ELSE
+              FALSE
+            ENDIF
+        ENDCASES
+    ENDCASES
+  MEASURE l BY <<
+
+  isPeakValley(lst: list[int]): bool =
+    isPeakValley_aux(lst, FALSE, FALSE)
+
+  int_list_length(lst: list[int]): RECURSIVE nat =
+    CASES lst OF
+      null:
+        0,
+      cons(head, tail):
+        int_list_length(tail) + 1
+    ENDCASES
+  MEASURE lst BY <<
+
+  int_list_nth_default(
+      index: nat,
+      lst: list[int]): RECURSIVE int =
+    CASES lst OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          int_list_nth_default(index - 1, tail)
+        ENDIF
+    ENDCASES
+  MEASURE lst BY <<
+
+  valid_peak(
+      lst: list[int],
+      peak: nat): bool =
+    LET length: nat = int_list_length(lst)
+    IN
+      peak < length
+        AND 1 <= peak
+        AND peak < length - 1
+        AND
+          (FORALL (i: nat):
+            i < peak IMPLIES
+              int_list_nth_default(i, lst)
+                < int_list_nth_default(i + 1, lst))
+        AND
+          (FORALL (i: nat):
+            i < length - 1 - peak IMPLIES
+              int_list_nth_default(peak + i, lst)
+                > int_list_nth_default(peak + i + 1, lst))
+
+  has_valid_peak(lst: list[int]): bool =
+    EXISTS (peak: nat): valid_peak(lst, peak)
+
+  isPeakValley_postcond(
+      lst: list[int],
+      result: bool): bool =
+    (has_valid_peak(lst) IMPLIES result)
+      AND
+    (NOT has_valid_peak(lst) IMPLIES NOT result)
+
+  isPeakValley_spec_satisfied: bool =
+    FORALL (lst: list[int]):
+      isPeakValley_precond(lst) IMPLIES
+        isPeakValley_postcond(
+          lst,
+          isPeakValley(lst))
+
+END verina_advanced_22

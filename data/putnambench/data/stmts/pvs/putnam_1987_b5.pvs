@@ -1,0 +1,98 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1987_b5:
+% a complex 2n-by-n matrix whose nonzero left-kernel vectors are not all real
+% has real-part map onto all real 2n-vectors. This file contains no proof.
+
+putnam_1987_b5[n: posnat]: THEORY
+BEGIN
+  complex: TYPE = [# real_part: real, imag_part: real #]
+
+  row_index: TYPE = below(2 * n)
+  column_index: TYPE = below(n)
+
+  matrix: TYPE = [row_index, column_index -> complex]
+  row_vector: TYPE = [row_index -> complex]
+  column_vector: TYPE = [column_index -> complex]
+  real_column_vector: TYPE = [row_index -> real]
+
+  complex_zero: complex =
+    (# real_part := 0, imag_part := 0 #)
+
+  complex_add(left, right: complex): complex =
+    (# real_part := real_part(left) + real_part(right),
+       imag_part := imag_part(left) + imag_part(right) #)
+
+  complex_mul(left, right: complex): complex =
+    (# real_part :=
+         real_part(left) * real_part(right)
+           - imag_part(left) * imag_part(right),
+       imag_part :=
+         real_part(left) * imag_part(right)
+           + imag_part(left) * real_part(right) #)
+
+  left_product_sum(
+      z: row_vector,
+      M: matrix,
+      column: column_index,
+      count: nat): RECURSIVE complex =
+    IF count = 0 THEN
+      complex_zero
+    ELSE
+      complex_add(
+        left_product_sum(z, M, column, count - 1),
+        IF count <= 2 * n THEN
+          complex_mul(z(count - 1), M(count - 1, column))
+        ELSE
+          complex_zero
+        ENDIF)
+    ENDIF
+  MEASURE count
+
+  matrix_vector_sum(
+      M: matrix,
+      w: column_vector,
+      row: row_index,
+      count: nat): RECURSIVE complex =
+    IF count = 0 THEN
+      complex_zero
+    ELSE
+      complex_add(
+        matrix_vector_sum(M, w, row, count - 1),
+        IF count <= n THEN
+          complex_mul(M(row, count - 1), w(count - 1))
+        ELSE
+          complex_zero
+        ENDIF)
+    ENDIF
+  MEASURE count
+
+  left_product(
+      z: row_vector,
+      M: matrix,
+      column: column_index): complex =
+    left_product_sum(z, M, column, 2 * n)
+
+  matrix_vector_product(
+      M: matrix,
+      w: column_vector,
+      row: row_index): complex =
+    matrix_vector_sum(M, w, row, n)
+
+  left_kernel_condition(M: matrix): bool =
+    FORALL (z: row_vector):
+      ((FORALL (column: column_index):
+          left_product(z, M, column) = complex_zero)
+        AND NOT (FORALL (row: row_index):
+          z(row) = complex_zero))
+      IMPLIES
+        EXISTS (row: row_index):
+          imag_part(z(row)) /= 0
+
+  putnam_1987_b5: bool =
+    FORALL (M: matrix):
+      left_kernel_condition(M)
+        IMPLIES
+          FORALL (r: real_column_vector):
+            EXISTS (w: column_vector):
+              FORALL (row: row_index):
+                real_part(matrix_vector_product(M, w, row)) = r(row)
+END putnam_1987_b5

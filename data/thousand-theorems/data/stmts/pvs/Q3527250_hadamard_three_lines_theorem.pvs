@@ -1,0 +1,292 @@
+% Statement-only formalization of the Thousand Theorems corpus artifact Q3527250,
+% "Hadamard three-lines theorem": a bounded complex-differentiable function into an
+% arbitrary complex normed vector space is bounded inside a vertical strip by the
+% logarithmic interpolation of its boundary-line norm suprema. This file contains no proof.
+
+Q3527250_hadamard_three_lines_theorem[
+  E: TYPE+,
+  zeroE: E,
+  addE: [E, E -> E],
+  negE: [E -> E],
+  cscaleE: [real, real, E -> E],
+  normE: [E -> real]
+]: THEORY
+BEGIN
+  complex: TYPE = [# real_part: real, imag_part: real #]
+  complex_function: TYPE = [complex -> E]
+  real_sequence: TYPE = [nat -> real]
+
+  complex_zero: complex =
+    (# real_part := 0, imag_part := 0 #)
+
+  complex_one: complex =
+    (# real_part := 1, imag_part := 0 #)
+
+  complex_of_real(x: real): complex =
+    (# real_part := x, imag_part := 0 #)
+
+  complex_add(x, y: complex): complex =
+    (# real_part := real_part(x) + real_part(y),
+       imag_part := imag_part(x) + imag_part(y) #)
+
+  complex_neg(x: complex): complex =
+    (# real_part := -real_part(x),
+       imag_part := -imag_part(x) #)
+
+  complex_sub(x, y: complex): complex =
+    complex_add(x, complex_neg(y))
+
+  complex_mul(x, y: complex): complex =
+    (# real_part := real_part(x) * real_part(y)
+                       - imag_part(x) * imag_part(y),
+       imag_part := real_part(x) * imag_part(y)
+                       + imag_part(x) * real_part(y) #)
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  nat_factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * nat_factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  exponential_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        exponential_partial(x, count - 1)
+          + safe_div(
+              x ^ index,
+              nat_factorial(index) :: real)
+    ENDIF
+  MEASURE count
+
+  real_exponential(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat):
+            exponential_partial(x, count),
+          value))
+
+  natural_log(x: real): real =
+    IF x > 0 THEN
+      epsilon(
+        LAMBDA (value: real):
+          real_exponential(value) = x)
+    ELSE
+      0
+    ENDIF
+
+  real_power(base, exponent: real): real =
+    IF base > 0 THEN
+      real_exponential(exponent * natural_log(base))
+    ELSE
+      0
+    ENDIF
+
+  nonnegative_square_root(x: real): real =
+    IF x >= 0 THEN
+      epsilon(
+        LAMBDA (root: real):
+          root >= 0 AND root * root = x)
+    ELSE
+      0
+    ENDIF
+
+  complex_norm(z: complex): real =
+    nonnegative_square_root(
+      real_part(z) * real_part(z)
+        + imag_part(z) * imag_part(z))
+
+  subE(x, y: E): E =
+    addE(x, negE(y))
+
+  complex_normed_vector_space: bool =
+    (FORALL (x, y: E):
+      addE(x, y) = addE(y, x))
+      AND (FORALL (x, y, z: E):
+        addE(addE(x, y), z) =
+          addE(x, addE(y, z)))
+      AND (FORALL (x: E):
+        addE(x, zeroE) = x)
+      AND (FORALL (x: E):
+        addE(x, negE(x)) = zeroE)
+      AND (FORALL (a: complex), (x, y: E):
+        cscaleE(
+          real_part(a), imag_part(a), addE(x, y))
+          =
+        addE(
+          cscaleE(real_part(a), imag_part(a), x),
+          cscaleE(real_part(a), imag_part(a), y)))
+      AND (FORALL (a, b: complex), (x: E):
+        cscaleE(
+          real_part(complex_add(a, b)),
+          imag_part(complex_add(a, b)),
+          x)
+          =
+        addE(
+          cscaleE(real_part(a), imag_part(a), x),
+          cscaleE(real_part(b), imag_part(b), x)))
+      AND (FORALL (a, b: complex), (x: E):
+        cscaleE(
+          real_part(complex_mul(a, b)),
+          imag_part(complex_mul(a, b)),
+          x)
+          =
+        cscaleE(
+          real_part(a),
+          imag_part(a),
+          cscaleE(real_part(b), imag_part(b), x)))
+      AND (FORALL (x: E):
+        cscaleE(1, 0, x) = x)
+      AND (FORALL (x: E):
+        normE(x) >= 0)
+      AND (FORALL (x: E):
+        normE(x) = 0 IFF x = zeroE)
+      AND (FORALL (a: complex), (x: E):
+        normE(cscaleE(real_part(a), imag_part(a), x))
+          = complex_norm(a) * normE(x))
+      AND (FORALL (x, y: E):
+        normE(addE(x, y)) <= normE(x) + normE(y))
+
+  in_open_vertical_strip(z: complex, lower, upper: real): bool =
+    lower < real_part(z) AND real_part(z) < upper
+
+  in_closed_vertical_strip(z: complex, lower, upper: real): bool =
+    lower <= real_part(z) AND real_part(z) <= upper
+
+  continuous_on_closed_strip(
+      f: complex_function,
+      lower, upper: real): bool =
+    FORALL (x: complex):
+      in_closed_vertical_strip(x, lower, upper)
+        IMPLIES
+          FORALL (epsilon_value: posreal):
+            EXISTS (delta: posreal):
+              FORALL (y: complex):
+                (in_closed_vertical_strip(y, lower, upper)
+                  AND complex_norm(complex_sub(y, x)) < delta)
+                  IMPLIES
+                    normE(subE(f(y), f(x))) < epsilon_value
+
+  has_complex_derivative_within_open_strip_at(
+      f: complex_function,
+      derivative: E,
+      lower, upper: real,
+      x: complex): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (delta: posreal):
+        FORALL (y: complex):
+          (in_open_vertical_strip(y, lower, upper)
+            AND complex_norm(complex_sub(y, x)) < delta)
+            IMPLIES
+              normE(
+                subE(
+                  subE(f(y), f(x)),
+                  cscaleE(
+                    real_part(complex_sub(y, x)),
+                    imag_part(complex_sub(y, x)),
+                    derivative)))
+                <= epsilon_value
+                  * complex_norm(complex_sub(y, x))
+
+  differentiable_on_open_strip(
+      f: complex_function,
+      lower, upper: real): bool =
+    FORALL (x: complex):
+      in_open_vertical_strip(x, lower, upper)
+        IMPLIES
+          EXISTS (derivative: E):
+            has_complex_derivative_within_open_strip_at(
+              f, derivative, lower, upper, x)
+
+  diff_cont_on_closed_strip(
+      f: complex_function,
+      lower, upper: real): bool =
+    differentiable_on_open_strip(f, lower, upper)
+      AND continuous_on_closed_strip(f, lower, upper)
+
+  bounded_norm_on_closed_strip(
+      f: complex_function,
+      lower, upper: real): bool =
+    EXISTS (bound: real):
+      FORALL (w: complex):
+        in_closed_vertical_strip(w, lower, upper)
+          IMPLIES normE(f(w)) <= bound
+
+  upper_bound_for_line_norms(
+      f: complex_function,
+      line, bound: real): bool =
+    FORALL (w: complex):
+      real_part(w) = line
+        IMPLIES normE(f(w)) <= bound
+
+  is_line_norm_supremum(
+      f: complex_function,
+      line, value: real): bool =
+    upper_bound_for_line_norms(f, line, value)
+      AND FORALL (bound: real):
+        upper_bound_for_line_norms(f, line, bound)
+          IMPLIES value <= bound
+
+  line_norm_supremum(
+      f: complex_function,
+      line: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        is_line_norm_supremum(f, line, value))
+
+  strip_coordinate(
+      z: complex,
+      lower, upper: real): real =
+    safe_div(real_part(z) - lower, upper - lower)
+
+  interpolation_bound(
+      f: complex_function,
+      lower, upper: real,
+      z: complex): real =
+    LET left_value: real =
+          line_norm_supremum(f, lower),
+        right_value: real =
+          line_norm_supremum(f, upper),
+        coordinate: real =
+          strip_coordinate(z, lower, upper)
+    IN
+      IF left_value = 0 OR right_value = 0 THEN
+        0
+      ELSE
+        real_power(left_value, 1 - coordinate)
+          * real_power(right_value, coordinate)
+      ENDIF
+
+  hadamard_three_lines: bool =
+    complex_normed_vector_space
+      IMPLIES
+        FORALL
+            (lower, upper: real),
+            (f: complex_function),
+            (z: complex):
+          (lower < upper
+            AND in_closed_vertical_strip(z, lower, upper)
+            AND diff_cont_on_closed_strip(f, lower, upper)
+            AND bounded_norm_on_closed_strip(f, lower, upper))
+          IMPLIES
+            normE(f(z))
+              <= interpolation_bound(f, lower, upper, z)
+END Q3527250_hadamard_three_lines_theorem

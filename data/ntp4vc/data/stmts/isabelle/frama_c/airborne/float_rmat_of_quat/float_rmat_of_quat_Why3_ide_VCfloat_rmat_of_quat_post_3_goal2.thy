@@ -1,0 +1,11 @@
+theory float_rmat_of_quat_Why3_ide_VCfloat_rmat_of_quat_post_3_goal2
+  imports "NTP4Verif.NTP4Verif" "Why3STD.Qed_Qed" "Why3STD.Memory_Memory" "../../lib/isabelle/Axiomatic19_Axiomatic19" "../../lib/isabelle/S10_RealRMat_s_S10_RealRMat_s" "Why3STD.Cmath_Cmath" "Why3STD.Cfloat_Cfloat" "../../lib/isabelle/Compound_Compound" "../../lib/isabelle/Axiomatic15_Axiomatic15" "../../lib/isabelle/Axiomatic17_Axiomatic17"
+begin
+theorem goal2:
+  fixes t_1 :: "addr \<Rightarrow> real"
+  fixes a_1 :: "addr"
+  fixes a :: "addr"
+  fixes t :: "int \<Rightarrow> int"
+  shows "let r :: real = t_1 (shift a_1 (0 :: int)); r_1 :: real = t_1 (shift a_1 (1 :: int)); r_2 :: real = t_1 (shift a_1 (2 :: int)); r_3 :: real = t_1 (shift a_1 (3 :: int)); r_4 :: real = (2 :: Real.real) * r; r_5 :: real = (2 :: Real.real) * r_1; r_6 :: real = (2 :: Real.real) * r_3; r_7 :: real = r_4 * r_1; r_8 :: real = r_4 * r_2; r_9 :: real = r_4 * r_3; r_10 :: real = r_5 * r_2; r_11 :: real = r_5 * r_3; r_12 :: real = r_2 * r_6; r_13 :: real = r_4 * r + -(1 :: Real.real); a_2 :: addr = shift a (0 :: int) in region (base a) \<le> (0 :: int) \<longrightarrow> region (base a_1) \<le> (0 :: int) \<longrightarrow> linked t \<longrightarrow> p_unitary_quaternion_1' t_1 a_1 \<longrightarrow> valid_rw t a (9 :: int) \<longrightarrow> p_rvalid_floatquat t t_1 a_1 \<longrightarrow> separated a (9 :: int) a_1 (4 :: int) \<longrightarrow> is_float32 r \<longrightarrow> is_float32 r_1 \<longrightarrow> is_float32 r_2 \<longrightarrow> is_float32 r_3 \<longrightarrow> is_float32 r_4 \<longrightarrow> is_float32 r_5 \<longrightarrow> is_float32 r_6 \<longrightarrow> is_float32 r_7 \<longrightarrow> is_float32 r_8 \<longrightarrow> is_float32 r_9 \<longrightarrow> is_float32 r_10 \<longrightarrow> is_float32 r_11 \<longrightarrow> is_float32 r_12 \<longrightarrow> is_float32 r_13 \<longrightarrow> p_special_orthogonal (l_l_rmat_of_floatrmat (t_1(shift a_2 (8 :: int) := r_13 + r_6 * r_3, shift a_2 (7 :: int) := r_12 + -r_7, shift a_2 (6 :: int) := r_11 + r_8, shift a_2 (5 :: int) := r_12 + r_7, shift a_2 (4 :: int) := r_13 + (2 :: Real.real) * r_2 * r_2, shift a_2 (3 :: int) := r_10 + -r_9, shift a_2 (2 :: int) := r_11 + -r_8, shift a_2 (1 :: int) := r_10 + r_9, shift a_2 (0 :: int) := r_13 + r_5 * r_1)) a)"
+  sorry
+end

@@ -1,0 +1,454 @@
+% Statement-only formalization of "The Undecidability of the Continuum Hypothesis" from
+% Hundred Theorems item 024: every set-theoretically countable transitive ZF model has a
+% proper such extension with the same ordinals, preserving choice when it is present.
+% This file contains no proof.
+
+zf_formula_024: DATATYPE
+BEGIN
+  zf_equal_024(left_variable, right_variable: nat): zf_equal_024?
+  zf_member_024(left_variable, right_variable: nat): zf_member_024?
+  zf_not_024(not_body: zf_formula_024): zf_not_024?
+  zf_and_024(and_left, and_right: zf_formula_024): zf_and_024?
+  zf_forall_024(bound_variable: nat, forall_body: zf_formula_024): zf_forall_024?
+END zf_formula_024
+
+hundred_theorems_024: THEORY
+BEGIN
+  IMPORTING zf_formula_024
+
+  set_object: TYPE+
+  set_collection: TYPE = [set_object -> bool]
+  nat_environment: TYPE = [nat -> set_object]
+
+  member: [set_object, set_object -> bool]
+
+  carrier(M: set_object): set_collection =
+    LAMBDA (value: set_object): member(value, M)
+
+  assign(rho: nat_environment, variable: nat, value: set_object): nat_environment =
+    rho WITH [(variable) := value]
+
+  holds_in(
+      M: set_collection,
+      rho: nat_environment,
+      phi: zf_formula_024): RECURSIVE bool =
+    CASES phi OF
+      zf_equal_024(left_variable, right_variable):
+        rho(left_variable) = rho(right_variable),
+      zf_member_024(left_variable, right_variable):
+        member(rho(left_variable), rho(right_variable)),
+      zf_not_024(body):
+        NOT holds_in(M, rho, body),
+      zf_and_024(left, right):
+        holds_in(M, rho, left) AND holds_in(M, rho, right),
+      zf_forall_024(variable, body):
+        FORALL (value: set_object):
+          M(value) IMPLIES holds_in(M, assign(rho, variable, value), body)
+    ENDCASES
+  MEASURE phi BY <<
+
+  in_model_assignment(M: set_collection, rho: nat_environment): bool =
+    FORALL (variable: nat): M(rho(variable))
+
+  object_subset(left, right: set_object): bool =
+    FORALL (value: set_object):
+      member(value, left) IMPLIES member(value, right)
+
+  model_subset(
+      M: set_collection,
+      left, right: set_object): bool =
+    FORALL (value: set_object):
+      M(value) IMPLIES
+        (member(value, left) IMPLIES member(value, right))
+
+  transitive_object(value: set_object): bool =
+    FORALL (element: set_object):
+      member(element, value) IMPLIES object_subset(element, value)
+
+  is_ordinal(value: set_object): bool =
+    transitive_object(value)
+      AND
+      (FORALL (element: set_object):
+        member(element, value) IMPLIES transitive_object(element))
+
+  empty_object(empty_set: set_object): bool =
+    FORALL (value: set_object):
+      NOT member(value, empty_set)
+
+  successor_object(value, successor: set_object): bool =
+    FORALL (element: set_object):
+      member(element, successor)
+        IFF (member(element, value) OR element = value)
+
+  inductive_object(value: set_object): bool =
+    (EXISTS (empty_set: set_object):
+      empty_object(empty_set) AND member(empty_set, value))
+      AND
+      (FORALL (element: set_object):
+        member(element, value)
+        IMPLIES
+          EXISTS (successor: set_object):
+            successor_object(element, successor)
+              AND member(successor, value))
+
+  is_omega(value: set_object): bool =
+    inductive_object(value)
+      AND
+      (FORALL (inductive_set: set_object):
+        inductive_object(inductive_set)
+          IMPLIES object_subset(value, inductive_set))
+
+  subset(M, N: set_collection): bool =
+    FORALL (value: set_object):
+      M(value) IMPLIES N(value)
+
+  transitive(M: set_collection): bool =
+    FORALL (element, container: set_object):
+      (M(container) AND member(element, container)) IMPLIES M(element)
+
+  extensionality_axiom(M: set_collection): bool =
+    FORALL (left, right: set_object):
+      (M(left) AND M(right)
+        AND
+        (FORALL (value: set_object):
+          M(value) IMPLIES
+            (member(value, left) IFF member(value, right))))
+      IMPLIES left = right
+
+  foundation_axiom(M: set_collection): bool =
+    FORALL (container: set_object):
+      (M(container)
+        AND
+        (EXISTS (element: set_object):
+          M(element) AND member(element, container)))
+      IMPLIES
+        EXISTS (minimal: set_object):
+          M(minimal)
+            AND member(minimal, container)
+            AND
+            (FORALL (value: set_object):
+              M(value) IMPLIES
+                NOT (member(value, minimal) AND member(value, container)))
+
+  pairing_axiom(M: set_collection): bool =
+    FORALL (left, right: set_object):
+      (M(left) AND M(right))
+      IMPLIES
+        EXISTS (pair: set_object):
+          M(pair)
+            AND
+            (FORALL (value: set_object):
+              M(value) IMPLIES
+                (member(value, pair) IFF (value = left OR value = right)))
+
+  union_axiom(M: set_collection): bool =
+    FORALL (family: set_object):
+      M(family)
+      IMPLIES
+        EXISTS (union_set: set_object):
+          M(union_set)
+            AND
+            (FORALL (value: set_object):
+              M(value) IMPLIES
+                (member(value, union_set)
+                  IFF
+                  EXISTS (container: set_object):
+                    M(container)
+                      AND member(container, family)
+                      AND member(value, container)))
+
+  power_set_axiom(M: set_collection): bool =
+    FORALL (base: set_object):
+      M(base)
+      IMPLIES
+        EXISTS (power_set: set_object):
+          M(power_set)
+            AND
+            (FORALL (value: set_object):
+              M(value) IMPLIES
+                (member(value, power_set) IFF model_subset(M, value, base)))
+
+  empty_in_model(M: set_collection, empty_set: set_object): bool =
+    M(empty_set)
+      AND
+      (FORALL (value: set_object):
+        M(value) IMPLIES NOT member(value, empty_set))
+
+  successor_in_model(
+      M: set_collection,
+      value, successor: set_object): bool =
+    M(successor)
+      AND
+      (FORALL (element: set_object):
+        M(element) IMPLIES
+          (member(element, successor)
+            IFF (member(element, value) OR element = value)))
+
+  infinity_axiom(M: set_collection): bool =
+    EXISTS (inductive_set, empty_set: set_object):
+      M(inductive_set)
+        AND empty_in_model(M, empty_set)
+        AND member(empty_set, inductive_set)
+        AND
+        (FORALL (value: set_object):
+          (M(value) AND member(value, inductive_set))
+          IMPLIES
+            EXISTS (successor: set_object):
+              successor_in_model(M, value, successor)
+                AND member(successor, inductive_set))
+
+  separation_schema(M: set_collection): bool =
+    FORALL
+        (phi: zf_formula_024),
+        (rho: nat_environment),
+        (base: set_object):
+      (in_model_assignment(M, rho) AND M(base))
+      IMPLIES
+        EXISTS (separated: set_object):
+          M(separated)
+            AND
+            (FORALL (value: set_object):
+              M(value) IMPLIES
+                (member(value, separated)
+                  IFF
+                  (member(value, base)
+                    AND holds_in(
+                      M, assign(rho, 0, value), phi))))
+
+  functional_on(
+      M: set_collection,
+      rho: nat_environment,
+      base: set_object,
+      phi: zf_formula_024): bool =
+    FORALL (argument: set_object):
+      (M(argument) AND member(argument, base))
+      IMPLIES
+        EXISTS (image: set_object):
+          M(image)
+            AND holds_in(
+              M,
+              assign(assign(rho, 0, argument), 1, image),
+              phi)
+            AND
+            (FORALL (other_image: set_object):
+              (M(other_image)
+                AND holds_in(
+                  M,
+                  assign(assign(rho, 0, argument), 1, other_image),
+                  phi))
+              IMPLIES other_image = image)
+
+  replacement_schema(M: set_collection): bool =
+    FORALL
+        (phi: zf_formula_024),
+        (rho: nat_environment),
+        (base: set_object):
+      (in_model_assignment(M, rho)
+        AND M(base)
+        AND functional_on(M, rho, base, phi))
+      IMPLIES
+        EXISTS (range_set: set_object):
+          M(range_set)
+            AND
+            (FORALL (image: set_object):
+              M(image) IMPLIES
+                (member(image, range_set)
+                  IFF
+                  EXISTS (argument: set_object):
+                    M(argument)
+                      AND member(argument, base)
+                      AND holds_in(
+                        M,
+                        assign(assign(rho, 0, argument), 1, image),
+                        phi)))
+
+  models_zf(M: set_collection): bool =
+    extensionality_axiom(M)
+      AND foundation_axiom(M)
+      AND pairing_axiom(M)
+      AND union_axiom(M)
+      AND power_set_axiom(M)
+      AND infinity_axiom(M)
+      AND separation_schema(M)
+      AND replacement_schema(M)
+
+  pairwise_disjoint_family(
+      M: set_collection,
+      family: set_object): bool =
+    FORALL (left, right, value: set_object):
+      (M(left)
+        AND M(right)
+        AND M(value)
+        AND member(left, family)
+        AND member(right, family)
+        AND left /= right)
+      IMPLIES NOT (member(value, left) AND member(value, right))
+
+  nonempty_family(M: set_collection, family: set_object): bool =
+    FORALL (container: set_object):
+      (M(container) AND member(container, family))
+      IMPLIES
+        EXISTS (value: set_object):
+          M(value) AND member(value, container)
+
+  is_choice_set(
+      M: set_collection,
+      family, choice_set: set_object): bool =
+    M(choice_set)
+      AND
+      (FORALL (container: set_object):
+        (M(container) AND member(container, family))
+        IMPLIES
+          EXISTS (chosen: set_object):
+            M(chosen)
+              AND member(chosen, container)
+              AND member(chosen, choice_set)
+              AND
+              (FORALL (other: set_object):
+                (M(other)
+                  AND member(other, container)
+                  AND member(other, choice_set))
+                IMPLIES other = chosen))
+
+  models_choice(M: set_collection): bool =
+    FORALL (family: set_object):
+      (M(family)
+        AND pairwise_disjoint_family(M, family)
+        AND nonempty_family(M, family))
+      IMPLIES
+        EXISTS (choice_set: set_object):
+          is_choice_set(M, family, choice_set)
+
+  models_zfc(M: set_collection): bool =
+    models_zf(M) AND models_choice(M)
+
+  models_zf_set(M: set_object): bool =
+    models_zf(carrier(M))
+
+  models_choice_set(M: set_object): bool =
+    models_choice(carrier(M))
+
+  models_zfc_set(M: set_object): bool =
+    models_zfc(carrier(M))
+
+  universe: set_collection =
+    LAMBDA (value: set_object): TRUE
+
+  ambient_zf: bool =
+    models_zf(universe)
+
+  is_singleton(singleton, value: set_object): bool =
+    FORALL (element: set_object):
+      member(element, singleton) IFF element = value
+
+  is_unordered_pair(
+      pair, left, right: set_object): bool =
+    FORALL (element: set_object):
+      member(element, pair)
+        IFF (element = left OR element = right)
+
+  is_ordered_pair(
+      pair, left, right: set_object): bool =
+    EXISTS (singleton_left, unordered_pair: set_object):
+      is_singleton(singleton_left, left)
+        AND is_unordered_pair(unordered_pair, left, right)
+        AND is_unordered_pair(pair, singleton_left, unordered_pair)
+
+  graph_value(
+      graph, argument, image: set_object): bool =
+    EXISTS (pair: set_object):
+      member(pair, graph)
+        AND is_ordered_pair(pair, argument, image)
+
+  graph_between(
+      graph, domain, codomain: set_object): bool =
+    FORALL (pair: set_object):
+      member(pair, graph)
+      IMPLIES
+        EXISTS (argument, image: set_object):
+          member(argument, domain)
+            AND member(image, codomain)
+            AND is_ordered_pair(pair, argument, image)
+
+  total_function_graph(
+      graph, domain, codomain: set_object): bool =
+    graph_between(graph, domain, codomain)
+      AND
+      (FORALL (argument: set_object):
+        member(argument, domain)
+        IMPLIES
+          EXISTS (image: set_object):
+            member(image, codomain)
+              AND graph_value(graph, argument, image))
+      AND
+      (FORALL (argument, left_image, right_image: set_object):
+        (member(argument, domain)
+          AND member(left_image, codomain)
+          AND member(right_image, codomain)
+          AND graph_value(graph, argument, left_image)
+          AND graph_value(graph, argument, right_image))
+        IMPLIES left_image = right_image)
+
+  injective_graph(
+      graph, domain, codomain: set_object): bool =
+    FORALL (left, right, image: set_object):
+      (member(left, domain)
+        AND member(right, domain)
+        AND member(image, codomain)
+        AND graph_value(graph, left, image)
+        AND graph_value(graph, right, image))
+      IMPLIES left = right
+
+  surjective_graph(
+      graph, domain, codomain: set_object): bool =
+    FORALL (image: set_object):
+      member(image, codomain)
+      IMPLIES
+        EXISTS (argument: set_object):
+          member(argument, domain)
+            AND graph_value(graph, argument, image)
+
+  is_bijection_graph(
+      graph, domain, codomain: set_object): bool =
+    total_function_graph(graph, domain, codomain)
+      AND injective_graph(graph, domain, codomain)
+      AND surjective_graph(graph, domain, codomain)
+
+  equinumerous(left, right: set_object): bool =
+    EXISTS (graph: set_object):
+      is_bijection_graph(graph, left, right)
+
+  set_subset(M, N: set_object): bool =
+    FORALL (value: set_object):
+      member(value, M) IMPLIES member(value, N)
+
+  transitive_set(M: set_object): bool =
+    transitive(carrier(M))
+
+  same_ordinals(M, N: set_object): bool =
+    FORALL (ordinal: set_object):
+      is_ordinal(ordinal)
+        IMPLIES (member(ordinal, M) IFF member(ordinal, N))
+
+  extensions_of_ctms: bool =
+    ambient_zf
+    IMPLIES
+      FORALL (omega: set_object):
+        is_omega(omega)
+        IMPLIES
+          FORALL (M: set_object):
+            (equinumerous(M, omega)
+              AND transitive_set(M)
+              AND models_zf_set(M))
+            IMPLIES
+              EXISTS (N: set_object):
+                set_subset(M, N)
+                  AND equinumerous(N, omega)
+                  AND transitive_set(N)
+                  AND models_zf_set(N)
+                  AND M /= N
+                  AND same_ordinals(M, N)
+                  AND
+                  (models_choice_set(M)
+                    IMPLIES models_zfc_set(N))
+END hundred_theorems_024

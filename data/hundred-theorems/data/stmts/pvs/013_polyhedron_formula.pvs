@@ -1,0 +1,121 @@
+% Statement-only formalization of "Polyhedron Formula" from Hundred Theorems item 013:
+% Euler's vertex-edge-facet formula for full-dimensional convex 3-polytopes. This file contains no proof.
+
+polyhedron_formula_013: THEORY
+BEGIN
+  point: TYPE = [# x_coord: real, y_coord: real, z_coord: real #]
+  point_set: TYPE = [point -> bool]
+  face_collection: TYPE = [point_set -> bool]
+
+  IMPORTING finite_sets[point]
+
+  affine_combination(t: real, a, b: point): point =
+    (# x_coord := (1 - t) * x_coord(a) + t * x_coord(b),
+       y_coord := (1 - t) * y_coord(a) + t * y_coord(b),
+       z_coord := (1 - t) * z_coord(a) + t * z_coord(b) #)
+
+  subset(s, t: point_set): bool =
+    FORALL (x: point): s(x) IMPLIES t(x)
+
+  convex(s: point_set): bool =
+    FORALL (a, b: point), (t: real):
+      s(a) AND s(b) AND 0 <= t AND t <= 1
+        IMPLIES s(affine_combination(t, a, b))
+
+  convex_hull(s: point_set): point_set =
+    LAMBDA (x: point):
+      FORALL (c: point_set):
+        convex(c) AND subset(s, c) IMPLIES c(x)
+
+  polytope(p: point_set): bool =
+    EXISTS (generators: finite_set[point]):
+      FORALL (x: point):
+        p(x) IFF convex_hull(generators)(x)
+
+  face_of(f, p: point_set): bool =
+    subset(f, p)
+      AND convex(f)
+      AND FORALL (a, b: point), (t: real):
+        p(a) AND p(b) AND 0 < t AND t < 1
+          AND f(affine_combination(t, a, b))
+        IMPLIES f(a) AND f(b)
+
+  delta_x(a, b: point): real = x_coord(b) - x_coord(a)
+  delta_y(a, b: point): real = y_coord(b) - y_coord(a)
+  delta_z(a, b: point): real = z_coord(b) - z_coord(a)
+
+  cross_x(a, b, c: point): real =
+    delta_y(a, b) * delta_z(a, c)
+      - delta_z(a, b) * delta_y(a, c)
+
+  cross_y(a, b, c: point): real =
+    delta_z(a, b) * delta_x(a, c)
+      - delta_x(a, b) * delta_z(a, c)
+
+  cross_z(a, b, c: point): real =
+    delta_x(a, b) * delta_y(a, c)
+      - delta_y(a, b) * delta_x(a, c)
+
+  determinant(a, b, c, d: point): real =
+    delta_x(a, b)
+      * (delta_y(a, c) * delta_z(a, d)
+           - delta_z(a, c) * delta_y(a, d))
+      - delta_y(a, b)
+      * (delta_x(a, c) * delta_z(a, d)
+           - delta_z(a, c) * delta_x(a, d))
+      + delta_z(a, b)
+      * (delta_x(a, c) * delta_y(a, d)
+           - delta_y(a, c) * delta_x(a, d))
+
+  collinear(a, b, c: point): bool =
+    cross_x(a, b, c) = 0
+      AND cross_y(a, b, c) = 0
+      AND cross_z(a, b, c) = 0
+
+  coplanar(a, b, c, d: point): bool =
+    determinant(a, b, c, d) = 0
+
+  affine_dimension(s: point_set, dimension: int): bool =
+    (dimension = -1 AND FORALL (x: point): NOT s(x))
+      OR (dimension = 0
+          AND EXISTS (a: point):
+            s(a) AND FORALL (x: point): s(x) IMPLIES x = a)
+      OR (dimension = 1
+          AND EXISTS (a, b: point):
+            s(a) AND s(b) AND a /= b
+              AND FORALL (x: point): s(x) IMPLIES collinear(a, b, x))
+      OR (dimension = 2
+          AND EXISTS (a, b, c: point):
+            s(a) AND s(b) AND s(c) AND NOT collinear(a, b, c)
+              AND FORALL (x: point): s(x) IMPLIES coplanar(a, b, c, x))
+      OR (dimension = 3
+          AND EXISTS (a, b, c, d: point):
+            s(a) AND s(b) AND s(c) AND s(d)
+              AND determinant(a, b, c, d) /= 0)
+
+  faces_of_dimension(p: point_set, dimension: int): face_collection =
+    LAMBDA (f: point_set):
+      face_of(f, p) AND affine_dimension(f, dimension)
+
+  has_cardinality(collection: face_collection, n: nat): bool =
+    EXISTS (enumeration: [below(n) -> point_set]):
+      (FORALL (i, j: below(n)):
+        enumeration(i) = enumeration(j) IMPLIES i = j)
+      AND (FORALL (f: point_set):
+        collection(f) IFF
+          EXISTS (i: below(n)): enumeration(i) = f)
+
+  polyhedron_formula: bool =
+    FORALL (p: point_set):
+      polytope(p) AND affine_dimension(p, 3)
+      IMPLIES
+        EXISTS (number_of_vertices, number_of_edges, number_of_facets: nat):
+          has_cardinality(
+            faces_of_dimension(p, 0), number_of_vertices)
+          AND has_cardinality(
+            faces_of_dimension(p, 1), number_of_edges)
+          AND has_cardinality(
+            faces_of_dimension(p, 2), number_of_facets)
+          AND number_of_vertices + number_of_facets
+            = number_of_edges + 2
+END polyhedron_formula_013

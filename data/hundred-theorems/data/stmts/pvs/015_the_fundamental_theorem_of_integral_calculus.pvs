@@ -1,0 +1,108 @@
+% Statement-only formalization of "The Fundamental Theorem of Integral Calculus" from Hundred
+% Theorems item 015. This file contains no proof.
+
+the_fundamental_theorem_of_integral_calculus_015: THEORY
+BEGIN
+  real_function: TYPE = [real -> real]
+  real_sequence: TYPE = [nat -> real]
+
+  in_closed_interval(x, a, b: real): bool =
+    a <= x AND x <= b
+
+  has_derivative_within(
+      f: real_function,
+      derivative, x, a, b: real): bool =
+    FORALL (epsilon: real):
+      epsilon > 0 IMPLIES
+        EXISTS (delta: real):
+          delta > 0
+            AND (FORALL (y: real):
+              (in_closed_interval(y, a, b)
+                AND NOT (y = x)
+                AND abs(y - x) < delta)
+              IMPLIES
+                abs(
+                  f(y) - f(x)
+                    - derivative * (y - x))
+                  < epsilon * abs(y - x))
+
+  tagged_partition(
+      a, b: real,
+      count: nat,
+      points, tags: real_sequence): bool =
+    points(0) = a
+      AND points(count) = b
+      AND (FORALL (index: nat):
+        index < count IMPLIES
+          (points(index) < points(index + 1)
+            AND points(index) <= tags(index)
+            AND tags(index) <= points(index + 1)))
+
+  positive_gauge(gauge: real_function): bool =
+    FORALL (x: real): 0 < gauge(x)
+
+  gauge_fine(
+      gauge: real_function,
+      count: nat,
+      points, tags: real_sequence): bool =
+    FORALL (index: nat):
+      index < count IMPLIES
+        (tags(index) - gauge(tags(index)) < points(index)
+          AND points(index + 1)
+            < tags(index) + gauge(tags(index)))
+
+  tagged_sum(
+      f: real_function,
+      count: nat,
+      points, tags: real_sequence): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      tagged_sum(f, count - 1, points, tags)
+        + f(tags(count - 1))
+            * (points(count) - points(count - 1))
+    ENDIF
+  MEASURE count
+
+  has_integral_on_closed_interval(
+      f: real_function,
+      integral_value, a, b: real): bool =
+    FORALL (epsilon: real):
+      epsilon > 0 IMPLIES
+        EXISTS (gauge: real_function):
+          positive_gauge(gauge)
+            AND (FORALL
+                (count: nat),
+                (points, tags: real_sequence):
+              (tagged_partition(
+                  a, b, count, points, tags)
+                AND gauge_fine(
+                  gauge, count, points, tags))
+              IMPLIES
+                abs(
+                  tagged_sum(
+                    f, count, points, tags)
+                    - integral_value)
+                  < epsilon)
+
+  fundamental_theorem_of_integral_calculus: bool =
+    FORALL
+        (antiderivative, derivative: real_function),
+        (a, b: real):
+      (a <= b
+        AND (FORALL (x: real):
+          in_closed_interval(x, a, b)
+            IMPLIES
+              has_derivative_within(
+                antiderivative,
+                derivative(x),
+                x,
+                a,
+                b)))
+      IMPLIES
+        has_integral_on_closed_interval(
+          derivative,
+          antiderivative(b) - antiderivative(a),
+          a,
+          b)
+END the_fundamental_theorem_of_integral_calculus_015

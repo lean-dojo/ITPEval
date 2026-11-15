@@ -1,0 +1,221 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% frama_c/klibc_stdio/_fwrite_Why3_ide_VC_fwrite_call___fflush_pre_part4_goal16:
+% preservation of the private FILE representation after three integer-memory
+% updates, under uint32, allocation, framing, linking, and buffer preconditions.
+% This file contains no proof.
+
+fwrite_Why3_ide_VC_fwrite_call_fflush_pre_part4_goal16: THEORY
+BEGIN
+  addr: TYPE = [# base: int, offset: int #]
+  pointer_memory: TYPE = [addr -> addr]
+  integer_memory: TYPE = [addr -> int]
+  allocation_table: TYPE = [int -> int]
+  address_relation: TYPE = [addr, addr -> bool]
+
+  shift(p: addr, k: int): addr =
+    (# base := base(p), offset := offset(p) + k #)
+
+  valid_rw(malloc: allocation_table, p: addr, size: int): bool =
+    0 < size IMPLIES
+      0 < base(p)
+        AND 0 <= offset(p)
+        AND offset(p) + size <= malloc(base(p))
+
+  separated(p: addr, p_size: int, q: addr, q_size: int): bool =
+    p_size <= 0
+      OR q_size <= 0
+      OR base(p) /= base(q)
+      OR offset(q) + q_size <= offset(p)
+      OR offset(p) + p_size <= offset(q)
+
+  framed(
+      region: [int -> int],
+      memory: pointer_memory): bool =
+    FORALL (p: addr): region(base(memory(p))) <= 0
+
+  is_uint32(value: int): bool =
+    0 <= value AND value < 4294967296
+
+  to_uint32(value: int): int =
+    mod(value, 4294967296)
+
+  address_order_axioms(
+      addr_le: address_relation,
+      addr_lt: address_relation): bool =
+    (FORALL (p, q: addr):
+       base(p) = base(q) IMPLIES
+         (addr_le(p, q) IFF offset(p) <= offset(q)))
+      AND
+    (FORALL (p, q: addr):
+       base(p) = base(q) IMPLIES
+         (addr_lt(p, q) IFF offset(p) < offset(q)))
+
+  p_valid_file(
+      malloc: allocation_table,
+      mint: integer_memory,
+      file: addr): bool =
+    0 <= mint(shift(file, 0))
+      AND valid_rw(malloc, file, 3)
+
+  p_valid_io_file_pvt_norec(
+      malloc: allocation_table,
+      mptr: pointer_memory,
+      mint: integer_memory,
+      addr_le: address_relation,
+      addr_lt: address_relation,
+      file: addr): bool =
+    LET x: int = mint(shift(file, 9)) IN
+    LET x_1: int = mint(shift(file, 7)) IN
+    LET x_2: int = mint(shift(file, 8)) IN
+    LET a: addr = mptr(shift(file, 5)) IN
+    LET a_1: addr = mptr(shift(file, 6)) IN
+    LET a_2: addr = mptr(shift(file, 4)) IN
+    LET a_3: addr = mptr(shift(file, 3)) IN
+    LET a_4: addr = shift(a, 0) IN
+    LET x_3: int = 32 + x IN
+      x = 16384
+        AND 0 <= x_1
+        AND x_1 < x
+        AND 0 <= x_2
+        AND x_2 < x
+        AND valid_rw(malloc, file, 11)
+        AND addr_le(a, a_1)
+        AND p_valid_file(malloc, mint, shift(file, 0))
+        AND valid_rw(malloc, a_2, 11)
+        AND valid_rw(malloc, a_3, 11)
+        AND separated(file, 11, a_2, 11)
+        AND separated(file, 11, a_3, 11)
+        AND separated(a_2, 11, a_3, 11)
+        AND valid_rw(malloc, a_4, x_3)
+        AND separated(file, 11, a_4, x_3)
+        AND separated(a_2, 11, a_4, x_3)
+        AND separated(a_3, 11, a_4, x_3)
+        AND addr_lt(a_1, shift(a, x_3))
+
+  p_valid_io_file_pvt(
+      malloc: allocation_table,
+      mptr: pointer_memory,
+      mint: integer_memory,
+      addr_le: address_relation,
+      addr_lt: address_relation,
+      file: addr): bool =
+    LET x: int = mint(shift(file, 9)) IN
+    LET a: addr = mptr(shift(file, 6)) IN
+    LET a_1: addr = mptr(shift(file, 5)) IN
+    LET a_2: addr = mptr(shift(file, 3)) IN
+    LET a_3: addr = mptr(shift(file, 4)) IN
+    LET x_1: int = mint(shift(file, 7)) IN
+    LET x_2: int = mint(shift(file, 8)) IN
+    LET a_4: addr = shift(a_1, 0) IN
+    LET x_3: int = 32 + x IN
+      x = 16384
+        AND base(a) = base(a_1)
+        AND mptr(shift(a_2, 4)) = file
+        AND mptr(shift(a_3, 3)) = file
+        AND 0 <= x_1
+        AND x_1 < x
+        AND 0 <= x_2
+        AND x_2 < x
+        AND valid_rw(malloc, file, 11)
+        AND addr_le(a_1, a)
+        AND p_valid_file(malloc, mint, shift(file, 0))
+        AND separated(file, 11, a_3, 11)
+        AND separated(file, 11, a_2, 11)
+        AND separated(a_3, 11, a_2, 11)
+        AND p_valid_io_file_pvt_norec(
+          malloc, mptr, mint, addr_le, addr_lt, a_3)
+        AND p_valid_io_file_pvt_norec(
+          malloc, mptr, mint, addr_le, addr_lt, a_2)
+        AND valid_rw(malloc, a_4, x_3)
+        AND separated(file, 11, a_4, x_3)
+        AND separated(a_3, 11, a_4, x_3)
+        AND separated(a_2, 11, a_4, x_3)
+        AND addr_lt(a, shift(a_1, x_3))
+
+  goal16: bool =
+    FORALL
+      (region: [int -> int]),
+      (linked: [allocation_table -> bool]),
+      (sconst: [integer_memory -> bool]),
+      (addr_le: address_relation),
+      (addr_lt: address_relation),
+      (i_3, i_4: int),
+      (a_4, a_5, a_2, a: addr),
+      (t_1, t_2: integer_memory),
+      (i_5: int),
+      (t_3: pointer_memory),
+      (t: allocation_table),
+      (a_1, a_3: addr),
+      (i, i_1, i_2: int):
+      address_order_axioms(addr_le, addr_lt) IMPLIES
+      LET x: int = i_3 + i_4 IN
+      LET data_pointer: addr = t_3(shift(a_5, 6)) IN
+      LET buffer_pointer: addr = t_3(shift(a_5, 5)) IN
+      LET previous_file: addr = t_3(shift(a_5, 4)) IN
+      LET next_file: addr = t_3(shift(a_5, 3)) IN
+      LET input_bytes: int = t_1(shift(a_5, 7)) IN
+      LET write_start: addr = shift(a_4, 0) IN
+      LET buffer_start: addr = shift(buffer_pointer, 0) IN
+      LET public_file: addr = shift(a_5, 0) IN
+      LET updated_t_1: integer_memory =
+        ((t_1 WITH [(shift(a_5, 8)) := i])
+          WITH [(shift(public_file, 1)) := i_1])
+            WITH [(shift(public_file, 2)) := i_2]
+      IN
+        i_4 /= 0 IMPLIES
+        shift(a_2, 0) = shift(a, 0) IMPLIES
+        t_1(shift(a_5, 10)) = 1 IMPLIES
+        t_1(shift(a_5, 9)) = 16384 IMPLIES
+        base(data_pointer) = base(buffer_pointer) IMPLIES
+        t_3(shift(previous_file, 3)) = a_5 IMPLIES
+        t_3(shift(next_file, 4)) = a_5 IMPLIES
+        t_2(shift(a_4, to_uint32(i_4 - 1))) = 10 IMPLIES
+        0 <= i IMPLIES
+        0 <= i_3 IMPLIES
+        0 <= i_4 IMPLIES
+        0 <= i_5 IMPLIES
+        0 <= x IMPLIES
+        0 <= input_bytes IMPLIES
+        region(base(a_2)) <= 0 IMPLIES
+        region(base(a_4)) <= 0 IMPLIES
+        i <= 16383 IMPLIES
+        input_bytes <= 16383 IMPLIES
+        framed(region, t_3) IMPLIES
+        linked(t) IMPLIES
+        sconst(t_2) IMPLIES
+        is_uint32(i) IMPLIES
+        is_uint32(i_3) IMPLIES
+        is_uint32(i_4) IMPLIES
+        is_uint32(i_5) IMPLIES
+        valid_rw(t, a_5, 11) IMPLIES
+        is_uint32(x) IMPLIES
+        is_uint32(input_bytes) IMPLIES
+        p_valid_io_file_pvt(
+          t, t_3, t_1, addr_le, addr_lt, a_1) IMPLIES
+        p_valid_io_file_pvt(
+          t, t_3, t_1, addr_le, addr_lt, a_3) IMPLIES
+        p_valid_io_file_pvt(
+          t, t_3, t_1, addr_le, addr_lt, a_5) IMPLIES
+        addr_le(buffer_pointer, data_pointer) IMPLIES
+        valid_rw(t, write_start, i_4) IMPLIES
+        valid_rw(t, write_start, x) IMPLIES
+        separated(a_5, 11, next_file, 11) IMPLIES
+        separated(a_5, 11, previous_file, 11) IMPLIES
+        separated(next_file, 11, previous_file, 11) IMPLIES
+        addr_lt(data_pointer, shift(buffer_pointer, 16416)) IMPLIES
+        valid_rw(t, buffer_start, 16416) IMPLIES
+        p_valid_file(t, updated_t_1, public_file) IMPLIES
+        separated(a_5, 11, buffer_start, 16416) IMPLIES
+        separated(next_file, 11, buffer_start, 16416) IMPLIES
+        separated(previous_file, 11, buffer_start, 16416) IMPLIES
+        p_valid_io_file_pvt_norec(
+          t, t_3, updated_t_1, addr_le, addr_lt, next_file) IMPLIES
+        p_valid_io_file_pvt_norec(
+          t, t_3, updated_t_1, addr_le, addr_lt, previous_file) IMPLIES
+        (FORALL (i_6: int):
+          i_4 < i_6 IMPLIES
+          i_6 <= x IMPLIES
+          t_2(shift(a_4, i_6 - 1)) /= 10) IMPLIES
+        p_valid_io_file_pvt(
+          t, t_3, updated_t_1, addr_le, addr_lt, a_5)
+END fwrite_Why3_ide_VC_fwrite_call_fflush_pre_part4_goal16

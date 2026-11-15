@@ -1,0 +1,125 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2007_b6:
+% factorial-denomination coin collections totaling n! have the stated
+% two-sided asymptotic bounds for one constant independent of n. This file
+% contains no proof.
+
+putnam_2007_b6: THEORY
+BEGIN
+  real_sequence: TYPE = [nat -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  nat_factorial(n: nat): RECURSIVE nat =
+    IF n = 0 THEN
+      1
+    ELSE
+      n * nat_factorial(n - 1)
+    ENDIF
+  MEASURE n
+
+  factorial_coin_sum(
+      code, n, next_denomination, remaining: nat): RECURSIVE nat =
+    IF remaining = 0 THEN
+      0
+    ELSE
+      mod(code, nat_factorial(n) + 1)
+          * nat_factorial(next_denomination)
+        + factorial_coin_sum(
+            ndiv(code, nat_factorial(n) + 1),
+            n,
+            next_denomination + 1,
+            remaining - 1)
+    ENDIF
+  MEASURE remaining
+
+  factorial_coin_code(code, n: nat): bool =
+    code < (nat_factorial(n) + 1) ^ n
+      AND factorial_coin_sum(code, n, 1, n) = nat_factorial(n)
+
+  count_below(
+      limit: nat,
+      property: [nat -> bool]): RECURSIVE nat =
+    IF limit = 0 THEN
+      0
+    ELSE
+      count_below(limit - 1, property)
+        + IF property(limit - 1) THEN 1 ELSE 0 ENDIF
+    ENDIF
+  MEASURE limit
+
+  factorial_coin_collection_count(n: nat): nat =
+    count_below(
+      (nat_factorial(n) + 1) ^ n,
+      LAMBDA (code: nat): factorial_coin_code(code, n))
+
+  exponential_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        exponential_partial(x, count - 1)
+          + safe_div(
+              x ^ index,
+              nat_factorial(index) :: real)
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  real_exponential(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat):
+            exponential_partial(x, count),
+          value))
+
+  natural_log(x: real): real =
+    IF x > 0 THEN
+      epsilon(
+        LAMBDA (value: real):
+          real_exponential(value) = x)
+    ELSE
+      0
+    ENDIF
+
+  real_power(base, exponent: real): real =
+    IF base > 0 THEN
+      real_exponential(exponent * natural_log(base))
+    ELSIF base = 0 AND exponent = 0 THEN
+      1
+    ELSE
+      0
+    ENDIF
+
+  putnam_2007_b6: bool =
+    EXISTS (C: real):
+      FORALL (n: nat):
+        n >= 2 IMPLIES
+          LET n_real: real = n :: real,
+              n_squared: real = n_real ^ 2,
+              exponential_factor: real =
+                real_exponential(-n_squared / 4)
+          IN
+            real_power(
+              n_real,
+              n_squared / 2 - C * n_real)
+                * exponential_factor
+              <= (factorial_coin_collection_count(n) :: real)
+            AND
+            (factorial_coin_collection_count(n) :: real)
+              <= real_power(
+                  n_real,
+                  n_squared / 2 + C * n_real)
+                    * exponential_factor
+END putnam_2007_b6

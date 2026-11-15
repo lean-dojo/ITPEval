@@ -1,0 +1,210 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2021_a4:
+% the full-disk integral of the stated rational function tends to
+% (sqrt(2) / 2) * pi * ln(2) as the radius tends to infinity.
+% This file contains no proof.
+
+putnam_2021_a4: THEORY
+BEGIN
+  real_function: TYPE = [real -> real]
+  real_sequence: TYPE = [nat -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  nat_factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * nat_factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  alternating_sign(index: nat): RECURSIVE real =
+    IF index = 0 THEN
+      1
+    ELSE
+      -alternating_sign(index - 1)
+    ENDIF
+  MEASURE index
+
+  exponential_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        exponential_partial(x, count - 1)
+          + safe_div(
+              x ^ index,
+              nat_factorial(index) :: real)
+    ENDIF
+  MEASURE count
+
+  leibniz_partial_sum(count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        leibniz_partial_sum(count - 1)
+          + safe_div(
+              alternating_sign(index),
+              (2 * index + 1) :: real)
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  real_exponential(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat):
+            exponential_partial(x, count),
+          value))
+
+  pi: real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat):
+            4 * leibniz_partial_sum(count),
+          value))
+
+  natural_log(x: real): real =
+    IF x > 0 THEN
+      epsilon(
+        LAMBDA (value: real):
+          real_exponential(value) = x)
+    ELSE
+      0
+    ENDIF
+
+  nonnegative_sqrt(x: real): real =
+    IF x >= 0 THEN
+      epsilon(
+        LAMBDA (root: real):
+          root >= 0 AND root * root = x)
+    ELSE
+      0
+    ENDIF
+
+  integrand(x, y: real): real =
+    safe_div(
+      1 + 2 * x ^ 2,
+      1 + x ^ 4 + 6 * x ^ 2 * y ^ 2 + y ^ 4)
+      - safe_div(
+          1 + y ^ 2,
+          2 + x ^ 4 + y ^ 4)
+
+  mesh_step(radius: real, subdivisions: nat): real =
+    IF subdivisions = 0 THEN
+      0
+    ELSE
+      safe_div(2 * radius, subdivisions :: real)
+    ENDIF
+
+  grid_coordinate(
+      radius: real,
+      subdivisions, index: nat): real =
+    -radius
+      + ((index :: real) + (1 :: real) / 2)
+          * mesh_step(radius, subdivisions)
+
+  disk_sample(
+      radius: real,
+      subdivisions, x_index, y_index: nat): real =
+    LET x: real =
+          grid_coordinate(radius, subdivisions, x_index),
+        y: real =
+          grid_coordinate(radius, subdivisions, y_index)
+    IN
+      IF x ^ 2 + y ^ 2 <= radius ^ 2 THEN
+        integrand(x, y)
+      ELSE
+        0
+      ENDIF
+
+  disk_row_sum(
+      radius: real,
+      subdivisions, row, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      disk_row_sum(
+        radius, subdivisions, row, count - 1)
+        + disk_sample(
+            radius, subdivisions, count - 1, row)
+    ENDIF
+  MEASURE count
+
+  disk_grid_sum(
+      radius: real,
+      subdivisions, rows: nat): RECURSIVE real =
+    IF rows = 0 THEN
+      0
+    ELSE
+      disk_grid_sum(radius, subdivisions, rows - 1)
+        + disk_row_sum(
+            radius, subdivisions, rows - 1, subdivisions)
+    ENDIF
+  MEASURE rows
+
+  disk_midpoint_sum(
+      radius: real,
+      subdivisions: nat): real =
+    mesh_step(radius, subdivisions) ^ 2
+      * disk_grid_sum(
+          radius, subdivisions, subdivisions)
+
+  has_disk_integral(
+      radius, integral_value: real): bool =
+    radius > 0
+      AND FORALL (epsilon_value: posreal):
+        EXISTS (cutoff: nat):
+          cutoff > 0
+            AND FORALL (subdivisions: nat):
+              cutoff <= subdivisions IMPLIES
+                abs(
+                  disk_midpoint_sum(radius, subdivisions)
+                    - integral_value)
+                  < epsilon_value
+
+  disk_integral(radius: real): real =
+    IF radius > 0
+        AND EXISTS (integral_value: real):
+          has_disk_integral(radius, integral_value)
+    THEN
+      epsilon(
+        LAMBDA (integral_value: real):
+          has_disk_integral(radius, integral_value))
+    ELSE
+      0
+    ENDIF
+
+  converges_at_real_top(
+      values: real_function,
+      limit_value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: real):
+        FORALL (radius: real):
+          cutoff <= radius IMPLIES
+            abs(values(radius) - limit_value)
+              < epsilon_value
+
+  putnam_2021_a4_solution: real =
+    safe_div(nonnegative_sqrt(2), 2)
+      * pi * natural_log(2)
+
+  putnam_2021_a4: bool =
+    converges_at_real_top(
+      disk_integral,
+      putnam_2021_a4_solution)
+END putnam_2021_a4

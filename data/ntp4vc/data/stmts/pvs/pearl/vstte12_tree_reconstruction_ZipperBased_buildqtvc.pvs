@@ -1,0 +1,133 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/vstte12_tree_reconstruction_ZipperBased_buildqtvc: the zipper-based
+% tree-reconstruction build verification condition, including its initial
+% forest invariant and success and failure specifications. This file contains
+% no proof.
+
+vstte12_tree_reconstruction_ZipperBased_buildqtvc: THEORY
+BEGIN
+
+  tree: DATATYPE
+  BEGIN
+    Leaf: Leaf?
+    Node(left_subtree: tree, right_subtree: tree): Node?
+  END tree
+
+  forest_entry: TYPE = [int, tree]
+  forest: TYPE = list[forest_entry]
+
+  depths(root_depth: int, value: tree): RECURSIVE list[int] =
+    CASES value OF
+      Leaf:
+        cons(root_depth, null[int]),
+      Node(left, right):
+        append(
+          depths(root_depth + 1, left),
+          depths(root_depth + 1, right))
+    ENDCASES
+  MEASURE value BY <<
+
+  forest_depths(values: forest): RECURSIVE list[int] =
+    CASES values OF
+      null:
+        null[int],
+      cons(entry, rest):
+        append(
+          depths(entry`1, entry`2),
+          forest_depths(rest))
+    ENDCASES
+  MEASURE values BY <<
+
+  greedy(
+      excluded_depth: int,
+      root_depth: int,
+      value: tree): RECURSIVE bool =
+    excluded_depth /= root_depth
+      AND
+    CASES value OF
+      Leaf:
+        TRUE,
+      Node(left, right):
+        greedy(excluded_depth, root_depth + 1, left)
+    ENDCASES
+  MEASURE value BY <<
+
+  g(values: forest): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        CASES tail OF
+          null:
+            TRUE,
+          cons(next, rest):
+            greedy(next`1, head`1, head`2)
+              AND g(tail)
+        ENDCASES
+    ENDCASES
+  MEASURE values BY <<
+
+  only_leaf(values: forest): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(entry, rest):
+        entry`2 = Leaf
+          AND only_leaf(rest)
+    ENDCASES
+  MEASURE values BY <<
+
+  map_leaf(values: list[int]): RECURSIVE forest =
+    CASES values OF
+      null:
+        null[forest_entry],
+      cons(depth, rest):
+        cons((depth, Leaf), map_leaf(rest))
+    ENDCASES
+  MEASURE values BY <<
+
+  list_reverse(values: forest): RECURSIVE forest =
+    CASES values OF
+      null:
+        null[forest_entry],
+      cons(entry, rest):
+        append(
+          list_reverse(rest),
+          cons(entry, null[forest_entry]))
+    ENDCASES
+  MEASURE values BY <<
+
+  build_vc(s: list[int]): bool =
+    LET o1: forest = map_leaf(s),
+        o2: forest = null[forest_entry]
+    IN
+      (g(o2)
+        AND
+       CASES o1 OF
+         null:
+           TRUE,
+         cons(entry, right_tail):
+           only_leaf(right_tail)
+             AND
+           CASES entry`2 OF
+             Leaf:
+               TRUE,
+             Node(left, right):
+               g(cons((entry`1 + 1, left), o2))
+           ENDCASES
+       ENDCASES)
+      AND
+      (FORALL (result: tree):
+        depths(0, result)
+            = forest_depths(append(list_reverse(o2), o1))
+          IMPLIES
+            depths(0, result) = s)
+      AND
+      ((FORALL (value: tree):
+          depths(0, value)
+            /= forest_depths(append(list_reverse(o2), o1)))
+        IMPLIES
+          (FORALL (value: tree):
+            depths(0, value) /= s))
+
+END vstte12_tree_reconstruction_ZipperBased_buildqtvc

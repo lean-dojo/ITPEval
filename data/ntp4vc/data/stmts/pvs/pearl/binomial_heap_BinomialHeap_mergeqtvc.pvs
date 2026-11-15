@@ -1,0 +1,357 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/binomial_heap_BinomialHeap_mergeqtvc: the binomial-heap merge
+% verification condition for heap order, rank invariants, and preservation
+% of element occurrences. This file contains no proof.
+
+binomial_heap_BinomialHeap_mergeqtvc[
+  elt: TYPE+,
+  heap: TYPE+
+]: THEORY
+BEGIN
+
+  % This datatype is isomorphic to a list of source trees: each FCons stores
+  % one tree's root, child list, rank, and remaining sibling list.
+  forest: DATATYPE
+  BEGIN
+    FNil: FNil?
+    FCons(
+      root_element: elt,
+      child_forest: forest,
+      root_rank: int,
+      sibling_forest: forest): FCons?
+  END forest
+
+  singleton_tree(
+      element: elt,
+      children: forest,
+      rank: int): forest =
+    FCons(element, children, rank, FNil)
+
+  preorder_laws(leq: [elt, elt -> bool]): bool =
+    (FORALL (x: elt): leq(x, x))
+      AND
+    (FORALL (x, y, z: elt):
+      (leq(x, y) AND leq(y, z)) IMPLIES leq(x, z))
+      AND
+    (FORALL (x, y: elt): leq(x, y) OR leq(y, x))
+
+  forest_size(values: forest): RECURSIVE int =
+    CASES values OF
+      FNil:
+        0,
+      FCons(element, children, rank, siblings):
+        1 + forest_size(children) + forest_size(siblings)
+    ENDCASES
+  MEASURE values BY <<
+
+  forest_length(values: forest): RECURSIVE int =
+    CASES values OF
+      FNil:
+        0,
+      FCons(element, children, rank, siblings):
+        1 + forest_length(siblings)
+    ENDCASES
+  MEASURE values BY <<
+
+  le_roots(
+      leq: [elt, elt -> bool],
+      element: elt,
+      values: forest): RECURSIVE bool =
+    CASES values OF
+      FNil:
+        TRUE,
+      FCons(root, children, rank, siblings):
+        leq(element, root)
+          AND le_roots(leq, element, siblings)
+    ENDCASES
+  MEASURE values BY <<
+
+  heaps(
+      leq: [elt, elt -> bool],
+      values: forest): RECURSIVE bool =
+    CASES values OF
+      FNil:
+        TRUE,
+      FCons(element, children, rank, siblings):
+        le_roots(leq, element, children)
+          AND heaps(leq, children)
+          AND heaps(leq, siblings)
+    ENDCASES
+  MEASURE values BY <<
+
+  occ(element: elt, values: forest): RECURSIVE int =
+    CASES values OF
+      FNil:
+        0,
+      FCons(root, children, rank, siblings):
+        (IF element = root THEN 1 ELSE 0 ENDIF)
+          + occ(element, children)
+          + occ(element, siblings)
+    ENDCASES
+  MEASURE values BY <<
+
+  forest_mem(element: elt, values: forest): bool =
+    0 < occ(element, values)
+
+  has_order(expected_rank: int, values: forest): RECURSIVE bool =
+    CASES values OF
+      FNil:
+        expected_rank = 0,
+      FCons(element, children, rank, siblings):
+        rank = expected_rank - 1
+          AND has_order(expected_rank - 1, children)
+          AND has_order(expected_rank - 1, siblings)
+    ENDCASES
+  MEASURE values BY <<
+
+  binomial_tree(children: forest, rank: int): bool =
+    rank = forest_length(children)
+      AND has_order(rank, children)
+
+  inv(minimum_rank: int, values: forest): RECURSIVE bool =
+    CASES values OF
+      FNil:
+        TRUE,
+      FCons(element, children, rank, siblings):
+        minimum_rank <= rank
+          AND binomial_tree(children, rank)
+          AND inv(rank + 1, siblings)
+    ENDCASES
+  MEASURE values BY <<
+
+  link_tree(
+      leq: [elt, elt -> bool],
+      left_element: elt,
+      left_children: forest,
+      left_rank: int,
+      right_element: elt,
+      right_children: forest,
+      right_rank: int): forest =
+    IF leq(left_element, right_element) THEN
+      singleton_tree(
+        left_element,
+        FCons(
+          right_element, right_children, right_rank, left_children),
+        left_rank + 1)
+    ELSE
+      singleton_tree(
+        right_element,
+        FCons(
+          left_element, left_children, left_rank, right_children),
+        right_rank + 1)
+    ENDIF
+
+  head_rank(values: forest): int =
+    CASES values OF
+      FNil:
+        0,
+      FCons(element, children, rank, siblings):
+        rank
+    ENDCASES
+
+  head_binomial_tree(values: forest): bool =
+    CASES values OF
+      FNil:
+        FALSE,
+      FCons(element, children, rank, siblings):
+        binomial_tree(children, rank)
+    ENDCASES
+
+  same_destructured_tail(
+      values, expected_tail: forest): bool =
+    CASES values OF
+      FNil:
+        FALSE,
+      FCons(element, children, rank, actual_tail):
+        actual_tail = expected_tail
+    ENDCASES
+
+  merge_initial_obligation(
+      leq: [elt, elt -> bool],
+      h1, h2: forest): bool =
+    CASES h2 OF
+      FNil:
+        TRUE,
+      FCons(
+          right_element,
+          right_children,
+          right_rank,
+          right_tail):
+        CASES h1 OF
+          FNil:
+            TRUE,
+          FCons(
+              left_element,
+              left_children,
+              left_rank,
+              left_tail):
+            IF left_rank < right_rank THEN
+              LET next_rank: int = left_rank + 1
+              IN
+                same_destructured_tail(h1, left_tail)
+                  AND heaps(leq, left_tail)
+                  AND inv(next_rank, left_tail)
+                  AND heaps(leq, h2)
+                  AND inv(next_rank, h2)
+            ELSIF right_rank < left_rank THEN
+              LET next_rank: int = right_rank + 1
+              IN
+                same_destructured_tail(h2, right_tail)
+                  AND heaps(leq, h1)
+                  AND inv(next_rank, h1)
+                  AND heaps(leq, right_tail)
+                  AND inv(next_rank, right_tail)
+            ELSE
+              LET next_rank: int = left_rank + 1
+              IN
+                ((same_destructured_tail(h1, left_tail)
+                    OR
+                  (h1 = left_tail
+                    AND same_destructured_tail(h2, right_tail)))
+                  AND heaps(leq, left_tail)
+                  AND inv(next_rank, left_tail)
+                  AND heaps(leq, right_tail)
+                  AND inv(next_rank, right_tail))
+                AND
+                (FORALL (merged_tail: forest):
+                  (heaps(leq, merged_tail)
+                    AND inv(next_rank, merged_tail)
+                    AND
+                      (FORALL (x: elt):
+                        occ(x, merged_tail)
+                          = occ(x, left_tail)
+                            + occ(x, right_tail)))
+                  IMPLIES
+                    (LET linked: forest =
+                        link_tree(
+                          leq,
+                          left_element,
+                          left_children,
+                          left_rank,
+                          right_element,
+                          right_children,
+                          right_rank)
+                     IN
+                       heaps(leq, linked)
+                         AND head_binomial_tree(linked)
+                         AND heaps(leq, merged_tail)
+                         AND inv(head_rank(linked), merged_tail)))
+            ENDIF
+        ENDCASES
+    ENDCASES
+
+  merge_result_antecedent(
+      leq: [elt, elt -> bool],
+      h1, h2, result: forest): bool =
+    CASES h2 OF
+      FNil:
+        CASES h1 OF
+          FNil:
+            result = h2,
+          FCons(
+              left_element,
+              left_children,
+              left_rank,
+              left_tail):
+            result = h1
+        ENDCASES,
+      FCons(
+          right_element,
+          right_children,
+          right_rank,
+          right_tail):
+        CASES h1 OF
+          FNil:
+            result = h2,
+          FCons(
+              left_element,
+              left_children,
+              left_rank,
+              left_tail):
+            IF left_rank < right_rank THEN
+              EXISTS (merged_tail: forest):
+                (heaps(leq, merged_tail)
+                  AND inv(left_rank + 1, merged_tail)
+                  AND
+                    (FORALL (x: elt):
+                      occ(x, merged_tail)
+                        = occ(x, left_tail) + occ(x, h2)))
+                  AND
+                result =
+                  FCons(
+                    left_element,
+                    left_children,
+                    left_rank,
+                    merged_tail)
+            ELSIF right_rank < left_rank THEN
+              EXISTS (merged_tail: forest):
+                (heaps(leq, merged_tail)
+                  AND inv(right_rank + 1, merged_tail)
+                  AND
+                    (FORALL (x: elt):
+                      occ(x, merged_tail)
+                        = occ(x, h1) + occ(x, right_tail)))
+                  AND
+                result =
+                  FCons(
+                    right_element,
+                    right_children,
+                    right_rank,
+                    merged_tail)
+            ELSE
+              EXISTS (merged_tail: forest):
+                (heaps(leq, merged_tail)
+                  AND inv(left_rank + 1, merged_tail)
+                  AND
+                    (FORALL (x: elt):
+                      occ(x, merged_tail)
+                        = occ(x, left_tail)
+                          + occ(x, right_tail)))
+                  AND
+                (LET linked: forest =
+                    link_tree(
+                      leq,
+                      left_element,
+                      left_children,
+                      left_rank,
+                      right_element,
+                      right_children,
+                      right_rank)
+                 IN
+                   heaps(leq, result)
+                     AND inv(head_rank(linked), result)
+                     AND
+                       (FORALL (x: elt):
+                         occ(x, result)
+                           = occ(x, linked)
+                             + occ(x, merged_tail)))
+            ENDIF
+        ENDCASES
+    ENDCASES
+
+  merge_vc: bool =
+    FORALL
+        (leq: [elt, elt -> bool]),
+        (h1: forest),
+        (k: int),
+        (h2: forest):
+      (preorder_laws(leq)
+        AND heaps(leq, h1)
+        AND inv(k, h1)
+        AND heaps(leq, h2)
+        AND inv(k, h2))
+      IMPLIES
+        (merge_initial_obligation(leq, h1, h2)
+          AND
+            (FORALL (result: forest):
+              merge_result_antecedent(
+                leq, h1, h2, result)
+              IMPLIES
+                (heaps(leq, result)
+                  AND inv(k, result)
+                  AND
+                    (FORALL (x: elt):
+                      occ(x, result)
+                        = occ(x, h1) + occ(x, h2)))))
+
+END binomial_heap_BinomialHeap_mergeqtvc

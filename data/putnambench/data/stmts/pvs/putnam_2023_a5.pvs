@@ -1,0 +1,107 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2023_a5:
+% the complex zeros of the weighted power sum whose coefficients count ones
+% in ternary expansions are exactly the stated three values. This file contains
+% no proof.
+
+putnam_2023_a5: THEORY
+BEGIN
+  complex: TYPE = [# real_part: real, imag_part: real #]
+
+  complex_zero: complex =
+    (# real_part := 0, imag_part := 0 #)
+
+  complex_one: complex =
+    (# real_part := 1, imag_part := 0 #)
+
+  complex_of_real(value: real): complex =
+    (# real_part := value, imag_part := 0 #)
+
+  complex_of_nat(value: nat): complex =
+    complex_of_real(value :: real)
+
+  complex_add(left, right: complex): complex =
+    (# real_part := real_part(left) + real_part(right),
+       imag_part := imag_part(left) + imag_part(right) #)
+
+  complex_mul(left, right: complex): complex =
+    (# real_part :=
+         real_part(left) * real_part(right)
+           - imag_part(left) * imag_part(right),
+       imag_part :=
+         real_part(left) * imag_part(right)
+           + imag_part(left) * real_part(right) #)
+
+  complex_scale(scalar: real, value: complex): complex =
+    complex_mul(complex_of_real(scalar), value)
+
+  complex_power(value: complex, exponent: nat): RECURSIVE complex =
+    IF exponent = 0 THEN
+      complex_one
+    ELSE
+      complex_mul(complex_power(value, exponent - 1), value)
+    ENDIF
+  MEASURE exponent
+
+  ternary_one_count_below(
+      value, count: nat): RECURSIVE nat =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        ternary_one_count_below(value, count - 1)
+          + IF mod(ndiv(value, 3 ^ index), 3) = 1 THEN
+              1
+            ELSE
+              0
+            ENDIF
+    ENDIF
+  MEASURE count
+
+  base3_one_count(value: nat): nat =
+    ternary_one_count_below(value, value + 1)
+
+  weighted_power_sum(
+      z: complex,
+      count: nat): RECURSIVE complex =
+    IF count = 0 THEN
+      complex_zero
+    ELSE
+      LET k: nat = count - 1 IN
+        complex_add(
+          weighted_power_sum(z, count - 1),
+          complex_scale(
+            ((-2 :: real) ^ base3_one_count(k)),
+            complex_power(
+              complex_add(z, complex_of_nat(k)),
+              2023)))
+    ENDIF
+  MEASURE count
+
+  sqrt_value(root, radicand: real): bool =
+    0 <= root AND root ^ 2 = radicand
+
+  solution_center: real =
+    -((3 ^ 1010 - 1) :: real) / 2
+
+  putnam_2023_a5_solution(
+      z: complex,
+      sqrt_discriminant: real): bool =
+    z = complex_of_real(solution_center)
+      OR z =
+        (# real_part := solution_center,
+           imag_part := sqrt_discriminant / 4 #)
+      OR z =
+        (# real_part := solution_center,
+           imag_part := -sqrt_discriminant / 4 #)
+
+  putnam_2023_a5: bool =
+    EXISTS (sqrt_discriminant: real):
+      sqrt_value(
+        sqrt_discriminant,
+        (9 ^ 1010 - 1) :: real)
+        AND FORALL (z: complex):
+          (weighted_power_sum(z, 3 ^ 1010) = complex_zero)
+            IFF
+              putnam_2023_a5_solution(
+                z, sqrt_discriminant)
+END putnam_2023_a5

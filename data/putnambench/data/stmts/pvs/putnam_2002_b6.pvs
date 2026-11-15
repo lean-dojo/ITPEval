@@ -1,0 +1,229 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2002_b6:
+% for every prime p, the determinant of the 3 by 3 matrix with rows
+% (x, y, z), (x^p, y^p, z^p), and (x^(p^2), y^(p^2), z^(p^2)) is
+% coefficientwise congruent modulo p to a finite product of integer linear
+% forms a*x + b*y + c*z. This file contains no proof.
+
+putnam_2002_b6: THEORY
+BEGIN
+  exponent: TYPE =
+    [# x_degree: nat, y_degree: nat, z_degree: nat #]
+
+  polynomial: TYPE = [exponent -> int]
+  matrix: TYPE = [nat, nat -> polynomial]
+
+  linear_coefficients: TYPE =
+    [# x_coefficient: int,
+       y_coefficient: int,
+       z_coefficient: int #]
+
+  zero_polynomial: polynomial =
+    (LAMBDA (powers: exponent): 0)
+
+  one_polynomial: polynomial =
+    (LAMBDA (powers: exponent):
+      IF x_degree(powers) = 0
+          AND y_degree(powers) = 0
+          AND z_degree(powers) = 0
+      THEN 1
+      ELSE 0
+      ENDIF)
+
+  polynomial_add(left, right: polynomial): polynomial =
+    (LAMBDA (powers: exponent):
+      left(powers) + right(powers))
+
+  polynomial_negate(value: polynomial): polynomial =
+    (LAMBDA (powers: exponent): -value(powers))
+
+  natural_difference(left, right: nat): nat =
+    IF right <= left THEN left - right ELSE 0 ENDIF
+
+  convolution_z(
+      left, right: polynomial,
+      powers: exponent,
+      left_x, left_y, count: nat): RECURSIVE int =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET left_z: nat = count - 1 IN
+        convolution_z(
+          left, right, powers, left_x, left_y, count - 1)
+          + left(
+              (# x_degree := left_x,
+                 y_degree := left_y,
+                 z_degree := left_z #))
+            * right(
+                (# x_degree :=
+                     natural_difference(x_degree(powers), left_x),
+                   y_degree :=
+                     natural_difference(y_degree(powers), left_y),
+                   z_degree :=
+                     natural_difference(z_degree(powers), left_z) #))
+    ENDIF
+  MEASURE count
+
+  convolution_y(
+      left, right: polynomial,
+      powers: exponent,
+      left_x, count: nat): RECURSIVE int =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET left_y: nat = count - 1 IN
+        convolution_y(
+          left, right, powers, left_x, count - 1)
+          + convolution_z(
+              left,
+              right,
+              powers,
+              left_x,
+              left_y,
+              z_degree(powers) + 1)
+    ENDIF
+  MEASURE count
+
+  convolution_x(
+      left, right: polynomial,
+      powers: exponent,
+      count: nat): RECURSIVE int =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET left_x: nat = count - 1 IN
+        convolution_x(left, right, powers, count - 1)
+          + convolution_y(
+              left,
+              right,
+              powers,
+              left_x,
+              y_degree(powers) + 1)
+    ENDIF
+  MEASURE count
+
+  polynomial_multiply(left, right: polynomial): polynomial =
+    (LAMBDA (powers: exponent):
+      convolution_x(
+        left, right, powers, x_degree(powers) + 1))
+
+  variable_power(variable, degree: nat): polynomial =
+    (LAMBDA (powers: exponent):
+      IF variable = 0
+          AND x_degree(powers) = degree
+          AND y_degree(powers) = 0
+          AND z_degree(powers) = 0
+      THEN
+        1
+      ELSIF variable = 1
+          AND x_degree(powers) = 0
+          AND y_degree(powers) = degree
+          AND z_degree(powers) = 0
+      THEN
+        1
+      ELSIF variable = 2
+          AND x_degree(powers) = 0
+          AND y_degree(powers) = 0
+          AND z_degree(powers) = degree
+      THEN
+        1
+      ELSE
+        0
+      ENDIF)
+
+  putnam_matrix(p: nat): matrix =
+    (LAMBDA (row, column: nat):
+      IF row < 3 AND column < 3 THEN
+        variable_power(column, p ^ row)
+      ELSE
+        zero_polynomial
+      ENDIF)
+
+  determinant_3(value: matrix): polynomial =
+    polynomial_add(
+      polynomial_add(
+        polynomial_multiply(
+          value(0, 0),
+          polynomial_multiply(value(1, 1), value(2, 2))),
+        polynomial_multiply(
+          value(0, 1),
+          polynomial_multiply(value(1, 2), value(2, 0)))),
+      polynomial_add(
+        polynomial_multiply(
+          value(0, 2),
+          polynomial_multiply(value(1, 0), value(2, 1))),
+        polynomial_negate(
+          polynomial_add(
+            polynomial_add(
+              polynomial_multiply(
+                value(0, 2),
+                polynomial_multiply(value(1, 1), value(2, 0))),
+              polynomial_multiply(
+                value(0, 1),
+                polynomial_multiply(value(1, 0), value(2, 2)))),
+            polynomial_multiply(
+              value(0, 0),
+              polynomial_multiply(value(1, 2), value(2, 1)))))))
+
+  linear_form(coefficients: linear_coefficients): polynomial =
+    (LAMBDA (powers: exponent):
+      IF x_degree(powers) = 1
+          AND y_degree(powers) = 0
+          AND z_degree(powers) = 0
+      THEN
+        x_coefficient(coefficients)
+      ELSIF x_degree(powers) = 0
+          AND y_degree(powers) = 1
+          AND z_degree(powers) = 0
+      THEN
+        y_coefficient(coefficients)
+      ELSIF x_degree(powers) = 0
+          AND y_degree(powers) = 0
+          AND z_degree(powers) = 1
+      THEN
+        z_coefficient(coefficients)
+      ELSE
+        0
+      ENDIF)
+
+  product_of_linear_forms(
+      factors: list[linear_coefficients]): RECURSIVE polynomial =
+    CASES factors OF
+      null: one_polynomial,
+      cons(factor, tail):
+        polynomial_multiply(
+          linear_form(factor),
+          product_of_linear_forms(tail))
+    ENDCASES
+  MEASURE factors BY <<
+
+  int_divides(divisor, value: int): bool =
+    EXISTS (quotient: int): value = divisor * quotient
+
+  prime_nat(p: nat): bool =
+    p >= 2
+      AND FORALL (divisor: posnat):
+        int_divides(divisor :: int, p :: int)
+          IMPLIES divisor = 1 OR divisor = p
+
+  coefficient_congruent(
+      left, right: int,
+      modulus: nat): bool =
+    EXISTS (offset: int):
+      left - right = (modulus :: int) * offset
+
+  polynomial_congruent(
+      left, right: polynomial,
+      modulus: nat): bool =
+    FORALL (powers: exponent):
+      coefficient_congruent(
+        left(powers), right(powers), modulus)
+
+  putnam_2002_b6_statement: bool =
+    FORALL (p: nat):
+      prime_nat(p) IMPLIES
+        EXISTS (factors: list[linear_coefficients]):
+          polynomial_congruent(
+            determinant_3(putnam_matrix(p)),
+            product_of_linear_forms(factors),
+            p)
+END putnam_2002_b6

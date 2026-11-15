@@ -1,0 +1,110 @@
+% Statement-only formalization of PutnamBench artifact putnam_1985_b1:
+% the distinct integers -2, -1, 0, 1, 2 minimize the number of nonzero
+% coefficients in a monic real polynomial with five distinct integer roots.
+% This file contains no proof.
+
+putnam_1985_b1: THEORY
+BEGIN
+  integer_entries(values: list[real]): RECURSIVE bool =
+    CASES values OF
+      null: TRUE,
+      cons(value, tail):
+        integer?(value) AND integer_entries(tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  distinct_entries(values: list[real]): RECURSIVE bool =
+    CASES values OF
+      null: TRUE,
+      cons(value, tail):
+        NOT member(value, tail) AND distinct_entries(tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  polynomial_add(
+      left, right: list[real]): RECURSIVE list[real] =
+    CASES left OF
+      null: right,
+      cons(left_coefficient, left_tail):
+        CASES right OF
+          null: left,
+          cons(right_coefficient, right_tail):
+            cons(
+              left_coefficient + right_coefficient,
+              polynomial_add(left_tail, right_tail))
+        ENDCASES
+    ENDCASES
+  MEASURE left BY <<
+
+  polynomial_scale(
+      scalar: real,
+      polynomial: list[real]): RECURSIVE list[real] =
+    CASES polynomial OF
+      null: null,
+      cons(coefficient, tail):
+        cons(
+          scalar * coefficient,
+          polynomial_scale(scalar, tail))
+    ENDCASES
+  MEASURE polynomial BY <<
+
+  polynomial_multiply(
+      left, right: list[real]): RECURSIVE list[real] =
+    CASES left OF
+      null: null,
+      cons(coefficient, tail):
+        polynomial_add(
+          polynomial_scale(coefficient, right),
+          cons(0, polynomial_multiply(tail, right)))
+    ENDCASES
+  MEASURE left BY <<
+
+  linear_factor(root: real): list[real] =
+    cons[real](
+      (0 :: real) - root,
+      cons[real]((1 :: real), null[real]))
+
+  root_polynomial(roots: list[real]): RECURSIVE list[real] =
+    CASES roots OF
+      null: cons(1, null),
+      cons(root, tail):
+        polynomial_multiply(
+          linear_factor(root),
+          root_polynomial(tail))
+    ENDCASES
+  MEASURE roots BY <<
+
+  nonzero_coefficient_count(
+      polynomial: list[real]): RECURSIVE nat =
+    CASES polynomial OF
+      null: 0,
+      cons(coefficient, tail):
+        (IF coefficient = 0 THEN 0 ELSE 1 ENDIF)
+          + nonzero_coefficient_count(tail)
+    ENDCASES
+  MEASURE polynomial BY <<
+
+  putnam_1985_b1_solution: list[real] =
+    cons[real](
+      (0 :: real) - (2 :: real),
+      cons[real](
+        (0 :: real) - (1 :: real),
+        cons[real](
+          (0 :: real),
+          cons[real](
+            (1 :: real),
+            cons[real]((2 :: real), null[real])))))
+
+  putnam_1985_b1: bool =
+    length(putnam_1985_b1_solution) = 5
+      AND integer_entries(putnam_1985_b1_solution)
+      AND distinct_entries(putnam_1985_b1_solution)
+      AND (FORALL (roots: list[real]):
+        (length(roots) = 5
+          AND integer_entries(roots)
+          AND distinct_entries(roots))
+          IMPLIES
+            nonzero_coefficient_count(
+              root_polynomial(putnam_1985_b1_solution))
+              <= nonzero_coefficient_count(root_polynomial(roots)))
+END putnam_1985_b1

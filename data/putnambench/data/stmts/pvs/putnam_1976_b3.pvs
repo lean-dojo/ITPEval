@@ -1,0 +1,194 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1976_b3:
+% a recurrence lower bound for intersections of locally dependent high-probability
+% events under the source's pairwise-independence hypothesis.
+% This file contains no proof.
+
+putnam_1976_b3: THEORY
+BEGIN
+  sample_space: TYPE+
+
+  event: TYPE = [sample_space -> bool]
+  event_sequence: TYPE = [nat -> event]
+  event_family: TYPE = [event -> bool]
+  sigma_algebra: TYPE = [event -> bool]
+  probability_measure: TYPE = [event -> real]
+  real_sequence: TYPE = [nat -> real]
+
+  empty_event: event =
+    LAMBDA (omega: sample_space): FALSE
+
+  full_event: event =
+    LAMBDA (omega: sample_space): TRUE
+
+  event_complement(A: event): event =
+    LAMBDA (omega: sample_space):
+      NOT A(omega)
+
+  event_intersection(A, B: event): event =
+    LAMBDA (omega: sample_space):
+      A(omega) AND B(omega)
+
+  countable_union(events: event_sequence): event =
+    LAMBDA (omega: sample_space):
+      EXISTS (index: nat):
+        events(index)(omega)
+
+  pairwise_disjoint(events: event_sequence): bool =
+    FORALL (i, j: nat):
+      i /= j IMPLIES
+        FORALL (omega: sample_space):
+          NOT (events(i)(omega) AND events(j)(omega))
+
+  finite_sum(values: real_sequence, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      finite_sum(values, count - 1) + values(count - 1)
+    ENDIF
+  MEASURE count
+
+  converges_to(values: real_sequence, limit: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (count: nat):
+          cutoff <= count IMPLIES
+            abs(values(count) - limit) < epsilon_value
+
+  is_sigma_algebra(Sigma: sigma_algebra): bool =
+    Sigma(full_event)
+      AND (FORALL (A: event):
+        Sigma(A) IMPLIES Sigma(event_complement(A)))
+      AND (FORALL (events: event_sequence):
+        (FORALL (index: nat): Sigma(events(index)))
+          IMPLIES Sigma(countable_union(events)))
+
+  is_probability_measure(
+      M: probability_measure,
+      Sigma: sigma_algebra): bool =
+    is_sigma_algebra(Sigma)
+      AND M(empty_event) = 0
+      AND M(full_event) = 1
+      AND (FORALL (A: event):
+        Sigma(A) IMPLIES
+          0 <= M(A) AND M(A) <= 1)
+      AND (FORALL (events: event_sequence):
+        ((FORALL (index: nat): Sigma(events(index)))
+          AND pairwise_disjoint(events))
+        IMPLIES
+          converges_to(
+            LAMBDA (count: nat):
+              finite_sum(
+                LAMBDA (index: nat): M(events(index)),
+                count),
+            M(countable_union(events))))
+
+  contains_family(
+      Sigma: sigma_algebra,
+      family: event_family): bool =
+    FORALL (A: event):
+      family(A) IMPLIES Sigma(A)
+
+  generated_sigma(family: event_family): sigma_algebra =
+    LAMBDA (A: event):
+      FORALL (Sigma: sigma_algebra):
+        (is_sigma_algebra(Sigma)
+          AND contains_family(Sigma, family))
+        IMPLIES Sigma(A)
+
+  singleton_event_family(A: event): event_family =
+    LAMBDA (B: event):
+      B = A
+
+  earlier_event_family(
+      events: event_sequence,
+      event_count, index: nat): event_family =
+    LAMBDA (A: event):
+      EXISTS (j: nat):
+        j < event_count
+          AND j + 1 < index
+          AND A = events(j)
+
+  independent_events(
+      M: probability_measure,
+      A, B: event): bool =
+    M(event_intersection(A, B)) = M(A) * M(B)
+
+  independent_sigma_algebras(
+      M: probability_measure,
+      left, right: sigma_algebra): bool =
+    FORALL (A, B: event):
+      left(A) AND right(B) IMPLIES
+        independent_events(M, A, B)
+
+  separated(i, j: nat): bool =
+    i + 1 < j OR j + 1 < i
+
+  finite_intersection(
+      events: event_sequence,
+      event_count: nat): RECURSIVE event =
+    IF event_count = 0 THEN
+      full_event
+    ELSE
+      event_intersection(
+        finite_intersection(events, event_count - 1),
+        events(event_count - 1))
+    ENDIF
+  MEASURE event_count
+
+  common_assumptions(
+      M: probability_measure,
+      Sigma: sigma_algebra,
+      n: nat,
+      a: real,
+      u: real_sequence,
+      events: event_sequence): bool =
+    is_probability_measure(M, Sigma)
+      AND n >= 1
+      AND 0 <= a
+      AND a < 1 / 4
+      AND u(0) = 1
+      AND u(1) = 1 - a
+      AND (FORALL (k: nat):
+        k >= 1 IMPLIES
+          u(k + 1) = u(k) - a * u(k - 1))
+      AND (FORALL (k: nat):
+        u(k) > 0)
+      AND (FORALL (i: nat):
+        i < n IMPLIES Sigma(events(i)))
+      AND (FORALL (i: nat):
+        i < n IMPLIES M(events(i)) >= 1 - a)
+
+  isabelle_pairwise_independence(
+      M: probability_measure,
+      n: nat,
+      events: event_sequence): bool =
+    FORALL (i, j: nat):
+      i < n AND j < n AND separated(i, j)
+      IMPLIES independent_events(M, events(i), events(j))
+
+  lean_generated_sigma_independence(
+      M: probability_measure,
+      n: nat,
+      events: event_sequence): bool =
+    FORALL (i: nat):
+      i < n IMPLIES
+        independent_sigma_algebras(
+          M,
+          generated_sigma(
+            singleton_event_family(events(i))),
+          generated_sigma(
+            earlier_event_family(events, n, i)))
+
+  putnam_1976_b3: bool =
+    FORALL
+        (M: probability_measure),
+        (Sigma: sigma_algebra),
+        (n: nat),
+        (a: real),
+        (u: real_sequence),
+        (events: event_sequence):
+      (common_assumptions(M, Sigma, n, a, u, events)
+        AND isabelle_pairwise_independence(M, n, events))
+      IMPLIES
+        M(finite_intersection(events, n)) >= u(n)
+END putnam_1976_b3

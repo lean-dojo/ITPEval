@@ -1,0 +1,271 @@
+% Statement-only formalization of "The Solution of the General Quartic Equation" from Hundred
+% Theorems item 046: Ferrari's formulas characterize all complex roots of every quartic with
+% nonzero leading coefficient, in both cases for the depressed linear coefficient. This file
+% contains no proof.
+
+hundred_theorems_046: THEORY
+BEGIN
+  complex: TYPE = [# real_part: real, imag_part: real #]
+
+  complex_zero: complex =
+    (# real_part := 0, imag_part := 0 #)
+
+  complex_one: complex =
+    (# real_part := 1, imag_part := 0 #)
+
+  complex_of_real(x: real): complex =
+    (# real_part := x, imag_part := 0 #)
+
+  complex_neg(x: complex): complex =
+    (# real_part := -real_part(x),
+       imag_part := -imag_part(x) #)
+
+  complex_add(x, y: complex): complex =
+    (# real_part := real_part(x) + real_part(y),
+       imag_part := imag_part(x) + imag_part(y) #)
+
+  complex_sub(x, y: complex): complex =
+    complex_add(x, complex_neg(y))
+
+  complex_mul(x, y: complex): complex =
+    (# real_part := real_part(x) * real_part(y)
+                       - imag_part(x) * imag_part(y),
+       imag_part := real_part(x) * imag_part(y)
+                       + imag_part(x) * real_part(y) #)
+
+  complex_scale(k: real, x: complex): complex =
+    complex_mul(complex_of_real(k), x)
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  complex_inv(x: complex): complex =
+    LET denominator: real =
+      real_part(x) * real_part(x)
+        + imag_part(x) * imag_part(x)
+    IN
+      (# real_part := safe_div(real_part(x), denominator),
+         imag_part := safe_div(-imag_part(x), denominator) #)
+
+  complex_div(x, y: complex): complex =
+    complex_mul(x, complex_inv(y))
+
+  complex_power(x: complex, exponent: nat): RECURSIVE complex =
+    IF exponent = 0 THEN
+      complex_one
+    ELSE
+      complex_mul(complex_power(x, exponent - 1), x)
+    ENDIF
+  MEASURE exponent
+
+  quartic_value(
+      a, b, c, d, e, x: complex): complex =
+    complex_add(
+      complex_add(
+        complex_add(
+          complex_add(
+            complex_mul(a, complex_power(x, 4)),
+            complex_mul(b, complex_power(x, 3))),
+          complex_mul(c, complex_power(x, 2))),
+        complex_mul(d, x)),
+      e)
+
+  ferrari_p(a, b, c: complex): complex =
+    complex_div(
+      complex_sub(
+        complex_scale(8, complex_mul(a, c)),
+        complex_scale(3, complex_power(b, 2))),
+      complex_scale(8, complex_power(a, 2)))
+
+  ferrari_q(a, b, c, d: complex): complex =
+    complex_div(
+      complex_add(
+        complex_sub(
+          complex_power(b, 3),
+          complex_scale(
+            4,
+            complex_mul(complex_mul(a, b), c))),
+        complex_scale(
+          8,
+          complex_mul(complex_power(a, 2), d))),
+      complex_scale(8, complex_power(a, 3)))
+
+  ferrari_r(a, b, c, d, e: complex): complex =
+    complex_div(
+      complex_sub(
+        complex_sub(
+          complex_add(
+            complex_scale(
+              16,
+              complex_mul(
+                complex_mul(a, complex_power(b, 2)),
+                c)),
+            complex_scale(
+              256,
+              complex_mul(complex_power(a, 3), e))),
+          complex_scale(3, complex_power(b, 4))),
+        complex_scale(
+          64,
+          complex_mul(
+            complex_mul(complex_power(a, 2), b),
+            d))),
+      complex_scale(256, complex_power(a, 4)))
+
+  depression_shift(a, b: complex): complex =
+    complex_div(b, complex_scale(4, a))
+
+  shifted_quartic_root(y, a, b: complex): complex =
+    complex_sub(y, depression_shift(a, b))
+
+  cubic_resolvent_value(
+      p, q, r, u: complex): complex =
+    complex_sub(
+      complex_add(
+        complex_sub(
+          complex_sub(
+            complex_power(u, 3),
+            complex_mul(p, complex_power(u, 2))),
+          complex_scale(4, complex_mul(r, u))),
+        complex_scale(4, complex_mul(p, r))),
+      complex_power(q, 2))
+
+  ferrari_nonzero_root_1(
+      s, v, a, b: complex): complex =
+    shifted_quartic_root(
+      complex_div(
+        complex_sub(complex_neg(complex_scale(2, s)), v),
+        complex_of_real(4)),
+      a,
+      b)
+
+  ferrari_nonzero_root_2(
+      s, v, a, b: complex): complex =
+    shifted_quartic_root(
+      complex_div(
+        complex_add(complex_neg(complex_scale(2, s)), v),
+        complex_of_real(4)),
+      a,
+      b)
+
+  ferrari_nonzero_root_3(
+      s, w, a, b: complex): complex =
+    shifted_quartic_root(
+      complex_div(
+        complex_sub(complex_scale(2, s), w),
+        complex_of_real(4)),
+      a,
+      b)
+
+  ferrari_nonzero_root_4(
+      s, w, a, b: complex): complex =
+    shifted_quartic_root(
+      complex_div(
+        complex_add(complex_scale(2, s), w),
+        complex_of_real(4)),
+      a,
+      b)
+
+  nonzero_q_ferrari_witness(
+      p, q, r, u, s, v, w: complex): bool =
+    cubic_resolvent_value(p, q, r, u) = complex_zero
+      AND complex_power(s, 2) = complex_sub(u, p)
+      AND complex_power(v, 2)
+        = complex_sub(
+            complex_scale(4, complex_power(s, 2)),
+            complex_scale(
+              8,
+              complex_sub(u, complex_div(q, s))))
+      AND complex_power(w, 2)
+        = complex_sub(
+            complex_scale(4, complex_power(s, 2)),
+            complex_scale(
+              8,
+              complex_add(u, complex_div(q, s))))
+
+  nonzero_q_ferrari_roots(
+      a, b, c, d, e, s, v, w: complex): bool =
+    FORALL (x: complex):
+      quartic_value(a, b, c, d, e, x) = complex_zero
+        IFF
+      x = ferrari_nonzero_root_1(s, v, a, b)
+        OR x = ferrari_nonzero_root_2(s, v, a, b)
+        OR x = ferrari_nonzero_root_3(s, w, a, b)
+        OR x = ferrari_nonzero_root_4(s, w, a, b)
+
+  nonzero_q_ferrari_solution(
+      a, b, c, d, e, p, q, r: complex): bool =
+    FORALL (u, s, v, w: complex):
+      nonzero_q_ferrari_witness(p, q, r, u, s, v, w)
+        IMPLIES
+      nonzero_q_ferrari_roots(a, b, c, d, e, s, v, w)
+
+  zero_q_ferrari_witness(
+      p, r, t, v, w: complex): bool =
+    complex_power(t, 2)
+      = complex_sub(
+          complex_power(p, 2),
+          complex_scale(4, r))
+      AND complex_power(v, 2)
+        = complex_div(
+            complex_add(complex_neg(p), t),
+            complex_of_real(2))
+      AND complex_power(w, 2)
+        = complex_div(
+            complex_sub(complex_neg(p), t),
+            complex_of_real(2))
+
+  zero_q_ferrari_roots(
+      a, b, c, d, e, v, w: complex): bool =
+    FORALL (x: complex):
+      quartic_value(a, b, c, d, e, x) = complex_zero
+        IFF
+      x = shifted_quartic_root(v, a, b)
+        OR x = shifted_quartic_root(complex_neg(v), a, b)
+        OR x = shifted_quartic_root(w, a, b)
+        OR x = shifted_quartic_root(complex_neg(w), a, b)
+
+  zero_q_ferrari_solution(
+      a, b, c, d, e, p, r: complex): bool =
+    FORALL (t, v, w: complex):
+      zero_q_ferrari_witness(p, r, t, v, w)
+        IMPLIES
+      zero_q_ferrari_roots(a, b, c, d, e, v, w)
+
+  ferrari_solution(
+      a, b, c, d, e: complex): bool =
+    LET p: complex = ferrari_p(a, b, c)
+    IN
+      LET q: complex = ferrari_q(a, b, c, d)
+      IN
+        LET r: complex = ferrari_r(a, b, c, d, e)
+        IN
+          (q = complex_zero
+            AND zero_q_ferrari_solution(
+              a,
+              b,
+              c,
+              d,
+              e,
+              p,
+              r))
+          OR
+          (NOT (q = complex_zero)
+            AND nonzero_q_ferrari_solution(
+              a,
+              b,
+              c,
+              d,
+              e,
+              p,
+              q,
+              r))
+
+  the_solution_of_the_general_quartic_equation: bool =
+    FORALL (a, b, c, d, e: complex):
+      NOT (a = complex_zero)
+        IMPLIES ferrari_solution(a, b, c, d, e)
+END hundred_theorems_046

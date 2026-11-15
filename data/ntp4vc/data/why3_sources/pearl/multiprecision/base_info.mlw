@@ -1,0 +1,70 @@
+module BaseInfo
+
+  use int.Int
+  use int.Power
+  use mach.int.UInt32
+  use mach.int.UInt64
+  use types.Types
+  use types.Int32Eq
+  use types.UInt64Eq
+  use logical.Logical
+  use int.ComputerDivision
+
+  let wmpn_base_power_of_two_p (b:limb) : uint32
+    requires { 2 <= b <= 256 }
+    ensures  { 0 <= result <= 8 }
+    ensures  { result <> 0 -> power 2 result = b }
+    ensures  { result = 0 -> forall n. 0 <= n -> power 2 n <> b }
+  = if b = 2 then 1
+    else if b = 4 then 2
+    else if b = 8 then 3
+    else if b = 16 then 4
+    else if b = 32 then 5
+    else if b = 64 then 6
+    else if b = 128 then 7
+    else if b = 256 then 8
+    else 0
+
+  type wmpn_base_info =
+    {
+      ghost b : int;
+      exp : uint32;
+      bb : limb;
+    }
+  invariant { 2 <= b <= 256 }
+  invariant { bb < Limb.radix <= bb * b }
+  invariant { 7 <= exp <= 63 }
+  invariant { bb = power b exp }
+  by { b = 2; exp = 63; bb = 0x8000_0000_0000_0000 }
+
+  let ghost pow_compat (b1 b2 e:int) : unit
+    requires { 1 <= b1 <= b2 }
+    requires { 1 <= e }
+    ensures  { power b1 e <= power b2 e }
+  = ()
+
+  let wmpn_get_base_info (b:limb) : wmpn_base_info
+    requires { 2 <= b <= 256 }
+    ensures  { result.b = b }
+  =
+    let m = 0xffff_ffff_ffff_ffff / b in
+    let ref p = b in
+    let ref exp = 1 in
+    while (p <= m) do
+      variant { m - p }
+      invariant { power b exp = p }
+      invariant { 1 <= exp <= 64 }
+      p <- p * b;
+      exp <- exp + 1;
+    done;
+    { b = uint64'int b; exp = exp; bb = p }
+
+  let wmpn_limb_size_in_base_2 (u:limb) : limb
+    requires { u > 0 }
+    ensures  { 1 <= result <= 64 }
+    ensures  { power 2 (result - 1) <= u < power 2 result }
+  = let shift = Limb.of_int32 (Limb.count_leading_zeros u) in
+    let r = 64 - shift in
+    r
+
+end

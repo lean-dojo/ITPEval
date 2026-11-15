@@ -1,0 +1,126 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1992_b3:
+% for the stated real recurrence, the planar region of initial points whose
+% sequences converge has Lebesgue area 4 + pi. This file contains no proof.
+
+putnam_1992_b3: THEORY
+BEGIN
+  point: TYPE = [# x_coord: real, y_coord: real #]
+  planar_region: TYPE = [point -> bool]
+  real_sequence: TYPE = [nat -> real]
+  sequence_family: TYPE = [point -> real_sequence]
+
+  box: TYPE =
+    [# left: real, right: real, bottom: real, top: real #]
+  box_sequence: TYPE = [nat -> box]
+
+  satisfies_recurrence(a: sequence_family): bool =
+    FORALL (p: point):
+      a(p)(0) = x_coord(p)
+        AND FORALL (n: nat):
+          a(p)(n + 1)
+            = (a(p)(n) ^ 2 + y_coord(p) ^ 2) / 2
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  convergence_region(a: sequence_family): planar_region =
+    LAMBDA (p: point):
+      EXISTS (limit_value: real):
+        converges_to(a(p), limit_value)
+
+  in_open_box(p: point, rectangle: box): bool =
+    left(rectangle) < x_coord(p)
+      AND x_coord(p) < right(rectangle)
+      AND bottom(rectangle) < y_coord(p)
+      AND y_coord(p) < top(rectangle)
+
+  box_area(rectangle: box): real =
+    IF left(rectangle) < right(rectangle)
+        AND bottom(rectangle) < top(rectangle)
+    THEN
+      (right(rectangle) - left(rectangle))
+        * (top(rectangle) - bottom(rectangle))
+    ELSE
+      0
+    ENDIF
+
+  partial_box_area(
+      boxes: box_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      partial_box_area(boxes, count - 1)
+        + box_area(boxes(count - 1))
+    ENDIF
+  MEASURE count
+
+  covers(region: planar_region, boxes: box_sequence): bool =
+    FORALL (p: point):
+      region(p) IMPLIES
+        EXISTS (index: nat):
+          in_open_box(p, boxes(index))
+
+  cover_has_total_area(
+      region: planar_region,
+      boxes: box_sequence,
+      total: real): bool =
+    covers(region, boxes)
+      AND converges_to(
+        LAMBDA (count: nat):
+          partial_box_area(boxes, count),
+        total)
+
+  has_lebesgue_outer_area(
+      region: planar_region,
+      area: real): bool =
+    0 <= area
+      AND (FORALL (boxes: box_sequence), (total: real):
+        cover_has_total_area(region, boxes, total)
+          IMPLIES area <= total)
+      AND (FORALL (epsilon_value: posreal):
+        EXISTS (boxes: box_sequence), (total: real):
+          cover_has_total_area(region, boxes, total)
+            AND total < area + epsilon_value)
+
+  alternating_sign(index: nat): RECURSIVE real =
+    IF index = 0 THEN
+      1
+    ELSE
+      -alternating_sign(index - 1)
+    ENDIF
+  MEASURE index
+
+  leibniz_partial_sum(count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        leibniz_partial_sum(count - 1)
+          + alternating_sign(index)
+              / ((2 * index + 1) :: real)
+    ENDIF
+  MEASURE count
+
+  is_pi(value: real): bool =
+    converges_to(
+      LAMBDA (count: nat):
+        4 * leibniz_partial_sum(count),
+      value)
+
+  pi: real =
+    epsilon(
+      LAMBDA (value: real):
+        is_pi(value))
+
+  putnam_1992_b3: bool =
+    FORALL (a: sequence_family):
+      satisfies_recurrence(a) IMPLIES
+        has_lebesgue_outer_area(
+          convergence_region(a),
+          4 + pi)
+END putnam_1992_b3

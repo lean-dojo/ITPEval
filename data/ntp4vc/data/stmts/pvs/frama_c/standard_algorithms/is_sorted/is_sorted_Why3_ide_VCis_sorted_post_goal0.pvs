@@ -1,0 +1,88 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% frama_c/standard_algorithms/is_sorted/is_sorted_Why3_ide_VCis_sorted_post_goal0:
+% an is-sorted postcondition relating pairwise sortedness of an integer-memory
+% range to a nonzero result under the source bounds, branch invariant, and
+% memory-validity assumptions. This file contains no proof.
+
+is_sorted_Why3_ide_VCis_sorted_post_goal0: THEORY
+BEGIN
+  addr: TYPE = [# base: int, offset: int #]
+  integer_memory: TYPE = [addr -> int]
+  allocation_table: TYPE = [int -> int]
+
+  shift(p: addr, k: int): addr =
+    (# base := base(p), offset := offset(p) + k #)
+
+  valid_rd(m: allocation_table, p: addr, n: int): bool =
+    0 < n IMPLIES
+      base(p) /= 0
+        AND 0 <= offset(p)
+        AND offset(p) + n <= m(base(p))
+
+  is_uint32(x: int): bool =
+    0 <= x AND x < 4294967296
+
+  is_sint32(x: int): bool =
+    -2147483648 <= x AND x < 2147483648
+
+  to_uint32(x: int): int =
+    mod(x, 4294967296)
+
+  p_weaklysorted(
+      mint_0: integer_memory,
+      a: addr,
+      m, n: int): bool =
+    FORALL (j: int):
+      m <= j IMPLIES
+      2 + j <= n IMPLIES
+      mint_0(shift(a, j)) <= mint_0(shift(a, 1 + j))
+
+  p_sorted(
+      mint_0: integer_memory,
+      a: addr,
+      m, n: int): bool =
+    FORALL (j_1, j: int):
+      j < n IMPLIES
+      m <= j_1 IMPLIES
+      j_1 < j IMPLIES
+      mint_0(shift(a, j_1)) <= mint_0(shift(a, j))
+
+  goal0: bool =
+    FORALL
+      (region: [int -> int]),
+      (linked: [allocation_table -> bool]),
+      (i_2: int),
+      (a: addr),
+      (t: allocation_table),
+      (i, i_1: int),
+      (p: bool),
+      (t_1: integer_memory):
+      LET x: int = 1 + i_2,
+          a_1: addr = shift(a, i_2)
+      IN
+        region(base(a)) <= 0 IMPLIES
+        linked(t) IMPLIES
+        is_uint32(i) IMPLIES
+        is_uint32(i_2) IMPLIES
+        is_sint32(i_1) IMPLIES
+        valid_rd(t, shift(a, 0), i) IMPLIES
+        (IF 0 < i
+         THEN
+           p = FALSE
+             AND p_weaklysorted(t_1, a, 0, x)
+             AND
+               (IF 2 + i_2 <= i
+                THEN
+                  i_1 = 0
+                    AND t_1(shift(a, x)) < t_1(a_1)
+                    AND i_2 <= 4294967294
+                    AND valid_rd(t, a_1, 1)
+                    AND valid_rd(t, shift(a, to_uint32(x)), 1)
+                ELSE
+                  i_1 = 1
+                ENDIF)
+         ELSE
+           i_1 = 1
+         ENDIF) IMPLIES
+        (p_sorted(t_1, a, 0, i) <=> i_1 /= 0)
+END is_sorted_Why3_ide_VCis_sorted_post_goal0

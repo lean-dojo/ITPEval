@@ -1,0 +1,142 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/bitwalker_Bitwalker_poke_64bit_bvqtvc: the verification condition for
+% setting or clearing one selected bit of a 64-bit word while preserving every
+% other bit. This file contains no proof.
+
+bitwalker_Bitwalker_poke_64bit_bvqtvc: THEORY
+BEGIN
+
+  IMPORTING
+    bv[8], bv[32], bv[64],
+    bv_nat[8], bv_nat[32], bv_nat[64],
+    bv_arithmetic_defs[32]
+
+  word8: TYPE = bvec[8]
+  word32: TYPE = bvec[32]
+  word64: TYPE = bvec[64]
+
+  unsigned32(value: word32): int = bv2nat[32](value)
+
+  word32_of(value: below(exp2(32))): word32 =
+    nat2bv[32](value)
+
+  zero8: word8 = fill[8](FALSE)
+  zero64: word64 = fill[64](FALSE)
+  sixty_three32: word32 = word32_of(63)
+
+  sub32(left, right: word32): word32 = left - right
+
+  bit8(value: word8, index: int): bool =
+    IF 0 <= index AND index < 8 THEN
+      value(index)
+    ELSE
+      FALSE
+    ENDIF
+
+  bit64(value: word64, index: int): bool =
+    IF 0 <= index AND index < 64 THEN
+      value(index)
+    ELSE
+      FALSE
+    ENDIF
+
+  nth_byte_default(stream: list[word8], index: int): word8 =
+    IF 0 <= index AND index < length(stream) THEN
+      nth(stream, index)
+    ELSE
+      zero8
+    ENDIF
+
+  nth8_stream(stream: list[word8], position: int): bool =
+    bit8(
+      nth_byte_default(stream, ndiv(position, 8)),
+      7 - mod(position, 8))
+
+  maxvalue(len: word32): word64 =
+    IF unsigned32(len) < 64 THEN
+      LAMBDA (index: below(64)):
+        index = unsigned32(len)
+    ELSE
+      zero64
+    ENDIF
+
+  bitwise_or(left, right: word64): word64 =
+    LAMBDA (index: below(64)):
+      left(index) OR right(index)
+
+  bitwise_and(left, right: word64): word64 =
+    LAMBDA (index: below(64)):
+      left(index) AND right(index)
+
+  bitwise_not(value: word64): word64 =
+    LAMBDA (index: below(64)):
+      NOT value(index)
+
+  ule32(left, right: word32): bool =
+    unsigned32(left) <= unsigned32(right)
+
+  selected_offset(left1: word32): word32 =
+    sub32(sixty_three32, left1)
+
+  selected_update(
+      flag: bool,
+      value, mask, result: word64): bool =
+    IF flag THEN
+      result = bitwise_or(value, mask)
+    ELSE
+      result = bitwise_and(value, bitwise_not(mask))
+    ENDIF
+
+  bitvector_postcondition(
+      left1: word32,
+      flag: bool,
+      value, result: word64): bool =
+    (FORALL (index: word32):
+      NOT index = selected_offset(left1)
+        IMPLIES
+          bit64(result, unsigned32(index))
+            = bit64(value, unsigned32(index)))
+      AND
+    flag = bit64(result, unsigned32(selected_offset(left1)))
+
+  integer_postcondition(
+      left1: word32,
+      flag: bool,
+      value, result: word64): bool =
+    (FORALL (index: int):
+      ((0 <= index AND index < 64)
+        AND NOT index = 63 - unsigned32(left1))
+      IMPLIES bit64(result, index) = bit64(value, index))
+      AND
+    flag = bit64(result, 63 - unsigned32(left1))
+
+  poke_64bit_bv_vc: bool =
+    FORALL
+        (left1: word32),
+        (flag: bool),
+        (value: word64):
+      unsigned32(left1) < 64
+        IMPLIES
+          (unsigned32(left1) <= 63
+            OR ule32(left1, sixty_three32))
+          AND
+          (LET o1: word32 = selected_offset(left1)
+           IN
+             unsigned32(o1) = 63 - unsigned32(left1)
+               IMPLIES
+                 (LET mask: word64 = maxvalue(o1)
+                  IN
+                    (IF flag THEN TRUE ELSE TRUE ENDIF)
+                      AND
+                    (FORALL (result: word64):
+                      selected_update(flag, value, mask, result)
+                        IMPLIES
+                          bitvector_postcondition(
+                            left1, flag, value, result))))
+          AND
+          (FORALL (result: word64):
+            bitvector_postcondition(left1, flag, value, result)
+              IMPLIES
+                integer_postcondition(left1, flag, value, result))
+
+END bitwalker_Bitwalker_poke_64bit_bvqtvc

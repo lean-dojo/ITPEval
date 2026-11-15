@@ -1,0 +1,112 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2011_a5:
+% a bound for pairwise values of a twice continuously differentiable real
+% bivariate function whose gradient is constrained by a positive weight.
+% This file contains no proof.
+
+putnam_2011_a5: THEORY
+BEGIN
+  real_function: TYPE = [real -> real]
+  bivariate_function: TYPE = [real, real -> real]
+  real_sequence: TYPE = [nat -> real]
+
+  continuous_real(f: real_function): bool =
+    FORALL (x: real), (epsilon_value: posreal):
+      EXISTS (delta: posreal):
+        FORALL (y: real):
+          abs(y - x) < delta IMPLIES
+            abs(f(y) - f(x)) < epsilon_value
+
+  continuous_bivariate(f: bivariate_function): bool =
+    FORALL (u, v: real), (epsilon_value: posreal):
+      EXISTS (delta: posreal):
+        FORALL (x, y: real):
+          (abs(x - u) < delta AND abs(y - v) < delta)
+            IMPLIES
+              abs(f(x, y) - f(u, v)) < epsilon_value
+
+  has_derivative_at(
+      f: real_function,
+      derivative, point: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (delta: posreal):
+        FORALL (increment: real):
+          (increment /= 0 AND abs(increment) < delta)
+            IMPLIES
+              abs(
+                f(point + increment) - f(point)
+                  - derivative * increment)
+                < epsilon_value * abs(increment)
+
+  univariate_c2_data(
+      g, g_first, g_second: real_function): bool =
+    continuous_real(g)
+      AND continuous_real(g_first)
+      AND continuous_real(g_second)
+      AND (FORALL (x: real):
+        has_derivative_at(g, g_first(x), x)
+          AND has_derivative_at(g_first, g_second(x), x))
+
+  bivariate_c2_data(
+      f, f_u, f_v,
+      f_uu, f_uv, f_vu, f_vv: bivariate_function): bool =
+    continuous_bivariate(f)
+      AND continuous_bivariate(f_u)
+      AND continuous_bivariate(f_v)
+      AND continuous_bivariate(f_uu)
+      AND continuous_bivariate(f_uv)
+      AND continuous_bivariate(f_vu)
+      AND continuous_bivariate(f_vv)
+      AND (FORALL (u, v: real):
+        has_derivative_at(
+          LAMBDA (x: real): f(x, v),
+          f_u(u, v),
+          u)
+        AND has_derivative_at(
+          LAMBDA (y: real): f(u, y),
+          f_v(u, v),
+          v)
+        AND has_derivative_at(
+          LAMBDA (x: real): f_u(x, v),
+          f_uu(u, v),
+          u)
+        AND has_derivative_at(
+          LAMBDA (y: real): f_u(u, y),
+          f_uv(u, v),
+          v)
+        AND has_derivative_at(
+          LAMBDA (x: real): f_v(x, v),
+          f_vu(u, v),
+          u)
+        AND has_derivative_at(
+          LAMBDA (y: real): f_v(u, y),
+          f_vv(u, v),
+          v))
+
+  admissible(f: bivariate_function, g: real_function): bool =
+    EXISTS
+        (g_first, g_second: real_function),
+        (f_u, f_v,
+         f_uu, f_uv, f_vu, f_vv: bivariate_function):
+      univariate_c2_data(g, g_first, g_second)
+        AND bivariate_c2_data(
+          f, f_u, f_v, f_uu, f_uv, f_vu, f_vv)
+        AND (FORALL (u: real): f(u, u) = 0)
+        AND (FORALL (x: real):
+          g(x) > 0 AND x ^ 2 * g(x) <= 1)
+        AND (FORALL (u, v: real):
+          EXISTS (scale: real):
+            f_u(u, v) = scale * g(u)
+              AND f_v(u, v) = scale * (-g(v)))
+
+  putnam_2011_a5: bool =
+    FORALL (f: bivariate_function), (g: real_function):
+      admissible(f, g) IMPLIES
+        EXISTS (C: real):
+          FORALL (n: nat), (x: real_sequence):
+            n >= 2 IMPLIES
+              EXISTS (i, j: nat):
+                i <= n
+                  AND j <= n
+                  AND i /= j
+                  AND abs(f(x(i), x(j))) <= C / (n :: real)
+END putnam_2011_a5

@@ -1,0 +1,109 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2004_b6:
+% a nonempty set of positive integers whose positive differences have
+% unbounded consecutive gaps has counting function of asymptotic density zero.
+% This file contains no proof.
+
+putnam_2004_b6: THEORY
+BEGIN
+  natural_set: TYPE = [nat -> bool]
+  natural_sequence: TYPE = [nat -> nat]
+  real_counting_function: TYPE = [real -> nat]
+
+  injective_below(
+      enumeration: natural_sequence,
+      cardinality: nat): bool =
+    FORALL (i, j: nat):
+      i < cardinality
+        AND j < cardinality
+        AND enumeration(i) = enumeration(j)
+      IMPLIES i = j
+
+  enumerates_exactly(
+      enumeration: natural_sequence,
+      set_value: natural_set,
+      cardinality: nat): bool =
+    FORALL (value: nat):
+      set_value(value)
+        IFF
+          EXISTS (position: nat):
+            position < cardinality
+              AND enumeration(position) = value
+
+  has_cardinality(
+      set_value: natural_set,
+      cardinality: nat): bool =
+    EXISTS (enumeration: natural_sequence):
+      injective_below(enumeration, cardinality)
+        AND enumerates_exactly(
+          enumeration, set_value, cardinality)
+
+  bounded_members(A: natural_set, x: real): natural_set =
+    LAMBDA (a: nat):
+      A(a) AND (a :: real) <= x
+
+  is_counting_function(
+      A: natural_set,
+      N: real_counting_function): bool =
+    FORALL (x: real):
+      has_cardinality(bounded_members(A, x), N(x))
+
+  is_positive_difference_set(
+      A, B: natural_set): bool =
+    FORALL (difference: nat):
+      B(difference)
+        IFF
+          difference > 0
+            AND EXISTS (a, a_prime: nat):
+              A(a)
+                AND A(a_prime)
+                AND difference = a - a_prime
+
+  is_increasing_enumeration(
+      B: natural_set,
+      b: natural_sequence): bool =
+    (FORALL (difference: nat):
+      B(difference)
+        IFF EXISTS (index: nat):
+          b(index) = difference)
+      AND
+        (FORALL (index: nat):
+          b(index) < b(index + 1))
+
+  has_unbounded_gaps(b: natural_sequence): bool =
+    FORALL (bound: nat):
+      EXISTS (index: nat):
+        b(index + 1) - b(index) >= bound
+
+  safe_real_division(
+      numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  density_tends_to_zero(
+      N: real_counting_function): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: real):
+        FORALL (x: real):
+          cutoff <= x IMPLIES
+            abs(
+              safe_real_division(N(x) :: real, x))
+              < epsilon_value
+
+  putnam_2004_b6: bool =
+    FORALL
+        (A, B: natural_set),
+        (N: real_counting_function),
+        (b: natural_sequence):
+      ((EXISTS (a: nat): A(a))
+        AND (FORALL (a: nat):
+          A(a) IMPLIES a > 0)
+        AND is_counting_function(A, N)
+        AND is_positive_difference_set(A, B)
+        AND is_increasing_enumeration(B, b))
+      IMPLIES
+        (has_unbounded_gaps(b)
+          IMPLIES density_tends_to_zero(N))
+END putnam_2004_b6

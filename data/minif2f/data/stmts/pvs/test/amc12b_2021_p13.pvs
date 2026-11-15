@@ -1,0 +1,79 @@
+% Statement-only formalization of miniF2F test artifact amc12b_2021_p13: the real
+% solutions in (0, 2*pi] of 1 - 3*sin(x) + 5*cos(3*x) = 0 form a set of
+% cardinality six. This file contains no proof.
+
+amc12b_2021_p13: THEORY
+BEGIN
+  IMPORTING finite_sets[real]
+
+  safe_div(x, y: real): real =
+    IF y = 0 THEN 0 ELSE x / y ENDIF
+
+  nat_factorial(n: nat): RECURSIVE nat =
+    IF n = 0 THEN
+      1
+    ELSE
+      n * nat_factorial(n - 1)
+    ENDIF
+  MEASURE n
+
+  sine_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET j: nat = count - 1 IN
+        sine_partial(x, count - 1)
+          + safe_div(
+              ((-1 :: real) ^ j) * x ^ (2 * j + 1),
+              nat_factorial(2 * j + 1) :: real)
+    ENDIF
+  MEASURE count
+
+  cosine_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET j: nat = count - 1 IN
+        cosine_partial(x, count - 1)
+          + safe_div(
+              ((-1 :: real) ^ j) * x ^ (2 * j),
+              nat_factorial(2 * j) :: real)
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: [nat -> real], value: real): bool =
+    FORALL (eps: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < eps
+
+  sine_value(x, value: real): bool =
+    converges_to(
+      (LAMBDA (count: nat): sine_partial(x, count)),
+      value)
+
+  cosine_value(x, value: real): bool =
+    converges_to(
+      (LAMBDA (count: nat): cosine_partial(x, count)),
+      value)
+
+  pi_value(p: posreal): bool =
+    3 < p AND p < 4 AND cosine_value(p / 2, 0)
+
+  solution(x: real, p: posreal): bool =
+    0 < x
+      AND x <= 2 * p
+      AND EXISTS (sin_x, cos_3x: real):
+        sine_value(x, sin_x)
+          AND cosine_value(3 * x, cos_3x)
+          AND 1 - 3 * sin_x + 5 * cos_3x = 0
+
+  amc12b_2021_p13: bool =
+    FORALL (p: posreal):
+      pi_value(p) IMPLIES
+        EXISTS (S: finite_set[real]):
+          card(S) = 6
+            AND (FORALL (x: real):
+              S(x) IFF solution(x, p))
+END amc12b_2021_p13

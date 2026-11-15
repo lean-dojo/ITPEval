@@ -1,0 +1,239 @@
+% Statement-only formalization of PutnamBench artifact putnam_1970_b6:
+% a nondegenerate ordered quadrilateral circumscribed about a circle and having
+% area sqrt(abcd) is cyclic. This file contains no proof.
+
+putnam_1970_b6: THEORY
+BEGIN
+  point: TYPE = [# x_coord: real, y_coord: real #]
+  point_set: TYPE = [point -> bool]
+  vertex_index: TYPE = below(4)
+  vertices: TYPE = [vertex_index -> point]
+  point_sequence: TYPE = [nat -> point]
+  real_sequence: TYPE = [nat -> real]
+
+  box: TYPE =
+    [# left: real, right: real, bottom: real, top: real #]
+  box_sequence: TYPE = [nat -> box]
+
+  squared_distance(P, Q: point): real =
+    (x_coord(P) - x_coord(Q)) ^ 2
+      + (y_coord(P) - y_coord(Q)) ^ 2
+
+  distance(P, Q: point): real =
+    epsilon(
+      LAMBDA (length: real):
+        0 <= length
+          AND length * length = squared_distance(P, Q))
+
+  cross_from(P, Q, R: point): real =
+    (x_coord(Q) - x_coord(P)) * (y_coord(R) - y_coord(P))
+      - (y_coord(Q) - y_coord(P)) * (x_coord(R) - x_coord(P))
+
+  collinear(P, Q, R: point): bool =
+    cross_from(P, Q, R) = 0
+
+  affine_combination(t: real, P, Q: point): point =
+    (# x_coord := (1 - t) * x_coord(P) + t * x_coord(Q),
+       y_coord := (1 - t) * y_coord(P) + t * y_coord(Q) #)
+
+  closed_segment(P, Q: point): point_set =
+    LAMBDA (X: point):
+      EXISTS (t: real):
+        0 <= t AND t <= 1
+          AND X = affine_combination(t, P, Q)
+
+  point_subset(A, B: point_set): bool =
+    FORALL (P: point):
+      A(P) IMPLIES B(P)
+
+  convex(A: point_set): bool =
+    FORALL (P, Q: point), (t: real):
+      A(P) AND A(Q) AND 0 <= t AND t <= 1
+        IMPLIES A(affine_combination(t, P, Q))
+
+  convex_hull(A: point_set): point_set =
+    LAMBDA (P: point):
+      FORALL (C: point_set):
+        convex(C) AND point_subset(A, C) IMPLIES C(P)
+
+  euclidean_interior(A: point_set): point_set =
+    LAMBDA (P: point):
+      EXISTS (radius: real):
+        0 < radius
+          AND FORALL (Q: point):
+            squared_distance(P, Q) < radius ^ 2
+              IMPLIES A(Q)
+
+  next_vertex(i: vertex_index): vertex_index =
+    IF i = 0 THEN
+      1
+    ELSIF i = 1 THEN
+      2
+    ELSIF i = 2 THEN
+      3
+    ELSE
+      0
+    ENDIF
+
+  vertex_set(L: vertices): point_set =
+    LAMBDA (P: point):
+      EXISTS (i: vertex_index):
+        P = L(i)
+
+  injective_vertices(L: vertices): bool =
+    FORALL (i, j: vertex_index):
+      L(i) = L(j) IMPLIES i = j
+
+  has_four_points(S: point_set): bool =
+    EXISTS (L: vertices):
+      injective_vertices(L)
+        AND FORALL (P: point):
+          S(P) IFF
+            EXISTS (i: vertex_index):
+              P = L(i)
+
+  no_three_collinear(S: point_set): bool =
+    FORALL (P, Q, R: point):
+      (S(P) AND S(Q) AND S(R)
+        AND P /= Q AND P /= R AND Q /= R)
+      IMPLIES NOT collinear(P, Q, R)
+
+  bounded_region(A: point_set): bool =
+    EXISTS (bound: nonneg_real):
+      FORALL (P: point):
+        A(P) IMPLIES
+          abs(x_coord(P)) <= bound
+            AND abs(y_coord(P)) <= bound
+
+  in_open_box(P: point, B: box): bool =
+    left(B) < x_coord(P)
+      AND x_coord(P) < right(B)
+      AND bottom(B) < y_coord(P)
+      AND y_coord(P) < top(B)
+
+  proper_box(B: box): bool =
+    left(B) < right(B) AND bottom(B) < top(B)
+
+  box_area(B: box): real =
+    (right(B) - left(B)) * (top(B) - bottom(B))
+
+  partial_sum(values: real_sequence, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      partial_sum(values, count - 1) + values(count - 1)
+    ENDIF
+  MEASURE count
+
+  nonnegative_series_sum(
+      values: real_sequence,
+      total: real): bool =
+    (FORALL (index: nat): 0 <= values(index))
+      AND FORALL (eps: posreal):
+        EXISTS (start: nat):
+          FORALL (count: nat):
+            start <= count IMPLIES
+              abs(partial_sum(values, count) - total) < eps
+
+  box_areas(boxes: box_sequence): real_sequence =
+    LAMBDA (index: nat):
+      box_area(boxes(index))
+
+  covers(A: point_set, boxes: box_sequence): bool =
+    (FORALL (index: nat): proper_box(boxes(index)))
+      AND FORALL (P: point):
+        A(P) IMPLIES
+          EXISTS (index: nat):
+            in_open_box(P, boxes(index))
+
+  box_cover_total(
+      A: point_set,
+      boxes: box_sequence,
+      total: real): bool =
+    covers(A, boxes)
+      AND nonnegative_series_sum(box_areas(boxes), total)
+
+  lebesgue_outer_area(
+      A: point_set,
+      area: real): bool =
+    bounded_region(A)
+      AND 0 <= area
+      AND (FORALL (boxes: box_sequence), (total: real):
+        box_cover_total(A, boxes, total)
+          IMPLIES area <= total)
+      AND (FORALL (eps: posreal):
+        EXISTS (boxes: box_sequence), (total: real):
+          box_cover_total(A, boxes, total)
+            AND total < area + eps)
+
+  side_lengths_positive(L: vertices): bool =
+    distance(L(0), L(1)) > 0
+      AND distance(L(1), L(2)) > 0
+      AND distance(L(2), L(3)) > 0
+      AND distance(L(3), L(0)) > 0
+
+  ordered_boundary(L: vertices, S: point_set): bool =
+    FORALL (i: vertex_index), (P: point):
+      closed_segment(L(i), L(next_vertex(i)))(P)
+        IMPLIES NOT euclidean_interior(convex_hull(S))(P)
+
+  tangent_contact(
+      center: point,
+      radius: real,
+      L: vertices,
+      i: vertex_index,
+      I: point): bool =
+    collinear(I, L(i), L(next_vertex(i)))
+      AND distance(center, I) = radius
+
+  unique_tangent_contact(
+      center: point,
+      radius: real,
+      L: vertices,
+      i: vertex_index): bool =
+    EXISTS (I: point):
+      tangent_contact(center, radius, L, i, I)
+        AND FORALL (J: point):
+          tangent_contact(center, radius, L, i, J)
+            IMPLIES J = I
+
+  circumscribed_about_circle(
+      L: vertices,
+      S: point_set): bool =
+    EXISTS (center: point), (radius: real):
+      convex_hull(S)(center)
+        AND radius > 0
+        AND FORALL (i: vertex_index):
+          unique_tangent_contact(center, radius, L, i)
+
+  sqrt_value(root, radicand: real): bool =
+    0 <= root AND root * root = radicand
+
+  brahmagupta_area_identity(
+      L: vertices,
+      S: point_set): bool =
+    EXISTS (area: real):
+      lebesgue_outer_area(convex_hull(S), area)
+        AND sqrt_value(
+          area,
+          distance(L(0), L(1))
+            * distance(L(1), L(2))
+            * distance(L(2), L(3))
+            * distance(L(3), L(0)))
+
+  cospherical(S: point_set): bool =
+    EXISTS (center: point), (radius: real):
+      FORALL (P: point):
+        S(P) IMPLIES distance(P, center) = radius
+
+  putnam_1970_b6: bool =
+    FORALL (L: vertices), (S: point_set):
+      (S = vertex_set(L)
+        AND has_four_points(S)
+        AND no_three_collinear(S)
+        AND side_lengths_positive(L)
+        AND ordered_boundary(L, S)
+        AND circumscribed_about_circle(L, S)
+        AND brahmagupta_area_identity(L, S))
+      IMPLIES cospherical(S)
+END putnam_1970_b6

@@ -1,0 +1,211 @@
+% Statement-only formalization of the VERINA corpus artifact
+% verina_advanced_38, catalog title "maxCoverageAfterRemovingOne": removing
+% each interval in turn, merging the remaining intervals by start point, and
+% returning the maximum natural-number coverage. This file contains no proof.
+
+verina_advanced_38: THEORY
+BEGIN
+
+  interval: TYPE =
+    [# interval_start: nat, interval_end: nat #]
+
+  interval_list_length(
+      values: list[interval]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        interval_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  nat_max(left, right: nat): nat =
+    IF left >= right THEN left ELSE right ENDIF
+
+  % Lean natural-number subtraction is truncated at zero.
+  nat_subtract(first, second: nat): nat =
+    IF first >= second THEN first - second ELSE 0 ENDIF
+
+  eraseIdx(
+      values: list[interval],
+      index: nat): RECURSIVE list[interval] =
+    CASES values OF
+      null:
+        null,
+      cons(head, tail):
+        IF index = 0 THEN
+          tail
+        ELSE
+          cons(head, eraseIdx(tail, index - 1))
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  insert_by_start(
+      value: interval,
+      values: list[interval]): RECURSIVE list[interval] =
+    CASES values OF
+      null:
+        cons(value, null),
+      cons(head, tail):
+        IF interval_start(value) <= interval_start(head) THEN
+          cons(value, cons(head, tail))
+        ELSE
+          cons(head, insert_by_start(value, tail))
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  % This stable insertion sort gives the same list as Lean's stable mergeSort
+  % under comparison by the first component, including the order of equal
+  % start points.
+  mergeSort_by_start(
+      values: list[interval]): RECURSIVE list[interval] =
+    CASES values OF
+      null:
+        null,
+      cons(head, tail):
+        insert_by_start(
+          head,
+          mergeSort_by_start(tail))
+    ENDCASES
+  MEASURE values BY <<
+
+  merge_intervals_fold(
+      remaining,
+      accumulator: list[interval]): RECURSIVE list[interval] =
+    CASES remaining OF
+      null:
+        accumulator,
+      cons(current, rest):
+        CASES accumulator OF
+          null:
+            merge_intervals_fold(
+              rest,
+              cons(current, null)),
+          cons(latest, earlier):
+            IF interval_start(current) <= interval_end(latest) THEN
+              merge_intervals_fold(
+                rest,
+                cons(
+                  (# interval_start := interval_start(latest),
+                     interval_end :=
+                       nat_max(
+                         interval_end(latest),
+                         interval_end(current)) #),
+                  earlier))
+            ELSE
+              merge_intervals_fold(
+                rest,
+                cons(current, cons(latest, earlier)))
+            ENDIF
+        ENDCASES
+    ENDCASES
+  MEASURE remaining BY <<
+
+  interval_list_reverse_acc(
+      remaining,
+      accumulator: list[interval]): RECURSIVE list[interval] =
+    CASES remaining OF
+      null:
+        accumulator,
+      cons(head, tail):
+        interval_list_reverse_acc(
+          tail,
+          cons(head, accumulator))
+    ENDCASES
+  MEASURE remaining BY <<
+
+  interval_list_reverse(
+      values: list[interval]): list[interval] =
+    interval_list_reverse_acc(values, null)
+
+  coverage_fold(
+      remaining: list[interval],
+      accumulator: nat): RECURSIVE nat =
+    CASES remaining OF
+      null:
+        accumulator,
+      cons(current, rest):
+        coverage_fold(
+          rest,
+          accumulator
+            + nat_subtract(
+                interval_end(current),
+                interval_start(current)))
+    ENDCASES
+  MEASURE remaining BY <<
+
+  merged_coverage(values: list[interval]): nat =
+    LET sorted: list[interval] =
+          mergeSort_by_start(values),
+        merged_reversed: list[interval] =
+          merge_intervals_fold(sorted, null)
+    IN
+      coverage_fold(
+        interval_list_reverse(merged_reversed),
+        0)
+
+  coverage_after_removing(
+      intervals: list[interval],
+      index: nat): nat =
+    merged_coverage(eraseIdx(intervals, index))
+
+  maxCoverageAfterRemovingOne_precond(
+      intervals: list[interval]): bool =
+    interval_list_length(intervals) > 0
+
+  max_coverage_range_fold(
+      intervals: list[interval],
+      index, remaining, accumulator: nat): RECURSIVE nat =
+    IF remaining = 0 THEN
+      accumulator
+    ELSE
+      max_coverage_range_fold(
+        intervals,
+        index + 1,
+        remaining - 1,
+        nat_max(
+          accumulator,
+          coverage_after_removing(intervals, index)))
+    ENDIF
+  MEASURE remaining
+
+  maxCoverageAfterRemovingOne(
+      intervals: list[interval]): nat =
+    LET length: nat = interval_list_length(intervals)
+    IN
+      IF length <= 1 THEN
+        0
+      ELSE
+        max_coverage_range_fold(
+          intervals,
+          0,
+          length,
+          0)
+      ENDIF
+
+  maxCoverageAfterRemovingOne_postcond(
+      intervals: list[interval],
+      result: nat): bool =
+    EXISTS (index: nat):
+      index < interval_list_length(intervals)
+        AND result =
+          coverage_after_removing(intervals, index)
+        AND (FORALL (other_index: nat):
+          other_index < interval_list_length(intervals)
+            IMPLIES
+              coverage_after_removing(intervals, index)
+                >= coverage_after_removing(
+                     intervals,
+                     other_index))
+
+  maxCoverageAfterRemovingOne_spec_satisfied: bool =
+    FORALL (intervals: list[interval]):
+      maxCoverageAfterRemovingOne_precond(intervals)
+        IMPLIES
+          maxCoverageAfterRemovingOne_postcond(
+            intervals,
+            maxCoverageAfterRemovingOne(intervals))
+
+END verina_advanced_38

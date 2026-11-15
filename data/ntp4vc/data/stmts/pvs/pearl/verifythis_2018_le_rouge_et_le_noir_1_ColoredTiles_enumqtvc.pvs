@@ -1,0 +1,513 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/verifythis_2018_le_rouge_et_le_noir_1_ColoredTiles_enumqtvc:
+% the verification condition for enumerating finite valid red-and-black tile
+% colorings through nested array updates and loop invariants. This file
+% contains no proof.
+
+verifythis_2018_le_rouge_et_le_noir_1_ColoredTiles_enumqtvc: THEORY
+BEGIN
+
+  color: DATATYPE
+  BEGIN
+    Red: Red?
+    Black: Black?
+  END color
+
+  coloring: TYPE = list[color]
+  coloring_set: TYPE = finite_set[coloring]
+
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  color_length(values: coloring): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        color_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  color_get_nat(
+      values: coloring,
+      index: nat): RECURSIVE color =
+    CASES values OF
+      null:
+        Black,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          color_get_nat(tail, index - 1)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  color_get(values: coloring, index: int): color =
+    color_get_nat(values, int_to_nat(index))
+
+  tworedneighbors(values: coloring, index: int): bool =
+    (color_get(values, index - 2) = Red
+       AND color_get(values, index - 1) = Red
+       AND 2 <= index)
+      OR
+    (color_get(values, index - 1) = Red
+       AND color_get(values, index + 1) = Red
+       AND 1 <= index
+       AND index <= color_length(values) - 2)
+      OR
+    (color_get(values, index + 1) = Red
+       AND color_get(values, index + 2) = Red
+       AND index <= color_length(values) - 3)
+
+  valid(values: coloring): bool =
+    FORALL (index: int):
+      (0 <= index AND index < color_length(values))
+        IMPLIES
+      (color_get(values, index) = Red
+        IMPLIES tworedneighbors(values, index))
+
+  first_black_tile(values: coloring): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF head = Red THEN
+          1 + first_black_tile(tail)
+        ELSE
+          0
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  repeat_color(count: nat, value: color): RECURSIVE coloring =
+    IF count = 0 THEN
+      null[color]
+    ELSE
+      cons(value, repeat_color(count - 1, value))
+    ENDIF
+  MEASURE count
+
+  append_colors(
+      first, second: coloring): RECURSIVE coloring =
+    CASES first OF
+      null:
+        second,
+      cons(head, tail):
+        cons(head, append_colors(tail, second))
+    ENDCASES
+  MEASURE first BY <<
+
+  black_seq(count: int): coloring =
+    repeat_color(int_to_nat(count), Black)
+
+  red_seq(count: int): coloring =
+    repeat_color(int_to_nat(count), Red)
+
+  addleft(number_red: int, values: coloring): coloring =
+    append_colors(
+      red_seq(number_red),
+      cons(Black, values))
+
+  mapaddleft(
+      source: coloring_set,
+      number_red: int): coloring_set =
+    image(
+      (LAMBDA (values: coloring): addleft(number_red, values)),
+      source)
+
+  count_array: TYPE =
+    [# count_length: nat,
+       count_values: [int -> int] #]
+
+  sets_array: TYPE =
+    [# sets_length: nat,
+       sets_values: [int -> coloring_set] #]
+
+  count_alen(value: count_array): int =
+    count_length(value)
+
+  sets_alen(value: sets_array): int =
+    sets_length(value)
+
+  count_get(value: count_array, index: int): int =
+    count_values(value)(index)
+
+  sets_get(value: sets_array, index: int): coloring_set =
+    sets_values(value)(index)
+
+  count_set(
+      value: count_array,
+      index, replacement: int): count_array =
+    (# count_length := count_length(value),
+       count_values :=
+         count_values(value) WITH [(index) := replacement] #)
+
+  sets_set(
+      value: sets_array,
+      index: int,
+      replacement: coloring_set): sets_array =
+    (# sets_length := sets_length(value),
+       sets_values :=
+         sets_values(value) WITH [(index) := replacement] #)
+
+  count_in_bounds(value: count_array, index: int): bool =
+    0 <= index AND index < count_alen(value)
+
+  sets_in_bounds(value: sets_array, index: int): bool =
+    0 <= index AND index < sets_alen(value)
+
+  count_update_ok(
+      value: count_array,
+      index, replacement: int): bool =
+    count_alen(count_set(value, index, replacement))
+        = count_alen(value)
+      AND
+    count_values(count_set(value, index, replacement))
+        = count_values(value) WITH [(index) := replacement]
+
+  sets_update_ok(
+      value: sets_array,
+      index: int,
+      replacement: coloring_set): bool =
+    sets_alen(sets_set(value, index, replacement))
+        = sets_alen(value)
+      AND
+    sets_values(sets_set(value, index, replacement))
+        = sets_values(value) WITH [(index) := replacement]
+
+  count_array_init(
+      value: count_array,
+      size: nat,
+      initial: int): bool =
+    count_alen(value) = size
+      AND
+    (FORALL (index: int):
+       0 <= index AND index < size
+         IMPLIES count_get(value, index) = initial)
+
+  sets_array_init(
+      value: sets_array,
+      size: nat,
+      initial: coloring_set): bool =
+    sets_alen(value) = size
+      AND
+    (FORALL (index: int):
+       0 <= index AND index < size
+         IMPLIES sets_get(value, index) = initial)
+
+  card_as_int(value: coloring_set): int =
+    card(value)
+
+  prefix_inv(
+      sets: sets_array,
+      count: count_array,
+      n: int): bool =
+    (FORALL (values: coloring):
+       (0 <= color_length(values) AND color_length(values) < n)
+         IMPLIES
+       (valid(values)
+         IMPLIES sets_get(sets, color_length(values))(values)))
+      AND
+    (FORALL (values: coloring, index: int):
+       (0 <= index AND index < n)
+         IMPLIES
+       (sets_get(sets, index)(values)
+         IMPLIES
+           color_length(values) = index AND valid(values)))
+      AND
+    (FORALL (index: int):
+       (0 <= index AND index < n)
+         IMPLIES
+       count_get(count, index)
+         = card_as_int(sets_get(sets, index)))
+
+  inner_inv(
+      sets: sets_array,
+      count: count_array,
+      n, k: int): bool =
+    prefix_inv(sets, count, n)
+      AND
+    (FORALL (values: coloring):
+       sets_get(sets, n)(values)
+         IFF
+       color_length(values) = n
+         AND valid(values)
+         AND first_black_tile(values) < k)
+      AND
+    count_get(count, n) = card_as_int(sets_get(sets, n))
+
+  post(
+      sets: sets_array,
+      count: count_array): bool =
+    count_alen(count) = 51
+      AND 51 = sets_alen(sets)
+      AND
+    (FORALL (index: int):
+       (0 <= index AND index <= 50)
+         IMPLIES
+       (FORALL (values: coloring):
+          color_length(values) = index
+            IMPLIES
+          (valid(values) IFF sets_get(sets, index)(values))))
+      AND
+    (FORALL (index: int):
+       (0 <= index AND index < 50)
+         IMPLIES
+       count_get(count, index)
+         = card_as_int(sets_get(sets, index)))
+
+  inner_step(
+      sets: sets_array,
+      count: count_array,
+      n, k: int): bool =
+    LET old_index: int = n - k - 1 IN
+      count_in_bounds(count, old_index)
+        AND count_in_bounds(count, n)
+        AND
+      LET new_count: int =
+            count_get(count, n) + count_get(count, old_index)
+      IN
+        count_in_bounds(count, n)
+          AND
+        (count_update_ok(count, n, new_count)
+          IMPLIES
+         LET count1: count_array =
+               count_set(count, n, new_count)
+         IN
+         LET source_index: int = n - k - 1 IN
+           sets_in_bounds(sets, source_index)
+             AND
+           LET new_values: coloring_set =
+                 mapaddleft(sets_get(sets, source_index), k)
+           IN
+             sets_in_bounds(sets, n)
+               AND
+             LET old_values: coloring_set = sets_get(sets, n) IN
+               (FORALL (values: coloring):
+                  old_values(values)
+                    IMPLIES NOT new_values(values))
+                 AND
+               LET combined: coloring_set =
+                     union(old_values, new_values)
+               IN
+                 (card_as_int(combined)
+                    = card_as_int(old_values)
+                        + card_as_int(new_values))
+                   IMPLIES
+                 sets_in_bounds(sets, n)
+                   AND
+                 (sets_update_ok(sets, n, combined)
+                   IMPLIES
+                  inner_inv(
+                    sets_set(sets, n, combined),
+                    count1,
+                    n,
+                    k + 1)))
+
+  last_add(
+      sets: sets_array,
+      count: count_array,
+      n: int): bool =
+    0 <= n
+      AND
+    LET red: coloring = red_seq(n) IN
+      (color_length(red) = n
+         AND
+       (FORALL (index: int):
+          (0 <= index AND index < n)
+            IMPLIES color_get(red, index) = Red))
+        IMPLIES
+      LET red_singleton: coloring_set = singleton(red) IN
+        count_in_bounds(count, n)
+          AND
+        LET new_count: int = count_get(count, n) + 1 IN
+          count_in_bounds(count, n)
+            AND
+          (count_update_ok(count, n, new_count)
+            IMPLIES
+           LET count1: count_array =
+                 count_set(count, n, new_count)
+           IN
+             sets_in_bounds(sets, n)
+               AND
+             LET old_values: coloring_set = sets_get(sets, n) IN
+               (FORALL (values: coloring):
+                  old_values(values)
+                    IMPLIES NOT red_singleton(values))
+                 AND
+               LET combined: coloring_set =
+                     union(old_values, red_singleton)
+               IN
+                 (card_as_int(combined)
+                    = card_as_int(old_values)
+                        + card_as_int(red_singleton))
+                   IMPLIES
+                 sets_in_bounds(sets, n)
+                   AND
+                 (sets_update_ok(sets, n, combined)
+                   IMPLIES
+                  prefix_inv(
+                    sets_set(sets, n, combined),
+                    count1,
+                    n + 1)))
+
+  outer_body(
+      sets: sets_array,
+      count: count_array,
+      n: int): bool =
+    LET previous: int = n - 1 IN
+      count_in_bounds(count, previous)
+        AND
+      LET previous_count: int = count_get(count, previous) IN
+        count_in_bounds(count, n)
+          AND
+        (count_update_ok(count, n, previous_count)
+          IMPLIES
+         LET count1: count_array =
+               count_set(count, n, previous_count)
+         IN
+         LET source_index: int = n - 1 IN
+           sets_in_bounds(sets, source_index)
+             AND
+           LET initial_values: coloring_set =
+                 mapaddleft(sets_get(sets, source_index), 0)
+           IN
+             sets_in_bounds(sets, n)
+               AND
+             (sets_update_ok(sets, n, initial_values)
+               IMPLIES
+              LET sets1: sets_array =
+                    sets_set(sets, n, initial_values)
+              IN
+              LET last_k: int = n - 1 IN
+                ((3 <= last_k + 1)
+                   IMPLIES
+                 inner_inv(sets1, count1, n, 3)
+                   AND
+                 (FORALL (sets2: sets_array,
+                          count2: count_array):
+                    sets_alen(sets2) = sets_alen(sets1)
+                      IMPLIES
+                    count_alen(count2) = count_alen(count1)
+                      IMPLIES
+                    ((FORALL (k: int):
+                       ((3 <= k AND k <= last_k)
+                          AND inner_inv(sets2, count2, n, k))
+                         IMPLIES
+                       inner_step(sets2, count2, n, k))
+                      AND
+                     (inner_inv(
+                        sets2,
+                        count2,
+                        n,
+                        last_k + 1)
+                        IMPLIES
+                      last_add(sets2, count2, n))))
+                  AND
+                ((last_k + 1 < 3)
+                   IMPLIES last_add(sets1, count1, n)))))
+
+  outer_vc(
+      sets: sets_array,
+      count: count_array): bool =
+    prefix_inv(sets, count, 4)
+      AND
+    (FORALL (sets1: sets_array,
+             count1: count_array):
+       sets_alen(sets1) = sets_alen(sets)
+         IMPLIES
+       count_alen(count1) = count_alen(count)
+         IMPLIES
+       ((FORALL (n: int):
+          ((4 <= n AND n <= 50)
+             AND prefix_inv(sets1, count1, n))
+            IMPLIES
+          outer_body(sets1, count1, n))
+         AND
+        (prefix_inv(sets1, count1, 50 + 1)
+          IMPLIES post(sets1, count1))))
+
+  initialization_vc(
+      count: count_array,
+      sets: sets_array): bool =
+    count_in_bounds(count, 0)
+      AND
+    (count_update_ok(count, 0, 1)
+      IMPLIES
+     LET count0: count_array = count_set(count, 0, 1) IN
+     LET first_set: coloring_set = singleton(black_seq(0)) IN
+       sets_in_bounds(sets, 0)
+         AND
+       (sets_update_ok(sets, 0, first_set)
+         IMPLIES
+        LET sets0: sets_array = sets_set(sets, 0, first_set) IN
+          count_in_bounds(count0, 1)
+            AND
+          (count_update_ok(count0, 1, 1)
+            IMPLIES
+           LET count1: count_array = count_set(count0, 1, 1) IN
+           LET second_set: coloring_set = singleton(black_seq(1)) IN
+             sets_in_bounds(sets0, 1)
+               AND
+             (sets_update_ok(sets0, 1, second_set)
+               IMPLIES
+              LET sets1: sets_array =
+                    sets_set(sets0, 1, second_set)
+              IN
+                count_in_bounds(count1, 2)
+                  AND
+                (count_update_ok(count1, 2, 1)
+                  IMPLIES
+                 LET count2: count_array =
+                       count_set(count1, 2, 1)
+                 IN
+                 LET third_set: coloring_set =
+                       singleton(black_seq(2))
+                 IN
+                   sets_in_bounds(sets1, 2)
+                     AND
+                   (sets_update_ok(sets1, 2, third_set)
+                     IMPLIES
+                    LET sets2: sets_array =
+                          sets_set(sets1, 2, third_set)
+                    IN
+                      count_in_bounds(count2, 3)
+                        AND
+                      (count_update_ok(count2, 3, 2)
+                        IMPLIES
+                       LET count3: count_array =
+                             count_set(count2, 3, 2)
+                       IN
+                       LET fourth_set: coloring_set =
+                             add(
+                               red_seq(3),
+                               singleton(black_seq(3)))
+                       IN
+                         sets_in_bounds(sets2, 3)
+                           AND
+                         (sets_update_ok(sets2, 3, fourth_set)
+                           IMPLIES
+                          LET sets3: sets_array =
+                                sets_set(sets2, 3, fourth_set)
+                          IN
+                            ((4 <= 50 + 1
+                                IMPLIES outer_vc(sets3, count3))
+                              AND
+                             (50 + 1 < 4
+                                IMPLIES post(sets3, count3)))))))))))
+
+  verifythis_2018_le_rouge_et_le_noir_1_ColoredTiles_enumqtvc_statement:
+      bool =
+    0 <= 51
+      AND
+    (FORALL (count: count_array):
+       count_array_init(count, 51, 0)
+         IMPLIES
+       0 <= 51
+         AND
+       (FORALL (sets: sets_array):
+          sets_array_init(sets, 51, emptyset[coloring])
+            IMPLIES initialization_vc(count, sets)))
+
+END verifythis_2018_le_rouge_et_le_noir_1_ColoredTiles_enumqtvc

@@ -1,0 +1,553 @@
+
+
+(**
+
+{1 In-place linked list reversal }
+
+Version designed for the {h <a href="http://www.lri.fr/~marche/MPRI-2-36-1/">MPRI lecture ``Proof of Programs''</a>}
+
+This is an improved version of {h <a href="linked_list_rev.html">this
+one</a>}: it does not use any Coq proofs, but lemma functions instead.
+
+*)
+
+
+
+module InPlaceRev
+
+  use map.Map
+  use ref.Ref
+  use int.Int
+  use list.List
+  use list.Quant as Q
+  use list.Append
+  use list.Mem
+  use list.Length
+  use export list.Reverse
+
+  type loc
+
+  val function eq_loc (l1 l2:loc) : bool
+    ensures { result <-> l1 = l2 }
+
+  val constant null : loc
+
+  predicate disjoint (l1:list loc) (l2:list loc) =
+    forall x:loc. not (mem x l1 /\ mem x l2)
+
+  predicate no_repet (l:list loc) =
+    match l with
+    | Nil -> true
+    | Cons x r -> not (mem x r) /\ no_repet r
+    end
+
+  let rec ghost mem_decomp (x: loc) (l: list loc)
+    : (l1: list loc, l2: list loc)
+    requires { mem x l }
+    variant  { l }
+    ensures  { l = l1 ++ Cons x l2 }
+  = match l with
+    | Nil -> absurd
+    | Cons h t -> if eq_loc h x then (Nil,t) else
+       let (r1,r2) = mem_decomp x t in (Cons h r1,r2)
+    end
+
+  val acc (field: ref (map loc 'a)) (l:loc) : 'a
+    requires { l <> null }
+    reads { field }
+    ensures { result = get !field l }
+
+  val upd (field: ref (map loc 'a)) (l:loc) (v:'a):unit
+    requires { l <> null }
+    writes { field }
+    ensures { !field = set (old !field) l v }
+
+
+  inductive list_seg loc (map loc loc) (list loc) loc =
+  | list_seg_nil: forall p:loc, next:map loc loc. list_seg p next Nil p
+  | list_seg_cons: forall p q:loc, next:map loc loc, l:list loc.
+      p <> null /\ list_seg (get next p) next l q ->
+         list_seg p next (Cons p l) q
+
+  let ghost list_seg_frame_ext (next1 next2:map loc loc)
+    (p q r v: loc) (pM:list loc) : unit
+    requires { list_seg p next1 pM r }
+    requires { next2 = set next1 q v }
+    requires { not (mem q pM) }
+    ensures  { list_seg p next2 pM r }
+  = ()
+
+  let ghost list_seg_functional (next:map loc loc) (l1 l2:list loc) (p: loc) : unit
+    requires { list_seg p next l1 null }
+    requires { list_seg p next l2 null }
+    ensures  { l1 = l2 }
+  = ()
+
+  let ghost list_seg_sublistl (next:map loc loc) (l1 l2:list loc) (p q: loc) : unit
+    requires { list_seg p next (l1 ++ Cons q l2) null }
+    ensures { list_seg q next (Cons q l2) null }
+  = ()
+
+  let ghost list_seg_no_repet (next:map loc loc) (p: loc) (pM:list loc) : unit
+    requires { list_seg p next pM null }
+    ensures  { no_repet pM }
+  = ()
+
+  let ghost list_seg_append (next:map loc loc) (p q r: loc) (pM qM:list loc) : unit
+    requires { list_seg p next pM q }
+    requires { list_seg q next qM r }
+    ensures  { list_seg p next (pM ++ qM) r }
+  = ()
+
+  val next : ref (map loc loc)
+
+  let app (l1 l2:loc) (ghost l1M l2M:list loc) : loc
+    requires { list_seg l1 !next l1M null }
+    requires { list_seg l2 !next l2M null }
+    requires { disjoint l1M l2M }
+    ensures { list_seg result !next (l1M ++ l2M) null }
+  =
+    if eq_loc l1 null then l2 else
+    let p = ref l1 in
+    let ghost pM = ref l1M in
+    let ghost l1pM = ref (Nil : list loc) in
+    while not (eq_loc (acc next !p) null) do
+      invariant { !p <> null }
+      invariant { list_seg l1 !next !l1pM !p }
+      invariant { list_seg !p !next !pM null }
+      invariant { !l1pM ++ !pM = l1M }
+      invariant { disjoint !l1pM !pM }
+      variant   { !pM }
+        match !pM with
+        | Nil -> absurd
+        | Cons h t ->
+          pM := t;
+          l1pM := !l1pM ++ Cons h Nil;
+        end;
+        p := acc next !p
+    done;
+    upd next !p l2;
+    l1
+
+
+
+  let in_place_reverse (l:loc) (ghost lM:list loc) : loc
+    requires { list_seg l !next lM null }
+    ensures  { list_seg result !next (reverse lM) null }
+  = let p = ref l in
+    let ghost pM = ref lM in
+    let r = ref null in
+    let ghost rM = ref (Nil : list loc) in
+    while not (eq_loc !p null) do
+      invariant { list_seg !p !next !pM null }
+      invariant { list_seg !r !next !rM null }
+      invariant { disjoint !pM !rM }
+      invariant { (reverse !pM) ++ !rM = reverse lM }
+      variant   { !pM }
+      let n = get !next !p in
+      upd next !p !r;
+      r := !p;
+      p := n;
+      match !pM with
+      | Nil -> absurd
+      | Cons h t -> rM := Cons h !rM; pM := t
+      end
+      done;
+    !r
+
+end
+
+(** Using sequences instead of lists *)
+
+module InPlaceRevSeq
+
+  use int.Int
+  use map.Map as Map
+  use seq.Seq
+  use seq.Mem
+  use seq.Reverse
+
+  type loc
+
+  val function null: loc
+
+  val function eq_loc (l1 l2:loc) : bool
+    ensures { result <-> l1 = l2 }
+
+  predicate disjoint (s1: seq 'a) (s2: seq 'a) =
+    (* forall x:'a. not (mem x s1 /\ mem x s2) *)
+    forall i1. 0 <= i1 < length s1 ->
+    forall i2. 0 <= i2 < length s2 ->
+    s1[i1] <> s2[i2]
+
+  predicate no_repet (s: seq loc) =
+    forall i. 0 <= i < length s -> not (mem s[i] s[i+1..])
+
+  let ghost non_empty_seq (s: seq 'a) : unit
+    ensures { length s > 0 ->
+    s == cons s[0] s[1..] }
+  = ()
+
+  let rec ghost mem_decomp (x: loc) (s: seq loc) : (s1: seq loc, s2: seq loc)
+    requires { mem x s }
+    variant  { length s }
+    ensures  { s == s1 ++ cons x s2 }
+  =
+    if eq_loc s[0] x then (empty, s[1..])
+    else begin
+      let (s1, s2) = mem_decomp x s[1..] in (cons s[0] s1, s2)
+    end
+
+  use ref.Ref
+
+  type memory 'a = ref (Map.map loc 'a)
+
+  val acc (field: memory 'a) (l:loc) : 'a
+    requires { l <> null }
+    reads    { field }
+    ensures  { result = Map.get !field l }
+
+  val upd (field: memory 'a) (l: loc) (v: 'a) : unit
+    requires { l <> null }
+    writes   { field }
+    ensures  { !field = Map.set (old !field) l v }
+
+  type next = Map.map loc loc
+
+  predicate list_seg (next: next) (p: loc) (s: seq loc) (q: loc) =
+    let n = length s in
+    (forall i. 0 <= i < n -> s[i] <> null) /\
+    (   (p = q /\ n = 0)
+     \/ (1 <= n /\ s[0] = p /\ Map.get next s[n-1] = q /\
+         forall i. 0 <= i < n-1 -> Map.get next s[i] = s[i+1]))
+
+  let ghost list_seg_frame_ext () : unit
+    ensures { forall next1 next2: next, p q r v: loc, pM: seq loc.
+    list_seg next1 p pM r ->
+    next2 = Map.set next1 q v ->
+    not (mem q pM) ->
+    list_seg next2 p pM r }
+  = ()
+
+  let ghost list_seg_functional (next: next) (l1 l2: seq loc) (p: loc) : unit
+    requires { list_seg next p l1 null }
+    requires { list_seg next p l2 null }
+    ensures  { l1 == l2 }
+  = ()
+
+  let ghost list_seg_tail (next: next) (l1: seq loc) (p q: loc) : unit
+    requires { list_seg next p l1 q }
+    requires { length l1 > 0 }
+    ensures  { list_seg next (Map.get next p) l1[1..] q }
+  = ()
+
+  let ghost list_seg_append (next: next) (p q r: loc) (pM qM: seq loc) : unit
+    requires { list_seg next p pM q }
+    requires { list_seg next q qM r }
+    ensures  { list_seg next p (pM ++ qM) r }
+  = ()
+
+  let ghost seq_tail_append (l1 l2: seq 'a) : unit
+    ensures { length l1 > 0 -> (l1 ++ l2)[1..] == l1[1..] ++ l2 }
+  = ()
+
+  let ghost list_seg_prefix (next: next) (l1 l2: seq loc) (p q: loc) : unit
+    requires { list_seg next p (l1 ++ cons q l2) null }
+    ensures  { list_seg next p l1 q }
+  = ()
+
+  let ghost list_seg_sublistl (next: next) (l1 l2: seq loc) (p q: loc) : unit
+    requires { list_seg next p (l1 ++ cons q l2) null }
+    ensures  { list_seg next q (cons q l2) null }
+  = ()
+
+  let ghost get_tail (i: int) (s: seq 'a) : unit
+    ensures { 0 <= i < length s - 1 -> s[1..][i] = s[i+1] }
+  = ()
+  let ghost tail_suffix (i: int) (s: seq 'a) : unit
+    ensures { 0 <= i < length s -> s[1..][i..] == s[i+1..] }
+  = ()
+
+  let ghost list_seg_no_repet (next: next) (p: loc) (pM: seq loc) : unit
+    requires { list_seg next p pM null }
+    ensures  { no_repet pM }
+  = ()
+
+  val next : ref next
+
+  let app (l1 l2: loc) (ghost l1M l2M: seq loc) : loc
+    requires { list_seg !next l1 l1M null }
+    requires { list_seg !next l2 l2M null }
+    requires { disjoint l1M l2M }
+    ensures  { list_seg !next result (l1M ++ l2M) null }
+  =
+    if eq_loc l1 null then l2 else
+    let p = ref l1 in
+    let ghost pM = ref l1M in
+    let ghost l1pM = ref (empty : seq loc) in
+    while not (eq_loc (acc next !p) null) do
+      invariant { !p <> null }
+      invariant { list_seg !next l1 !l1pM !p }
+      invariant { list_seg !next !p !pM null }
+      invariant { !l1pM ++ !pM == l1M }
+      invariant { disjoint !l1pM !pM }
+      variant   { length !pM }
+      let ghost t = !pM[1..] in
+      ghost l1pM := !l1pM ++ cons !p empty;
+      ghost pM := t;
+      p := acc next !p
+    done;
+    upd next !p l2;
+    l1
+
+  let in_place_reverse (l:loc) (ghost lM: seq loc) : loc
+    requires { list_seg !next l lM null }
+    ensures  { list_seg !next result (reverse lM) null }
+  = let p = ref l in
+    let ghost pM = ref lM in
+    let r = ref null in
+    let ghost rM = ref (empty: seq loc) in
+    while not (eq_loc !p null) do
+      invariant { list_seg !next !p !pM null }
+      invariant { list_seg !next !r !rM null }
+      invariant { disjoint !pM !rM }
+      invariant { (reverse !pM) ++ !rM == reverse lM }
+      variant   { length !pM }
+      let n = acc next !p in
+      upd next !p !r;
+      r := !p;
+      p := n;
+      rM := cons !pM[0] !rM;
+      pM := !pM[1..]
+    done;
+    !r
+
+end
+
+(** This time with a fully automated proof.
+
+    The key to a fully automated proof is to introduce an array of
+    cells, called `cell` below, and then to resort to arithmetic and
+    universal quantifiers to define lists (predicates `listLR` and
+    `listRL` below).
+
+    This proof requires no lemma function and no transformation.
+    A single call to Z3 completes the proof in no time (0.04 s).
+*)
+
+module YetAnotherInPlaceRev
+
+  use int.Int
+  use map.Map
+
+  type loc
+
+  val (=) (l1 l2: loc) : bool ensures { result <-> l1 = l2 }
+
+  val constant null : loc
+
+  type mem = { mutable next: loc -> loc }
+
+  val mem: mem
+
+  let cdr (p: loc) : loc
+    requires { p <> null }
+    ensures  { result = mem.next p }
+  = mem.next p
+
+  let set_cdr (p: loc) (v: loc) : unit
+    requires { p <> null }
+    ensures  { mem.next = (old mem.next)[p <- v] }
+  = let m = mem.next in
+    mem.next <- fun x -> if x = p then v else m x
+
+  predicate valid_cells (s: int -> loc) (n: int) =
+    (forall i. 0 <= i < n -> s i <> null) &&
+    (forall i j. 0 <= i < n -> 0 <= j < n -> i <> j -> s i <> s j)
+
+  predicate listLR (m: mem) (s: int -> loc) (l: loc) (lo hi: int) =
+    0 <= lo <= hi &&
+    if lo = hi then l = null else
+      l = s lo && m.next (s (hi-1)) = null &&
+      forall k. lo <= k < hi-1 -> m.next (s k) = s (k+1)
+
+  predicate listRL (m: mem) (s: int -> loc) (l: loc) (lo hi: int) =
+    0 <= lo <= hi &&
+    if lo = hi then l = null else
+      m.next (s lo) = null && l = s (hi-1) &&
+      forall k. lo < k < hi -> m.next (s k) = s (k-1)
+
+  predicate frame (m1 m2: mem) (s: int -> loc) (n: int) =
+    forall p. (forall i. 0 <= i < n -> p <> s i) ->
+      m1.next p = m2.next p
+
+  let list_reversal (ghost s: int -> loc) (ghost n: int) (l: loc) : (r: loc)
+    requires { valid_cells s n }
+    requires { listLR mem s l 0 n }
+    ensures  { listRL mem s r 0 n }
+    ensures  { frame mem (old mem) s n }
+  = let ref l = l in
+    let ref p = null in
+    let ghost ref i = 0 in
+    while l <> null do
+      invariant { if n = 0 then l = p = null else
+                  i = 0     && p = null    && l = s 0
+               || i = n     && p = s (n-1) && l = null
+               || 0 < i < n && p = s (i-1) && l = s i }
+      invariant { listRL mem s p 0 i }
+      invariant { listLR mem s l i n }
+      invariant { frame mem (old mem) s n }
+      variant   { n - i }
+      let tmp = l in
+      l <- cdr l;
+      set_cdr tmp p;
+      p <- tmp;
+      i <- i + 1
+    done;
+    return p
+
+  let rec ghost predicate is_list (m: mem) (l: loc) (s: int -> loc) (n: int)
+    requires { n >= 0 }
+    variant  { n }
+  = if n = 0 then l = null else
+      l = s 0 <> null && is_list m (m.next l) (fun i -> s (i+1)) (n - 1)
+
+  let ghost cells_of_list (l: loc) (s: int -> loc) (n: int) : unit
+    requires { n >= 0 }
+    requires { is_list mem l s n }
+    ensures  { valid_cells s n }
+    ensures  { listLR mem s l 0 n }
+  = ()
+
+  let ghost list_of_cells (r: loc) (s: int -> loc) (n: int) : unit
+    requires { n >= 0 }
+    requires { valid_cells s n }
+    requires { listRL mem s r 0 n }
+    ensures  { is_list mem r (fun i -> s (n-1-i)) n }
+  = ()
+
+  let list_reversal_final (ghost s) (ghost n: int) (l: loc) : (r: loc)
+    requires { n >= 0 }
+    requires { is_list mem l s n }
+    ensures  { is_list mem r (fun i -> s (n-1-i)) n }
+    ensures  { frame mem (old mem) s n }
+  = let r = list_reversal s n l in
+    r
+
+end
+
+(** On a null-terminated list, `list_reversal` terminates. We have shown it
+    already e.g. in the previous module.
+
+    But `list_reversal` actually terminates on *any* list, even when it
+    contains a loop. Indeed, the code will reach the loop while reversing
+    the initial segment, will reverse the loop, and then will restore the
+    initial segment. So we end up with a list where only the loop has been
+    reversed.
+
+      before          +---o<--o<--+
+                      v           |
+          o-->o-->o-->o-->o-->o-->o
+
+      after           +-->o-->o---+
+                      |           V
+          o-->o-->o-->o<--o<--o<--o
+
+    In the module below, we show that `list_reversal` always terminates.
+    This requires ruling out inifitely-long lists i.e. assuming a finite
+    amount of memory.
+*)
+module Termination
+
+  use int.Int
+  use int.NumOf
+  use map.Map
+
+  type loc
+
+  val (=) (l1 l2: loc) : bool ensures { result <-> l1 = l2 }
+
+  val constant null : loc
+
+  type mem = { mutable next: loc -> loc }
+
+  val mem: mem
+
+  let cdr (p: loc) : loc
+    requires { p <> null }
+    ensures  { result = mem.next p }
+  = mem.next p
+
+  let set_cdr (p: loc) (v: loc) : unit
+    requires { p <> null }
+    ensures  { mem.next = (old mem.next)[p <- v] }
+  = let m = mem.next in
+    mem.next <- fun x -> if x = p then v else m x
+
+  (* Finite memory hypothesis: the list is entirely contained in a finite
+     set `s` of `n` cells *)
+
+  predicate valid_cells (s: int -> loc) (n: int) =
+    (forall i. 0 <= i < n -> s i <> null) &&
+    (forall i j. 0 <= i < n -> 0 <= j < n -> i <> j -> s i <> s j)
+
+  predicate inside_memory (s: int -> loc) (n: int) (l: loc) =
+    l = null || exists i. 0 <= i < n && l = s[i]
+
+  predicate finite_memory (m: mem) (s: int -> loc) (n: int) =
+    forall i. 0 <= i < n -> inside_memory s n (m.next s[i])
+
+  (* The variant is lexicographic, as follows:
+
+     - as long as we still discover new cells, we mark them with
+       increasing numbers (with function `idx` below) and the number
+       of unmarked cells decreases;
+
+     - once we reach a marked cell, this means we are back in the initial
+       segment and then the mark decreases.
+  *)
+
+  function seen (s: int -> loc) (idx: loc -> int) (lo hi: int) : int =
+    numof (fun i -> idx s[i] > 0) lo hi
+
+  let ghost set_idx (s: int -> loc) (n: int) (idx: loc -> int) (l: loc) (k: int)
+    requires { valid_cells s n }
+    requires { inside_memory s n l }
+    requires { l <> null }
+    requires { idx l = -1 }
+    requires { k = seen s idx 0 n >= 0 }
+    ensures  { seen s idx[l <- k+1] 0 n = 1 + seen s idx 0 n }
+  = ()
+
+  let list_reversal (ghost s: int -> loc) (ghost n: int) (l: loc) : (r: loc)
+    requires { n >= 0 }
+    requires { valid_cells s n }
+    requires { finite_memory mem s n }
+    requires { inside_memory s n l }
+  = let ref l = l in
+    let ref r = null in
+    (* marking function: -1 for unmarked / 0 for null / >0 for marked *)
+    let ghost ref idx = fun p -> if p = null then 0 else -1 in
+    let ghost ref k = 0 in (* last mark *)
+    while l <> null do
+      invariant { inside_memory s n l }
+      invariant { inside_memory s n r }
+      invariant { finite_memory mem s n }
+      invariant { k = seen s idx 0 n >= 0 }
+      invariant { forall i. 0 <= i < n -> -1 <= idx s[i] <= k }
+      invariant { forall p. idx p = 0 <-> p = null }
+      invariant { if idx l = -1 then
+                    idx r = k && forall i. 0 <= i < n ->
+                    0 < idx s[i] -> idx (mem.next s[i]) = idx s[i] - 1
+                  else forall i. 0 <= i < n ->
+                    0 < idx s[i] <= idx l -> idx (mem.next s[i]) = idx s[i] - 1 }
+      variant { n - k, 1 + idx l }
+      if idx l = -1 then (set_idx s n idx l k; k <- k + 1; idx <- idx[l <- k]);
+      let tmp = l in
+      l <- cdr l;
+      set_cdr tmp r;
+      r <- tmp;
+    done;
+    return r
+
+end

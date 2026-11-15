@@ -1,0 +1,94 @@
+% Statement-only formalization of the VERINA corpus artifact
+% verina_advanced_11, "findMajorityElement": scanning an integer list for the
+% first value occurring strictly more than half the list length, or returning
+% -1 when no such value is found. This file contains no proof.
+
+verina_advanced_11: THEORY
+BEGIN
+
+  findMajorityElement_precond(lst: list[int]): bool =
+    TRUE
+
+  int_list_length(lst: list[int]): RECURSIVE nat =
+    CASES lst OF
+      null: 0,
+      cons(head, tail): int_list_length(tail) + 1
+    ENDCASES
+  MEASURE lst BY <<
+
+  countOccurrences(n: int, lst: list[int]): RECURSIVE nat =
+    CASES lst OF
+      null: 0,
+      cons(head, tail):
+        (IF head = n THEN 1 ELSE 0 ENDIF)
+          + countOccurrences(n, tail)
+    ENDCASES
+  MEASURE lst BY <<
+
+  findMajorityElement_scan(
+      original, remaining: list[int]): RECURSIVE int =
+    CASES remaining OF
+      null: -1,
+      cons(head, tail):
+        IF countOccurrences(head, original)
+             > ndiv(int_list_length(original), 2)
+        THEN
+          head
+        ELSE
+          findMajorityElement_scan(original, tail)
+        ENDIF
+    ENDCASES
+  MEASURE remaining BY <<
+
+  findMajorityElement(lst: list[int]): int =
+    findMajorityElement_scan(lst, lst)
+
+  all_at_most_half(
+      original, remaining: list[int]): RECURSIVE bool =
+    CASES remaining OF
+      null: TRUE,
+      cons(head, tail):
+        countOccurrences(head, original)
+            <= ndiv(int_list_length(original), 2)
+          AND all_at_most_half(original, tail)
+    ENDCASES
+  MEASURE remaining BY <<
+
+  all_at_most_half_or_result(
+      result: int,
+      original, remaining: list[int]): RECURSIVE bool =
+    CASES remaining OF
+      null: TRUE,
+      cons(head, tail):
+        (countOccurrences(head, original)
+             <= ndiv(int_list_length(original), 2)
+           OR head = result)
+          AND all_at_most_half_or_result(
+            result,
+            original,
+            tail)
+    ENDCASES
+  MEASURE remaining BY <<
+
+  majority(
+      lst: list[int],
+      result: int): bool =
+    countOccurrences(result, lst)
+        > ndiv(int_list_length(lst), 2)
+      AND all_at_most_half_or_result(result, lst, lst)
+
+  findMajorityElement_postcond(
+      lst: list[int],
+      result: int): bool =
+    (result = -1 IMPLIES
+      all_at_most_half(lst, lst) OR majority(lst, result))
+      AND (result /= -1 IMPLIES majority(lst, result))
+
+  findMajorityElement_spec_satisfied: bool =
+    FORALL (lst: list[int]):
+      findMajorityElement_precond(lst) IMPLIES
+        findMajorityElement_postcond(
+          lst,
+          findMajorityElement(lst))
+
+END verina_advanced_11

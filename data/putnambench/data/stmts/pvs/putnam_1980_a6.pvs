@@ -1,0 +1,175 @@
+% Statement-only formalization of PutnamBench artifact putnam_1980_a6:
+% the greatest universal lower bound of the unit-interval integral of
+% |f'(x) - f(x)| over C1 real functions with f(0) = 0 and f(1) = 1 is
+% 1/exp(1). This file contains no proof.
+
+putnam_1980_a6: THEORY
+BEGIN
+  real_function: TYPE = [real -> real]
+  real_sequence: TYPE = [nat -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  partial_sum(values: real_sequence, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      partial_sum(values, count - 1) + values(count - 1)
+    ENDIF
+  MEASURE count
+
+  nat_factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * nat_factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  series_sums_to(values: real_sequence, total: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (count: nat):
+          cutoff <= count IMPLIES
+            abs(partial_sum(values, count) - total) < epsilon_value
+
+  exponential_terms(x: real): real_sequence =
+    LAMBDA (index: nat):
+      safe_div(
+        x ^ index,
+        nat_factorial(index) :: real)
+
+  real_exponential(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        series_sums_to(exponential_terms(x), value))
+
+  in_closed_unit_interval(x: real): bool =
+    0 <= x AND x <= 1
+
+  continuous_on_closed_unit_interval(f: real_function): bool =
+    FORALL (x: real):
+      in_closed_unit_interval(x) IMPLIES
+        FORALL (epsilon_value: posreal):
+          EXISTS (delta: posreal):
+            FORALL (y: real):
+              (in_closed_unit_interval(y)
+                AND abs(y - x) < delta)
+              IMPLIES
+                abs(f(y) - f(x)) < epsilon_value
+
+  has_derivative_within_closed_unit_interval(
+      f: real_function,
+      derivative, x: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (delta: posreal):
+        FORALL (y: real):
+          (in_closed_unit_interval(y)
+            AND NOT (y = x)
+            AND abs(y - x) < delta)
+          IMPLIES
+            abs(
+              f(y) - f(x)
+                - derivative * (y - x))
+              < epsilon_value * abs(y - x)
+
+  continuously_differentiable_on_closed_unit_interval(
+      f, derivative: real_function): bool =
+    continuous_on_closed_unit_interval(f)
+      AND continuous_on_closed_unit_interval(derivative)
+      AND FORALL (x: real):
+        in_closed_unit_interval(x) IMPLIES
+          has_derivative_within_closed_unit_interval(
+            f, derivative(x), x)
+
+  valid_tagged_partition(
+      points, tags: real_sequence,
+      count: nat): bool =
+    count > 0
+      AND points(0) = 0
+      AND points(count) = 1
+      AND FORALL (index: nat):
+        index < count IMPLIES
+          (points(index) < points(index + 1)
+            AND points(index) <= tags(index)
+            AND tags(index) <= points(index + 1))
+
+  mesh_less_than(
+      points: real_sequence,
+      count: nat,
+      bound: real): bool =
+    FORALL (index: nat):
+      index < count IMPLIES
+        points(index + 1) - points(index) < bound
+
+  riemann_sum(
+      f: real_function,
+      points, tags: real_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      riemann_sum(f, points, tags, count - 1)
+        + f(tags(count - 1))
+            * (points(count) - points(count - 1))
+    ENDIF
+  MEASURE count
+
+  has_unit_interval_integral(
+      f: real_function,
+      integral_value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (mesh_bound: posreal):
+        FORALL
+            (points, tags: real_sequence),
+            (count: nat):
+          (valid_tagged_partition(points, tags, count)
+            AND mesh_less_than(points, count, mesh_bound))
+          IMPLIES
+            abs(
+              riemann_sum(f, points, tags, count)
+                - integral_value)
+              < epsilon_value
+
+  unit_interval_integral(f: real_function): real =
+    IF EXISTS (integral_value: real):
+        has_unit_interval_integral(f, integral_value)
+    THEN
+      epsilon(
+        LAMBDA (integral_value: real):
+          has_unit_interval_integral(f, integral_value))
+    ELSE
+      0
+    ENDIF
+
+  admissible(
+      f, derivative: real_function): bool =
+    continuously_differentiable_on_closed_unit_interval(f, derivative)
+      AND f(0) = 0
+      AND f(1) = 1
+
+  universal_lower_bound(bound: real): bool =
+    FORALL (f, derivative: real_function):
+      admissible(f, derivative) IMPLIES
+        bound <=
+          unit_interval_integral(
+            LAMBDA (x: real):
+              abs(derivative(x) - f(x)))
+
+  is_greatest_universal_lower_bound(value: real): bool =
+    universal_lower_bound(value)
+      AND FORALL (bound: real):
+        universal_lower_bound(bound) IMPLIES bound <= value
+
+  putnam_1980_a6_solution: real =
+    safe_div(1, real_exponential(1))
+
+  putnam_1980_a6: bool =
+    is_greatest_universal_lower_bound(
+      putnam_1980_a6_solution)
+END putnam_1980_a6

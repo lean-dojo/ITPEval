@@ -1,0 +1,222 @@
+% Statement-only formalization of the VERINA corpus artifact
+% verina_advanced_43, catalog title "maxStrength": computing the maximum
+% product of a nonempty index-subset of an integer list with the specified
+% exhaustive program and its membership-and-maximality contract. This file contains no proof.
+
+verina_advanced_43: THEORY
+BEGIN
+
+  maxStrength_precond(nums: list[int]): bool =
+    nums /= null[int]
+
+  append_subsequence_lists(
+      first, second: list[list[int]]):
+        RECURSIVE list[list[int]] =
+    CASES first OF
+      null:
+        second,
+      cons(head, tail):
+        cons(
+          head,
+          append_subsequence_lists(tail, second))
+    ENDCASES
+  MEASURE first BY <<
+
+  prepend_to_each(
+      value: int,
+      subsets: list[list[int]]):
+        RECURSIVE list[list[int]] =
+    CASES subsets OF
+      null:
+        null,
+      cons(head, tail):
+        cons(
+          cons(value, head),
+          prepend_to_each(value, tail))
+    ENDCASES
+  MEASURE subsets BY <<
+
+  all_subsequences_fold(
+      remaining: list[int],
+      accumulator: list[list[int]]):
+        RECURSIVE list[list[int]] =
+    CASES remaining OF
+      null:
+        accumulator,
+      cons(head, tail):
+        all_subsequences_fold(
+          tail,
+          append_subsequence_lists(
+            accumulator,
+            prepend_to_each(head, accumulator)))
+    ENDCASES
+  MEASURE remaining BY <<
+
+  reverse_int_list_acc(
+      values, accumulator: list[int]):
+        RECURSIVE list[int] =
+    CASES values OF
+      null:
+        accumulator,
+      cons(head, tail):
+        reverse_int_list_acc(
+          tail,
+          cons(head, accumulator))
+    ENDCASES
+  MEASURE values BY <<
+
+  reverse_int_list(values: list[int]): list[int] =
+    reverse_int_list_acc(values, null)
+
+  reverse_each(
+      subsets: list[list[int]]):
+        RECURSIVE list[list[int]] =
+    CASES subsets OF
+      null:
+        null,
+      cons(head, tail):
+        cons(
+          reverse_int_list(head),
+          reverse_each(tail))
+    ENDCASES
+  MEASURE subsets BY <<
+
+  powerSet(nums: list[int]): list[list[int]] =
+    reverse_each(
+      all_subsequences_fold(
+        nums,
+        cons(null[int], null[list[int]])))
+
+  sublists(nums: list[int]): RECURSIVE list[list[int]] =
+    CASES nums OF
+      null:
+        cons(null[int], null[list[int]]),
+      cons(head, tail):
+        LET tail_sublists: list[list[int]] = sublists(tail)
+        IN
+          append_subsequence_lists(
+            tail_sublists,
+            prepend_to_each(head, tail_sublists))
+    ENDCASES
+  MEASURE nums BY <<
+
+  filter_nonempty(
+      subsets: list[list[int]]):
+        RECURSIVE list[list[int]] =
+    CASES subsets OF
+      null:
+        null,
+      cons(head, tail):
+        IF head /= null[int] THEN
+          cons(head, filter_nonempty(tail))
+        ELSE
+          filter_nonempty(tail)
+        ENDIF
+    ENDCASES
+  MEASURE subsets BY <<
+
+  product_fold(
+      values: list[int],
+      accumulator: int): RECURSIVE int =
+    CASES values OF
+      null:
+        accumulator,
+      cons(head, tail):
+        product_fold(
+          tail,
+          accumulator * head)
+    ENDCASES
+  MEASURE values BY <<
+
+  subset_products(
+      subsets: list[list[int]]):
+        RECURSIVE list[int] =
+    CASES subsets OF
+      null:
+        null,
+      cons(head, tail):
+        cons(
+          product_fold(head, 1),
+          subset_products(tail))
+    ENDCASES
+  MEASURE subsets BY <<
+
+  max_int_list_fold(
+      values: list[int],
+      current_maximum: int): RECURSIVE int =
+    CASES values OF
+      null:
+        current_maximum,
+      cons(head, tail):
+        max_int_list_fold(
+          tail,
+          IF head > current_maximum THEN
+            head
+          ELSE
+            current_maximum
+          ENDIF)
+    ENDCASES
+  MEASURE values BY <<
+
+  max_int_list_getD(
+      values: list[int],
+      default_value: int): int =
+    CASES values OF
+      null:
+        default_value,
+      cons(head, tail):
+        max_int_list_fold(tail, head)
+    ENDCASES
+
+  maxStrength(nums: list[int]): int =
+    LET subsets: list[list[int]] = powerSet(nums),
+        nonEmpty: list[list[int]] =
+          filter_nonempty(subsets),
+        products: list[int] =
+          subset_products(nonEmpty)
+    IN
+      max_int_list_getD(products, -1000000)
+
+  int_list_contains(
+      values: list[int],
+      requested: int): RECURSIVE bool =
+    CASES values OF
+      null:
+        FALSE,
+      cons(head, tail):
+        head = requested
+          OR int_list_contains(tail, requested)
+    ENDCASES
+  MEASURE values BY <<
+
+  int_list_all_at_most(
+      values: list[int],
+      upper_bound: int): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        head <= upper_bound
+          AND int_list_all_at_most(tail, upper_bound)
+    ENDCASES
+  MEASURE values BY <<
+
+  maxStrength_postcond(
+      nums: list[int],
+      result: int): bool =
+    LET nonempty_sublists: list[list[int]] =
+          filter_nonempty(sublists(nums)),
+        products: list[int] =
+          subset_products(nonempty_sublists)
+    IN
+      int_list_contains(products, result)
+        AND int_list_all_at_most(products, result)
+
+  maxStrength_spec_satisfied: bool =
+    FORALL (nums: list[int]):
+      maxStrength_precond(nums) IMPLIES
+        maxStrength_postcond(
+          nums,
+          maxStrength(nums))
+
+END verina_advanced_43

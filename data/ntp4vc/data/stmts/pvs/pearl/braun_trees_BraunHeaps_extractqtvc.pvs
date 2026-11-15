@@ -1,0 +1,171 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/braun_trees_BraunHeaps_extractqtvc: the Braun-heap extraction
+% verification condition for recursive applicability, heap order, Braun
+% balance, tree size, and element occurrences. This file contains no proof.
+
+braun_trees_BraunHeaps_extractqtvc[
+  elt: TYPE+
+]: THEORY
+BEGIN
+
+  tree: DATATYPE
+  BEGIN
+    Empty: Empty?
+    Node(
+      left_subtree: tree,
+      root_element: elt,
+      right_subtree: tree): Node?
+  END tree
+
+  preorder_laws(leq: [elt, elt -> bool]): bool =
+    (FORALL (x: elt): leq(x, x))
+      AND
+    (FORALL (x, y, z: elt):
+      (leq(x, y) AND leq(y, z)) IMPLIES leq(x, z))
+      AND
+    (FORALL (x, y: elt): leq(x, y) OR leq(y, x))
+
+  tree_size(values: tree): RECURSIVE int =
+    CASES values OF
+      Empty:
+        0,
+      Node(left, root, right):
+        1 + tree_size(left) + tree_size(right)
+    ENDCASES
+  MEASURE values BY <<
+
+  occ(element: elt, values: tree): RECURSIVE int =
+    CASES values OF
+      Empty:
+        0,
+      Node(left, root, right):
+        (IF root = element THEN 1 ELSE 0 ENDIF)
+          + occ(element, left)
+          + occ(element, right)
+    ENDCASES
+  MEASURE values BY <<
+
+  le_root(
+      leq: [elt, elt -> bool],
+      element: elt,
+      values: tree): bool =
+    CASES values OF
+      Empty:
+        TRUE,
+      Node(left, root, right):
+        leq(element, root)
+    ENDCASES
+
+  heap(
+      leq: [elt, elt -> bool],
+      values: tree): RECURSIVE bool =
+    CASES values OF
+      Empty:
+        TRUE,
+      Node(left, root, right):
+        le_root(leq, root, left)
+          AND heap(leq, left)
+          AND le_root(leq, root, right)
+          AND heap(leq, right)
+    ENDCASES
+  MEASURE values BY <<
+
+  inv(values: tree): RECURSIVE bool =
+    CASES values OF
+      Empty:
+        TRUE,
+      Node(left, root, right):
+        (tree_size(left) = tree_size(right)
+          OR tree_size(left) = tree_size(right) + 1)
+          AND inv(left)
+          AND inv(right)
+    ENDCASES
+  MEASURE values BY <<
+
+  is_child(values, expected_child: tree): bool =
+    CASES values OF
+      Empty:
+        FALSE,
+      Node(left, root, right):
+        left = expected_child OR right = expected_child
+    ENDCASES
+
+  recursive_call_obligation(
+      leq: [elt, elt -> bool],
+      values: tree): bool =
+    CASES values OF
+      Empty:
+        FALSE,
+      Node(left, root, right):
+        IF Empty?(left) THEN
+          TRUE
+        ELSE
+          is_child(values, left)
+            AND heap(leq, left)
+            AND inv(left)
+            AND 0 < tree_size(left)
+        ENDIF
+    ENDCASES
+
+  extraction_antecedent(
+      leq: [elt, elt -> bool],
+      values: tree,
+      removed: elt,
+      result: tree): bool =
+    CASES values OF
+      Empty:
+        FALSE,
+      Node(left, root, right):
+        IF Empty?(left) THEN
+          removed = root AND result = Empty
+        ELSE
+          EXISTS (recursive_result: tree):
+            (heap(leq, recursive_result)
+              AND inv(recursive_result)
+              AND tree_size(recursive_result)
+                    = tree_size(left) - 1
+              AND occ(removed, recursive_result)
+                    = occ(removed, left) - 1
+              AND
+                (FORALL (element: elt):
+                  element /= removed
+                    IMPLIES
+                      occ(element, recursive_result)
+                        = occ(element, left)))
+            AND result = Node(right, root, recursive_result)
+        ENDIF
+    ENDCASES
+
+  extraction_postcondition(
+      leq: [elt, elt -> bool],
+      original: tree,
+      removed: elt,
+      result: tree): bool =
+    heap(leq, result)
+      AND inv(result)
+      AND tree_size(result) = tree_size(original) - 1
+      AND occ(removed, result) = occ(removed, original) - 1
+      AND
+        (FORALL (element: elt):
+          element /= removed
+            IMPLIES occ(element, result) = occ(element, original))
+
+  extract_vc: bool =
+    FORALL
+        (leq: [elt, elt -> bool]),
+        (values: tree):
+      (preorder_laws(leq)
+        AND heap(leq, values)
+        AND inv(values)
+        AND 0 < tree_size(values))
+      IMPLIES
+        (recursive_call_obligation(leq, values)
+          AND
+            (FORALL (removed: elt), (result: tree):
+              extraction_antecedent(
+                leq, values, removed, result)
+              IMPLIES
+                extraction_postcondition(
+                  leq, values, removed, result)))
+
+END braun_trees_BraunHeaps_extractqtvc

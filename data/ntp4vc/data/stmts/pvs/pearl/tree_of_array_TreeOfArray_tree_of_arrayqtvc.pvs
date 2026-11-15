@@ -1,0 +1,126 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/tree_of_array_TreeOfArray_tree_of_arrayqtvc: the verification
+% condition that building a binary tree from an array preserves inorder
+% traversal and the logarithmic height bounds. This file contains no proof.
+
+tree_of_array_TreeOfArray_tree_of_arrayqtvc[
+    Element: TYPE+]: THEORY
+BEGIN
+
+  tree: DATATYPE
+  BEGIN
+    Empty: Empty?
+    Node(
+      left_subtree: tree,
+      root_element: Element,
+      right_subtree: tree): Node?
+  END tree
+
+  int_max(left, right: int): int =
+    IF left <= right THEN right ELSE left ENDIF
+
+  tree_size(values: tree): RECURSIVE int =
+    CASES values OF
+      Empty:
+        0,
+      Node(left, root, right):
+        1 + tree_size(left) + tree_size(right)
+    ENDCASES
+  MEASURE values BY <<
+
+  tree_height(values: tree): RECURSIVE int =
+    CASES values OF
+      Empty:
+        0,
+      Node(left, root, right):
+        1 + int_max(tree_height(left), tree_height(right))
+    ENDCASES
+  MEASURE values BY <<
+
+  inorder(values: tree): RECURSIVE list[Element] =
+    CASES values OF
+      Empty:
+        null,
+      Node(left, root, right):
+        append(inorder(left), cons(root, inorder(right)))
+    ENDCASES
+  MEASURE values BY <<
+
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  list_take(
+      count: nat,
+      values: list[Element]): RECURSIVE list[Element] =
+    IF count = 0 THEN
+      null
+    ELSE
+      CASES values OF
+        null:
+          null,
+        cons(head, tail):
+          cons(head, list_take(count - 1, tail))
+      ENDCASES
+    ENDIF
+  MEASURE count
+
+  list_drop(
+      count: nat,
+      values: list[Element]): RECURSIVE list[Element] =
+    IF count = 0 THEN
+      values
+    ELSE
+      CASES values OF
+        null:
+          null,
+        cons(head, tail):
+          list_drop(count - 1, tail)
+      ENDCASES
+    ENDIF
+  MEASURE count
+
+  nat_power(base: int, exponent: nat): RECURSIVE int =
+    IF exponent = 0 THEN
+      1
+    ELSE
+      base * nat_power(base, exponent - 1)
+    ENDIF
+  MEASURE exponent
+
+  int_power(base, exponent: int): int =
+    nat_power(base, int_to_nat(exponent))
+
+  tree_of_array_vc: bool =
+    FORALL (a: list[Element]):
+      LET o1: int = length(a)
+      IN
+        (0 <= 0 AND 0 <= o1 AND o1 <= length(a))
+          AND
+        (FORALL (result: tree):
+          (LET n: int = o1 - 0
+           IN
+             tree_size(result) = n
+               AND
+             inorder(result)
+               = list_drop(
+                   0,
+                   list_take(int_to_nat(o1) - 0, a))
+               AND
+             (0 < n IMPLIES
+               LET h: int = tree_height(result)
+               IN
+                 int_power(2, h - 1) <= n
+                   AND n < int_power(2, h)))
+          IMPLIES
+            inorder(result)
+              = list_drop(
+                  0,
+                  list_take(length(a) - 0, a))
+              AND
+            (0 < tree_size(result) IMPLIES
+              LET h: int = tree_height(result)
+              IN
+                int_power(2, h - 1) <= tree_size(result)
+                  AND tree_size(result) < int_power(2, h)))
+
+END tree_of_array_TreeOfArray_tree_of_arrayqtvc

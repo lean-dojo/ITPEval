@@ -1,0 +1,122 @@
+% Statement-only formalization of the Thousand Theorems corpus artifact Q2226800,
+% "Schur-Zassenhaus theorem": a normal subgroup whose cardinality is coprime
+% to its index has a subgroup giving a unique left-factor decomposition.
+% This file contains no proof.
+
+Q2226800_schur_zassenhaus_theorem[
+  G: TYPE+,
+  mul: [G, G -> G],
+  inv: [G -> G],
+  one: G,
+  N: [G -> bool]
+]: THEORY
+BEGIN
+
+  element_set: TYPE = [G -> bool]
+
+  IMPORTING finite_sets[G], finite_sets[element_set]
+
+  group_laws: bool =
+    (FORALL (x, y, z: G):
+      mul(mul(x, y), z) = mul(x, mul(y, z)))
+      AND (FORALL (x: G):
+        mul(one, x) = x
+          AND mul(x, one) = x)
+      AND (FORALL (x: G):
+        mul(inv(x), x) = one
+          AND mul(x, inv(x)) = one)
+
+  is_subgroup(H: element_set): bool =
+    H(one)
+      AND (FORALL (x, y: G):
+        H(x) AND H(y) IMPLIES H(mul(x, y)))
+      AND (FORALL (x: G):
+        H(x) IMPLIES H(inv(x)))
+
+  is_normal_subgroup(H: element_set): bool =
+    is_subgroup(H)
+      AND (FORALL (g, x: G):
+        H(x) IMPLIES
+          H(mul(mul(g, x), inv(g))))
+
+  nat_divides(divisor, value: nat): bool =
+    EXISTS (factor: nat):
+      value = divisor * factor
+
+  nat_coprime(left, right: nat): bool =
+    FORALL (divisor: nat):
+      nat_divides(divisor, left)
+        AND nat_divides(divisor, right)
+        IMPLIES divisor = 1
+
+  exact_finite_carrier(
+      H: element_set,
+      carrier: finite_set[G]): bool =
+    FORALL (x: G):
+      carrier(x) IFF H(x)
+
+  subgroup_cardinality(
+      H: element_set,
+      cardinality: nat): bool =
+    (EXISTS (carrier: finite_set[G]):
+      exact_finite_carrier(H, carrier)
+        AND cardinality = card(carrier))
+      OR
+    (cardinality = 0
+      AND NOT
+        EXISTS (carrier: finite_set[G]):
+          exact_finite_carrier(H, carrier))
+
+  left_coset(g: G, H: element_set): element_set =
+    LAMBDA (x: G):
+      EXISTS (h: G):
+        H(h) AND x = mul(g, h)
+
+  exact_left_coset_family(
+      H: element_set,
+      family: finite_set[element_set]): bool =
+    FORALL (C: element_set):
+      family(C) IFF
+        EXISTS (g: G):
+          C = left_coset(g, H)
+
+  subgroup_index(
+      H: element_set,
+      index: nat): bool =
+    (EXISTS (family: finite_set[element_set]):
+      exact_left_coset_family(H, family)
+        AND index = card(family))
+      OR
+    (index = 0
+      AND NOT
+        EXISTS (family: finite_set[element_set]):
+          exact_left_coset_family(H, family))
+
+  is_left_complement(H, K: element_set): bool =
+    is_subgroup(H)
+      AND is_subgroup(K)
+      AND (FORALL (g: G):
+        EXISTS (h, k: G):
+          H(h)
+            AND K(k)
+            AND mul(h, k) = g)
+      AND (FORALL (h1, k1, h2, k2: G):
+        H(h1)
+          AND K(k1)
+          AND H(h2)
+          AND K(k2)
+          AND mul(h1, k1) = mul(h2, k2)
+          IMPLIES h1 = h2 AND k1 = k2)
+
+  schur_zassenhaus_theorem: bool =
+    (group_laws
+      AND is_normal_subgroup(N)
+      AND (EXISTS (order, index: nat):
+        subgroup_cardinality(N, order)
+          AND subgroup_index(N, index)
+          AND nat_coprime(order, index)))
+    IMPLIES
+      EXISTS (H: element_set):
+        is_left_complement(H, N)
+
+END Q2226800_schur_zassenhaus_theorem

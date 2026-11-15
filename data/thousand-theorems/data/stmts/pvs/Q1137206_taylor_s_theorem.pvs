@@ -1,0 +1,269 @@
+% Statement-only formalization of Thousand Theorems artifact Q1137206,
+% "Taylor's theorem": the Lagrange and Cauchy mean-value remainder formulas
+% for real functions on a closed interval. This file contains no proof.
+
+Q1137206_taylor_s_theorem: THEORY
+BEGIN
+  real_function: TYPE = [real -> real]
+
+  factorial(n: nat): RECURSIVE nat =
+    IF n = 0 THEN
+      1
+    ELSE
+      n * factorial(n - 1)
+    ENDIF
+  MEASURE n
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  in_closed_interval(t, a, b: real): bool =
+    a <= t AND t <= b
+
+  in_open_interval(t, a, b: real): bool =
+    a < t AND t < b
+
+  continuous_within_at(
+      f: real_function,
+      t, a, b: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (radius: posreal):
+        FORALL (y: real):
+          (in_closed_interval(y, a, b)
+            AND abs(y - t) < radius)
+            IMPLIES
+              abs(f(y) - f(t)) < epsilon_value
+
+  has_derivative_within(
+      f: real_function,
+      derivative, t, a, b: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (radius: posreal):
+        FORALL (y: real):
+          (in_closed_interval(y, a, b)
+            AND y /= t
+            AND abs(y - t) < radius)
+            IMPLIES
+              abs(
+                f(y) - f(t)
+                  - derivative * (y - t))
+                < epsilon_value * abs(y - t)
+
+  differentiable_within_at(
+      f: real_function,
+      t, a, b: real): bool =
+    EXISTS (derivative: real):
+      has_derivative_within(
+        f, derivative, t, a, b)
+
+  deriv_within(
+      f: real_function,
+      t, a, b: real): real =
+    IF differentiable_within_at(f, t, a, b) THEN
+      epsilon(
+        LAMBDA (derivative: real):
+          has_derivative_within(
+            f, derivative, t, a, b))
+    ELSE
+      0
+    ENDIF
+
+  has_derivative_at(
+      f: real_function,
+      derivative, t: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (radius: posreal):
+        FORALL (increment: real):
+          (increment /= 0
+            AND abs(increment) < radius)
+            IMPLIES
+              abs(
+                f(t + increment) - f(t)
+                  - derivative * increment)
+                < epsilon_value * abs(increment)
+
+  differentiable_at(
+      f: real_function,
+      t: real): bool =
+    EXISTS (derivative: real):
+      has_derivative_at(f, derivative, t)
+
+  iterated_deriv_within(
+      f: real_function,
+      order: nat,
+      a, b, t: real): RECURSIVE real =
+    IF order = 0 THEN
+      f(t)
+    ELSE
+      deriv_within(
+        (LAMBDA (y: real):
+          iterated_deriv_within(
+            f, order - 1, a, b, y)),
+        t,
+        a,
+        b)
+    ENDIF
+  MEASURE order
+
+  iterated_deriv_within_function(
+      f: real_function,
+      order: nat,
+      a, b: real): real_function =
+    LAMBDA (t: real):
+      iterated_deriv_within(f, order, a, b, t)
+
+  continuous_on_closed_interval(
+      f: real_function,
+      a, b: real): bool =
+    FORALL (t: real):
+      in_closed_interval(t, a, b)
+        IMPLIES continuous_within_at(f, t, a, b)
+
+  differentiable_on_closed_interval(
+      f: real_function,
+      a, b: real): bool =
+    FORALL (t: real):
+      in_closed_interval(t, a, b)
+        IMPLIES differentiable_within_at(f, t, a, b)
+
+  differentiable_on_open_interval(
+      f: real_function,
+      a, b: real): bool =
+    FORALL (t: real):
+      in_open_interval(t, a, b)
+        IMPLIES differentiable_at(f, t)
+
+  cont_diff_on_through(
+      f: real_function,
+      degree: nat,
+      a, b: real): bool =
+    (FORALL (order: nat):
+      order <= degree IMPLIES
+        continuous_on_closed_interval(
+          iterated_deriv_within_function(
+            f, order, a, b),
+          a,
+          b))
+      AND (FORALL (order: nat):
+        order < degree IMPLIES
+          differentiable_on_closed_interval(
+            iterated_deriv_within_function(
+              f, order, a, b),
+            a,
+            b))
+
+  taylor_polynomial(
+      f: real_function,
+      center, argument: real,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET order: nat = count - 1 IN
+        taylor_polynomial(
+          f,
+          center,
+          argument,
+          count - 1)
+          + safe_div(
+              iterated_deriv_within(
+                f,
+                order,
+                center,
+                argument,
+                center)
+                * (argument - center) ^ order,
+              factorial(order) :: real)
+    ENDIF
+  MEASURE count
+
+  taylor_hypotheses(
+      f: real_function,
+      degree: nat,
+      center, argument: real): bool =
+    center < argument
+      AND cont_diff_on_through(
+        f, degree, center, argument)
+      AND differentiable_on_open_interval(
+        iterated_deriv_within_function(
+          f, degree, center, argument),
+        center,
+        argument)
+
+  lagrange_remainder(
+      f: real_function,
+      degree: nat,
+      center, argument, remainder_point: real): real =
+    safe_div(
+      iterated_deriv_within(
+        f,
+        degree + 1,
+        center,
+        argument,
+        remainder_point)
+        * (argument - center) ^ (degree + 1),
+      factorial(degree + 1) :: real)
+
+  cauchy_remainder(
+      f: real_function,
+      degree: nat,
+      center, argument, remainder_point: real): real =
+    safe_div(
+      iterated_deriv_within(
+        f,
+        degree + 1,
+        center,
+        argument,
+        remainder_point)
+        * (argument - remainder_point) ^ degree,
+      factorial(degree) :: real)
+      * (argument - center)
+
+  taylor_mean_remainder_lagrange: bool =
+    FORALL
+        (f: real_function),
+        (x, x0: real),
+        (degree: nat):
+      taylor_hypotheses(f, degree, x0, x)
+        IMPLIES
+          EXISTS (remainder_point: real):
+            in_open_interval(remainder_point, x0, x)
+              AND f(x)
+                - taylor_polynomial(
+                    f,
+                    x0,
+                    x,
+                    degree + 1)
+                  = lagrange_remainder(
+                      f,
+                      degree,
+                      x0,
+                      x,
+                      remainder_point)
+
+  taylor_mean_remainder_cauchy: bool =
+    FORALL
+        (f: real_function),
+        (x, x0: real),
+        (degree: nat):
+      taylor_hypotheses(f, degree, x0, x)
+        IMPLIES
+          EXISTS (remainder_point: real):
+            in_open_interval(remainder_point, x0, x)
+              AND f(x)
+                - taylor_polynomial(
+                    f,
+                    x0,
+                    x,
+                    degree + 1)
+                  = cauchy_remainder(
+                      f,
+                      degree,
+                      x0,
+                      x,
+                      remainder_point)
+END Q1137206_taylor_s_theorem

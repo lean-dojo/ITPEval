@@ -1,0 +1,57 @@
+% Statement-only formalization of PutnamBench artifact putnam_1981_a1:
+% the greatest exponent E(n) for which 5^E(n) divides the weighted product
+% 1^1 * 2^2 * ... * n^n satisfies E(n) / n^2 -> 1/8. This file contains no
+% proof.
+
+putnam_1981_a1: THEORY
+BEGIN
+  natural_sequence: TYPE = [nat -> nat]
+  real_sequence: TYPE = [nat -> real]
+
+  weighted_product(n: nat): RECURSIVE nat =
+    IF n = 0 THEN
+      1
+    ELSE
+      weighted_product(n - 1) * n ^ n
+    ENDIF
+  MEASURE n
+
+  nat_divides(divisor, value: nat): bool =
+    EXISTS (quotient: nat):
+      value = divisor * quotient
+
+  exponent_property(n, k: nat): bool =
+    nat_divides(5 ^ k, weighted_product(n))
+
+  is_greatest_exponent_function(E: natural_sequence): bool =
+    FORALL (n: nat):
+      n > 0 IMPLIES
+        exponent_property(n, E(n))
+          AND (FORALL (k: nat):
+            exponent_property(n, k) IMPLIES k <= E(n))
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  normalized_exponent(E: natural_sequence): real_sequence =
+    LAMBDA (n: nat):
+      safe_div(E(n) :: real, (n :: real) ^ 2)
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  putnam_1981_a1: bool =
+    FORALL (E: natural_sequence):
+      is_greatest_exponent_function(E) IMPLIES
+        converges_to(
+          normalized_exponent(E),
+          (1 :: real) / 8)
+END putnam_1981_a1

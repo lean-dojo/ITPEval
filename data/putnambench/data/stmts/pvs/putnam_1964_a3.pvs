@@ -1,0 +1,98 @@
+% Statement-only formalization of PutnamBench artifact putnam_1964_a3:
+% distinct points dense in (0, 1) determine successive left and right gaps,
+% whose products a_n*b_n*(a_n+b_n) sum to 1/3. This file contains no proof.
+
+putnam_1964_a3: THEORY
+BEGIN
+  real_set: TYPE = [real -> bool]
+  real_sequence: TYPE = [nat -> real]
+
+  range_set(x: real_sequence): real_set =
+    LAMBDA (value: real):
+      EXISTS (index: nat): value = x(index)
+
+  open_unit_interval(value: real): bool =
+    0 < value AND value < 1
+
+  range_in_open_unit_interval(x: real_sequence): bool =
+    FORALL (index: nat): open_unit_interval(x(index))
+
+  dense_in_open_unit_interval(x: real_sequence): bool =
+    range_in_open_unit_interval(x)
+      AND FORALL (value: real):
+        open_unit_interval(value) IMPLIES
+          FORALL (radius: posreal):
+            EXISTS (index: nat):
+              abs(x(index) - value) < radius
+
+  injective_sequence(x: real_sequence): bool =
+    FORALL (first, second: nat):
+      x(first) = x(second) IMPLIES first = second
+
+  left_candidates(x: real_sequence, index: nat): real_set =
+    LAMBDA (value: real):
+      value = 0
+        OR (value < x(index)
+          AND EXISTS (earlier: nat):
+            earlier < index AND value = x(earlier))
+
+  right_candidates(x: real_sequence, index: nat): real_set =
+    LAMBDA (value: real):
+      value = 1
+        OR (x(index) < value
+          AND EXISTS (earlier: nat):
+            earlier < index AND value = x(earlier))
+
+  is_upper_bound(A: real_set, bound: real): bool =
+    FORALL (value: real): A(value) IMPLIES value <= bound
+
+  is_lower_bound(A: real_set, bound: real): bool =
+    FORALL (value: real): A(value) IMPLIES bound <= value
+
+  is_supremum(A: real_set, supremum_value: real): bool =
+    is_upper_bound(A, supremum_value)
+      AND FORALL (bound: real):
+        is_upper_bound(A, bound) IMPLIES supremum_value <= bound
+
+  is_infimum(A: real_set, infimum_value: real): bool =
+    is_lower_bound(A, infimum_value)
+      AND FORALL (bound: real):
+        is_lower_bound(A, bound) IMPLIES bound <= infimum_value
+
+  gap_definitions(
+      x, a, b: real_sequence): bool =
+    FORALL (index: nat):
+      is_supremum(
+        left_candidates(x, index),
+        x(index) - a(index))
+        AND is_infimum(
+          right_candidates(x, index),
+          x(index) + b(index))
+
+  gap_products(a, b: real_sequence): real_sequence =
+    LAMBDA (index: nat):
+      a(index) * b(index) * (a(index) + b(index))
+
+  partial_sum(values: real_sequence, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      partial_sum(values, count - 1) + values(count - 1)
+    ENDIF
+  MEASURE count
+
+  series_sums_to(values: real_sequence, total: real): bool =
+    FORALL (radius: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (count: nat):
+          cutoff <= count IMPLIES
+            abs(partial_sum(values, count) - total) < radius
+
+  putnam_1964_a3: bool =
+    FORALL (x, a, b: real_sequence):
+      (dense_in_open_unit_interval(x)
+        AND injective_sequence(x)
+        AND gap_definitions(x, a, b))
+      IMPLIES
+        series_sums_to(gap_products(a, b), 1 / 3)
+END putnam_1964_a3

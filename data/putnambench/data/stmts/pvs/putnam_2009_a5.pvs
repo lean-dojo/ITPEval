@@ -1,0 +1,76 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2009_a5:
+% no finite abelian group has product of all element orders equal to 2^2009.
+% This file contains no proof.
+
+putnam_2009_a5: THEORY
+BEGIN
+  group_power(
+      n: posnat,
+      multiply: [below(n), below(n) -> below(n)],
+      one, element: below(n),
+      exponent: nat): RECURSIVE below(n) =
+    IF exponent = 0 THEN
+      one
+    ELSE
+      multiply(
+        group_power(n, multiply, one, element, exponent - 1),
+        element)
+    ENDIF
+  MEASURE exponent
+
+  commutative_group_laws(
+      n: posnat,
+      multiply: [below(n), below(n) -> below(n)],
+      inverse: [below(n) -> below(n)],
+      one: below(n)): bool =
+    (FORALL (x, y, z: below(n)):
+      multiply(multiply(x, y), z)
+        = multiply(x, multiply(y, z)))
+      AND (FORALL (x: below(n)):
+        multiply(one, x) = x
+          AND multiply(x, one) = x)
+      AND (FORALL (x: below(n)):
+        multiply(inverse(x), x) = one
+          AND multiply(x, inverse(x)) = one)
+      AND (FORALL (x, y: below(n)):
+        multiply(x, y) = multiply(y, x))
+
+  is_element_order(
+      n: posnat,
+      multiply: [below(n), below(n) -> below(n)],
+      one, element: below(n),
+      order: nat): bool =
+    order > 0
+      AND group_power(n, multiply, one, element, order) = one
+      AND (FORALL (smaller: nat):
+        smaller > 0 AND smaller < order IMPLIES
+          group_power(n, multiply, one, element, smaller) /= one)
+
+  orders_product(
+      n: posnat,
+      orders: [below(n) -> nat],
+      count: nat): RECURSIVE nat =
+    IF count = 0 THEN
+      1
+    ELSE
+      orders_product(n, orders, count - 1)
+        * IF count <= n THEN orders(count - 1) ELSE 1 ENDIF
+    ENDIF
+  MEASURE count
+
+  has_required_group: bool =
+    EXISTS (n: posnat):
+      EXISTS
+          (multiply: [below(n), below(n) -> below(n)]),
+          (inverse: [below(n) -> below(n)]),
+          (one: below(n)),
+          (orders: [below(n) -> nat]):
+        commutative_group_laws(n, multiply, inverse, one)
+          AND (FORALL (element: below(n)):
+            is_element_order(
+              n, multiply, one, element, orders(element)))
+          AND orders_product(n, orders, n) = 2 ^ 2009
+
+  putnam_2009_a5: bool =
+    NOT has_required_group
+END putnam_2009_a5

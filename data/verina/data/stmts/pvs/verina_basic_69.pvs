@@ -1,0 +1,107 @@
+% Statement-only formalization of the VERINA corpus artifact verina_basic_69
+% (verina__pvs__verina_basic_69), catalog title "LinearSearch": assuming a
+% target occurs in a finite integer array, the exact recursive left-to-right
+% search returns its first index. This file contains no proof.
+
+verina_basic_69: THEORY
+BEGIN
+
+  % Finite PVS lists preserve exactly the contents and order of Lean arrays.
+  int_list_length(
+      values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        int_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  % Lean Array.get! on integer arrays returns zero outside the array.
+  int_list_get_bang(
+      index: nat,
+      values: list[int]): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          int_list_get_bang(index - 1, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  % Lean natural-number subtraction is truncated at zero.
+  nat_subtract(first, second: nat): nat =
+    IF first >= second THEN first - second ELSE 0 ENDIF
+
+  LinearSearch_precond(
+      a: list[int],
+      e: int): bool =
+    EXISTS (i: nat):
+      i < int_list_length(a)
+        AND int_list_get_bang(i, a) = e
+
+  linearSearchAux_steps(
+      a: list[int],
+      e: int,
+      n, fuel: nat): RECURSIVE nat =
+    IF fuel = 0 THEN
+      0
+    ELSIF n < int_list_length(a) THEN
+      IF int_list_get_bang(n, a) = e THEN
+        n
+      ELSE
+        linearSearchAux_steps(
+          a,
+          e,
+          n + 1,
+          fuel - 1)
+      ENDIF
+    ELSE
+      0
+    ENDIF
+  MEASURE fuel
+
+  % The distance to the array boundary plus one covers every source recursive
+  % call and its final bounds check, so the fuel-zero fallback is unreachable.
+  linearSearchAux(
+      a: list[int],
+      e: int,
+      n: nat): nat =
+    linearSearchAux_steps(
+      a,
+      e,
+      n,
+      nat_subtract(int_list_length(a), n) + 1)
+
+  % The source precondition proof argument is computationally irrelevant.
+  LinearSearch(
+      a: list[int],
+      e: int): nat =
+    linearSearchAux(a, e, 0)
+
+  % The source proof argument to the postcondition is logically irrelevant.
+  LinearSearch_postcond(
+      a: list[int],
+      e: int,
+      result: nat): bool =
+    result < int_list_length(a)
+      AND int_list_get_bang(result, a) = e
+      AND
+        (FORALL (k: nat):
+          k < result
+            IMPLIES int_list_get_bang(k, a) /= e)
+
+  LinearSearch_spec_satisfied: bool =
+    FORALL (a: list[int], e: int):
+      LinearSearch_precond(a, e)
+        IMPLIES
+          LinearSearch_postcond(
+            a,
+            e,
+            LinearSearch(a, e))
+
+END verina_basic_69

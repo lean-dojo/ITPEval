@@ -1,0 +1,151 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/algo64_Algo64_quicksortqtvc: a quicksort verification condition
+% combining partition bounds, subarray permutation, recursive decrease, and
+% sortedness of the resulting integer-list segment. This file contains no proof.
+
+algo64_Algo64_quicksortqtvc: THEORY
+BEGIN
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  nth_default(values: list[int], index: nat): RECURSIVE int =
+    CASES values OF
+      null: 0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          nth_default(tail, index - 1)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  list_take(count: nat, values: list[int]): RECURSIVE list[int] =
+    IF count = 0 THEN
+      null
+    ELSE
+      CASES values OF
+        null: null,
+        cons(head, tail):
+          cons(head, list_take(count - 1, tail))
+      ENDCASES
+    ENDIF
+  MEASURE count
+
+  list_drop(count: nat, values: list[int]): RECURSIVE list[int] =
+    IF count = 0 THEN
+      values
+    ELSE
+      CASES values OF
+        null: null,
+        cons(head, tail):
+          list_drop(count - 1, tail)
+      ENDCASES
+    ENDIF
+  MEASURE count
+
+  nat_minus(left, right: nat): RECURSIVE nat =
+    IF left = 0 OR right = 0 THEN
+      left
+    ELSE
+      nat_minus(left - 1, right - 1)
+    ENDIF
+  MEASURE left + right
+
+  list_slice(values: list[int], lower, upper: nat): list[int] =
+    list_take(nat_minus(upper, lower), list_drop(lower, values))
+
+  occurrence_count(value: int, values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null: 0,
+      cons(head, tail):
+        (IF value = head THEN 1 ELSE 0 ENDIF)
+          + occurrence_count(value, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  list_permutation(left, right: list[int]): bool =
+    FORALL (value: int):
+      occurrence_count(value, left) = occurrence_count(value, right)
+
+  permut_sub_prime(
+      left, right: list[int],
+      lower, upper: nat): bool =
+    length(left) = length(right)
+      AND list_slice(left, 0, lower) = list_slice(right, 0, lower)
+      AND list_slice(left, upper, length(left))
+        = list_slice(right, upper, length(right))
+      AND list_permutation(
+        list_slice(left, lower, upper),
+        list_slice(right, lower, upper))
+
+  sorted_sub(values: list[int], lower, upper: int): bool =
+    FORALL (i1, i2: int):
+      (lower <= i1 AND i1 <= i2 AND i2 < upper)
+        IMPLIES
+          nth_default(values, int_to_nat(i1))
+            <= nth_default(values, int_to_nat(i2))
+
+  qs_partition(
+      t1, t2: list[int],
+      m, n, i, j, x: int): bool =
+    permut_sub_prime(t1, t2, int_to_nat(m), int_to_nat(n + 1))
+      AND (FORALL (k: int):
+        (m <= k AND k <= j)
+          IMPLIES nth_default(t2, int_to_nat(k)) <= x)
+      AND (FORALL (k: int):
+        (j < k AND k < i)
+          IMPLIES nth_default(t2, int_to_nat(k)) = x)
+      AND (FORALL (k: int):
+        (i <= k AND k <= n)
+          IMPLIES x <= nth_default(t2, int_to_nat(k)))
+
+  quicksort_vc: bool =
+    FORALL (m, n: int), (a: list[int]):
+      0 <= m IMPLIES
+      m <= n IMPLIES
+      n < length(a) IMPLIES
+      IF m < n THEN
+        (0 <= m AND m < n AND n < length(a))
+          AND
+        (FORALL (j, i: int), (a1: list[int]):
+          length(a1) = length(a) IMPLIES
+          ((m <= j AND j < i AND i <= n)
+            AND permut_sub_prime(
+              a, a1, int_to_nat(m), int_to_nat(n + 1))
+            AND (FORALL (r: int):
+              (m <= r AND r <= j)
+                IMPLIES nth_default(a1, int_to_nat(r)) <= 42)
+            AND (FORALL (r: int):
+              (j < r AND r < i)
+                IMPLIES nth_default(a1, int_to_nat(r)) = 42)
+            AND (FORALL (r: int):
+              (i <= r AND r <= n)
+                IMPLIES 42 <= nth_default(a1, int_to_nat(r))))
+          IMPLIES
+            (((0 <= n - m AND j - m < n - m)
+                AND 0 <= m AND m <= j AND j < length(a1))
+              AND
+            (FORALL (a2: list[int]):
+              length(a2) = length(a1) IMPLIES
+              (permut_sub_prime(
+                  a1, a2, int_to_nat(m), int_to_nat(j + 1))
+                AND sorted_sub(a2, m, j + 1))
+              IMPLIES
+                (((0 <= n - m AND n - i < n - m)
+                    AND 0 <= i AND i <= n AND n < length(a2))
+                  AND
+                (FORALL (a3: list[int]):
+                  length(a3) = length(a2) IMPLIES
+                  (permut_sub_prime(
+                      a2, a3, int_to_nat(i), int_to_nat(n + 1))
+                    AND sorted_sub(a3, i, n + 1))
+                  IMPLIES
+                    (permut_sub_prime(
+                        a, a3, int_to_nat(m), int_to_nat(n + 1))
+                      AND sorted_sub(a3, m, n + 1)))))))
+      ELSE
+        permut_sub_prime(a, a, int_to_nat(m), int_to_nat(n + 1))
+          AND sorted_sub(a, m, n + 1)
+      ENDIF
+END algo64_Algo64_quicksortqtvc

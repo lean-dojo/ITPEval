@@ -1,0 +1,106 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_1986_b3:
+% coefficientwise congruence of integer polynomials and lifting a coprime
+% factorization modulo a prime to a factorization modulo its powers. This file
+% contains no proof.
+
+putnam_1986_b3: THEORY
+BEGIN
+  polynomial_coefficient(
+      polynomial: list[int],
+      degree: nat): RECURSIVE int =
+    CASES polynomial OF
+      null: 0,
+      cons(coefficient, tail):
+        IF degree = 0 THEN
+          coefficient
+        ELSE
+          polynomial_coefficient(tail, degree - 1)
+        ENDIF
+    ENDCASES
+  MEASURE polynomial BY <<
+
+  polynomial_add(
+      left, right: list[int]): RECURSIVE list[int] =
+    CASES left OF
+      null: right,
+      cons(left_coefficient, left_tail):
+        CASES right OF
+          null: left,
+          cons(right_coefficient, right_tail):
+            cons(
+              left_coefficient + right_coefficient,
+              polynomial_add(left_tail, right_tail))
+        ENDCASES
+    ENDCASES
+  MEASURE left BY <<
+
+  polynomial_scale(
+      scalar: int,
+      polynomial: list[int]): RECURSIVE list[int] =
+    CASES polynomial OF
+      null: null,
+      cons(coefficient, tail):
+        cons(
+          scalar * coefficient,
+          polynomial_scale(scalar, tail))
+    ENDCASES
+  MEASURE polynomial BY <<
+
+  polynomial_multiply(
+      left, right: list[int]): RECURSIVE list[int] =
+    CASES left OF
+      null: null,
+      cons(coefficient, tail):
+        polynomial_add(
+          polynomial_scale(coefficient, right),
+          cons(0, polynomial_multiply(tail, right)))
+    ENDCASES
+  MEASURE left BY <<
+
+  constant_polynomial(value: int): list[int] =
+    cons(value, null)
+
+  int_divides(divisor, value: int): bool =
+    EXISTS (quotient: int): value = divisor * quotient
+
+  polynomial_congruent(
+      left, right: list[int],
+      modulus: int): bool =
+    FORALL (degree: nat):
+      int_divides(
+        modulus,
+        polynomial_coefficient(left, degree)
+          - polynomial_coefficient(right, degree))
+
+  prime_nat(value: nat): bool =
+    value >= 2
+      AND FORALL (divisor: nat):
+        (EXISTS (quotient: nat): value = divisor * quotient)
+          IMPLIES divisor = 1 OR divisor = value
+
+  putnam_1986_b3: bool =
+    FORALL
+        (n, p: nat),
+        (f, g, h, r, s: list[int]):
+      (n > 0
+        AND p > 0
+        AND prime_nat(p)
+        AND polynomial_congruent(
+          polynomial_add(
+            polynomial_multiply(r, f),
+            polynomial_multiply(s, g)),
+          constant_polynomial(1),
+          (p :: int))
+        AND polynomial_congruent(
+          polynomial_multiply(f, g),
+          h,
+          (p :: int)))
+      IMPLIES
+        EXISTS (F, G: list[int]):
+          polynomial_congruent(F, f, (p :: int))
+            AND polynomial_congruent(G, g, (p :: int))
+            AND polynomial_congruent(
+              polynomial_multiply(F, G),
+              h,
+              ((p ^ n) :: int))
+END putnam_1986_b3

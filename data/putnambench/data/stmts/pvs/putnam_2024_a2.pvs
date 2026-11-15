@@ -1,0 +1,87 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2024_a2:
+% the real polynomials satisfying the stated composition factorization are
+% exactly the affine polynomials with integer-unit slope. This file contains
+% no proof.
+
+putnam_2024_a2: THEORY
+BEGIN
+  coefficient_sequence: TYPE = [nat -> real]
+
+  support_bounded(
+      coefficients: coefficient_sequence,
+      bound: nat): bool =
+    FORALL (index: nat):
+      bound < index IMPLIES coefficients(index) = 0
+
+  is_polynomial(coefficients: coefficient_sequence): bool =
+    EXISTS (bound: nat):
+      support_bounded(coefficients, bound)
+
+  polynomial_bound(
+      coefficients: coefficient_sequence): nat =
+    IF is_polynomial(coefficients) THEN
+      epsilon(
+        LAMBDA (bound: nat):
+          support_bounded(coefficients, bound))
+    ELSE
+      0
+    ENDIF
+
+  polynomial_partial_value(
+      coefficients: coefficient_sequence,
+      x: real,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        polynomial_partial_value(
+          coefficients, x, count - 1)
+          + coefficients(index) * x ^ index
+    ENDIF
+  MEASURE count
+
+  polynomial_value(
+      coefficients: coefficient_sequence,
+      x: real): real =
+    polynomial_partial_value(
+      coefficients,
+      x,
+      polynomial_bound(coefficients) + 1)
+
+  has_composition_factorization(
+      p: coefficient_sequence): bool =
+    EXISTS (q: coefficient_sequence):
+      is_polynomial(q)
+        AND FORALL (x: real):
+          polynomial_value(
+            p,
+            polynomial_value(p, x)) - x
+          =
+          (polynomial_value(p, x) - x) ^ 2
+            * polynomial_value(q, x)
+
+  integer_unit(s: int): bool =
+    s = 1 OR s = -1
+
+  affine_with_integer_unit_slope(
+      p: coefficient_sequence): bool =
+    EXISTS (a: real), (s: int):
+      integer_unit(s)
+        AND FORALL (index: nat):
+          p(index)
+            = IF index = 0 THEN
+                a
+              ELSIF index = 1 THEN
+                (s :: real)
+              ELSE
+                0
+              ENDIF
+
+  putnam_2024_a2_statement: bool =
+    FORALL (p: coefficient_sequence):
+      is_polynomial(p)
+        IMPLIES
+          (has_composition_factorization(p)
+            IFF affine_with_integer_unit_slope(p))
+END putnam_2024_a2

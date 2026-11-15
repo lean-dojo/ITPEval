@@ -1,0 +1,116 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2006_b5:
+% the maximum of the difference between the integrals of x^2*f(x) and
+% x*f(x)^2 over continuous real functions on [0, 1] is 1/16.
+% This file contains no proof.
+
+putnam_2006_b5: THEORY
+BEGIN
+  real_function: TYPE = [real -> real]
+  real_sequence: TYPE = [nat -> real]
+
+  in_closed_unit_interval(x: real): bool =
+    0 <= x AND x <= 1
+
+  continuous_on_unit_interval(f: real_function): bool =
+    FORALL (x: real):
+      in_closed_unit_interval(x) IMPLIES
+        FORALL (epsilon_value: posreal):
+          EXISTS (delta: posreal):
+            FORALL (z: real):
+              (in_closed_unit_interval(z)
+                AND abs(z - x) < delta)
+              IMPLIES
+                abs(f(z) - f(x)) < epsilon_value
+
+  valid_partition(
+      points: real_sequence,
+      count: nat): bool =
+    count > 0
+      AND points(0) = 0
+      AND points(count) = 1
+      AND FORALL (index: nat):
+        index < count IMPLIES
+          points(index) < points(index + 1)
+
+  valid_tags(
+      points, tags: real_sequence,
+      count: nat): bool =
+    FORALL (index: nat):
+      index < count IMPLIES
+        points(index) <= tags(index)
+          AND tags(index) <= points(index + 1)
+
+  mesh_less_than(
+      points: real_sequence,
+      count: nat,
+      bound: real): bool =
+    FORALL (index: nat):
+      index < count IMPLIES
+        points(index + 1) - points(index) < bound
+
+  riemann_sum(
+      f: real_function,
+      points, tags: real_sequence,
+      count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      riemann_sum(f, points, tags, count - 1)
+        + f(tags(count - 1))
+            * (points(count) - points(count - 1))
+    ENDIF
+  MEASURE count
+
+  has_unit_interval_integral(
+      f: real_function,
+      integral_value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (mesh_bound: posreal):
+        FORALL
+            (points, tags: real_sequence),
+            (count: nat):
+          (valid_partition(points, count)
+            AND valid_tags(points, tags, count)
+            AND mesh_less_than(points, count, mesh_bound))
+          IMPLIES
+            abs(
+              riemann_sum(f, points, tags, count)
+                - integral_value)
+              < epsilon_value
+
+  objective_value(
+      f: real_function,
+      value: real): bool =
+    EXISTS (I_value, J_value: real):
+      has_unit_interval_integral(
+        LAMBDA (x: real): x ^ 2 * f(x),
+        I_value)
+        AND has_unit_interval_integral(
+          LAMBDA (x: real): x * f(x) ^ 2,
+          J_value)
+        AND value = I_value - J_value
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  putnam_2006_b5_solution: real =
+    safe_div(1, 16)
+
+  is_greatest_objective_value(maximum: real): bool =
+    (EXISTS (f: real_function):
+      continuous_on_unit_interval(f)
+        AND objective_value(f, maximum))
+      AND
+        (FORALL (f: real_function), (value: real):
+          (continuous_on_unit_interval(f)
+            AND objective_value(f, value))
+          IMPLIES value <= maximum)
+
+  putnam_2006_b5: bool =
+    is_greatest_objective_value(
+      putnam_2006_b5_solution)
+END putnam_2006_b5

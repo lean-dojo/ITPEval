@@ -1,0 +1,110 @@
+% Statement-only formalization of the Thousand Theorems corpus artifact Q3229335
+% (thousand-theorems__pvs__Q3229335), "Borel–Carathéodory theorem": an analytic
+% complex function whose real part is bounded on an open disc satisfies the
+% classical interior norm bound. This file contains no proof.
+
+Q3229335_borel_caratheodory_theorem: THEORY
+BEGIN
+  complex: TYPE = [# real_part: real, imag_part: real #]
+  complex_function: TYPE = [complex -> complex]
+
+  complex_zero: complex =
+    (# real_part := 0, imag_part := 0 #)
+
+  complex_add(x, y: complex): complex =
+    (# real_part := real_part(x) + real_part(y),
+       imag_part := imag_part(x) + imag_part(y) #)
+
+  complex_neg(x: complex): complex =
+    (# real_part := -real_part(x),
+       imag_part := -imag_part(x) #)
+
+  complex_sub(x, y: complex): complex =
+    complex_add(x, complex_neg(y))
+
+  complex_mul(x, y: complex): complex =
+    (# real_part :=
+         real_part(x) * real_part(y)
+           - imag_part(x) * imag_part(y),
+       imag_part :=
+         real_part(x) * imag_part(y)
+           + imag_part(x) * real_part(y) #)
+
+  complex_norm_squared(x: complex): real =
+    real_part(x) ^ 2 + imag_part(x) ^ 2
+
+  complex_norm(x: complex): real =
+    epsilon(
+      LAMBDA (value: real):
+        0 <= value
+          AND value ^ 2 = complex_norm_squared(x))
+
+  in_open_ball_zero(x: complex, radius: real): bool =
+    complex_norm(x) < radius
+
+  has_complex_derivative_at(
+      f: complex_function,
+      derivative: complex,
+      point: complex): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (delta: posreal):
+        FORALL (y: complex):
+          (y /= point
+            AND complex_norm(complex_sub(y, point)) < delta)
+          IMPLIES
+            complex_norm(
+              complex_sub(
+                complex_sub(f(y), f(point)),
+                complex_mul(
+                  derivative,
+                  complex_sub(y, point))))
+              < epsilon_value
+                  * complex_norm(complex_sub(y, point))
+
+  complex_differentiable_at(
+      f: complex_function,
+      point: complex): bool =
+    EXISTS (derivative: complex):
+      has_complex_derivative_at(f, derivative, point)
+
+  complex_differentiable_on_open_ball(
+      f: complex_function,
+      radius: real): bool =
+    FORALL (point: complex):
+      in_open_ball_zero(point, radius)
+        IMPLIES complex_differentiable_at(f, point)
+
+  real_part_bounded_on_open_ball(
+      f: complex_function,
+      radius, bound: real): bool =
+    FORALL (point: complex):
+      in_open_ball_zero(point, radius)
+        IMPLIES real_part(f(point)) <= bound
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  borel_caratheodory_theorem: bool =
+    FORALL
+        (f: complex_function),
+        (M, R: real),
+        (z: complex):
+      (0 < M
+        AND complex_differentiable_on_open_ball(f, R)
+        AND real_part_bounded_on_open_ball(f, R, M)
+        AND 0 < R
+        AND in_open_ball_zero(z, R))
+      IMPLIES
+        complex_norm(f(z))
+          <= safe_div(
+               2 * M * complex_norm(z),
+               R - complex_norm(z))
+             + safe_div(
+                 complex_norm(f(complex_zero))
+                   * (R + complex_norm(z)),
+                 R - complex_norm(z))
+END Q3229335_borel_caratheodory_theorem

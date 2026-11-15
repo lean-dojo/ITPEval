@@ -1,0 +1,180 @@
+% Statement-only formalization of the VERINA corpus artifact
+% verina_advanced_58, catalog title "nthUglyNumber": computing the nth positive
+% natural number whose only prime factors are 2, 3, and 5 with the specified
+% three-pointer list program and its rank correctness contract. This file
+% contains no proof.
+
+verina_advanced_58: THEORY
+BEGIN
+
+  ugly_step_state: TYPE =
+    [# next_value: nat,
+       next_c2: nat,
+       next_c3: nat,
+       next_c5: nat #]
+
+  nat_subtract(first, second: nat): nat =
+    IF first >= second THEN first - second ELSE 0 ENDIF
+
+  nat_min(first, second: nat): nat =
+    IF first <= second THEN first ELSE second ENDIF
+
+  nat_list_length(values: list[nat]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        nat_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  nat_list_get_bang(
+      index: nat,
+      values: list[nat]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          nat_list_get_bang(index - 1, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  nat_list_push(
+      values: list[nat],
+      value: nat): RECURSIVE list[nat] =
+    CASES values OF
+      null:
+        cons(value, null[nat]),
+      cons(head, tail):
+        cons(head, nat_list_push(tail, value))
+    ENDCASES
+  MEASURE values BY <<
+
+  nthUglyNumber_precond(n: nat): bool =
+    n > 0
+
+  nextUgly(
+      seq: list[nat],
+      c2, c3, c5: nat): ugly_step_state =
+    LET i2: nat = nat_list_get_bang(c2, seq) * 2,
+        i3: nat = nat_list_get_bang(c3, seq) * 3,
+        i5: nat = nat_list_get_bang(c5, seq) * 5,
+        candidate: nat = nat_min(i2, nat_min(i3, i5))
+    IN
+      (# next_value := candidate,
+         next_c2 := IF candidate = i2 THEN c2 + 1 ELSE c2 ENDIF,
+         next_c3 := IF candidate = i3 THEN c3 + 1 ELSE c3 ENDIF,
+         next_c5 := IF candidate = i5 THEN c5 + 1 ELSE c5 ENDIF #)
+
+  nthUglyNumber_loop(
+      remaining: nat,
+      seq: list[nat],
+      c2, c3, c5: nat): RECURSIVE list[nat] =
+    IF remaining = 0 THEN
+      seq
+    ELSE
+      LET step: ugly_step_state =
+            nextUgly(seq, c2, c3, c5)
+      IN
+        nthUglyNumber_loop(
+          remaining - 1,
+          nat_list_push(seq, next_value(step)),
+          next_c2(step),
+          next_c3(step),
+          next_c5(step))
+    ENDIF
+  MEASURE remaining
+
+  % The Lean precondition proof argument is computationally irrelevant. This
+  % definition is the exact proof-erased three-pointer list computation.
+  nthUglyNumber(n: nat): nat =
+    LET index: nat = nat_subtract(n, 1),
+        seq: list[nat] =
+          nthUglyNumber_loop(
+            index,
+            cons(1, null[nat]),
+            0,
+            0,
+            0)
+    IN
+      nat_list_get_bang(index, seq)
+
+  % Fuel n is exact: whenever the source recurses, p > 1 and ndiv(n, p) < n,
+  % so at most n recursive divisions can occur.
+  divideOut_fuel(
+      n, p, fuel: nat): RECURSIVE nat =
+    IF p > 1 AND n > 0 AND mod(n, p) = 0 THEN
+      IF fuel = 0 THEN
+        n
+      ELSE
+        divideOut_fuel(
+          ndiv(n, p),
+          p,
+          fuel - 1)
+      ENDIF
+    ELSE
+      n
+    ENDIF
+  MEASURE fuel
+
+  divideOut(n, p: nat): nat =
+    divideOut_fuel(n, p, n)
+
+  isUgly(x: nat): bool =
+    IF x = 0 THEN
+      FALSE
+    ELSE
+      LET n1: nat = divideOut(x, 2),
+          n2: nat = divideOut(n1, 3),
+          n3: nat = divideOut(n2, 5)
+      IN
+        n3 = 1
+    ENDIF
+
+  nat_range_from(
+      start, count: nat): RECURSIVE list[nat] =
+    IF count = 0 THEN
+      null[nat]
+    ELSE
+      cons(
+        start,
+        nat_range_from(start + 1, count - 1))
+    ENDIF
+  MEASURE count
+
+  nat_range(count: nat): list[nat] =
+    nat_range_from(0, count)
+
+  filter_ugly(values: list[nat]): RECURSIVE list[nat] =
+    CASES values OF
+      null:
+        null[nat],
+      cons(head, tail):
+        IF isUgly(head) THEN
+          cons(head, filter_ugly(tail))
+        ELSE
+          filter_ugly(tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  nthUglyNumber_postcond(
+      n, result: nat): bool =
+    isUgly(result)
+      AND nat_list_length(
+            filter_ugly(nat_range(result)))
+          = nat_subtract(n, 1)
+
+  nthUglyNumber_spec_satisfied: bool =
+    FORALL (n: nat):
+      nthUglyNumber_precond(n)
+        IMPLIES
+          nthUglyNumber_postcond(
+            n,
+            nthUglyNumber(n))
+
+END verina_advanced_58

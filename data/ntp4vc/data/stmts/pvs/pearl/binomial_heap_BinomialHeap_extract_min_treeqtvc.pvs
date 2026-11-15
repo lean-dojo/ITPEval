@@ -1,0 +1,359 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/binomial_heap_BinomialHeap_extract_min_treeqtvc: the binomial-heap
+% extraction verification condition for heap order, rank invariants, and
+% preservation of element occurrences. This file contains no proof.
+
+binomial_heap_BinomialHeap_extract_min_treeqtvc[
+  elt: TYPE+,
+  heap: TYPE+
+]: THEORY
+BEGIN
+
+  % A forest is the source list of trees in constructor form: each FCons
+  % contains one tree's root, child forest, rank, and remaining sibling forest.
+  forest: DATATYPE
+  BEGIN
+    FNil: FNil?
+    FCons(
+      root_element: elt,
+      child_forest: forest,
+      root_rank: int,
+      sibling_forest: forest): FCons?
+  END forest
+
+  singleton_tree(
+      element: elt,
+      children: forest,
+      rank: int): forest =
+    FCons(element, children, rank, FNil)
+
+  same_tree(
+      left_element: elt,
+      left_children: forest,
+      left_rank: int,
+      right_element: elt,
+      right_children: forest,
+      right_rank: int): bool =
+    left_element = right_element
+      AND left_children = right_children
+      AND left_rank = right_rank
+
+  preorder_laws(leq: [elt, elt -> bool]): bool =
+    (FORALL (x: elt): leq(x, x))
+      AND
+    (FORALL (x, y, z: elt):
+      (leq(x, y) AND leq(y, z)) IMPLIES leq(x, z))
+      AND
+    (FORALL (x, y: elt): leq(x, y) OR leq(y, x))
+
+  forest_size(values: forest): RECURSIVE int =
+    CASES values OF
+      FNil:
+        0,
+      FCons(element, children, rank, siblings):
+        1 + forest_size(children) + forest_size(siblings)
+    ENDCASES
+  MEASURE values BY <<
+
+  forest_length(values: forest): RECURSIVE int =
+    CASES values OF
+      FNil:
+        0,
+      FCons(element, children, rank, siblings):
+        1 + forest_length(siblings)
+    ENDCASES
+  MEASURE values BY <<
+
+  le_roots(
+      leq: [elt, elt -> bool],
+      element: elt,
+      values: forest): RECURSIVE bool =
+    CASES values OF
+      FNil:
+        TRUE,
+      FCons(root, children, rank, siblings):
+        leq(element, root)
+          AND le_roots(leq, element, siblings)
+    ENDCASES
+  MEASURE values BY <<
+
+  heaps(
+      leq: [elt, elt -> bool],
+      values: forest): RECURSIVE bool =
+    CASES values OF
+      FNil:
+        TRUE,
+      FCons(element, children, rank, siblings):
+        le_roots(leq, element, children)
+          AND heaps(leq, children)
+          AND heaps(leq, siblings)
+    ENDCASES
+  MEASURE values BY <<
+
+  occ(element: elt, values: forest): RECURSIVE int =
+    CASES values OF
+      FNil:
+        0,
+      FCons(root, children, rank, siblings):
+        (IF element = root THEN 1 ELSE 0 ENDIF)
+          + occ(element, children)
+          + occ(element, siblings)
+    ENDCASES
+  MEASURE values BY <<
+
+  forest_mem(element: elt, values: forest): bool =
+    0 < occ(element, values)
+
+  has_order(expected_rank: int, values: forest): RECURSIVE bool =
+    CASES values OF
+      FNil:
+        expected_rank = 0,
+      FCons(element, children, rank, siblings):
+        rank = expected_rank - 1
+          AND has_order(expected_rank - 1, children)
+          AND has_order(expected_rank - 1, siblings)
+    ENDCASES
+  MEASURE values BY <<
+
+  binomial_tree(children: forest, rank: int): bool =
+    rank = forest_length(children)
+      AND has_order(rank, children)
+
+  inv(minimum_rank: int, values: forest): RECURSIVE bool =
+    CASES values OF
+      FNil:
+        TRUE,
+      FCons(element, children, rank, siblings):
+        minimum_rank <= rank
+          AND binomial_tree(children, rank)
+          AND inv(rank + 1, siblings)
+    ENDCASES
+  MEASURE values BY <<
+
+  link_tree(
+      leq: [elt, elt -> bool],
+      left_element: elt,
+      left_children: forest,
+      left_rank: int,
+      right_element: elt,
+      right_children: forest,
+      right_rank: int): forest =
+    IF leq(left_element, right_element) THEN
+      singleton_tree(
+        left_element,
+        FCons(
+          right_element, right_children, right_rank, left_children),
+        left_rank + 1)
+    ELSE
+      singleton_tree(
+        right_element,
+        FCons(
+          left_element, left_children, left_rank, right_children),
+        right_rank + 1)
+    ENDIF
+
+  first_postcondition(
+      leq: [elt, elt -> bool],
+      h: forest): bool =
+    CASES h OF
+      FNil:
+        FALSE,
+      FCons(element, children, rank, tail):
+        IF FNil?(tail) THEN
+          TRUE
+        ELSE
+          heaps(leq, tail)
+            AND inv(rank + 1, tail)
+            AND NOT FNil?(tail)
+        ENDIF
+    ENDCASES
+
+  selection_result(
+      leq: [elt, elt -> bool],
+      selected_element: elt,
+      selected_children: forest,
+      selected_rank: int,
+      remainder: forest,
+      first_element: elt,
+      first_children: forest,
+      first_rank: int,
+      tail: forest,
+      second_element: elt,
+      second_children: forest,
+      second_rank: int,
+      recursive_remainder: forest): bool =
+    IF leq(first_element, second_element) THEN
+      same_tree(
+        selected_element,
+        selected_children,
+        selected_rank,
+        first_element,
+        first_children,
+        first_rank)
+        AND remainder = tail
+    ELSE
+      same_tree(
+        selected_element,
+        selected_children,
+        selected_rank,
+        second_element,
+        second_children,
+        second_rank)
+        AND remainder =
+          FCons(
+            first_element,
+            first_children,
+            first_rank,
+            recursive_remainder)
+    ENDIF
+
+  recursive_extraction_case(
+      leq: [elt, elt -> bool],
+      selected_element: elt,
+      selected_children: forest,
+      selected_rank: int,
+      remainder: forest,
+      first_element: elt,
+      first_children: forest,
+      first_rank: int,
+      tail: forest): bool =
+    EXISTS
+        (second_element: elt),
+        (second_children: forest),
+        (second_rank: int),
+        (recursive_remainder: forest):
+      (heaps(
+          leq,
+          singleton_tree(
+            second_element, second_children, second_rank))
+        AND heaps(leq, recursive_remainder)
+        AND inv(first_rank + 1, recursive_remainder)
+        AND le_roots(leq, second_element, tail)
+        AND binomial_tree(second_children, second_rank)
+        AND
+          (FORALL (x: elt):
+            occ(x, tail)
+              = occ(
+                  x,
+                  singleton_tree(
+                    second_element,
+                    second_children,
+                    second_rank))
+                + occ(x, recursive_remainder))
+        AND
+          selection_result(
+            leq,
+            selected_element,
+            selected_children,
+            selected_rank,
+            remainder,
+            first_element,
+            first_children,
+            first_rank,
+            tail,
+            second_element,
+            second_children,
+            second_rank,
+            recursive_remainder))
+
+  extraction_step_antecedent(
+      leq: [elt, elt -> bool],
+      h: forest,
+      selected_element: elt,
+      selected_children: forest,
+      selected_rank: int,
+      remainder: forest): bool =
+    CASES h OF
+      FNil:
+        FALSE,
+      FCons(
+          first_element,
+          first_children,
+          first_rank,
+          tail):
+        CASES tail OF
+          FNil:
+            same_tree(
+              selected_element, selected_children, selected_rank,
+              first_element, first_children, first_rank)
+              AND remainder = FNil,
+          FCons(
+              tail_element,
+              tail_children,
+              tail_rank,
+              tail_siblings):
+            recursive_extraction_case(
+              leq,
+              selected_element,
+              selected_children,
+              selected_rank,
+              remainder,
+              first_element,
+              first_children,
+              first_rank,
+              tail)
+        ENDCASES
+    ENDCASES
+
+  extraction_step_conclusion(
+      leq: [elt, elt -> bool],
+      h: forest,
+      k: int,
+      selected_element: elt,
+      selected_children: forest,
+      selected_rank: int,
+      remainder: forest): bool =
+    heaps(
+      leq,
+      singleton_tree(
+        selected_element, selected_children, selected_rank))
+      AND heaps(leq, remainder)
+      AND inv(k, remainder)
+      AND le_roots(leq, selected_element, h)
+      AND binomial_tree(selected_children, selected_rank)
+      AND
+        (FORALL (x: elt):
+          occ(x, h)
+            = occ(
+                x,
+                singleton_tree(
+                  selected_element,
+                  selected_children,
+                  selected_rank))
+              + occ(x, remainder))
+
+  extract_min_tree_vc: bool =
+    FORALL
+        (leq: [elt, elt -> bool]),
+        (h: forest),
+        (k: int):
+      (preorder_laws(leq)
+        AND heaps(leq, h)
+        AND inv(k, h)
+        AND NOT FNil?(h))
+      IMPLIES
+        (first_postcondition(leq, h)
+          AND
+            (FORALL
+                (selected_element: elt),
+                (selected_children: forest),
+                (selected_rank: int),
+                (remainder: forest):
+              extraction_step_antecedent(
+                leq,
+                h,
+                selected_element,
+                selected_children,
+                selected_rank,
+                remainder)
+              IMPLIES
+                extraction_step_conclusion(
+                  leq,
+                  h,
+                  k,
+                  selected_element,
+                  selected_children,
+                  selected_rank,
+                  remainder)))
+
+END binomial_heap_BinomialHeap_extract_min_treeqtvc

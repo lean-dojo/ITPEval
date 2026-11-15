@@ -1,0 +1,60 @@
+% Statement-only formalization of PutnamBench artifact putnam_1980_b1:
+% the real constants c for which (exp(x) + exp(-x)) / 2 is at most
+% exp(c * x^2) for every real x. This file contains no proof.
+
+putnam_1980_b1: THEORY
+BEGIN
+  real_sequence: TYPE = [nat -> real]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  nat_factorial(index: nat): RECURSIVE nat =
+    IF index = 0 THEN
+      1
+    ELSE
+      index * nat_factorial(index - 1)
+    ENDIF
+  MEASURE index
+
+  exponential_partial(x: real, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      LET index: nat = count - 1 IN
+        exponential_partial(x, count - 1)
+          + safe_div(
+              x ^ index,
+              nat_factorial(index) :: real)
+    ENDIF
+  MEASURE count
+
+  converges_to(sequence: real_sequence, value: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (index: nat):
+          cutoff <= index IMPLIES
+            abs(sequence(index) - value) < epsilon_value
+
+  real_exponential(x: real): real =
+    epsilon(
+      LAMBDA (value: real):
+        converges_to(
+          LAMBDA (count: nat):
+            exponential_partial(x, count),
+          value))
+
+  putnam_1980_b1_solution(c: real): bool =
+    c >= 1 / 2
+
+  putnam_1980_b1: bool =
+    FORALL (c: real):
+      (FORALL (x: real):
+        (real_exponential(x) + real_exponential(-x)) / 2
+          <= real_exponential(c * x ^ 2))
+      IFF putnam_1980_b1_solution(c)
+END putnam_1980_b1

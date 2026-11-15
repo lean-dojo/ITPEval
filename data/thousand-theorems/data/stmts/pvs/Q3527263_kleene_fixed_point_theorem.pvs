@@ -1,0 +1,98 @@
+% Statement-only formalization of the thousand-theorems corpus artifact Q3527263,
+% "Kleene fixed-point theorem": an omega-Scott-continuous endomap of a complete
+% lattice has least fixed point equal to the supremum of its finite iterates
+% from bottom. This file contains no proof.
+
+Q3527263_kleene_fixed_point_theorem[
+  X: TYPE+,
+  le_rel: [X, X -> bool],
+  bottom: X,
+  supremum: [[X -> bool] -> X],
+  infimum: [[X -> bool] -> X],
+  f: [X -> X]
+]: THEORY
+BEGIN
+  element_set: TYPE = [X -> bool]
+  sequence: TYPE = [nat -> X]
+  self_map: TYPE = [X -> X]
+
+  upper_bound(S: element_set, u: X): bool =
+    FORALL (x: X):
+      S(x) IMPLIES le_rel(x, u)
+
+  lower_bound(S: element_set, l: X): bool =
+    FORALL (x: X):
+      S(x) IMPLIES le_rel(l, x)
+
+  least_upper_bound(S: element_set, s: X): bool =
+    upper_bound(S, s)
+      AND (FORALL (u: X):
+        upper_bound(S, u) IMPLIES le_rel(s, u))
+
+  greatest_lower_bound(S: element_set, i: X): bool =
+    lower_bound(S, i)
+      AND (FORALL (l: X):
+        lower_bound(S, l) IMPLIES le_rel(l, i))
+
+  partial_order_laws: bool =
+    (FORALL (x: X): le_rel(x, x))
+      AND (FORALL (x, y, z: X):
+        le_rel(x, y) AND le_rel(y, z) IMPLIES le_rel(x, z))
+      AND (FORALL (x, y: X):
+        le_rel(x, y) AND le_rel(y, x) IMPLIES x = y)
+
+  complete_lattice_laws: bool =
+    partial_order_laws
+      AND (FORALL (x: X): le_rel(bottom, x))
+      AND (FORALL (S: element_set):
+        least_upper_bound(S, supremum(S)))
+      AND (FORALL (S: element_set):
+        greatest_lower_bound(S, infimum(S)))
+
+  monotone(g: self_map): bool =
+    FORALL (x, y: X):
+      le_rel(x, y) IMPLIES le_rel(g(x), g(y))
+
+  increasing(values: sequence): bool =
+    FORALL (m, n: nat):
+      m <= n IMPLIES le_rel(values(m), values(n))
+
+  sequence_range(values: sequence): element_set =
+    LAMBDA (x: X):
+      EXISTS (n: nat): x = values(n)
+
+  omega_supremum(values: sequence): X =
+    supremum(sequence_range(values))
+
+  omega_scott_continuous(g: self_map): bool =
+    monotone(g)
+      AND (FORALL (values: sequence):
+        increasing(values) IMPLIES
+          g(omega_supremum(values)) =
+            omega_supremum(
+              LAMBDA (n: nat): g(values(n))))
+
+  iterate(g: self_map, x: X, count: nat): RECURSIVE X =
+    IF count = 0 THEN
+      x
+    ELSE
+      g(iterate(g, x, count - 1))
+    ENDIF
+  MEASURE count
+
+  iterate_range(g: self_map, x: X): element_set =
+    LAMBDA (y: X):
+      EXISTS (n: nat): y = iterate(g, x, n)
+
+  least_fixed_point(g: self_map): X =
+    infimum(
+      LAMBDA (x: X):
+        le_rel(g(x), x))
+
+  kleene_fixed_point_theorem: bool =
+    complete_lattice_laws
+      AND omega_scott_continuous(f)
+    IMPLIES
+      least_fixed_point(f) =
+        supremum(iterate_range(f, bottom))
+END Q3527263_kleene_fixed_point_theorem

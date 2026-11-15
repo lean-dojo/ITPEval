@@ -1,0 +1,270 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2021_b3:
+% every twice continuously differentiable real function on the plane has,
+% for each d > r > 0, a radius-r disk centered distance d from the origin
+% on which the integral of y*h_x - x*h_y is zero. This file contains no proof.
+
+putnam_2021_b3: THEORY
+BEGIN
+  point: TYPE = [# x_coord: real, y_coord: real #]
+  gradient: TYPE = [# dx: real, dy: real #]
+  hessian: TYPE =
+    [# dxx: real, dxy: real, dyx: real, dyy: real #]
+
+  scalar_field: TYPE = [point -> real]
+  gradient_field: TYPE = [point -> gradient]
+  hessian_field: TYPE = [point -> hessian]
+  point_sequence: TYPE = [nat -> point]
+
+  box: TYPE =
+    [# left: real, right: real, bottom: real, top: real #]
+  box_sequence: TYPE = [nat -> box]
+
+  squared_distance(p, q: point): real =
+    (x_coord(p) - x_coord(q)) ^ 2
+      + (y_coord(p) - y_coord(q)) ^ 2
+
+  gradient_distance_squared(first, second: gradient): real =
+    (dx(first) - dx(second)) ^ 2
+      + (dy(first) - dy(second)) ^ 2
+
+  hessian_distance_squared(first, second: hessian): real =
+    (dxx(first) - dxx(second)) ^ 2
+      + (dxy(first) - dxy(second)) ^ 2
+      + (dyx(first) - dyx(second)) ^ 2
+      + (dyy(first) - dyy(second)) ^ 2
+
+  scalar_derivative_error(
+      f: scalar_field,
+      derivative: gradient,
+      p, q: point): real =
+    f(q) - f(p)
+      - dx(derivative) * (x_coord(q) - x_coord(p))
+      - dy(derivative) * (y_coord(q) - y_coord(p))
+
+  has_scalar_frechet_derivative_at(
+      f: scalar_field,
+      derivative: gradient,
+      p: point): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (delta: posreal):
+        FORALL (q: point):
+          (q /= p
+            AND squared_distance(q, p) < delta ^ 2)
+          IMPLIES
+            scalar_derivative_error(f, derivative, p, q) ^ 2
+              < epsilon_value ^ 2 * squared_distance(q, p)
+
+  gradient_derivative_error_squared(
+      f: gradient_field,
+      derivative: hessian,
+      p, q: point): real =
+    (dx(f(q)) - dx(f(p))
+      - dxx(derivative) * (x_coord(q) - x_coord(p))
+      - dxy(derivative) * (y_coord(q) - y_coord(p))) ^ 2
+      + (dy(f(q)) - dy(f(p))
+        - dyx(derivative) * (x_coord(q) - x_coord(p))
+        - dyy(derivative) * (y_coord(q) - y_coord(p))) ^ 2
+
+  has_gradient_frechet_derivative_at(
+      f: gradient_field,
+      derivative: hessian,
+      p: point): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (delta: posreal):
+        FORALL (q: point):
+          (q /= p
+            AND squared_distance(q, p) < delta ^ 2)
+          IMPLIES
+            gradient_derivative_error_squared(
+              f, derivative, p, q)
+              < epsilon_value ^ 2 * squared_distance(q, p)
+
+  continuous_scalar_field(f: scalar_field): bool =
+    FORALL (p: point), (epsilon_value: posreal):
+      EXISTS (delta: posreal):
+        FORALL (q: point):
+          squared_distance(q, p) < delta ^ 2
+            IMPLIES
+              (f(q) - f(p)) ^ 2 < epsilon_value ^ 2
+
+  continuous_gradient_field(f: gradient_field): bool =
+    FORALL (p: point), (epsilon_value: posreal):
+      EXISTS (delta: posreal):
+        FORALL (q: point):
+          squared_distance(q, p) < delta ^ 2
+            IMPLIES
+              gradient_distance_squared(f(q), f(p))
+                < epsilon_value ^ 2
+
+  continuous_hessian_field(f: hessian_field): bool =
+    FORALL (p: point), (epsilon_value: posreal):
+      EXISTS (delta: posreal):
+        FORALL (q: point):
+          squared_distance(q, p) < delta ^ 2
+            IMPLIES
+              hessian_distance_squared(f(q), f(p))
+                < epsilon_value ^ 2
+
+  twice_continuously_differentiable(f: scalar_field): bool =
+    EXISTS
+        (first: gradient_field),
+        (second: hessian_field):
+      continuous_scalar_field(f)
+        AND continuous_gradient_field(first)
+        AND continuous_hessian_field(second)
+        AND (FORALL (p: point):
+          has_scalar_frechet_derivative_at(f, first(p), p)
+            AND has_gradient_frechet_derivative_at(
+              first, second(p), p))
+
+  gradient_at(f: scalar_field, p: point): gradient =
+    epsilon(
+      LAMBDA (derivative: gradient):
+        has_scalar_frechet_derivative_at(f, derivative, p))
+
+  rho(f: scalar_field): scalar_field =
+    LAMBDA (p: point):
+      y_coord(p) * dx(gradient_at(f, p))
+        - x_coord(p) * dy(gradient_at(f, p))
+
+  open_disk(center: point, radius: real): [point -> bool] =
+    LAMBDA (p: point):
+      squared_distance(p, center) < radius ^ 2
+
+  disk_box(center: point, radius: real): box =
+    (# left := x_coord(center) - radius,
+       right := x_coord(center) + radius,
+       bottom := y_coord(center) - radius,
+       top := y_coord(center) + radius #)
+
+  valid_box(rectangle: box): bool =
+    left(rectangle) < right(rectangle)
+      AND bottom(rectangle) < top(rectangle)
+
+  in_closed_box(p: point, rectangle: box): bool =
+    left(rectangle) <= x_coord(p)
+      AND x_coord(p) <= right(rectangle)
+      AND bottom(rectangle) <= y_coord(p)
+      AND y_coord(p) <= top(rectangle)
+
+  box_contained_in(inner, outer: box): bool =
+    left(outer) <= left(inner)
+      AND right(inner) <= right(outer)
+      AND bottom(outer) <= bottom(inner)
+      AND top(inner) <= top(outer)
+
+  box_content(rectangle: box): real =
+    (right(rectangle) - left(rectangle))
+      * (top(rectangle) - bottom(rectangle))
+
+  box_interiors_overlap(first, second: box): bool =
+    left(first) < right(second)
+      AND left(second) < right(first)
+      AND bottom(first) < top(second)
+      AND bottom(second) < top(first)
+
+  tagged_box_division(
+      parent: box,
+      count: nat,
+      rectangles: box_sequence,
+      tags: point_sequence): bool =
+    valid_box(parent)
+      AND (FORALL (index: nat):
+        index < count IMPLIES
+          (valid_box(rectangles(index))
+            AND box_contained_in(rectangles(index), parent)
+            AND in_closed_box(tags(index), rectangles(index))))
+      AND (FORALL (first, second: nat):
+        first < second AND second < count IMPLIES
+          NOT box_interiors_overlap(
+            rectangles(first), rectangles(second)))
+      AND (FORALL (p: point):
+        in_closed_box(p, parent) IMPLIES
+          EXISTS (index: nat):
+            index < count
+              AND in_closed_box(p, rectangles(index)))
+
+  positive_planar_gauge(gauge: scalar_field): bool =
+    FORALL (p: point): 0 < gauge(p)
+
+  box_gauge_fine(
+      gauge: scalar_field,
+      count: nat,
+      rectangles: box_sequence,
+      tags: point_sequence): bool =
+    FORALL (index: nat):
+      index < count IMPLIES
+        (x_coord(tags(index)) - gauge(tags(index))
+            < left(rectangles(index))
+          AND right(rectangles(index))
+            < x_coord(tags(index)) + gauge(tags(index))
+          AND y_coord(tags(index)) - gauge(tags(index))
+            < bottom(rectangles(index))
+          AND top(rectangles(index))
+            < y_coord(tags(index)) + gauge(tags(index)))
+
+  tagged_box_sum(
+      f: scalar_field,
+      count: nat,
+      rectangles: box_sequence,
+      tags: point_sequence): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      tagged_box_sum(f, count - 1, rectangles, tags)
+        + f(tags(count - 1))
+            * box_content(rectangles(count - 1))
+    ENDIF
+  MEASURE count
+
+  restrict_to_region(
+      f: scalar_field,
+      region: [point -> bool]): scalar_field =
+    LAMBDA (p: point):
+      IF region(p) THEN f(p) ELSE 0 ENDIF
+
+  has_box_integral(
+      f: scalar_field,
+      parent: box,
+      integral_value: real): bool =
+    valid_box(parent)
+      AND FORALL (epsilon_value: posreal):
+        EXISTS (gauge: scalar_field):
+          positive_planar_gauge(gauge)
+            AND (FORALL
+                (count: nat),
+                (rectangles: box_sequence),
+                (tags: point_sequence):
+              (tagged_box_division(
+                  parent, count, rectangles, tags)
+                AND box_gauge_fine(
+                  gauge, count, rectangles, tags))
+              IMPLIES
+                abs(tagged_box_sum(
+                  f, count, rectangles, tags)
+                    - integral_value) < epsilon_value)
+
+  disk_integral_is_zero(
+      f: scalar_field,
+      center: point,
+      radius: real): bool =
+    has_box_integral(
+      restrict_to_region(rho(f), open_disk(center, radius)),
+      disk_box(center, radius),
+      0)
+
+  origin: point =
+    (# x_coord := 0, y_coord := 0 #)
+
+  putnam_2021_b3_solution: bool = TRUE
+
+  putnam_2021_b3_statement: bool =
+    ((FORALL (h: scalar_field):
+      twice_continuously_differentiable(h) IMPLIES
+        FORALL (d, r: real):
+          (d > 0 AND r > 0 AND d > r) IMPLIES
+            EXISTS (center: point):
+              squared_distance(center, origin) = d ^ 2
+                AND disk_integral_is_zero(h, center, r))
+      IFF putnam_2021_b3_solution)
+END putnam_2021_b3

@@ -1,0 +1,171 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% frama_c/contiki_list/list_chop_Why3_ide_VClist_chop_call_linked_n_before_last_pre_Linked_goal41:
+% derivation of a linked-list segment of length one less, ending at the array
+% entry immediately before the last element. This file contains no proof.
+
+list_chop_Why3_ide_VClist_chop_call_linked_n_before_last_pre_Linked_goal41[
+  region: [int -> int],
+  linked: [[int -> int] -> bool]
+]: THEORY
+BEGIN
+  addr: TYPE = [# base: int, offset: int #]
+  pointer_memory: TYPE = [addr -> addr]
+  allocation_table: TYPE = [int -> int]
+
+  shift(p: addr, k: int): addr =
+    (# base := base(p), offset := offset(p) + k #)
+
+  valid_rw(malloc: allocation_table, p: addr, size: int): bool =
+    0 < size IMPLIES
+      0 < base(p)
+        AND 0 <= offset(p)
+        AND offset(p) + size <= malloc(base(p))
+
+  separated(p: addr, p_size: int, q: addr, q_size: int): bool =
+    p_size <= 0
+      OR q_size <= 0
+      OR base(p) /= base(q)
+      OR offset(q) + q_size <= offset(p)
+      OR offset(p) + p_size <= offset(q)
+
+  framed(memory: pointer_memory): bool =
+    FORALL (p: addr): region(base(memory(p))) <= 0
+
+  is_sint32(value: int): bool =
+    -2147483648 <= value AND value < 2147483648
+
+  linked_candidate: TYPE =
+    [[int -> int], pointer_memory, addr, addr, int, int, addr -> bool]
+
+  p_linked_n(
+      malloc: allocation_table,
+      ptr_memory: pointer_memory,
+      root, array_base: addr,
+      index, count: int,
+      bound: addr): bool =
+    FORALL (candidate: linked_candidate):
+      ((FORALL (base_index: int),
+               (candidate_malloc: allocation_table),
+               (candidate_memory: pointer_memory),
+               (candidate_bound, candidate_array: addr):
+          (0 <= base_index AND base_index <= 2147483646)
+            IMPLIES
+              candidate(
+                candidate_malloc,
+                candidate_memory,
+                candidate_bound,
+                candidate_array,
+                base_index,
+                0,
+                candidate_bound))
+        AND
+        (FORALL (base_index, positive_count: int),
+                (candidate_memory: pointer_memory),
+                (candidate_array, candidate_root: addr),
+                (candidate_malloc: allocation_table),
+                (candidate_bound: addr):
+          (candidate_memory(shift(candidate_array, base_index))
+              = candidate_root
+            AND 0 < positive_count
+            AND 0 <= base_index
+            AND 0 <= base_index + positive_count
+            AND base_index + positive_count <= 2147483646
+            AND valid_rw(candidate_malloc, candidate_root, 4)
+            AND candidate(
+              candidate_malloc,
+              candidate_memory,
+              candidate_memory(shift(candidate_root, 0)),
+              candidate_array,
+              1 + base_index,
+              positive_count - 1,
+              candidate_bound))
+          IMPLIES
+            candidate(
+              candidate_malloc,
+              candidate_memory,
+              candidate_root,
+              candidate_array,
+              base_index,
+              positive_count,
+              candidate_bound)))
+      IMPLIES
+        candidate(malloc, ptr_memory, root, array_base, index, count, bound)
+
+  goal41: bool =
+    FORALL (i_1, i_2: int),
+           (t_1: pointer_memory),
+           (a_1, a: addr),
+           (i: int),
+           (t: allocation_table):
+      LET x: int = i_1 + i_2,
+          a_2: addr = t_1(shift(a_1, x)),
+          a_3: addr = t_1(shift(a_2, 0)),
+          a_4: addr = t_1(shift(a_3, 0)),
+          a_5: addr = t_1(a),
+          a_6: addr = shift(a_1, 0),
+          x_1: int = i + i_1
+      IN
+        (a_4 = (# base := 0, offset := 0 #)
+          AND a_4 /= a_5
+          AND a_4 /= t_1(shift(a_5, 0))
+          AND region(base(a)) <= 0
+          AND region(base(a_1)) <= 0
+          AND 2 + i_2 <= i
+          AND framed(t_1)
+          AND linked(t)
+          AND is_sint32(i)
+          AND is_sint32(i_1)
+          AND is_sint32(i_2)
+          AND valid_rw(t, a, 1)
+          AND valid_rw(t, a_6, 2147483646)
+          AND separated(a, 1, a_6, 2147483646)
+          AND separated(a_5, 4, a_6, 2147483646)
+          AND valid_rw(t, a_3, 4)
+          AND p_linked_n(t, t_1, a_5, a_1, i_1, i, a_4)
+          AND p_linked_n(t, t_1, a_2, a_1, x, i - i_2, a_4)
+          AND
+            (FORALL (i_3: int):
+              (i_1 <= i_3 AND i_3 < x_1)
+                IMPLIES
+                  separated(a, 1, t_1(shift(a_1, i_3)), 4))
+          AND
+            (FORALL (i_3: int):
+              (i_1 <= i_3 AND i_3 < x_1)
+                IMPLIES
+                  separated(
+                    t_1(shift(a_1, i_3)),
+                    4,
+                    a_6,
+                    2147483646))
+          AND
+            (FORALL (i_4, i_3: int):
+              (i_4 /= i_3
+                AND i_1 <= i_3
+                AND i_1 <= i_4
+                AND i_3 < x_1
+                AND i_4 < x_1)
+              IMPLIES
+                t_1(shift(a_1, i_4)) /= t_1(shift(a_1, i_3)))
+          AND
+            (FORALL (i_4, i_3: int):
+              (i_4 /= i_3
+                AND i_1 <= i_3
+                AND i_1 <= i_4
+                AND i_3 < x_1
+                AND i_4 < x_1)
+              IMPLIES
+                separated(
+                  t_1(shift(a_1, i_4)),
+                  4,
+                  t_1(shift(a_1, i_3)),
+                  4)))
+        IMPLIES
+          p_linked_n(
+            t,
+            t_1,
+            a_5,
+            a_1,
+            i_1,
+            i - 1,
+            t_1(shift(a_1, i + i_1 - 1)))
+END list_chop_Why3_ide_VClist_chop_call_linked_n_before_last_pre_Linked_goal41

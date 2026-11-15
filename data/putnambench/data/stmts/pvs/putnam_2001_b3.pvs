@@ -1,0 +1,60 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2001_b3:
+% the series formed from powers of two indexed by the nearest integer to each
+% positive integer's square root converges to 3. This file contains no proof.
+
+putnam_2001_b3: THEORY
+BEGIN
+  real_sequence: TYPE = [nat -> real]
+  nearest_sequence: TYPE = [nat -> nat]
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  nearest_integer_to_sqrt(n, k: nat): bool =
+    (2 * (k :: real) - 1) ^ 2 <= 4 * (n :: real)
+      AND 4 * (n :: real) < (2 * (k :: real) + 1) ^ 2
+
+  is_nearest_sqrt_sequence(nearest: nearest_sequence): bool =
+    FORALL (n: nat):
+      n > 0 IMPLIES nearest_integer_to_sqrt(n, nearest(n))
+
+  power_of_two(exponent: nat): real =
+    (2 :: real) ^ exponent
+
+  series_terms(nearest: nearest_sequence): real_sequence =
+    LAMBDA (index: nat):
+      LET n: nat = index + 1,
+          k: nat = nearest(n)
+      IN
+        safe_div(
+          power_of_two(k) + safe_div(1, power_of_two(k)),
+          power_of_two(n))
+
+  partial_sum(values: real_sequence, count: nat): RECURSIVE real =
+    IF count = 0 THEN
+      0
+    ELSE
+      partial_sum(values, count - 1) + values(count - 1)
+    ENDIF
+  MEASURE count
+
+  series_sums_to(values: real_sequence, total: real): bool =
+    FORALL (epsilon_value: posreal):
+      EXISTS (cutoff: nat):
+        FORALL (count: nat):
+          cutoff <= count IMPLIES
+            abs(partial_sum(values, count) - total) < epsilon_value
+
+  putnam_2001_b3_solution: real = 3
+
+  putnam_2001_b3: bool =
+    EXISTS (nearest: nearest_sequence):
+      is_nearest_sqrt_sequence(nearest)
+        AND series_sums_to(
+          series_terms(nearest),
+          putnam_2001_b3_solution)
+END putnam_2001_b3

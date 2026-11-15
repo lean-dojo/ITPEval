@@ -1,0 +1,171 @@
+% Statement-only formalization of "The Solution of a Cubic" from Hundred Theorems item 037. This
+% file contains no proof.
+
+% Hundred Theorems item 037, "The Solution of a Cubic": Cardano's formulas characterize all
+% complex roots of every cubic with nonzero leading coefficient, separating the cases where the
+% depressed cubic's linear parameter is zero or nonzero. This statement-only encoding contains
+% no proof.
+
+hundred_theorems_037: THEORY
+BEGIN
+  complex: TYPE = [# real_part: real, imag_part: real #]
+
+  complex_zero: complex =
+    (# real_part := 0, imag_part := 0 #)
+
+  complex_one: complex =
+    (# real_part := 1, imag_part := 0 #)
+
+  complex_of_real(x: real): complex =
+    (# real_part := x, imag_part := 0 #)
+
+  complex_neg(x: complex): complex =
+    (# real_part := -real_part(x),
+       imag_part := -imag_part(x) #)
+
+  complex_add(x, y: complex): complex =
+    (# real_part := real_part(x) + real_part(y),
+       imag_part := imag_part(x) + imag_part(y) #)
+
+  complex_sub(x, y: complex): complex =
+    complex_add(x, complex_neg(y))
+
+  complex_mul(x, y: complex): complex =
+    (# real_part := real_part(x) * real_part(y)
+                       - imag_part(x) * imag_part(y),
+       imag_part := real_part(x) * imag_part(y)
+                       + imag_part(x) * real_part(y) #)
+
+  safe_div(numerator, denominator: real): real =
+    IF denominator = 0 THEN
+      0
+    ELSE
+      numerator / denominator
+    ENDIF
+
+  complex_inv(x: complex): complex =
+    LET denominator: real =
+      real_part(x) * real_part(x)
+        + imag_part(x) * imag_part(x)
+    IN
+      (# real_part := safe_div(real_part(x), denominator),
+         imag_part := safe_div(-imag_part(x), denominator) #)
+
+  complex_div(x, y: complex): complex =
+    complex_mul(x, complex_inv(y))
+
+  complex_power(x: complex, exponent: nat): RECURSIVE complex =
+    IF exponent = 0 THEN
+      complex_one
+    ELSE
+      complex_mul(complex_power(x, exponent - 1), x)
+    ENDIF
+  MEASURE exponent
+
+  cubic_value(a, b, c, d, x: complex): complex =
+    complex_add(
+      complex_add(
+        complex_add(
+          complex_mul(a, complex_power(x, 3)),
+          complex_mul(b, complex_power(x, 2))),
+        complex_mul(c, x)),
+      d)
+
+  cardano_p(a, b, c: complex): complex =
+    complex_div(
+      complex_sub(
+        complex_mul(complex_mul(complex_of_real(3), a), c),
+        complex_power(b, 2)),
+      complex_mul(complex_of_real(9), complex_power(a, 2)))
+
+  cardano_q(a, b, c, d: complex): complex =
+    complex_div(
+      complex_sub(
+        complex_sub(
+          complex_mul(
+            complex_mul(
+              complex_mul(complex_of_real(9), a),
+              b),
+            c),
+          complex_mul(complex_of_real(2), complex_power(b, 3))),
+        complex_mul(
+          complex_mul(complex_of_real(27), complex_power(a, 2)),
+          d)),
+      complex_mul(complex_of_real(54), complex_power(a, 3)))
+
+  depression_shift(a, b: complex): complex =
+    complex_div(
+      b,
+      complex_mul(complex_of_real(3), a))
+
+  shifted_root(y, a, b: complex): complex =
+    complex_sub(y, depression_shift(a, b))
+
+  primitive_cube_root(omega: complex): bool =
+    complex_power(omega, 3) = complex_one
+      AND NOT (omega = complex_one)
+
+  p_zero_cardano_solution(
+      a, b, c, d, q: complex): bool =
+    FORALL (s, omega: complex):
+      primitive_cube_root(omega)
+        AND complex_power(s, 3)
+          = complex_mul(complex_of_real(2), q)
+        IMPLIES (FORALL (x: complex):
+          cubic_value(a, b, c, d, x) = complex_zero
+            IFF
+          x = shifted_root(s, a, b)
+            OR x = shifted_root(complex_mul(s, omega), a, b)
+            OR x = shifted_root(
+              complex_mul(s, complex_power(omega, 2)),
+              a,
+              b))
+
+  p_nonzero_cardano_solution(
+      a, b, c, d, p, q: complex): bool =
+    FORALL (r, s, t, omega: complex):
+      primitive_cube_root(omega)
+        AND complex_power(r, 2)
+          = complex_add(
+              complex_power(q, 2),
+              complex_power(p, 3))
+        AND complex_power(s, 3) = complex_add(q, r)
+        AND complex_mul(t, s) = p
+        IMPLIES (FORALL (x: complex):
+          cubic_value(a, b, c, d, x) = complex_zero
+            IFF
+          x = shifted_root(complex_sub(s, t), a, b)
+            OR x = shifted_root(
+              complex_sub(
+                complex_mul(s, omega),
+                complex_mul(t, complex_power(omega, 2))),
+              a,
+              b)
+            OR x = shifted_root(
+              complex_sub(
+                complex_mul(s, complex_power(omega, 2)),
+                complex_mul(t, omega)),
+              a,
+              b))
+
+  the_solution_of_a_cubic: bool =
+    FORALL (a, b, c, d: complex):
+      NOT (a = complex_zero)
+        IMPLIES
+      ((cardano_p(a, b, c) = complex_zero
+          AND p_zero_cardano_solution(
+            a,
+            b,
+            c,
+            d,
+            cardano_q(a, b, c, d)))
+        OR
+       (NOT (cardano_p(a, b, c) = complex_zero)
+          AND p_nonzero_cardano_solution(
+            a,
+            b,
+            c,
+            d,
+            cardano_p(a, b, c),
+            cardano_q(a, b, c, d))))
+END hundred_theorems_037

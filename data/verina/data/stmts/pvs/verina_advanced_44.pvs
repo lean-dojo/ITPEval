@@ -1,0 +1,373 @@
+% Statement-only formalization of the VERINA corpus artifact
+% verina_advanced_44, catalog title "maxSubarraySumDivisibleByK": the specified
+% prefix-sum program computes a maximum sum of a nonempty contiguous integer
+% subarray whose length is divisible by k, with its full contract. This file contains no proof.
+
+verina_advanced_44: THEORY
+BEGIN
+
+  int_option: DATATYPE
+  BEGIN
+    NoneInt: NoneInt?
+    SomeInt(option_value: int): SomeInt?
+  END int_option
+
+  maxSubarraySumDivisibleByK_precond(
+      arr: list[int],
+      k: int): bool =
+    k > 0
+
+  int_list_length(values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        int_list_length(tail) + 1
+    ENDCASES
+  MEASURE values BY <<
+
+  int_list_get_bang(
+      index: nat,
+      values: list[int]): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          int_list_get_bang(index - 1, tail)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  nat_subtract(first, second: nat): nat =
+    IF first >= second THEN first - second ELSE 0 ENDIF
+
+  prefix_sums_aux(
+      running: int,
+      remaining: list[int]): RECURSIVE list[int] =
+    CASES remaining OF
+      null:
+        cons(running, null),
+      cons(head, tail):
+        cons(
+          running,
+          prefix_sums_aux(running + head, tail))
+    ENDCASES
+  MEASURE remaining BY <<
+
+  prefix_sums(arr: list[int]): list[int] =
+    prefix_sums_aux(0, arr)
+
+  int_max(first, second: int): int =
+    IF first >= second THEN first ELSE second ENDIF
+
+  update_best(
+      best: int_option,
+      subarray_sum: int): int_option =
+    CASES best OF
+      NoneInt:
+        SomeInt(subarray_sum),
+      SomeInt(current_best):
+        SomeInt(int_max(current_best, subarray_sum))
+    ENDCASES
+
+  % For every integer k, this is equivalent to the source test
+  % (length : Int) % k = 0, including k = 0 and negative k.
+  length_divisible_by_int(
+      length: nat,
+      k: int): bool =
+    EXISTS (quotient: int):
+      (length :: int) = k * quotient
+
+  scan_starts(
+      sums: list[int],
+      subarray_length, start, remaining_starts: nat,
+      best: int_option): RECURSIVE int_option =
+    IF remaining_starts = 0 THEN
+      best
+    ELSE
+      LET finish: nat = start + subarray_length,
+          subarray_sum: int =
+            int_list_get_bang(finish, sums)
+              - int_list_get_bang(start, sums),
+          next_best: int_option =
+            update_best(best, subarray_sum)
+      IN
+        scan_starts(
+          sums,
+          subarray_length,
+          start + 1,
+          remaining_starts - 1,
+          next_best)
+    ENDIF
+  MEASURE remaining_starts
+
+  scan_lengths(
+      sums: list[int],
+      total_length: nat,
+      k: int,
+      length, remaining_lengths: nat,
+      best: int_option): RECURSIVE int_option =
+    IF remaining_lengths = 0 THEN
+      best
+    ELSE
+      LET next_best: int_option =
+        IF length_divisible_by_int(length, k)
+             AND length > 0
+        THEN
+          scan_starts(
+            sums,
+            length,
+            0,
+            nat_subtract(total_length, length) + 1,
+            best)
+        ELSE
+          best
+        ENDIF
+      IN
+        scan_lengths(
+          sums,
+          total_length,
+          k,
+          length + 1,
+          remaining_lengths - 1,
+          next_best)
+    ENDIF
+  MEASURE remaining_lengths
+
+  maxSubarraySumDivisibleByK(
+      arr: list[int],
+      k: int): int =
+    LET total_length: nat = int_list_length(arr)
+    IN
+      IF total_length = 0 OR k = 0 THEN
+        0
+      ELSE
+        LET sums: list[int] = prefix_sums(arr),
+            outcome: int_option =
+              scan_lengths(
+                sums,
+                total_length,
+                k,
+                0,
+                total_length + 1,
+                NoneInt)
+        IN
+          CASES outcome OF
+            NoneInt:
+              0,
+            SomeInt(value):
+              value
+          ENDCASES
+      ENDIF
+
+  int_list_drop(
+      count: nat,
+      values: list[int]): RECURSIVE list[int] =
+    IF count = 0 THEN
+      values
+    ELSE
+      CASES values OF
+        null:
+          null,
+        cons(head, tail):
+          int_list_drop(count - 1, tail)
+      ENDCASES
+    ENDIF
+  MEASURE count
+
+  int_list_take(
+      count: nat,
+      values: list[int]): RECURSIVE list[int] =
+    IF count = 0 THEN
+      null
+    ELSE
+      CASES values OF
+        null:
+          null,
+        cons(head, tail):
+          cons(
+            head,
+            int_list_take(count - 1, tail))
+      ENDCASES
+    ENDIF
+  MEASURE count
+
+  int_list_extract(
+      values: list[int],
+      start, length: nat): list[int] =
+    int_list_take(
+      length,
+      int_list_drop(start, values))
+
+  append_int_list_lists(
+      first, second: list[list[int]]):
+        RECURSIVE list[list[int]] =
+    CASES first OF
+      null:
+        second,
+      cons(head, tail):
+        cons(
+          head,
+          append_int_list_lists(tail, second))
+    ENDCASES
+  MEASURE first BY <<
+
+  subarrays_at_start(
+      arr: list[int],
+      start, length, remaining_lengths: nat):
+        RECURSIVE list[list[int]] =
+    IF remaining_lengths = 0 THEN
+      null
+    ELSE
+      cons(
+        int_list_extract(arr, start, length),
+        subarrays_at_start(
+          arr,
+          start,
+          length + 1,
+          remaining_lengths - 1))
+    ENDIF
+  MEASURE remaining_lengths
+
+  all_subarrays_from(
+      arr: list[int],
+      start, remaining_starts, total_length: nat):
+        RECURSIVE list[list[int]] =
+    IF remaining_starts = 0 THEN
+      null
+    ELSE
+      append_int_list_lists(
+        subarrays_at_start(
+          arr,
+          start,
+          0,
+          nat_subtract(total_length, start) + 1),
+        all_subarrays_from(
+          arr,
+          start + 1,
+          remaining_starts - 1,
+          total_length))
+    ENDIF
+  MEASURE remaining_starts
+
+  all_subarrays(arr: list[int]): list[list[int]] =
+    LET total_length: nat = int_list_length(arr)
+    IN
+      all_subarrays_from(
+        arr,
+        0,
+        total_length,
+        total_length)
+
+  % This combines the source filter's positive-length test with natural
+  % remainder by k.toNat. For k <= 0, no positive length is accepted.
+  positive_length_divisible_by_to_nat(
+      length: nat,
+      k: int): bool =
+    length > 0
+      AND k > 0
+      AND (EXISTS (quotient: int):
+        (length :: int) = k * quotient)
+
+  filter_divisible_subarrays(
+      subarrays: list[list[int]],
+      k: int): RECURSIVE list[list[int]] =
+    CASES subarrays OF
+      null:
+        null,
+      cons(head, tail):
+        IF positive_length_divisible_by_to_nat(
+             int_list_length(head),
+             k)
+        THEN
+          cons(
+            head,
+            filter_divisible_subarrays(tail, k))
+        ELSE
+          filter_divisible_subarrays(tail, k)
+        ENDIF
+    ENDCASES
+  MEASURE subarrays BY <<
+
+  int_list_sum(values: list[int]): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        head + int_list_sum(tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  map_subarray_sums(
+      subarrays: list[list[int]]): RECURSIVE list[int] =
+    CASES subarrays OF
+      null:
+        null,
+      cons(head, tail):
+        cons(
+          int_list_sum(head),
+          map_subarray_sums(tail))
+    ENDCASES
+  MEASURE subarrays BY <<
+
+  divisible_subarray_sums(
+      arr: list[int],
+      k: int): list[int] =
+    map_subarray_sums(
+      filter_divisible_subarrays(
+        all_subarrays(arr),
+        k))
+
+  int_list_contains(
+      values: list[int],
+      requested: int): RECURSIVE bool =
+    CASES values OF
+      null:
+        FALSE,
+      cons(head, tail):
+        head = requested
+          OR int_list_contains(tail, requested)
+    ENDCASES
+  MEASURE values BY <<
+
+  int_list_all_at_most(
+      values: list[int],
+      upper_bound: int): RECURSIVE bool =
+    CASES values OF
+      null:
+        TRUE,
+      cons(head, tail):
+        head <= upper_bound
+          AND int_list_all_at_most(tail, upper_bound)
+    ENDCASES
+  MEASURE values BY <<
+
+  maxSubarraySumDivisibleByK_postcond(
+      arr: list[int],
+      k, result: int): bool =
+    LET subarray_sums: list[int] =
+          divisible_subarray_sums(arr, k)
+    IN
+      (int_list_length(subarray_sums) = 0
+        IMPLIES result = 0)
+      AND
+      (int_list_length(subarray_sums) > 0
+        IMPLIES
+          int_list_contains(subarray_sums, result)
+            AND int_list_all_at_most(
+                  subarray_sums,
+                  result))
+
+  % The source theorem defines the positive-k precondition separately but does
+  % not assume it in the final proposition, so this quantifies over every k.
+  maxSubarraySumDivisibleByK_spec_satisfied: bool =
+    FORALL (arr: list[int], k: int):
+      maxSubarraySumDivisibleByK_postcond(
+        arr,
+        k,
+        maxSubarraySumDivisibleByK(arr, k))
+
+END verina_advanced_44

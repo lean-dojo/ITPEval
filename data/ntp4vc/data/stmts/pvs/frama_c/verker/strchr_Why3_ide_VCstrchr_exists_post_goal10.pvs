@@ -1,0 +1,177 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% frama_c/verker/strchr_Why3_ide_VCstrchr_exists_post_goal10:
+% a strchr exists-post verification condition concluding that the returned
+% address lies between the string start and its computed terminator.
+% This file contains no proof.
+
+strchr_Why3_ide_VCstrchr_exists_post_goal10: THEORY
+BEGIN
+  addr: TYPE = [# base: int, offset: int #]
+  allocation_table: TYPE = [int -> int]
+  integer_memory: TYPE = [addr -> int]
+  integer_conversion: TYPE = [int -> int]
+  address_relation: TYPE = [addr, addr -> bool]
+  string_length_function: TYPE = [integer_memory, addr -> int]
+  string_search_function: TYPE = [integer_memory, addr, int -> addr]
+
+  shift(p: addr, k: int): addr =
+    (# base := base(p), offset := offset(p) + k #)
+
+  is_uint8(value: int): bool =
+    0 <= value AND value < 256
+
+  is_sint8(value: int): bool =
+    -128 <= value AND value < 128
+
+  is_sint32(value: int): bool =
+    -2147483648 <= value AND value < 2147483648
+
+  is_sint64(value: int): bool =
+    -9223372036854775808 <= value AND value < 9223372036854775808
+
+  is_uint64(value: int): bool =
+    0 <= value AND value < 18446744073709551616
+
+  valid_rw(
+      malloc_0: allocation_table,
+      p: addr,
+      size: int): bool =
+    0 < size IMPLIES
+      0 < base(p)
+        AND 0 <= offset(p)
+        AND offset(p) + size <= malloc_0(base(p))
+
+  p_valid_str(
+      malloc_0: allocation_table,
+      mchar_0: integer_memory,
+      s: addr): bool =
+    EXISTS (terminator: int):
+      mchar_0(shift(s, terminator)) = 0
+        AND is_uint64(terminator)
+        AND valid_rw(malloc_0, shift(s, 0), 1 + terminator)
+        AND (FORALL (j: int):
+          j <= terminator IMPLIES
+            is_sint8(mchar_0(shift(s, j))))
+
+  address_order_laws(
+      addr_le, addr_lt: address_relation): bool =
+    (FORALL (p, q: addr):
+      base(p) = base(q) IMPLIES
+        (addr_le(p, q) IFF offset(p) <= offset(q)))
+      AND
+    (FORALL (p, q: addr):
+      base(p) = base(q) IMPLIES
+        (addr_lt(p, q) IFF offset(p) < offset(q)))
+
+  conversion_laws(
+      to_uint8, to_sint8, to_uint64, to_sint64:
+        integer_conversion): bool =
+    (FORALL (value: int): is_uint8(to_uint8(value)))
+      AND
+    (FORALL (value: int):
+      is_uint8(value) IMPLIES to_uint8(value) = value)
+      AND
+    (FORALL (value: int): is_sint8(to_sint8(value)))
+      AND
+    (FORALL (value: int):
+      is_sint8(value) IMPLIES to_sint8(value) = value)
+      AND
+    (FORALL (value: int): is_uint64(to_uint64(value)))
+      AND
+    (FORALL (value: int):
+      is_uint64(value) IMPLIES to_uint64(value) = value)
+      AND
+    (FORALL (value: int): is_sint64(to_sint64(value)))
+      AND
+    (FORALL (value: int):
+      is_sint64(value) IMPLIES to_sint64(value) = value)
+      AND
+    (FORALL (value: int):
+      to_sint8(to_uint8(value)) = to_sint8(value))
+      AND
+    (FORALL (value: int):
+      to_sint64(to_uint64(value)) = to_sint64(value))
+
+  strlen_laws(
+      to_uint64: integer_conversion,
+      l_strlen: string_length_function): bool =
+    (FORALL (mchar_0: integer_memory), (s: addr):
+      IF mchar_0(shift(s, 0)) = 0
+      THEN l_strlen(mchar_0, s) = 0
+      ELSE
+        to_uint64(1 + l_strlen(mchar_0, shift(s, 1))) =
+          l_strlen(mchar_0, s)
+      ENDIF)
+      AND
+    (FORALL (mchar_0: integer_memory), (s: addr):
+      is_uint64(l_strlen(mchar_0, s)))
+
+  strchr_law(l_strchr: string_search_function): bool =
+    FORALL
+      (mchar_0: integer_memory),
+      (str_0: addr),
+      (c: int):
+      IF mchar_0(str_0) = c
+      THEN l_strchr(mchar_0, str_0, c) = str_0
+      ELSIF mchar_0(str_0) = 0
+      THEN
+        l_strchr(mchar_0, str_0, c) =
+          (# base := 0, offset := 0 #)
+      ELSE
+        l_strchr(mchar_0, shift(str_0, 1), c) =
+          l_strchr(mchar_0, str_0, c)
+      ENDIF
+
+  goal10: bool =
+    FORALL
+      (region: [int -> int]),
+      (linked: [allocation_table -> bool]),
+      (sconst: [integer_memory -> bool]),
+      (addr_le, addr_lt: address_relation),
+      (to_uint8, to_sint8, to_uint64, to_sint64:
+        integer_conversion),
+      (l_strlen: string_length_function),
+      (l_strchr: string_search_function),
+      (t_1: integer_memory),
+      (a_3, a, a_1, a_2: addr),
+      (i: int),
+      (t: allocation_table):
+      address_order_laws(addr_le, addr_lt) IMPLIES
+      conversion_laws(
+        to_uint8, to_sint8, to_uint64, to_sint64) IMPLIES
+      strlen_laws(to_uint64, l_strlen) IMPLIES
+      strchr_law(l_strchr) IMPLIES
+      LET x: int = t_1(a_3),
+          x_1: int = t_1(a),
+          x_2: int = t_1(a_1),
+          a_4: addr = shift(a_2, l_strlen(t_1, a_2))
+      IN
+        x = to_sint8(i) IMPLIES
+        l_strchr(t_1, a_2, x) = l_strchr(t_1, a_1, x) IMPLIES
+        region(base(a_2)) <= 0 IMPLIES
+        linked(t) IMPLIES
+        sconst(t_1) IMPLIES
+        is_sint32(i) IMPLIES
+        addr_le(a_2, a_1) IMPLIES
+        addr_le(a_2, a_3) IMPLIES
+        is_sint8(x_1) IMPLIES
+        is_sint8(x_2) IMPLIES
+        p_valid_str(t, t_1, a_1) IMPLIES
+        p_valid_str(t, t_1, a_2) IMPLIES
+        addr_le(a_1, a_4) IMPLIES
+        addr_le(a_3, a_4) IMPLIES
+        (IF x = x_2
+         THEN
+           a_1 = a
+             AND (a_4 = a IFF x_1 = 0)
+             AND (addr_lt(a, a_4) IFF NOT (x_1 = 0))
+         ELSE
+           (# base := 0, offset := 0 #) = a
+             AND x_2 = 0
+         ENDIF) IMPLIES
+        (FORALL (a_5: addr):
+          addr_lt(a_5, a_1) IMPLIES
+          addr_le(a_2, a_5) IMPLIES
+          NOT (x = t_1(a_5))) IMPLIES
+        addr_le(a_2, a) AND addr_le(a, a_4)
+END strchr_Why3_ide_VCstrchr_exists_post_goal10

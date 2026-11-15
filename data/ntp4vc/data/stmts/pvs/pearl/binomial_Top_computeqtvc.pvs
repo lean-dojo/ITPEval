@@ -1,0 +1,81 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/binomial_Top_computeqtvc: the binomial-coefficient computation
+% verification condition for initialization, recurrence steps using Euclidean
+% integer division, and the final result. This file contains no proof.
+
+binomial_Top_computeqtvc: THEORY
+BEGIN
+
+  integer_abs(value: int): int =
+    IF value < 0 THEN -value ELSE value ENDIF
+
+  euclidean_quotient(
+      numerator, denominator, quotient: int): bool =
+    EXISTS (remainder: int):
+      numerator = denominator * quotient + remainder
+        AND 0 <= remainder
+        AND remainder < integer_abs(denominator)
+
+  infix_sl_definition_law(
+      infix_sl: [int, int -> int]): bool =
+    FORALL (y, x: int):
+      y /= 0 IMPLIES
+        euclidean_quotient(x, y, infix_sl(x, y))
+
+  comb_definition_law(comb: [int, int -> int]): bool =
+    FORALL (k, n: int):
+      (0 <= k AND k <= n) IMPLIES
+        IF k = 0 OR k = n THEN
+          comb(n, k) = 1
+        ELSE
+          comb(n, k) =
+            comb(n - 1, k) + comb(n - 1, k - 1)
+        ENDIF
+
+  comb_lower_bound_law(comb: [int, int -> int]): bool =
+    FORALL (k, n: int):
+      (0 <= k AND k <= n) IMPLIES 1 <= comb(n, k)
+
+  integer_min(left, right: int): int =
+    IF left <= right THEN left ELSE right ENDIF
+
+  compute_vc: bool =
+    FORALL
+        (infix_sl, comb: [int, int -> int]),
+        (k, n: int):
+      infix_sl_definition_law(infix_sl)
+        IMPLIES comb_definition_law(comb)
+        IMPLIES comb_lower_bound_law(comb)
+        IMPLIES 0 <= k
+        IMPLIES k <= n
+        IMPLIES
+          LET k1: int = integer_min(k, n - k)
+          IN
+            (1 <= k1 + 1
+              IMPLIES
+                (((1 <= 1 AND 1 <= k1 + 1)
+                    AND 1 = comb(n, 1 - 1))
+                  AND
+                    (FORALL (r: int):
+                      (FORALL (i: int):
+                        (((1 <= i AND i <= k1)
+                            AND (1 <= i AND i <= k1 + 1)
+                            AND r = comb(n, i - 1))
+                          IMPLIES
+                            (NOT i = 0
+                              AND
+                                (1 <= i + 1
+                                  AND i + 1 <= k1 + 1)
+                              AND
+                                infix_sl(
+                                  r * (n - i + 1), i)
+                                  = comb(n, i + 1 - 1))))
+                        AND
+                          (((1 <= k1 + 1
+                              AND k1 + 1 <= k1 + 1)
+                              AND r = comb(n, k1 + 1 - 1))
+                            IMPLIES r = comb(n, k)))))
+              AND
+                (k1 + 1 < 1 IMPLIES 1 = comb(n, k))
+
+END binomial_Top_computeqtvc

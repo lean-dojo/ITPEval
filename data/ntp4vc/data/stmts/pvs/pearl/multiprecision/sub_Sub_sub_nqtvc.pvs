@@ -1,0 +1,488 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/multiprecision/sub_Sub_sub_nqtvc: the verification condition for
+% equal-length multiprecision subtraction into a separate result pointer,
+% including borrow arithmetic, pointer aliasing, memory framing, and
+% preservation of pointer metadata. This file contains no proof.
+
+sub_Sub_sub_nqtvc[zone: TYPE+]: THEORY
+BEGIN
+
+  IMPORTING
+    bv[32], bv[64],
+    bv_nat[32], bv_nat[64]
+
+  word32: TYPE = bvec[32]
+  word64: TYPE = bvec[64]
+
+  ptr: TYPE =
+    [# data_length: nat,
+       cells: [int -> word64],
+       pointer_offset: int,
+       pointer_min: int,
+       pointer_max: int,
+       is_writable: bool,
+       pointer_zone: zone #]
+
+  mem: TYPE =
+    [# zone_r: zone,
+       zone_x: zone,
+       zone_y: zone,
+       max_r: word32,
+       max_x: word32,
+       max_y: word32,
+       len_r: word32,
+       len_x: word32,
+       len_y: word32,
+       is_ok: bool #]
+
+  radix: int = 18446744073709551616
+
+  unsigned64(value1: word64): int =
+    bv2nat[64](value1)
+
+  signed32(value1: word32): int =
+    IF value1(31) THEN
+      bv2nat[32](value1) - 4294967296
+    ELSE
+      bv2nat[32](value1)
+    ENDIF
+
+  int_to_nat(value1: int): nat =
+    IF value1 < 0 THEN 0 ELSE value1 ENDIF
+
+  nat_power(base: int, exponent: nat): RECURSIVE int =
+    IF exponent = 0 THEN
+      1
+    ELSE
+      base * nat_power(base, exponent - 1)
+    ENDIF
+  MEASURE exponent
+
+  int_power(base, exponent: int): int =
+    nat_power(base, int_to_nat(exponent))
+
+  value_from(
+      values: [int -> word64],
+      start: int,
+      count: nat): RECURSIVE int =
+    IF count = 0 THEN
+      0
+    ELSE
+      unsigned64(values(start))
+        + radix * value_from(values, start + 1, count - 1)
+    ENDIF
+  MEASURE count
+
+  value(p: ptr, count: int): int =
+    value_from(
+      cells(p),
+      pointer_offset(p),
+      int_to_nat(count))
+
+  plength(p: ptr): int =
+    data_length(p)
+
+  int32_in_bounds(value1: int): bool =
+    -2147483648 <= value1 AND value1 <= 2147483647
+
+  valid(p: ptr, count: int): bool =
+    int32_in_bounds(count)
+      AND 0 <= count
+      AND 0 <= pointer_min(p)
+      AND pointer_min(p) <= pointer_offset(p)
+      AND pointer_offset(p) + count <= pointer_max(p)
+      AND pointer_max(p) <= plength(p)
+
+  pelts(p: ptr): [int -> word64] =
+    cells(p)
+
+  data_equal(left, right: ptr): bool =
+    data_length(left) = data_length(right)
+      AND cells(left) = cells(right)
+
+  same_pelts(left, right: ptr): bool =
+    pelts(left) = pelts(right)
+
+  map_eq_sub(
+      left, right: [int -> word64],
+      lower, upper: int): bool =
+    FORALL (i: int):
+      lower <= i AND i < upper
+        IMPLIES left(i) = right(i)
+
+  map_eq_sub_shift(
+      left, right: [int -> word64],
+      left_offset, right_offset, count: int): bool =
+    FORALL (i: int):
+      0 <= i AND i < count
+        IMPLIES
+          left(left_offset + i) = right(right_offset + i)
+
+  frame(
+      new, old: ptr,
+      count: int): bool =
+    FORALL (j: int):
+      j < pointer_offset(new)
+        OR pointer_offset(new) + count <= j
+      IMPLIES pelts(new)(j) = pelts(old)(j)
+
+  result_alias_safe(
+      result, operand: ptr,
+      count: int): bool =
+    pointer_offset(result) = pointer_offset(operand)
+      OR pointer_offset(result) + count <= pointer_offset(operand)
+      OR pointer_offset(operand) + count <= pointer_offset(result)
+
+  same_offset_writable_zone(new, old: ptr): bool =
+    pointer_offset(new) = pointer_offset(old)
+      AND is_writable(new) = is_writable(old)
+      AND pointer_zone(new) = pointer_zone(old)
+
+  same_offset_min_writable_zone(new, old: ptr): bool =
+    pointer_offset(new) = pointer_offset(old)
+      AND pointer_min(new) = pointer_min(old)
+      AND is_writable(new) = is_writable(old)
+      AND pointer_zone(new) = pointer_zone(old)
+
+  borrow_in_bounds(result: word64): bool =
+    0 <= unsigned64(result)
+      AND unsigned64(result) <= 1
+
+  memory_fields_equal(new, old: mem): bool =
+    zone_r(new) = zone_r(old)
+      AND zone_x(new) = zone_x(old)
+      AND zone_y(new) = zone_y(old)
+      AND max_r(new) = max_r(old)
+      AND max_x(new) = max_x(old)
+      AND max_y(new) = max_y(old)
+      AND len_r(new) = len_r(old)
+      AND len_x(new) = len_x(old)
+      AND len_y(new) = len_y(old)
+
+  open_hypothesis(
+      size: word32,
+      r, x, y, r1, x1, y1, nr, nx, ny: ptr,
+      state: mem): bool =
+    is_writable(nr) = TRUE
+      AND
+        (value(nx, signed32(size)) = value(x, signed32(size))
+          AND value(ny, signed32(size)) = value(y, signed32(size)))
+      AND
+        (valid(nr, signed32(size))
+          AND valid(nx, signed32(size))
+          AND valid(ny, signed32(size)))
+      AND
+        (0 <= pointer_offset(nr)
+          AND pointer_offset(nr) + signed32(size) <= pointer_offset(nx)
+          AND pointer_offset(nx) + signed32(size) <= pointer_offset(ny))
+      AND
+        (zone_r(state) = pointer_zone(r1)
+          AND zone_x(state) = pointer_zone(x1)
+          AND zone_y(state) = pointer_zone(y1))
+      AND
+        (signed32(max_r(state)) = pointer_max(r)
+          AND signed32(max_x(state)) = pointer_max(x)
+          AND signed32(max_y(state)) = pointer_max(y))
+      AND
+        (len_r(state) = size
+          AND len_x(state) = size
+          AND len_y(state) = size)
+      AND is_ok(state) = TRUE
+      AND
+        map_eq_sub_shift(
+          pelts(nr),
+          pelts(r1),
+          pointer_offset(nr),
+          pointer_offset(r1),
+          signed32(size))
+      AND
+        map_eq_sub_shift(
+          pelts(nx),
+          pelts(x1),
+          pointer_offset(nx),
+          pointer_offset(x1),
+          signed32(size))
+      AND
+        map_eq_sub_shift(
+          pelts(ny),
+          pelts(y1),
+          pointer_offset(ny),
+          pointer_offset(y1),
+          signed32(size))
+      AND
+        (same_pelts(r1, r)
+          AND same_pelts(x1, x)
+          AND same_pelts(y1, y))
+      AND
+        (plength(r1) = plength(r)
+          AND plength(x1) = plength(x)
+          AND plength(y1) = plength(y))
+      AND
+        (pointer_min(r1) = pointer_min(r)
+          AND pointer_min(x1) = pointer_min(x)
+          AND pointer_min(y1) = pointer_min(y))
+      AND data_equal(nr, nx)
+      AND data_equal(nx, ny)
+
+  subtraction_preconditions(
+      size: word32,
+      nr, nx, ny: ptr): bool =
+    0 <= signed32(size)
+      AND
+        (valid(nr, signed32(size))
+          AND valid(nx, signed32(size))
+          AND valid(ny, signed32(size)))
+      AND result_alias_safe(nr, nx, signed32(size))
+      AND result_alias_safe(nr, ny, signed32(size))
+      AND data_equal(nr, nx)
+      AND data_equal(nx, ny)
+      AND is_writable(nr) = TRUE
+
+  cloned_y(
+      ny1, nr1, ny: ptr): bool =
+    data_equal(ny1, nr1)
+      AND plength(nr1) = plength(ny)
+      AND pointer_offset(ny1) = pointer_offset(ny)
+      AND pointer_min(ny1) = pointer_min(ny)
+      AND pointer_max(ny1) = pointer_max(ny)
+      AND is_writable(ny1) = is_writable(ny)
+      AND pointer_zone(ny1) = pointer_zone(ny)
+
+  cloned_x(
+      nx1, nr1, nx: ptr): bool =
+    data_equal(nx1, nr1)
+      AND plength(nr1) = plength(nx)
+      AND pointer_offset(nx1) = pointer_offset(nx)
+      AND pointer_min(nx1) = pointer_min(nx)
+      AND pointer_max(nx1) = pointer_max(nx)
+      AND is_writable(nx1) = is_writable(nx)
+      AND pointer_zone(nx1) = pointer_zone(nx)
+
+  cloned_result(
+      nr1, nr: ptr): bool =
+    plength(nr1) = plength(nr)
+      AND pointer_offset(nr1) = pointer_offset(nr)
+      AND pointer_min(nr1) = pointer_min(nr)
+      AND pointer_max(nr1) = pointer_max(nr)
+      AND is_writable(nr1) = is_writable(nr)
+      AND pointer_zone(nr1) = pointer_zone(nr)
+
+  subtraction_postcondition(
+      size: word32,
+      nr, nx, ny, nr1, nx1, ny1: ptr,
+      result: word64): bool =
+    value(nr1, signed32(size))
+        - int_power(radix, signed32(size)) * unsigned64(result)
+      =
+    value(nx, signed32(size)) - value(ny, signed32(size))
+      AND borrow_in_bounds(result)
+      AND frame(nr1, nr, signed32(size))
+      AND
+        (pointer_offset(nr1) = pointer_offset(nx1)
+          OR
+            map_eq_sub(
+              pelts(nx1),
+              pelts(nx),
+              pointer_offset(nx1),
+              pointer_offset(nx1) + signed32(size)))
+      AND
+        (pointer_offset(nr1) = pointer_offset(ny1)
+          OR
+            map_eq_sub(
+              pelts(ny1),
+              pelts(ny),
+              pointer_offset(ny1),
+              pointer_offset(ny1) + signed32(size)))
+
+  close_preconditions(
+      size: word32,
+      r1, x1, y1, nr1, nx1, ny1: ptr,
+      state: mem): bool =
+    is_ok(state) = TRUE
+      AND (0 <= signed32(size) AND signed32(size) <= signed32(size))
+      AND
+        (zone_r(state) = pointer_zone(r1)
+          AND zone_x(state) = pointer_zone(x1)
+          AND zone_y(state) = pointer_zone(y1))
+      AND
+        (len_r(state) = size
+          AND len_x(state) = size
+          AND len_y(state) = size)
+      AND
+        (0 <= pointer_offset(nr1)
+          AND pointer_offset(nr1) + signed32(size) <= pointer_offset(nx1)
+          AND pointer_offset(nx1) + signed32(size) <= pointer_offset(ny1))
+      AND is_writable(r1) = TRUE
+      AND is_writable(nr1) = TRUE
+
+  final_transition(
+      size: word32,
+      state1: mem,
+      r1, x1, y1, nr1, nx1, ny1, nr2, nx2, ny2, r2, x2, y2: ptr): bool =
+    (pointer_max(r2) = signed32(max_r(state1))
+      AND pointer_max(x2) = signed32(max_x(state1))
+      AND pointer_max(y2) = signed32(max_y(state1)))
+      AND
+        map_eq_sub_shift(
+          pelts(nr1),
+          pelts(r2),
+          pointer_offset(nr2),
+          pointer_offset(r2),
+          signed32(size))
+      AND
+        map_eq_sub_shift(
+          pelts(nx1),
+          pelts(x2),
+          pointer_offset(nx2),
+          pointer_offset(x2),
+          signed32(size))
+      AND
+        map_eq_sub_shift(
+          pelts(ny1),
+          pelts(y2),
+          pointer_offset(ny2),
+          pointer_offset(y2),
+          signed32(size))
+      AND frame(r2, r1, signed32(size))
+      AND frame(x2, x1, signed32(size))
+      AND frame(y2, y1, signed32(size))
+      AND
+        (plength(r2) = plength(r1)
+          AND plength(x2) = plength(x1)
+          AND plength(y2) = plength(y1))
+      AND pointer_min(r2) = pointer_min(r1)
+      AND pointer_min(x2) = pointer_min(x1)
+      AND pointer_min(y2) = pointer_min(y1)
+
+  final_postcondition(
+      size: word32,
+      r, x, y: ptr,
+      result: word64,
+      r2, x2, y2: ptr): bool =
+    value(r2, signed32(size))
+        - int_power(radix, signed32(size)) * unsigned64(result)
+      =
+    value(x, signed32(size)) - value(y, signed32(size))
+      AND borrow_in_bounds(result)
+      AND frame(r2, r, signed32(size))
+      AND same_pelts(x2, x)
+      AND same_pelts(y2, y)
+      AND value(x2, signed32(size)) = value(x, signed32(size))
+      AND value(y2, signed32(size)) = value(y, signed32(size))
+      AND
+        (pointer_min(x2) = pointer_min(x)
+          AND pointer_max(x2) = pointer_max(x)
+          AND plength(x2) = plength(x))
+      AND
+        (pointer_min(y2) = pointer_min(y)
+          AND pointer_max(y2) = pointer_max(y)
+          AND plength(y2) = plength(y))
+      AND pointer_min(r2) = pointer_min(r)
+      AND pointer_max(r2) = pointer_max(r)
+      AND plength(r2) = plength(r)
+
+  continuation(
+      size: word32,
+      r, x, y: ptr): bool =
+    FORALL (y1, x1, r1: ptr):
+      same_offset_writable_zone(y1, y)
+        IMPLIES
+          same_offset_writable_zone(x1, x)
+        IMPLIES
+          same_offset_writable_zone(r1, r)
+        IMPLIES
+          (FORALL
+              (nr, nx, ny: ptr),
+              (state: mem):
+            open_hypothesis(
+              size, r, x, y, r1, x1, y1, nr, nx, ny, state)
+              IMPLIES
+                subtraction_preconditions(size, nr, nx, ny)
+                  AND
+                    (FORALL (ny1, nx1, nr1: ptr):
+                      cloned_y(ny1, nr1, ny)
+                        IMPLIES
+                          cloned_x(nx1, nr1, nx)
+                        IMPLIES
+                          cloned_result(nr1, nr)
+                        IMPLIES
+                          (FORALL (result: word64):
+                            subtraction_postcondition(
+                              size,
+                              nr,
+                              nx,
+                              ny,
+                              nr1,
+                              nx1,
+                              ny1,
+                              result)
+                              IMPLIES
+                                close_preconditions(
+                                  size, r1, x1, y1, nr1, nx1, ny1, state)
+                                  AND
+                                    (FORALL
+                                        (state1: mem),
+                                        (ny2, nx2, nr2, y2, x2, r2: ptr):
+                                      memory_fields_equal(state1, state)
+                                        IMPLIES
+                                          same_offset_writable_zone(ny2, ny1)
+                                        IMPLIES
+                                          same_offset_writable_zone(nx2, nx1)
+                                        IMPLIES
+                                          same_offset_writable_zone(nr2, nr1)
+                                        IMPLIES
+                                          same_offset_min_writable_zone(y2, y1)
+                                        IMPLIES
+                                          same_offset_min_writable_zone(x2, x1)
+                                        IMPLIES
+                                          same_offset_min_writable_zone(r2, r1)
+                                        IMPLIES
+                                          final_transition(
+                                            size,
+                                            state1,
+                                            r1,
+                                            x1,
+                                            y1,
+                                            nr1,
+                                            nx1,
+                                            ny1,
+                                            nr2,
+                                            nx2,
+                                            ny2,
+                                            r2,
+                                            x2,
+                                            y2)
+                                        IMPLIES
+                                          final_postcondition(
+                                            size,
+                                            r,
+                                            x,
+                                            y,
+                                            result,
+                                            r2,
+                                            x2,
+                                            y2)))))
+
+  sub_n_vc: bool =
+    FORALL
+        (size: word32),
+        (r, x, y: ptr):
+      0 <= signed32(size)
+        IMPLIES
+          valid(r, signed32(size))
+        IMPLIES
+          valid(x, signed32(size))
+        IMPLIES
+          valid(y, signed32(size))
+        IMPLIES
+          is_writable(r) = TRUE
+        IMPLIES
+          valid(r, signed32(size))
+            AND valid(x, signed32(size))
+            AND valid(y, signed32(size))
+            AND is_writable(r) = TRUE
+            AND 0 <= signed32(size)
+            AND signed32(size) <= signed32(size)
+            AND continuation(size, r, x, y)
+
+END sub_Sub_sub_nqtvc

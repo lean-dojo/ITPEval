@@ -1,0 +1,137 @@
+% Statement-only formalization of PutnamBench corpus artifact putnam_2024_b5:
+% the count of pairs of nondecreasing positive integer sequences with a common
+% upper bound is a rational polynomial with nonnegative coefficients. This file
+% contains no proof.
+
+putnam_2024_b5: THEORY
+BEGIN
+  natural_list_set: TYPE = finite_set[list[nat]]
+  counted_object: TYPE = [list[nat], nat]
+  counted_object_set: TYPE = finite_set[counted_object]
+
+  prepend_value(value: nat, tails: natural_list_set): natural_list_set =
+    image(
+      (LAMBDA (tail: list[nat]): cons(value, tail)),
+      tails)
+
+  prepend_through(
+      bound: nat,
+      tails: natural_list_set): RECURSIVE natural_list_set =
+    IF bound = 0 THEN
+      prepend_value(0, tails)
+    ELSE
+      union(
+        prepend_value(bound, tails),
+        prepend_through(bound - 1, tails))
+    ENDIF
+  MEASURE bound
+
+  bounded_lists(
+      length, bound: nat): RECURSIVE natural_list_set =
+    IF length = 0 THEN
+      singleton(null)
+    ELSE
+      prepend_through(
+        bound,
+        bounded_lists(length - 1, bound))
+    ENDIF
+  MEASURE length
+
+  attach_upper_bound(
+      z: nat,
+      values: natural_list_set): counted_object_set =
+    image(
+      (LAMBDA (value_list: list[nat]): (value_list, z)),
+      values)
+
+  counted_universe(
+      length, n: nat): RECURSIVE counted_object_set =
+    IF n = 0 THEN
+      attach_upper_bound(0, bounded_lists(length, 0))
+    ELSE
+      union(
+        attach_upper_bound(n, bounded_lists(length, n)),
+        counted_universe(length, n - 1))
+    ENDIF
+  MEASURE n
+
+  list_value(
+      values: list[nat],
+      index: nat): RECURSIVE nat =
+    CASES values OF
+      null: 0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          list_value(tail, index - 1)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  nondecreasing_segment(
+      values: list[nat],
+      start: nat,
+      length: posnat): bool =
+    FORALL (left, right: below(length)):
+      left <= right IMPLIES
+        list_value(values, start + left)
+          <= list_value(values, start + right)
+
+  qualifying_sequence(
+      values: list[nat],
+      start: nat,
+      length: posnat,
+      z: nat): bool =
+    nondecreasing_segment(values, start, length)
+      AND
+      (FORALL (index: below(length)):
+        1 <= list_value(values, start + index)
+          AND list_value(values, start + index) <= z)
+
+  qualifying_triples(k, m: posnat, n: nat):
+      counted_object_set =
+    intersection(
+      counted_universe(k + m, n),
+      {object: counted_object |
+        qualifying_sequence(object`1, 0, k, object`2)
+          AND qualifying_sequence(object`1, k, m, object`2)})
+
+  rational_polynomial: TYPE = list[rat]
+
+  polynomial_value(
+      polynomial: rational_polynomial,
+      x: rat): RECURSIVE rat =
+    CASES polynomial OF
+      null: 0,
+      cons(coefficient, tail):
+        coefficient + x * polynomial_value(tail, x)
+    ENDCASES
+  MEASURE polynomial BY <<
+
+  polynomial_coefficient(
+      polynomial: rational_polynomial,
+      degree: nat): RECURSIVE rat =
+    CASES polynomial OF
+      null: 0,
+      cons(coefficient, tail):
+        IF degree = 0 THEN
+          coefficient
+        ELSE
+          polynomial_coefficient(tail, degree - 1)
+        ENDIF
+    ENDCASES
+  MEASURE polynomial BY <<
+
+  putnam_2024_b5: bool =
+    FORALL (k, m: posnat), (f: [nat -> nat]):
+      (FORALL (n: nat):
+        f(n) = card(qualifying_triples(k, m, n)))
+      IMPLIES
+        EXISTS (polynomial: rational_polynomial):
+          (FORALL (n: posnat):
+            (f(n) :: rat) = polynomial_value(polynomial, n))
+          AND
+          (FORALL (degree: nat):
+            polynomial_coefficient(polynomial, degree) >= 0)
+END putnam_2024_b5

@@ -1,0 +1,511 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/verifythis_2017_pair_insertion_sort_Challenge1_pair_insertion_sortqtvc:
+% the pair-insertion-sort verification condition, covering the pair and
+% single insertion loops, list updates, sorted prefixes, permutation, and
+% termination variants. This file contains no proof.
+
+verifythis_2017_pair_insertion_sort_Challenge1_pair_insertion_sortqtvc: THEORY
+BEGIN
+  int_to_nat(value: int): nat =
+    IF value < 0 THEN 0 ELSE value ENDIF
+
+  nth_default(values: list[int], index: nat): RECURSIVE int =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        IF index = 0 THEN
+          head
+        ELSE
+          nth_default(tail, index - 1)
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  nth_int(values: list[int], index: int): int =
+    IF index < 0 THEN
+      0
+    ELSE
+      nth_default(values, int_to_nat(index))
+    ENDIF
+
+  list_set(
+      values: list[int],
+      index: nat,
+      value: int): RECURSIVE list[int] =
+    CASES values OF
+      null:
+        null,
+      cons(head, tail):
+        IF index = 0 THEN
+          cons(value, tail)
+        ELSE
+          cons(head, list_set(tail, index - 1, value))
+        ENDIF
+    ENDCASES
+  MEASURE values BY <<
+
+  occurrence_count(value: int, values: list[int]): RECURSIVE nat =
+    CASES values OF
+      null:
+        0,
+      cons(head, tail):
+        (IF value = head THEN 1 ELSE 0 ENDIF)
+          + occurrence_count(value, tail)
+    ENDCASES
+  MEASURE values BY <<
+
+  list_permutation(left, right: list[int]): bool =
+    FORALL (value: int):
+      occurrence_count(value, left) = occurrence_count(value, right)
+
+  sorted_sub(values: list[int], lower, upper: int): bool =
+    FORALL (k, l: int):
+      (lower <= k AND k <= l AND l < upper)
+        IMPLIES
+          nth_int(values, k)
+            <= nth_int(values, l)
+
+  sorted_through(values: list[int], upper: int): bool =
+    FORALL (k, l: int):
+      (0 <= k AND k <= l AND l <= upper)
+        IMPLIES
+          nth_int(values, k)
+            <= nth_int(values, l)
+
+  update_function_equation(
+      before, after: list[int],
+      index, value: int): bool =
+    FORALL (position: int):
+      nth_int(after, position)
+        =
+      IF position = index THEN
+        value
+      ELSE
+        nth_int(before, position)
+      ENDIF
+
+  pair_gap_invariant(
+      original, current: list[int],
+      outer_index, gap_index, parked, moving: int): bool =
+    (-1 <= gap_index AND gap_index < outer_index)
+      AND sorted_through(current, gap_index)
+      AND
+    (FORALL (k, l: int):
+      (0 <= k AND k <= gap_index)
+        IMPLIES
+      (gap_index + 2 < l AND l < outer_index + 2)
+        IMPLIES
+          nth_int(current, k)
+            <= nth_int(current, l))
+      AND
+    (FORALL (k, l: int):
+      (gap_index + 2 < k
+        AND k <= l
+        AND l < outer_index + 2)
+        IMPLIES
+          nth_int(current, k)
+            <= nth_int(current, l))
+      AND
+    (FORALL (l: int):
+      (gap_index + 2 < l AND l < outer_index + 2)
+        IMPLIES
+          moving < nth_int(current, l))
+      AND
+    list_permutation(
+      original,
+      list_set(
+        list_set(
+          current,
+          int_to_nat(gap_index + 1),
+          parked),
+        int_to_nat(gap_index + 2),
+        moving))
+
+  single_gap_invariant(
+      original, current: list[int],
+      outer_index, gap_index, key: int): bool =
+    (-1 <= gap_index AND gap_index < outer_index)
+      AND sorted_through(current, gap_index)
+      AND
+    (FORALL (k, l: int):
+      (0 <= k AND k <= gap_index)
+        IMPLIES
+      (gap_index + 1 < l AND l < outer_index + 2)
+        IMPLIES
+          nth_int(current, k)
+            <= nth_int(current, l))
+      AND
+    (FORALL (k, l: int):
+      (gap_index + 1 < k
+        AND k <= l
+        AND l < outer_index + 2)
+        IMPLIES
+          nth_int(current, k)
+            <= nth_int(current, l))
+      AND
+    (FORALL (l: int):
+      (gap_index + 1 < l AND l < outer_index + 2)
+        IMPLIES
+          key <= nth_int(current, l))
+      AND
+    list_permutation(
+      original,
+      list_set(
+        current,
+        int_to_nat(gap_index + 1),
+        key))
+
+  single_finish_result(
+      original, outer_current, current: list[int],
+      outer_index, gap_index, key: int): bool =
+    LET destination: int = gap_index + 1,
+        updated: list[int] =
+          list_set(current, int_to_nat(destination), key)
+    IN
+      (0 <= destination AND destination < length(current))
+        AND
+      (length(updated) = length(current)
+        IMPLIES
+      update_function_equation(
+        current, updated, destination, key)
+        IMPLIES
+          (0 <= length(outer_current) - outer_index
+            AND
+           length(updated) - (outer_index + 2)
+             < length(outer_current) - outer_index)
+            AND
+          (0 <= outer_index + 2
+            AND outer_index + 2 <= length(updated))
+            AND sorted_sub(updated, 0, outer_index + 2)
+            AND list_permutation(original, updated))
+
+  single_shift_result(
+      original, outer_current, current: list[int],
+      outer_index, gap_index, key: int): bool =
+    (0 <= gap_index AND gap_index < length(current))
+      AND
+    LET displaced: int =
+          nth_int(current, gap_index),
+        destination: int = gap_index + 1,
+        updated: list[int] =
+          list_set(current, int_to_nat(destination), displaced)
+    IN
+      (0 <= destination AND destination < length(current))
+        AND
+      (length(updated) = length(current)
+        IMPLIES
+      update_function_equation(
+        current, updated, destination, displaced)
+        IMPLIES
+          (0 <= gap_index AND gap_index - 1 < gap_index)
+            AND
+          single_gap_invariant(
+            original, updated,
+            outer_index, gap_index - 1, key))
+
+  single_insertion_step(
+      original, outer_current, current: list[int],
+      outer_index, gap_index, key: int): bool =
+    (0 <= gap_index
+      IMPLIES
+        0 <= gap_index AND gap_index < length(current))
+      AND
+    (FORALL (move_again: bool):
+      (IF 0 <= gap_index THEN
+         move_again =
+           (key
+             < nth_int(current, gap_index))
+       ELSE
+         move_again = FALSE
+       ENDIF)
+        IMPLIES
+      IF move_again = TRUE THEN
+        single_shift_result(
+          original, outer_current, current,
+          outer_index, gap_index, key)
+      ELSE
+        single_finish_result(
+          original, outer_current, current,
+          outer_index, gap_index, key)
+      ENDIF)
+
+  pair_place_moving_result(
+      original, outer_current, current: list[int],
+      outer_index, gap_index, parked, moving: int): bool =
+    LET destination: int = gap_index + 2,
+        updated: list[int] =
+          list_set(current, int_to_nat(destination), moving)
+    IN
+      (0 <= destination AND destination < length(current))
+        AND
+      (length(updated) = length(current)
+        IMPLIES
+      update_function_equation(
+        current, updated, destination, moving)
+        IMPLIES
+          single_gap_invariant(
+            original, updated,
+            outer_index, gap_index, parked)
+            AND
+          (FORALL (next_gap: int), (next: list[int]):
+            length(next) = length(updated)
+              IMPLIES
+            single_gap_invariant(
+              original, next,
+              outer_index, next_gap, parked)
+              IMPLIES
+            single_insertion_step(
+              original, outer_current, next,
+              outer_index, next_gap, parked)))
+
+  pair_shift_result(
+      original, outer_current, current: list[int],
+      outer_index, gap_index, parked, moving: int): bool =
+    (0 <= gap_index AND gap_index < length(current))
+      AND
+    LET displaced: int =
+          nth_int(current, gap_index),
+        destination: int = gap_index + 2,
+        updated: list[int] =
+          list_set(current, int_to_nat(destination), displaced)
+    IN
+      (0 <= destination AND destination < length(current))
+        AND
+      (length(updated) = length(current)
+        IMPLIES
+      update_function_equation(
+        current, updated, destination, displaced)
+        IMPLIES
+          (0 <= gap_index AND gap_index - 1 < gap_index)
+            AND
+          pair_gap_invariant(
+            original, updated,
+            outer_index, gap_index - 1,
+            parked, moving))
+
+  pair_insertion_step(
+      original, outer_current, current: list[int],
+      outer_index, gap_index, parked, moving: int): bool =
+    (0 <= gap_index
+      IMPLIES
+        0 <= gap_index AND gap_index < length(current))
+      AND
+    (FORALL (move_again: bool):
+      (IF 0 <= gap_index THEN
+         move_again =
+           (moving
+             < nth_int(current, gap_index))
+       ELSE
+         move_again = FALSE
+       ENDIF)
+        IMPLIES
+      IF move_again = TRUE THEN
+        pair_shift_result(
+          original, outer_current, current,
+          outer_index, gap_index, parked, moving)
+      ELSE
+        pair_place_moving_result(
+          original, outer_current, current,
+          outer_index, gap_index, parked, moving)
+      ENDIF)
+
+  pair_insertion_branch(
+      original, current: list[int],
+      outer_index, parked, moving: int): bool =
+    LET initial_gap: int = outer_index - 1
+    IN
+      pair_gap_invariant(
+        original, current,
+        outer_index, initial_gap, parked, moving)
+        AND
+      (FORALL (gap_index: int), (next: list[int]):
+        length(next) = length(current)
+          IMPLIES
+        pair_gap_invariant(
+          original, next,
+          outer_index, gap_index, parked, moving)
+          IMPLIES
+        pair_insertion_step(
+          original, current, next,
+          outer_index, gap_index, parked, moving))
+
+  pair_case(
+      original, current: list[int],
+      outer_index: int): bool =
+    (0 <= outer_index AND outer_index < length(current))
+      AND
+    LET first: int =
+          nth_int(current, outer_index),
+        second_index: int = outer_index + 1
+    IN
+      (0 <= second_index AND second_index < length(current))
+        AND
+      LET second: int =
+        nth_int(current, second_index)
+      IN
+        IF first < second THEN
+          pair_insertion_branch(
+            original, current,
+            outer_index, first, second)
+        ELSE
+          pair_insertion_branch(
+            original, current,
+            outer_index, second, first)
+        ENDIF
+
+  last_gap_invariant(
+      original, current: list[int],
+      outer_index, gap_index, key: int): bool =
+    (-1 <= gap_index AND gap_index < outer_index)
+      AND sorted_through(current, gap_index)
+      AND
+    (FORALL (k, l: int):
+      (0 <= k AND k <= gap_index)
+        IMPLIES
+      (gap_index + 1 < l AND l < length(current))
+        IMPLIES
+          nth_int(current, k)
+            <= nth_int(current, l))
+      AND
+    (FORALL (k, l: int):
+      (gap_index + 1 < k
+        AND k <= l
+        AND l < length(current))
+        IMPLIES
+          nth_int(current, k)
+            <= nth_int(current, l))
+      AND
+    (FORALL (l: int):
+      (gap_index + 1 < l AND l < length(current))
+        IMPLIES
+          key < nth_int(current, l))
+      AND
+    list_permutation(
+      original,
+      list_set(
+        current,
+        int_to_nat(gap_index + 1),
+        key))
+
+  last_finish_result(
+      original, current: list[int],
+      gap_index, key: int): bool =
+    LET destination: int = gap_index + 1,
+        updated: list[int] =
+          list_set(current, int_to_nat(destination), key)
+    IN
+      (0 <= destination AND destination < length(current))
+        AND
+      (length(updated) = length(current)
+        IMPLIES
+      update_function_equation(
+        current, updated, destination, key)
+        IMPLIES
+          sorted_sub(updated, 0, length(updated))
+            AND list_permutation(original, updated))
+
+  last_shift_result(
+      original, current: list[int],
+      outer_index, gap_index, key: int): bool =
+    (0 <= gap_index AND gap_index < length(current))
+      AND
+    LET displaced: int =
+          nth_int(current, gap_index),
+        destination: int = gap_index + 1,
+        updated: list[int] =
+          list_set(current, int_to_nat(destination), displaced)
+    IN
+      (0 <= destination AND destination < length(current))
+        AND
+      (length(updated) = length(current)
+        IMPLIES
+      update_function_equation(
+        current, updated, destination, displaced)
+        IMPLIES
+          (0 <= gap_index AND gap_index - 1 < gap_index)
+            AND
+          last_gap_invariant(
+            original, updated,
+            outer_index, gap_index - 1, key))
+
+  last_insertion_step(
+      original, current: list[int],
+      outer_index, gap_index, key: int): bool =
+    (0 <= gap_index
+      IMPLIES
+        0 <= gap_index AND gap_index < length(current))
+      AND
+    (FORALL (move_again: bool):
+      (IF 0 <= gap_index THEN
+         move_again =
+           (key
+             < nth_int(current, gap_index))
+       ELSE
+         move_again = FALSE
+       ENDIF)
+        IMPLIES
+      IF move_again = TRUE THEN
+        last_shift_result(
+          original, current,
+          outer_index, gap_index, key)
+      ELSE
+        last_finish_result(
+          original, current, gap_index, key)
+      ENDIF)
+
+  last_case(
+      original, current: list[int],
+      outer_index: int): bool =
+    (0 <= outer_index AND outer_index < length(current))
+      AND
+    LET key: int =
+          nth_int(current, outer_index),
+        initial_gap: int = outer_index - 1
+    IN
+      last_gap_invariant(
+        original, current,
+        outer_index, initial_gap, key)
+        AND
+      (FORALL (gap_index: int), (next: list[int]):
+        length(next) = length(current)
+          IMPLIES
+        last_gap_invariant(
+          original, next,
+          outer_index, gap_index, key)
+          IMPLIES
+        last_insertion_step(
+          original, next,
+          outer_index, gap_index, key))
+
+  outer_step(
+      original, current: list[int],
+      outer_index: int): bool =
+    IF outer_index < length(current) - 1 THEN
+      pair_case(original, current, outer_index)
+    ELSE
+      IF outer_index = length(current) - 1 THEN
+        last_case(original, current, outer_index)
+      ELSE
+        sorted_sub(current, 0, length(current))
+          AND list_permutation(original, current)
+      ENDIF
+    ENDIF
+
+  pair_insertion_sort_vc: bool =
+    FORALL (original: list[int]):
+      0 <= 0
+        AND 0 <= length(original)
+        AND sorted_sub(original, 0, 0)
+        AND list_permutation(original, original)
+        AND
+      (FORALL (outer_index: int), (current: list[int]):
+        length(current) = length(original)
+          IMPLIES
+        ((0 <= outer_index
+          AND outer_index <= length(current))
+          AND sorted_sub(current, 0, outer_index)
+          AND list_permutation(original, current))
+          IMPLIES
+        outer_step(original, current, outer_index))
+END verifythis_2017_pair_insertion_sort_Challenge1_pair_insertion_sortqtvc

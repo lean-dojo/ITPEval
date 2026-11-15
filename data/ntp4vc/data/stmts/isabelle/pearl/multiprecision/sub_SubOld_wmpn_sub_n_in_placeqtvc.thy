@@ -1,0 +1,19 @@
+theory sub_SubOld_wmpn_sub_n_in_placeqtvc
+  imports "NTP4Verif.NTP4Verif" "Why3STD.Ref_Ref" "Why3STD.map_Const" "Why3STD.map_MapEq" "mach.c_C" "mach.int_Unsigned" "../../lib/isabelle/lemmas_Lemmas" "../../lib/isabelle/types_Config" "../../lib/isabelle/types_Types" "../../lib/isabelle/types_Int32Eq" "../../lib/isabelle/types_UInt64Eq" "../../lib/isabelle/ptralias_Alias"
+begin
+theorem wmpn_sub_n_in_place'vc:
+  fixes sz :: "32 word"
+  fixes x :: "64 word ptr"
+  fixes y :: "64 word ptr"
+  assumes fact0: "(0 :: int) \<le> sint sz"
+  assumes fact1: "valid x (sint sz)"
+  assumes fact2: "valid y (sint sz)"
+  assumes fact3: "writable x = True"
+  shows "(0 :: int) \<le> (0 :: int)"
+  and "(0 :: int) \<le> sint sz"
+  and "value x (0 :: int) - ((18446744073709551615 :: int) + (1 :: int)) ^\<^sub>i (0 :: int) * (0 :: int) = value x (0 :: int) - value y (0 :: int)"
+  and "(0 :: int) \<le> (0 :: int)"
+  and "(0 :: int) \<le> (1 :: int)"
+  and "\<forall>(i :: 32 word) (b :: 64 word) (x1 :: 64 word ptr). length (data x1) = length (data x) \<and> offset x1 = offset x \<and> c_C.min x1 = c_C.min x \<and> c_C.max x1 = c_C.max x \<and> writable x1 = writable x \<and> zone1 x1 = zone1 x \<longrightarrow> ((0 :: int) \<le> sint i \<and> sint i \<le> sint sz) \<and> value x1 (sint i) - ((18446744073709551615 :: int) + (1 :: int)) ^\<^sub>i sint i * uint b = value x (sint i) - value y (sint i) \<and> ((0 :: int) \<le> uint b \<and> uint b \<le> (1 :: int)) \<and> (\<forall>(j :: int). sint i \<le> j \<and> j < sint sz \<longrightarrow> pelts x1 (offset x1 + j) = pelts x (offset x1 + j)) \<and> (\<forall>(j :: int). j < offset x1 \<or> offset x1 + sint sz \<le> j \<longrightarrow> pelts x1 j = pelts x j) \<longrightarrow> (if sint i < sint sz then (c_C.min x1 \<le> offset x1 + sint i \<and> offset x1 + sint i < c_C.max x1) \<and> (c_C.min y \<le> offset y + sint i \<and> offset y + sint i < c_C.max y) \<and> ((0 :: int) \<le> uint b \<and> uint b \<le> (1 :: int)) \<and> (\<forall>(res :: 64 word) (borrow :: 64 word). uint res - ((18446744073709551615 :: int) + (1 :: int)) * uint borrow = uint (pelts x1 (offset x1 + sint i)) - uint (pelts y (offset y + sint i)) - uint b \<and> (0 :: int) \<le> uint borrow \<and> uint borrow \<le> (1 :: int) \<longrightarrow> ((c_C.min x1 \<le> offset x1 + sint i \<and> offset x1 + sint i < c_C.max x1) \<and> writable x1 = True) \<and> (\<forall>(x2 :: 64 word ptr). length (data x2) = length (data x1) \<and> offset x2 = offset x1 \<and> c_C.min x2 = c_C.min x1 \<and> c_C.max x2 = c_C.max x1 \<and> writable x2 = writable x1 \<and> zone1 x2 = zone1 x1 \<longrightarrow> pelts x2 = (pelts x1)(offset x2 + sint i := res) \<and> pelts x2 (offset x2 + sint i) = res \<longrightarrow> int'32_in_bounds (sint i + (1 :: int)) \<and> (\<forall>(o1 :: 32 word). sint o1 = sint i + (1 :: int) \<longrightarrow> ((0 :: int) \<le> sint sz - sint i \<and> sint sz - sint o1 < sint sz - sint i) \<and> ((0 :: int) \<le> sint o1 \<and> sint o1 \<le> sint sz) \<and> value x2 (sint o1) - ((18446744073709551615 :: int) + (1 :: int)) ^\<^sub>i sint o1 * uint borrow = value x (sint o1) - value y (sint o1) \<and> ((0 :: int) \<le> uint borrow \<and> uint borrow \<le> (1 :: int)) \<and> (\<forall>(j :: int). sint o1 \<le> j \<and> j < sint sz \<longrightarrow> pelts x2 (offset x2 + j) = pelts x (offset x2 + j)) \<and> (\<forall>(j :: int). j < offset x2 \<or> offset x2 + sint sz \<le> j \<longrightarrow> pelts x2 j = pelts x j)))) else value x1 (sint sz) - ((18446744073709551615 :: int) + (1 :: int)) ^\<^sub>i sint sz * uint b = value x (sint sz) - value y (sint sz) \<and> ((0 :: int) \<le> uint b \<and> uint b \<le> (1 :: int)) \<and> (\<forall>(j :: int). j < offset x1 \<or> offset x1 + sint sz \<le> j \<longrightarrow> pelts x1 j = pelts x j))"
+  sorry
+end

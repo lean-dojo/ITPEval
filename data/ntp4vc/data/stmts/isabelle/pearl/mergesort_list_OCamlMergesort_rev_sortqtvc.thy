@@ -1,0 +1,43 @@
+theory mergesort_list_OCamlMergesort_rev_sortqtvc
+  imports "NTP4Verif.NTP4Verif"
+begin
+typedecl  elt
+consts le :: "elt \<Rightarrow> elt \<Rightarrow> bool"
+axiomatization where Refl:   "le x x"
+  for x :: "elt"
+axiomatization where Trans:   "le x z"
+ if "le x y"
+ and "le y z"
+  for x :: "elt"
+  and y :: "elt"
+  and z :: "elt"
+axiomatization where Total:   "le x y \<or> le y x"
+  for x :: "elt"
+  and y :: "elt"
+inductive sorted :: "elt list \<Rightarrow> bool" where
+   Sorted_Nil: "sorted (Nil :: elt list)"
+ | Sorted_One: "sorted (Cons x (Nil :: elt list))" for x :: "elt"
+ | Sorted_Two: "le x y \<Longrightarrow> sorted (Cons y l) \<Longrightarrow> sorted (Cons x (Cons y l))" for x :: "elt" and y :: "elt" and l :: "elt list"
+axiomatization where sorted_mem:   "(\<forall>(y :: elt). y \<in> set l \<longrightarrow> le x y) \<and> sorted l \<longleftrightarrow> sorted (Cons x l)"
+  for l :: "elt list"
+  and x :: "elt"
+axiomatization where sorted_append:   "sorted l1 \<and> sorted l2 \<and> (\<forall>(x :: elt) (y :: elt). x \<in> set l1 \<longrightarrow> y \<in> set l2 \<longrightarrow> le x y) \<longleftrightarrow> sorted (l1 @ l2)"
+  for l1 :: "elt list"
+  and l2 :: "elt list"
+consts prefix1 :: "int \<Rightarrow> 'a list \<Rightarrow> 'a list"
+axiomatization where prefix_def1:   "prefix1 (0 :: int) l = (Nil :: 'a list)"
+  for l :: "'a list"
+axiomatization where prefix_def2:   "prefix1 n (Cons x l) = Cons x (prefix1 (n - (1 :: int)) l)"
+ if "(0 :: int) < n"
+  for n :: "int"
+  and x :: "'a"
+  and l :: "'a list"
+theorem rev_sort'vc:
+  fixes n :: "int"
+  fixes l :: "elt list"
+  assumes fact0: "(2 :: int) \<le> n"
+  assumes fact1: "n \<le> int (length l)"
+  shows "if n = (2 :: int) then case l of Cons x1 (Cons x2 _) \<Rightarrow> True | _ \<Rightarrow> False else if n = (3 :: int) then case l of Cons x1 (Cons x2 (Cons x3 _)) \<Rightarrow> True | _ \<Rightarrow> False else \<not>(2 :: int) = (0 :: int) \<and> (let n1 :: int = n cdiv (2 :: int); n2 :: int = n - n1 in ((0 :: int) \<le> n1 \<and> n1 \<le> int (length l)) \<and> (\<forall>(l2 :: elt list). l = prefix1 n1 l @ l2 \<longrightarrow> (((0 :: int) \<le> n \<and> n1 < n) \<and> (2 :: int) \<le> n1 \<and> n1 \<le> int (length l)) \<and> (\<forall>(s1 :: elt list). sorted s1 \<and> s1 <~~> prefix1 n1 l \<longrightarrow> (((0 :: int) \<le> n \<and> n2 < n) \<and> (2 :: int) \<le> n2 \<and> n2 \<le> int (length l2)) \<and> (\<forall>(s2 :: elt list). sorted s2 \<and> s2 <~~> prefix1 n2 l2 \<longrightarrow> (let o1 :: elt list = (Nil :: elt list) in (sorted (rev o1) \<and> sorted s1 \<and> sorted s2) \<and> (\<forall>(x :: elt) (y :: elt). x \<in> set o1 \<longrightarrow> y \<in> set s1 \<longrightarrow> le x y) \<and> (\<forall>(x :: elt) (y :: elt). x \<in> set o1 \<longrightarrow> y \<in> set s2 \<longrightarrow> le x y))))))"
+  and "\<forall>(result :: elt list). (if n = (2 :: int) then case l of Cons x1 (Cons x2 _) \<Rightarrow> (if \<not>le x1 x2 then result = Cons x1 (Cons x2 (Nil :: elt list)) else result = Cons x2 (Cons x1 (Nil :: elt list))) | _ \<Rightarrow> False else if n = (3 :: int) then case l of Cons x1 (Cons x2 (Cons x3 _)) \<Rightarrow> (if \<not>le x1 x2 then if \<not>le x2 x3 then result = Cons x1 (Cons x2 (Cons x3 (Nil :: elt list))) else if \<not>le x1 x3 then result = Cons x1 (Cons x3 (Cons x2 (Nil :: elt list))) else result = Cons x3 (Cons x1 (Cons x2 (Nil :: elt list))) else if \<not>le x1 x3 then result = Cons x2 (Cons x1 (Cons x3 (Nil :: elt list))) else if \<not>le x2 x3 then result = Cons x2 (Cons x3 (Cons x1 (Nil :: elt list))) else result = Cons x3 (Cons x2 (Cons x1 (Nil :: elt list)))) | _ \<Rightarrow> False else let n1 :: int = n cdiv (2 :: int) in \<exists>(l2 :: elt list). l = prefix1 n1 l @ l2 \<and> (\<exists>(s1 :: elt list). (sorted s1 \<and> s1 <~~> prefix1 n1 l) \<and> (\<exists>(s2 :: elt list). (sorted s2 \<and> s2 <~~> prefix1 (n - n1) l2) \<and> sorted (rev result) \<and> result <~~> ((Nil :: elt list) @ s1) @ s2))) \<longrightarrow> sorted (rev result) \<and> result <~~> prefix1 n l"
+  sorry
+end

@@ -1,0 +1,186 @@
+% Statement-only formalization of the NTP4VC corpus artifact
+% pearl/pairing_heap_PairingHeap_find_minqtvc: the pairing-heap find-minimum
+% verification condition showing that a positive-size heap is nonempty and
+% that its returned root is the abstract minimum. This file contains no proof.
+
+pairing_heap_PairingHeap_find_minqtvc[
+  elt: TYPE+,
+  heap_carrier: TYPE+
+]: THEORY
+BEGIN
+
+  % FNil represents an empty list of trees. FCons stores one tree's root and
+  % child forest followed by the remaining sibling forest.
+  forest: DATATYPE
+  BEGIN
+    FNil: FNil?
+    FCons(
+      root_element: elt,
+      child_forest: forest,
+      sibling_forest: forest): FCons?
+  END forest
+
+  raw_heap: DATATYPE
+  BEGIN
+    PairingEmpty: PairingEmpty?
+    PairingHeap(
+      heap_root: elt,
+      heap_children: forest): PairingHeap?
+  END raw_heap
+
+  preorder_laws(leq: [elt, elt -> bool]): bool =
+    (FORALL (x: elt): leq(x, x))
+      AND
+    (FORALL (x, y, z: elt):
+      (leq(x, y) AND leq(y, z)) IMPLIES leq(x, z))
+      AND
+    (FORALL (x, y: elt): leq(x, y) OR leq(y, x))
+
+  size_list(values: forest): RECURSIVE int =
+    CASES values OF
+      FNil:
+        0,
+      FCons(root, children, siblings):
+        1 + size_list(children) + size_list(siblings)
+    ENDCASES
+  MEASURE values BY <<
+
+  size_tree(root: elt, children: forest): int =
+    1 + size_list(children)
+
+  size_heap(values: raw_heap): int =
+    CASES values OF
+      PairingEmpty:
+        0,
+      PairingHeap(root, children):
+        size_tree(root, children)
+    ENDCASES
+
+  occ_list(
+      element: elt,
+      values: forest): RECURSIVE int =
+    CASES values OF
+      FNil:
+        0,
+      FCons(root, children, siblings):
+        (IF element = root THEN 1 ELSE 0 ENDIF)
+          + occ_list(element, children)
+          + occ_list(element, siblings)
+    ENDCASES
+  MEASURE values BY <<
+
+  occ_tree(
+      element, root: elt,
+      children: forest): int =
+    (IF element = root THEN 1 ELSE 0 ENDIF)
+      + occ_list(element, children)
+
+  occ_heap(element: elt, values: raw_heap): int =
+    CASES values OF
+      PairingEmpty:
+        0,
+      PairingHeap(root, children):
+        occ_tree(element, root, children)
+    ENDCASES
+
+  heap_mem(element: elt, values: raw_heap): bool =
+    0 < occ_heap(element, values)
+
+  le_tree(
+      leq: [elt, elt -> bool],
+      element, root: elt,
+      children: forest): bool =
+    leq(element, root)
+
+  le_roots(
+      leq: [elt, elt -> bool],
+      element: elt,
+      values: forest): RECURSIVE bool =
+    CASES values OF
+      FNil:
+        TRUE,
+      FCons(root, children, siblings):
+        le_tree(leq, element, root, children)
+          AND le_roots(leq, element, siblings)
+    ENDCASES
+  MEASURE values BY <<
+
+  heap_list(
+      leq: [elt, elt -> bool],
+      values: forest): RECURSIVE bool =
+    CASES values OF
+      FNil:
+        TRUE,
+      FCons(root, children, siblings):
+        le_roots(leq, root, children)
+          AND heap_list(leq, children)
+          AND heap_list(leq, siblings)
+    ENDCASES
+  MEASURE values BY <<
+
+  heap_tree(
+      leq: [elt, elt -> bool],
+      root: elt,
+      children: forest): bool =
+    le_roots(leq, root, children)
+      AND heap_list(leq, children)
+
+  is_heap(
+      leq: [elt, elt -> bool],
+      values: raw_heap): bool =
+    CASES values OF
+      PairingEmpty:
+        TRUE,
+      PairingHeap(root, children):
+        heap_tree(leq, root, children)
+    ENDCASES
+
+  minimum_law(minimum_fn: [raw_heap -> elt]): bool =
+    FORALL (root: elt), (children: forest):
+      minimum_fn(PairingHeap(root, children)) = root
+
+  nonempty_case(values: raw_heap): bool =
+    CASES values OF
+      PairingEmpty:
+        FALSE,
+      PairingHeap(root, children):
+        TRUE
+    ENDCASES
+
+  result_premise(
+      original: raw_heap,
+      result: elt): bool =
+    CASES original OF
+      PairingEmpty:
+        FALSE,
+      PairingHeap(root, children):
+        result = root
+    ENDCASES
+
+  find_min_vc: bool =
+    FORALL
+        (leq: [elt, elt -> bool]),
+        (heap_of: [heap_carrier -> raw_heap]),
+        (minimum_fn: [raw_heap -> elt]),
+        (empty, hh: heap_carrier):
+      (preorder_laws(leq)
+        AND
+      (FORALL (self: heap_carrier):
+        is_heap(leq, heap_of(self)))
+        AND
+      (FORALL (left, right: heap_carrier):
+        heap_of(left) = heap_of(right) IMPLIES left = right)
+        AND minimum_law(minimum_fn)
+        AND size_heap(heap_of(empty)) = 0
+        AND
+      (FORALL (element: elt):
+        NOT heap_mem(element, heap_of(empty)))
+        AND 0 < size_heap(heap_of(hh)))
+      IMPLIES
+        (nonempty_case(heap_of(hh))
+          AND
+        (FORALL (result: elt):
+          result_premise(heap_of(hh), result)
+            IMPLIES result = minimum_fn(heap_of(hh))))
+
+END pairing_heap_PairingHeap_find_minqtvc
