@@ -2,12 +2,16 @@ from __future__ import annotations
 
 import argparse
 import json
+import hashlib
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from eval.pipeline.beq.beq import beq_check
 from eval.pipeline.config import STMTS_JSON, RESULTS_DIR
-from eval.pipeline.jsonl import load_checkpoint, load_jsonl, write_jsonl_atomic
+from eval.pipeline.jsonl import load_checkpoint, load_jsonl, repair_tail, result_writer, write_jsonl_atomic
+from eval.pipeline.manifests import legacy_environments, records_digest
+from itpeval.core.records import digest
+from itpeval.learning.manifests import RunManifest
 from eval.pipeline.records import translation_record_key, translation_record_label
 
 
@@ -23,6 +27,16 @@ def _load_stmts_lookup(stmts_path: Path) -> dict[tuple[int, str, str], str]:
     }
 
 
+def _attempt_id(record):
+    return digest([translation_record_key(record), record.get("model"), record.get("model_id")])
+
+
+def _reference_key(record):
+    if record.get("corpus") == "extended":
+        return ("extended", record["source"], record["theorem_id"], record["tgt_prover"])
+    return (record.get("theorem_id"), record.get("title"), record.get("tgt_prover"))
+
+
 def _make_beq_fields(
     *, beq=False, fwd=False, bwd=False,
     fwd_tactic="", bwd_tactic="",
@@ -32,6 +46,7 @@ def _make_beq_fields(
 ) -> dict:
     return {
         "beq": beq,
+        "beq_status": "equivalence established" if beq else "equivalence not established",
         "beq_forward": fwd,
         "beq_backward": bwd,
         "beq_forward_tactic": fwd_tactic,
@@ -46,6 +61,9 @@ def _make_beq_fields(
 
 def _run_beq(record: dict, stmts_lookup: dict) -> dict:
     """Run BEq for one record."""
+    if record.get("task_id") or record.get("mode", "stmts") != "stmts":
+        return {**record, **_make_beq_fields(fwd_error="skipped: statement translation required",
+                                              bwd_error="skipped: statement translation required")}
     if not record.get("verified"):
         # BEq is only meaningful after native target verification succeeds
         return {**record, **_make_beq_fields(fwd_error="skipped: not verified",
@@ -60,7 +78,7 @@ def _run_beq(record: dict, stmts_lookup: dict) -> dict:
         return {**record, **_make_beq_fields(fwd_error="skipped: no generated content",
                                               bwd_error="skipped: no generated content")}
 
-    ref_key = (record["theorem_id"], record["title"], record["tgt_prover"])
+    ref_key = _reference_key(record)
     reference = stmts_lookup.get(ref_key)
     if reference is None:
         # The reference statement comes from eval/data/stmts.json
@@ -94,7 +112,7 @@ def _result_tag(result: dict) -> str:
 
 
 def _write_checkpoint_result(result: dict, done_map: dict, ckpt_file) -> None:
-    done_map[translation_record_key(result)] = result
+    done_map[_attempt_id(result)] = result
     ckpt_file.write(json.dumps(result, ensure_ascii=False) + "\n")
     ckpt_file.flush()
 
@@ -117,7 +135,7 @@ def _run_lean4_parallel(
             result = _run_beq(r, stmts_lookup)
             _write_checkpoint_result(result, done_map, ckpt_file)
             continue
-        ref_key = (r["theorem_id"], r["title"], r["tgt_prover"])
+        ref_key = _reference_key(r)
         if stmts_lookup.get(ref_key) is None:
             result = _run_beq(r, stmts_lookup)
             _write_checkpoint_result(result, done_map, ckpt_file)
@@ -153,6 +171,7 @@ def beq_verify_file(
     *,
     source_filter: str | None = None,
     target_filter: str | None = None,
+    output_dir: Path | None = None,
 ) -> Path:
     records = load_jsonl(input_path)
 
@@ -168,13 +187,27 @@ def beq_verify_file(
     ]
     print(f"{input_path.name}: {total} entries, {len(lean4_verified)} verified lean4 BEq candidates")
 
-    out_path = BEQ_DIR / input_path.name
-    BEQ_DIR.mkdir(parents=True, exist_ok=True)
+    if workers < 1 or len({_attempt_id(row) for row in records}) != total:
+        raise ValueError("BEq requires a positive worker budget and distinct input attempts")
+    out_path = (output_dir or BEQ_DIR) / input_path.name
     ckpt_path = out_path.with_suffix(out_path.suffix + ".ckpt.jsonl")
+    input_digest = records_digest([r, stmts_lookup.get(_reference_key(r))] for r in records)
+    implementation = digest([hashlib.sha256(p.read_bytes()).hexdigest()
+                             for p in (Path(__file__), Path(__file__).with_name("beq.py"))])
+    manifest = RunManifest((), legacy_environments(["lean4"]) if lean4_verified else (),
+                           "legacy_lean_beq.v1", input_digest, implementation, {}, None,
+                           {"native_timeout_s": 120})
+    with result_writer(out_path):
+        manifest.bind(out_path, ckpt_path)
+        repair_tail(ckpt_path)
+        return _resume(records, stmts_lookup, workers, out_path, ckpt_path, manifest)
 
-    done_map = load_checkpoint(ckpt_path, translation_record_key)
-    remaining = [r for r in records if translation_record_key(r) not in done_map]
 
+def _resume(records, stmts_lookup, workers, out_path, ckpt_path, manifest):
+    done_map = load_checkpoint(ckpt_path, _attempt_id)
+    if any(row.get("beq_run_id") != manifest.run_id for row in done_map.values()):
+        raise ValueError("BEq checkpoint differs from its run manifest")
+    remaining = [{**r, "beq_run_id": manifest.run_id} for r in records if _attempt_id(r) not in done_map]
     if done_map:
         print(f"  Checkpoint: {len(done_map)} done, {len(remaining)} remaining", flush=True)
     if not remaining:
@@ -212,7 +245,7 @@ def beq_verify_file(
                   flush=True)
             for r in other_remaining:
                 result = _run_beq(r, stmts_lookup)
-                done_map[translation_record_key(result)] = result
+                done_map[_attempt_id(result)] = result
                 ckpt.write(json.dumps(result, ensure_ascii=False) + "\n")
                 ckpt.flush()
 
@@ -220,7 +253,7 @@ def beq_verify_file(
         out_path,
         (
             done_map.get(
-                translation_record_key(r),
+                _attempt_id(r),
                 {**r, **_make_beq_fields(fwd_error="missing", bwd_error="missing")},
             )
             for r in records
@@ -241,7 +274,7 @@ def beq_verify_file(
         and r.get("tgt_prover") == "lean4"
         and r.get("beq_extraction_error")
     )
-    print(f"\n{input_path.name}: {n_beq}/{n_verified} verified entries BEq equivalent "
+    print(f"\n{out_path.name}: {n_beq}/{n_verified} verified entries BEq equivalent "
           f"(fwd={n_fwd}, bwd={n_bwd}, extract_fail={n_ext_fail})")
     print(f"Output: {out_path}")
     return out_path
@@ -250,6 +283,7 @@ def beq_verify_file(
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run BEq on verified statement translations.")
     parser.add_argument("files", nargs="+", help="Verified JSONL files to BEq-check")
+    parser.add_argument("--output-dir", type=Path)
     parser.add_argument("--workers", type=int, default=8)
     parser.add_argument("--source", type=str, default=None,
                         help="Filter to a specific source (e.g., minif2f)")
@@ -260,9 +294,13 @@ def main() -> None:
     stmts_lookup = _load_stmts_lookup(STMTS_JSON)
     print(f"Loaded {len(stmts_lookup)} reference entries from {STMTS_JSON}")
 
+    from eval.pipeline.translation.data import load_statement_records
+    if any(r.get("corpus") == "extended" for f in args.files for r in load_jsonl(Path(f))):
+        stmts_lookup.update({("extended", r["source"], r["theorem_id"], r["prover"]): r["content"]
+                             for r in load_statement_records() if r["prover"] == "lean4"})
     for f in args.files:
         beq_verify_file(Path(f), stmts_lookup, args.workers,
-                        source_filter=args.source, target_filter=args.target)
+                        source_filter=args.source, target_filter=args.target, output_dir=args.output_dir)
 
 
 if __name__ == "__main__":

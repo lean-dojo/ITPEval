@@ -44,14 +44,15 @@ if [[ -z "${session_name}" ]]; then
 fi
 
 extra_opts=()
-if command -v rg >/dev/null 2>&1; then
-  sorry_found=$(rg -n --no-messages "\\bsorry\\b" "${TASK_DIR}"/*.thy 2>/dev/null && echo yes || echo no)
-else
-  sorry_found=$(grep -n '\bsorry\b' "${TASK_DIR}"/*.thy 2>/dev/null && echo yes || echo no)
-fi
-if [[ "${sorry_found}" == *yes ]]; then
-  extra_opts+=(-o quick_and_dirty=true)
-fi
+case "${ITPEVAL_OPERATION:-legacy}" in
+  legacy)
+    if grep -Eq '\bsorry\b' "${TASK_DIR}"/*.thy; then
+      extra_opts+=(-o quick_and_dirty=true)
+    fi
+    ;;
+  statement) extra_opts+=(-o quick_and_dirty=true) ;;
+  *) extra_opts+=(-o quick_and_dirty=false) ;;
+esac
 
 # Repeated AgentTarget sessions must not share SQLite build/log databases.
 # System HOL heaps remain readable; only this check's user state is isolated.
@@ -64,3 +65,15 @@ else
 fi
 
 "${ISABELLE}" build ${extra_opts[@]+"${extra_opts[@]}"} -D "${TASK_DIR}" -b "${session_name}"
+
+
+if [[ "${ITPEVAL_OPERATION:-legacy}" == proof_completion ]]; then
+  witness="${TASK_DIR}/itpeval-witness-${ITPEVAL_EXPECT_TARGET}"
+  if [[ ! -f "${witness}" ]]; then
+    witness="${TASK_DIR}/itpeval-target-witness"
+  fi
+  if [[ ! -f "${witness}" ]] || [[ "$(cat "${witness}")" != "${ITPEVAL_EXPECT_TARGET}" ]]; then
+    fail "missing named Isabelle theorem witness"
+  fi
+  printf 'ITPEVAL_TARGET %s\n' "${ITPEVAL_EXPECT_TARGET}"
+fi

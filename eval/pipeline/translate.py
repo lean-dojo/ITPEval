@@ -111,7 +111,7 @@ def translate(
             ],
         )
         if not response.choices:
-            raise ValueError(f"No choices in response (model may have returned an error)")
+            raise ValueError("No choices in response (model may have returned an error)")
         text = response.choices[0].message.content
         if not text:
             raise ValueError(f"Empty response (finish_reason={response.choices[0].finish_reason})")

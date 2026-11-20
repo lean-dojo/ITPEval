@@ -2,7 +2,6 @@
 set -euo pipefail
 
 itpeval_repo_root() {
-  # repo root is two levels up from this file: itpeval/bin/common.sh
   (cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 }
 
@@ -21,7 +20,14 @@ itpeval_prefix() {
     if [[ "${root}" == /efs/* ]]; then
       echo "/tmp/itpeval-toolchains"
     else
-      echo "${root}/_toolchains"
+      local installed="${XDG_DATA_HOME:-${HOME}/.local/share}/itpeval/toolchains"
+      if [[ -d "${installed}/current" ]]; then
+        (cd "${installed}/current" && pwd -P)
+      elif [[ -f "${root}/../pyproject.toml" ]]; then
+        echo "${root}/_toolchains"
+      else
+        echo "${installed}"
+      fi
     fi
   fi
 }
@@ -44,6 +50,7 @@ itpeval_validate_statement_file() {
   if [[ ! -f "${file_path}" ]]; then
     fail "missing statement source at ${file_path}"
   fi
+  [[ "${ITPEVAL_OPERATION:-legacy}" == legacy ]] || return 0
   if ! grep -Fq -- "Statement-only formalization of" "${file_path}" \
     && ! grep -Fqi -- ":itpeval-statement-checked" "${file_path}"; then
     return 0
@@ -51,7 +58,7 @@ itpeval_validate_statement_file() {
 
   repo_root="$(itpeval_repo_root)"
   PYTHONPATH="${repo_root}${PYTHONPATH:+:${PYTHONPATH}}" \
-    python3 -m itpeval.validation \
+    "${ITPEVAL_PYTHON:-python3}" -m eval.pipeline.translation.validation \
       --prover "${prover}" \
       --file "${file_path}"
 }
@@ -64,7 +71,11 @@ itpeval_download_cache_dir() {
   if [[ -n "${ITPEVAL_DOWNLOAD_CACHE:-}" ]]; then
     echo "${ITPEVAL_DOWNLOAD_CACHE}"
   else
-    echo "$(itpeval_root)/.downloads"
+    if [[ -f "$(itpeval_root)/../pyproject.toml" ]]; then
+      echo "$(itpeval_root)/.downloads"
+    else
+      echo "${XDG_CACHE_HOME:-${HOME}/.cache}/itpeval/downloads"
+    fi
   fi
 }
 

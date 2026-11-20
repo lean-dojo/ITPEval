@@ -73,6 +73,12 @@ fi
 
 pushd "${BUILD_DIR}" >/dev/null
 run Holmake
+if [[ "${ITPEVAL_OPERATION:-legacy}" == proof_completion ]]; then
+  if [[ ! -f itpeval-target-witness ]] || [[ "$(cat itpeval-target-witness)" != "${ITPEVAL_EXPECT_TARGET}" ]]; then
+    fail "missing named HOL4 theorem witness"
+  fi
+  printf 'ITPEVAL_TARGET %s\n' "${ITPEVAL_EXPECT_TARGET}"
+fi
 popd >/dev/null
 
 log "HOL4 task theory built successfully"

@@ -1,0 +1,1 @@
+The universe-level record and functions in Level.agda come from Agda's standard library release v2.3 at commit `8326c7475af1fa456ca04a0203c168d5d7ff842b`. The upstream license accompanies the module. [Upstream source](https://github.com/agda/agda-stdlib/blob/8326c7475af1fa456ca04a0203c168d5d7ff842b/src/Level.agda).

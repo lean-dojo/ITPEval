@@ -64,8 +64,8 @@ fi
 OPAMROOT="${HL_ROOT}/opamroot"
 export OPAMROOT
 
-if [[ ! -d "${OPAMROOT}" ]]; then
-  run "${opam_cmd}" init --bare --no-setup --disable-sandboxing -y
+if [[ ! -f "${OPAMROOT}/config" ]]; then
+  run "${opam_cmd}" init --bare --no-setup --disable-sandboxing -y default "${ITPEVAL_OPAM_REPO_URL:-https://opam.ocaml.org}"
 fi
 
 SWITCH_NAME="hol-light"
@@ -79,7 +79,11 @@ eval "$("${opam_cmd}" env --switch="${SWITCH_NAME}" --set-switch)"
 # 3. Install OCaml packages required by HOL Light
 # ---------------------------------------------------------------------------
 log "Installing OCaml deps for HOL Light (OCaml ${OCAML_VERSION}, camlp5 ${CAMLP5_VERSION})"
-if ! "${opam_cmd}" install -y --switch="${SWITCH_NAME}" "camlp5.${CAMLP5_VERSION}" zarith; then
+packages=("camlp5.${CAMLP5_VERSION}" zarith)
+if [[ -n "${ITPEVAL_OPAM_PACKAGES:-}" ]]; then
+  read -r -a packages <<< "${ITPEVAL_OPAM_PACKAGES}"
+fi
+if ! "${opam_cmd}" install -y --switch="${SWITCH_NAME}" "${packages[@]}"; then
   log "Available camlp5 versions:"
   "${opam_cmd}" show --switch="${SWITCH_NAME}" camlp5 --all-versions || true
   fail "Failed to install camlp5.${CAMLP5_VERSION}; override with ITPEVAL_CAMLP5_VERSION"

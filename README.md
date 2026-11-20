@@ -1,127 +1,79 @@
-# ITPEval: Benchmarking Formal Translation Across Interactive Theorem Provers
+# ITPEval
 
-![ITPEval overview](images/overview.jpg)
+> **Review branch.** This is a development snapshot. Full release qualification for the newer proof-session and ATP features is pending. [Release checks](docs/runtime/release.md)
 
-ITPEval is the first benchmark for evaluating formal statement translation across **ten theorem provers**: Lean 4, Rocq (Coq), Isabelle/HOL, HOL Light, ACL2, Agda, HOL4, Metamath,
-Mizar, and PVS. 
+ITPEval gives ten theorem provers a common Python interface. Check a file, extract a library, or run an agent that proposes proof edits and learns from the native checker’s feedback. Replay attempts and export them for training. [Quickstart](docs/start/quickstart.md) · [Features](docs/start/features.md)
 
-The extended statement corpus contains **2,634 aligned items / 26,340 prover
-records from eight datasets**. Each included item has representations in all
-ten systems, yielding **90 directed pairs per item / 237,060 possible pairs**.
-An item can be a topic file with several lemmas, a catalogue entry, an axiom,
-a competition problem, or a program-verification condition. These are inventory
-counts, not counts of independent proved theorems or certified equivalences.
+## Prepare a project and verify a proof
 
-
-## Dataset scope
-
-| Dataset | Aligned statement items | Statement records |
-|---|---:|---:|
-| Babel-formal | 15 | 150 |
-| Hundred Theorems | 100 | 1,000 |
-| miniF2F | 455 | 4,550 |
-| PutnamBench | 657 | 6,570 |
-| nTP4VC | 597 | 5,970 |
-| Logipedia | 394 | 3,940 |
-| Thousand Theorems | 227 | 2,270 |
-| VERINA | 189 | 1,890 |
-| **Total** | **2,634** | **26,340** |
-
-All ten provers use the same statement corpus and translation interface.
-Proof data is a separate modality: the available export contains **74 items /
-296 records / 888 pairs** in Lean 4, Rocq, Isabelle/HOL, and HOL Light.
-There are 73 identities shared by the statement and proof components; Babel's
-`supinf` is outside the ten-way statement intersection. ACL2r is not counted as
-ordinary ACL2 and is not one of this release's adapters.
-
-See [the dataset description](docs/new_data_description.md) for exact membership,
-source provenance, identity aliases, exclusions, and validation boundaries.
-Native acceptance of a statement does not establish equivalence or proof completion.
-
-## Quick start
-
-Use a repository checkout and Python 3.10 or newer:
+From a checkout, install the Python package and Metamath. [Platform setup](docs/runtime/toolchains.md)
 
 ```bash
-pip install -e .
-cp eval/.env.example eval/.env
-# Set the API keys for the providers you use.
+python -m pip install -e .
+itpeval install metamath
 ```
 
-On Amazon Linux 2023, install the bootstrap dependencies and desired provers:
+This example locks the bundled project and checks `|- pair x y`.
 
-```bash
-./itpeval/bin/bootstrap-system.sh
-./itpeval/bin/itpeval install lean4 rocq isabelle hol-light acl2 agda hol4 metamath mizar pvs
-./itpeval/bin/itpeval check --task hello lean4 rocq isabelle hol-light acl2 agda hol4 metamath mizar pvs
+```python
+from pathlib import Path
+
+from itpeval.backends.registry import curated_project, get_backend
+from itpeval.cli.lib import default_prefix
+from itpeval.environments import prepare_project
+from itpeval.verification import verify
+
+# Lock the sources and checker before submitting a proof.
+project = prepare_project("metamath", curated_project("metamath"),
+                          prefix=default_prefix(), cache=Path("cache"))
+task = get_backend("metamath").build_task(project)
+evidence = verify(task, "vx vy distinct", prepared=project)
+assert evidence.task_success is True, evidence.stderr
 ```
 
-On macOS use `bootstrap-macos.sh`. The supported automatic installation set is
-`lean4 rocq isabelle hol-light agda hol4 metamath pvs`; ACL2 requires an existing
-installation, and the Mizar adapter requires Linux/x86. See
-[the harness guide](itpeval/README.md) for platform details and version overrides.
+For your own theorem, specify the target and editable proof region. To edit a bundled exercise in VS Code, run `itpeval practice` with your prover ID. [Work with your own files](docs/guides/work-with-a-library.md) · [Try a VS Code exercise](docs/start/proof-completion.md)
 
-Preview one extended statement translation without API calls or prover execution:
+## Extract a library for training
 
 ```bash
-python3 -m eval.pipeline.translation.run \
-  --sources babel-formal --ids 1 \
+# Write declaration records and premise-selection examples.
+itpeval dataset metamath --output ./metamath-dataset
+```
+
+Use `--project DIR --entrypoint FILE` for your own library. The export reports which fields the prover supplied. Combine libraries across provers and export JSONL or Parquet for pretraining, fine-tuning, retrieval, or reinforcement learning. [Combine libraries](docs/guides/extract-and-build-a-dataset/combine-libraries.md) · [Choose a training view](docs/guides/training-data/choose-a-view.md)
+
+## Search for a proof with an ATP
+
+Run E or Vampire on TPTP problems or ask for help on supported interactive goals. ITPEval checks completed interactive proofs in the original prover. [Automated proof search](docs/guides/automated-proving.md)
+
+## Run an agent or evaluation loop
+
+An agent can submit a full proof candidate or advance a native proof one action at a time. Save candidate edits, goals, and checker feedback with the project lock. Reuse setup and run independent checks across workers. [Agent examples](docs/guides/verification-and-learning.md) · [Measured throughput](docs/runtime/measurements/throughput.md)
+
+```bash
+# Record a rejected proof, its repair, and a fresh replay.
+python -m itpeval.learning.example --prover metamath --cache ./cache \
+  --output ./evidence/metamath
+```
+
+## Import the translation benchmark
+
+The benchmark has **2,634 aligned statement items across ten provers** and **74 proof items across four**. A release checkout can import the corpus with its original IDs and provenance. [Benchmark and paper](docs/benchmarks/translation.md) · [Dataset inventory](docs/new_data_description.md)
+
+```bash
+# Import the released data into a fresh directory.
+python -m itpeval.corpus.importers.itpeval . ./released-corpus
+```
+
+```bash
+# Preview one Lean-to-PVS translation prompt without a model call.
+python -m pip install -e '.[evaluation]'
+python -m eval.pipeline.translation.run --sources babel-formal --ids 1 \
   --src lean4 --tgt pvs --model gpt-5.5 --dry-run
 ```
 
-Remove `--dry-run` to generate and verify. Statement translation is the default;
-`--src` and `--tgt` accept any of the ten prover IDs through the same interface.
-Use `--mode proofs` for the available proof records:
+## Reference and licensing
 
-```bash
-python3 -m eval.pipeline.translation.run \
-  --mode proofs --sources babel-formal --ids 1 \
-  --src lean4 --tgt rocq --model gpt-5.5 --dry-run
-```
+[Python API](docs/reference/python.md) · [Agent skills](docs/agents/index.md) · [Backend capabilities](docs/reference/capabilities.md) · [Documentation preview](website/README.md)
 
-For batch jobs, inspect the selection before submission:
-
-```bash
-python3 -m eval.pipeline.translation.batch_run submit \
-  --sources babel-formal --ids 1 --src lean4 --tgt agda \
-  --models gpt-5.5 --dry-run
-```
-
-See [eval/README.md](eval/README.md) for collection, checkpointing, and filters.
-The existing BEq implementation supports **Lean 4 targets only** and is not yet
-connected to the statement shards. Native statement checking supports all ten
-provers; semantic equivalence requires a separate checker.
-
-## Data access and validation
-
-```python
-from eval.pipeline.translation.data import load_statement_records
-
-statements = load_statement_records()  # 26,340 records, checksum-verified shards
-lean_statements = [r for r in statements if r["prover"] == "lean4"]
-```
-
-```bash
-python3 data/build_eval_jsons.py --check
-python3 docs/audit_extended_dataset.py
-python3 -m unittest discover -s eval/pipeline/tests
-python3 -m unittest discover -s itpeval/tests
-```
-
-The build check compares exports with source bytes without writing. The inventory
-audit counts representations; neither command runs theorem provers. Unit tests
-use local fixtures and mocked verifier executables.
-
-## Repository layout
-
-- `data/`: benchmark sources, metadata, and deterministic export utilities.
-- `eval/data/extended/`: one JSON shard per dataset and a checksum manifest.
-- `eval/data/proofs.json`: available proof records.
-- `eval/data/stmts.json`: archived reference export used by the existing BEq runner.
-- `eval/subsets/`: statement membership and stable identity manifests.
-- `eval/pipeline/`: generation, native verification, cycle, and existing BEq code.
-- `itpeval/`: ten native adapters, shared runner, and smoke tasks.
-- `docs/`: detailed dataset scope and a standalone inventory audit.
-
-The root [LICENSE](LICENSE) covers original repository material. Third-party
-source notices are indexed in [data/third_party_licenses/README.md](data/third_party_licenses/README.md).
+The MIT license covers the original repository material. The dataset notices identify upstream licenses. [Repository license](LICENSE) · [Third-party notices](data/third_party_licenses/README.md)

@@ -19,6 +19,10 @@ if [[ ! -d "${TASK_DIR}" ]]; then
 fi
 TASK_DIR="$(cd "${TASK_DIR}" && pwd)"
 HELLO_FILE="${TASK_DIR}/hello.ml"
+if [[ "${ITPEVAL_OPERATION:-legacy}" != legacy ]]; then
+  HELLO_FILE="${TASK_DIR}/${ITPEVAL_TASK_FILE:-hello.ml}"
+  [[ "${HELLO_FILE}" == *.ml ]] || fail "expected an OCaml source entrypoint"
+fi
 
 if [[ ! -x "${RUN_BIN}" ]]; then
   fail "hollight-run not found at ${RUN_BIN}; run install.sh first"

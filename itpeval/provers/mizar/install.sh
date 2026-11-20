@@ -65,7 +65,7 @@ export PATH="${binary_dir}:\${PATH}"
 EOF
   if [[ -n "${mizfiles_root}" ]]; then
     cat >>"${BIN_DIR}/${name}" <<EOF
-export MIZFILES="${mizfiles_root}"
+export MIZFILES="\${ITPEVAL_MIZFILES:-${mizfiles_root}}"
 EOF
   fi
   cat >>"${BIN_DIR}/${name}" <<EOF
@@ -118,7 +118,7 @@ if [[ -n "${source_root}" ]]; then
   fi
 fi
 
-if command -v mizf >/dev/null 2>&1 || command -v verifier >/dev/null 2>&1; then
+if [[ -z "${ITPEVAL_MIZAR_TARBALL:-}" ]] && { command -v mizf >/dev/null 2>&1 || command -v verifier >/dev/null 2>&1; }; then
   if command -v mizf >/dev/null 2>&1; then
     wrap_binary "$(command -v mizf)" "mizf" "${mizfiles_root}"
   fi
@@ -155,7 +155,7 @@ wrap_vendor_binary() {
   cat >"${BIN_DIR}/${name}" <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
-export MIZFILES="${VENDOR_MIZFILES}"
+export MIZFILES="\${ITPEVAL_MIZFILES:-${VENDOR_MIZFILES}}"
 export PATH="${VENDOR_BIN}:\${PATH}"
 exec "${vendor_path}" "\$@"
 EOF

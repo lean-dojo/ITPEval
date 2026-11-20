@@ -49,5 +49,26 @@ else
   fail "agda executable not found; run itpeval/provers/agda/install.sh first"
 fi
 
-run "${agda_cmd}" --no-libraries --no-default-libraries -i "${TASK_DIR}" "${AGDA_FILE}"
+includes=(-i "${TASK_DIR}")
+if [[ "${ITPEVAL_OPERATION:-legacy}" != legacy ]]; then
+  # Native interfaces can otherwise appear in the locked builtins and in
+  # user-supplied libraries during an unrelated candidate check.
+  includes+=(--no-write-interfaces)
+  while IFS= read -r directory; do
+    [[ -z "${directory}" ]] || includes+=(-i "${directory}")
+  done <<< "${ITPEVAL_AGDA_INCLUDE_PATH:-}"
+fi
+
+if [[ "${ITPEVAL_OPERATION:-legacy}" == proof_completion ]]; then
+  module="${ITPEVAL_TASK_FILE%.agda}"
+  module="${module//\//.}"
+  probe="${TASK_DIR}/ITPEvalTargetWitness.agda"
+  [[ ! -e "${probe}" ]] || fail "reserved module ITPEvalTargetWitness already exists"
+  printf 'module ITPEvalTargetWitness where\nimport %s\nwitness = %s.%s\n' \
+    "${module}" "${module}" "${ITPEVAL_EXPECT_TARGET}" >"${probe}"
+  run "${agda_cmd}" --safe --no-libraries --no-default-libraries "${includes[@]}" "${probe}"
+  printf 'ITPEVAL_TARGET %s\n' "${ITPEVAL_EXPECT_TARGET}"
+  exit 0
+fi
+run "${agda_cmd}" --no-libraries --no-default-libraries "${includes[@]}" "${AGDA_FILE}"
 log "Agda task module typechecked successfully"

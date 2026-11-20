@@ -3,17 +3,20 @@ from __future__ import annotations
 import json
 import os
 import shutil
-import subprocess
 import sys
 import time
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
+from itpeval.adapter_paths import BUILTIN as PROVERS_ROOT, PROVER_ID, adapter_root, external_root
+from itpeval.itp import _default_prefix
+from itpeval.runtime.process import run_process, task_environment
+
 
 ROOT = Path(__file__).resolve().parents[1]
-PROVERS_ROOT = ROOT / "provers"
-RUNS_ROOT = ROOT / ".runs"
+_cache = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "itpeval"
+RUNS_ROOT = Path(os.environ.get("ITPEVAL_RUNS_ROOT", ROOT / ".runs" if (ROOT.parent / "pyproject.toml").is_file() else _cache / "runs"))
 TASKS_ROOT = ROOT / "tasks"
 
 DEFAULT_PROVERS = [
@@ -42,14 +45,7 @@ def utc_iso() -> str:
 
 
 def default_prefix() -> Path:
-    env_prefix = os.environ.get("ITPEVAL_PREFIX")
-    if env_prefix:
-        return Path(env_prefix)
-    # When the repo lives on EFS, large toolchains (opam/cabal) can become unusably slow
-    # Prefer /tmp by default unless the user explicitly overrides via ITPEVAL_PREFIX/--prefix
-    if str(ROOT).startswith("/efs/"):
-        return Path("/tmp/itpeval-toolchains")
-    return ROOT / "_toolchains"
+    return _default_prefix()
 
 
 def discover_provers() -> list[str]:
@@ -59,16 +55,17 @@ def discover_provers() -> list[str]:
         if adapter_root(name).is_dir():
             ordered.append(name)
             seen.add(name)
-    extras = sorted({
+    extras = {
         path.name
         for path in PROVERS_ROOT.iterdir()
         if path.is_dir() and path.name not in seen
-    })
-    return ordered + extras
-
-
-def adapter_root(prover: str) -> Path:
-    return PROVERS_ROOT / prover
+    }
+    directory = external_root()
+    if directory and directory.is_dir():
+        extras.update(path.name for path in directory.iterdir()
+                      if PROVER_ID.fullmatch(path.name) and path.name not in seen
+                      and (path / "check.sh").is_file())
+    return ordered + sorted(extras)
 
 
 def stage_script(prover: str, stage: str) -> Path:
@@ -82,12 +79,15 @@ def task_source_root(task: str) -> Path:
 def create_run_dir(command: str, prefix: Path, task: str | None) -> Path:
     RUNS_ROOT.mkdir(parents=True, exist_ok=True)
     base_name = utc_timestamp()
-    run_dir = RUNS_ROOT / base_name
-    suffix = 1
-    while run_dir.exists():
-        run_dir = RUNS_ROOT / f"{base_name}-{suffix}"
-        suffix += 1
-    (run_dir / "logs").mkdir(parents=True, exist_ok=True)
+    suffix = 0
+    while True:
+        run_dir = RUNS_ROOT / (f"{base_name}-{suffix}" if suffix else base_name)
+        try:
+            run_dir.mkdir()
+            break
+        except FileExistsError:
+            suffix += 1
+    (run_dir / "logs").mkdir()
     meta = {
         "command": command,
         "created_at": utc_iso(),
@@ -203,6 +203,9 @@ def run_stage(
     run_dir: Path,
     results_path: Path,
     task: str | None,
+    timeout_s: float | None = None,
+    cpu_seconds: int | None = None, memory_bytes: int | None = None, max_log_bytes: int = 1 << 20,
+    cancel=None,
 ) -> dict:
     script = stage_script(prover, stage)
     task_script: Path | None = None
@@ -221,7 +224,9 @@ def run_stage(
             append_jsonl(results_path, record)
             log(f"Skipping {prover} {stage}: task {task} has no artifact for this prover")
             return record
-        script = task_script
+        # External checkers may import helper modules next to their original script.
+        if script.parent.parent == PROVERS_ROOT:
+            script = task_script
 
     log_path = run_dir / "logs" / f"{prover}.{stage}.log"
     if not script.exists():
@@ -238,7 +243,11 @@ def run_stage(
         log(f"Skipping {prover} {stage}: missing {script}")
         return record
 
-    env = os.environ.copy()
+    env = task_environment()
+    if task_script is not None and script != task_script:
+        env["ITPEVAL_TASK_DIR"] = str((task_script.parent / "hello").resolve())
+    env["ITPEVAL_OPERATION"] = "legacy"
+    env["ITPEVAL_PYTHON"] = sys.executable
     env.update(
         {
             "ITPEVAL_PREFIX": str(prefix),
@@ -261,14 +270,9 @@ def run_stage(
         if version_script.exists():
             version_log_path = run_dir / "logs" / f"{prover}.version.log"
             try:
-                completed_version = subprocess.run(
-                    ["/bin/bash", str(version_script)],
-                    env=env,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
-                    check=False,
-                )
-                raw_version = completed_version.stdout.decode("utf-8", errors="replace").strip()
+                completed_version = run_process(["/bin/bash", str(version_script)],
+                                                env=env, timeout_s=60, merge_stderr=True)
+                raw_version = completed_version.stdout.strip()
                 version_log_path.write_text(raw_version + "\n", encoding="utf-8")
                 if completed_version.returncode == 0:
                     version_text = raw_version
@@ -278,12 +282,13 @@ def run_stage(
     started = time.time()
     started_at = utc_iso()
     log(f"=== {stage} {prover} ===")
-    with log_path.open("wb") as log_handle:
-        completed = subprocess.run(command, env=env, stdout=log_handle, stderr=subprocess.STDOUT)
+    completed = run_process(command, env=env, merge_stderr=True, timeout_s=timeout_s, cancel=cancel,
+                            max_log_bytes=max_log_bytes, memory_bytes=memory_bytes, cpu_seconds=cpu_seconds)
+    log_path.write_text(completed.stdout, encoding="utf-8")
     ended = time.time()
     ended_at = utc_iso()
     duration_ms = int((ended - started) * 1000)
-    status = "ok" if completed.returncode == 0 else "failed"
+    status = "ok" if completed.returncode == 0 and completed.outcome == "exited" else "failed"
 
     record = stage_result(
         prover=prover,
@@ -299,6 +304,10 @@ def run_stage(
         duration_ms=duration_ms,
         command=command,
     )
+    record["execution_outcome"] = completed.outcome
+    record["peak_process_rss_bytes"] = completed.peak_process_rss_bytes
+    record["cpu_time_s"] = completed.cpu_time_s
+    record["logs_truncated"] = completed.truncated
     append_jsonl(results_path, record)
     log(f"{stage} {prover}: {status} ({duration_ms} ms) log={log_path}")
     return record

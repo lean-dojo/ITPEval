@@ -12,6 +12,10 @@ OPAMROOT="${ITPEVAL_ROCQ_OPAMROOT:-${ROCQ_ROOT}/opamroot}"
 SWITCH_NAME="${ROCQ_SWITCH_NAME:-rocq}"
 OPAM_CMD="${ROCQ_ROOT}/bin/opam"
 
+if [[ -L "${ROCQ_ROOT}/bin/rocq" && -x "${ROCQ_ROOT}/bin/rocq" ]]; then
+  exec "$(itpeval_realpath "${ROCQ_ROOT}/bin/rocq")" --version
+fi
+
 if [[ ! -d "${OPAMROOT}" ]]; then
   if command -v rocq >/dev/null 2>&1; then
     exec rocq --version

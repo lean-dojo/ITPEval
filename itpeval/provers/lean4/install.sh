@@ -13,7 +13,10 @@ LEAN_TOOLCHAIN="${LEAN_TOOLCHAIN:-leanprover/lean4:stable}"
 
 mkdir -p "${LEAN_ROOT}/bin" "${PREFIX_BIN}"
 
-if command -v lean >/dev/null 2>&1 && command -v lake >/dev/null 2>&1; then
+if [[ -n "${ITPEVAL_LEAN4_DISTRIBUTION:-}" ]]; then
+  TOOLCHAIN_ROOT="$(cd "${ITPEVAL_LEAN4_DISTRIBUTION}" && pwd -P)"
+  [[ -x "${TOOLCHAIN_ROOT}/bin/lean" && -x "${TOOLCHAIN_ROOT}/bin/lake" ]] || fail "incomplete Lean distribution"
+elif command -v lean >/dev/null 2>&1 && command -v lake >/dev/null 2>&1; then
   TOOLCHAIN_ROOT="$(lean --print-prefix)"
 else
   ELAN_HOME="${LEAN_ROOT}/.elan"

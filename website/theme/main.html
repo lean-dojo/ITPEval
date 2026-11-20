@@ -1,0 +1,77 @@
+{% from 'icons.html' import icon %}
+{% macro landing_url(item) -%}
+  {%- if item.children -%}{{ landing_url(item.children[0]) }}{%- else -%}{{ item.url }}{%- endif -%}
+{%- endmacro %}
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% if page.is_homepage %}ITPEval documentation{% else %}{{ page.title|e }} · ITPEval{% endif %}</title>
+<meta name="description" content="{{ (page.meta.description or config.site_description)|e }}">
+<link rel="icon" href="{{ 'assets/brand.svg'|url }}" type="image/svg+xml">
+{% for sheet in ['assets/math/katex.min.css', 'assets/site.css', 'assets/prover-logos.css'] %}<link rel="stylesheet" href="{{ sheet|url }}">{% endfor %}
+{% for script in ['assets/math/katex.min.js', 'assets/math/auto-render.min.js', 'assets/math.js', 'assets/site.js', 'assets/examples.js'] %}<script defer src="{{ script|url }}"></script>{% endfor %}
+{% if page.file.src_uri in ['start/proof-completion.md', 'runtime/measurements/startup-and-caching.md', 'runtime/measurements/throughput.md'] or page.file.src_uri.startswith('provers/') %}<script defer src="{{ 'assets/explorers.js'|url }}"></script>{% endif %}
+{% if page.file.src_uri == 'search.md' %}<script defer src="{{ 'assets/doc-search.js'|url }}"></script><script defer src="{{ 'assets/search.js'|url }}"></script>{% endif %}
+</head><body data-root="{{ '.'|url }}">
+<a class="skip" href="#main">Skip to content</a>
+<header class="mast"><div class="frame mast-in"><a class="brand" href="{{ '.'|url }}" aria-label="ITPEval home"><span>ITPEval</span></a>
+{% set compact_titles = {'Start here': 'Start', 'User guide': 'Guides', 'Data and training': 'Data', 'Agents and extensions': 'Agents'} %}
+<nav class="global-nav" aria-label="Primary">
+{% for section in nav if section.children %}
+{% set path = landing_url(section) %}
+<a href="{{ path|url }}" aria-label="{{ section.title }}" {% if section.active %}aria-current="{{ 'page' if page.url == path else 'location' }}"{% endif %}><span class="tab-full">{{ section.title }}</span><span class="tab-short">{{ compact_titles.get(section.title, section.title) }}</span></a>
+{% endfor %}</nav>
+<div class="header-utilities"><a class="search-open" href="{{ 'search/'|url }}" aria-label="Search documentation">{{ icon('search',16) }}<span>Search docs</span><kbd>/</kbd></a>
+<a class="gh" href="{{ config.repo_url }}" aria-label="ITPEval on GitHub">{{ icon('github',21) }}</a>
+<button type="button" class="menu-open" aria-label="Open documentation menu" aria-expanded="false" aria-controls="documentation-menu">{{ icon('menu',22) }}</button></div></div></header>
+{% macro prover_attr(url) -%}{% for p in config.extra.provers if url == 'provers/' ~ p.id ~ '/' %}data-prover="{{ p.id }}"{% endfor %}{%- endmacro %}
+{% macro nav_link(title, path, current=false) -%}
+<a {% if current %}aria-current="page"{% endif %} href="{{ path|url }}" {{ prover_attr(path) }}>{{ title }}</a>
+{%- endmacro %}
+{% macro nav_list(items, id_prefix, is_root=false) -%}
+<ul id="{{ id_prefix }}" class="{{ 'nav-root' if is_root else 'nav-children' }}">
+{% for item in items %}
+  <li{% if item.children %} class="nav-branch{% if item.active %} current-branch{% endif %}"{% endif %}>
+  {% if item.children %}
+    {% set path = landing_url(item) %}
+    {% set has_overview = not is_root and not item.children[0].children and item.children[0].title == item.title %}
+    {% set children = item.children[1:] if has_overview else item.children %}
+    {% set chapter_id = id_prefix ~ '-' ~ loop.index %}
+    <div class="nav-row">
+      {{ nav_link(item.title, path, has_overview and page.url == path) }}
+      <button class="nav-toggle" type="button" aria-label="Chapters in {{ item.title }}" aria-controls="{{ chapter_id }}" aria-expanded="{{ 'true' if item.active else 'false' }}" hidden>
+        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="m6 3.5 4.5 4.5L6 12.5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
+      </button>
+    </div>
+    {{ nav_list(children, chapter_id) }}
+  {% else %}
+    {{ nav_link(item.title, item.url, item.active) }}
+  {% endif %}</li>
+{% endfor %}</ul>
+{%- endmacro %}
+{% macro navigation() -%}
+<nav aria-label="Documentation pages" class="doc-navigation">{{ nav_list(nav, 'documentation-pages', true) }}</nav>
+{%- endmacro %}
+{% macro section_links(sections) -%}
+{% for section in sections %}
+  <a href="{{ section.url }}">{{ section.title }}</a>
+  {% for subsection in section.children %}<a class="subsection" href="{{ subsection.url }}">{{ subsection.title }}</a>{% endfor %}
+{% endfor %}
+{%- endmacro %}
+{% if page.is_homepage %}
+<div class="mobile-nav" id="documentation-menu">{{ navigation() }}</div>
+{% include 'home.html' %}{% else %}
+{% set sections = page.toc.items[0].children if page.toc and page.toc.items else [] %}
+<div class="frame layout"><aside class="side" id="documentation-menu">{{ navigation() }}</aside><main class="article" id="main" tabindex="-1">
+<nav class="crumb" aria-label="Breadcrumb"><a href="{{ '.'|url }}">Docs</a>
+{% for ancestor in page.ancestors|reverse %}
+  {% set path = landing_url(ancestor) %}
+  <span aria-hidden="true">/</span>
+  {% if path != page.url %}<a href="{{ path|url }}">{{ ancestor.title }}</a>{% else %}<span>{{ ancestor.title }}</span>{% endif %}
+{% endfor %}</nav>
+{% if sections|length > 2 %}<details class="inline-toc"><summary>On this page</summary>{{ section_links(sections) }}</details>{% endif %}
+<article>{{ page.content }}{% if page.file.src_uri == 'search.md' %}{% include 'search-form.html' %}{% endif %}</article>
+<div class="article-foot">{% if page.previous_page %}<a href="{{ page.previous_page.url|url }}"><small>Previous</small><span {{ prover_attr(page.previous_page.url) }}>{{ page.previous_page.title }}</span></a>{% endif %}{% if page.next_page %}<a href="{{ page.next_page.url|url }}"><small>Next</small><span {{ prover_attr(page.next_page.url) }}>{{ page.next_page.title }}</span></a>{% endif %}</div></main>
+<aside class="toc" aria-label="On this page">{% if sections %}<strong>On this page</strong>{{ section_links(sections) }}{% endif %}</aside></div>
+<footer><div class="frame foot-in"><a class="brand" href="{{ '.'|url }}">ITPEval</a><span>Documentation</span><a href="{{ 'runtime/release/'|url }}">Release details</a><a href="{{ config.repo_url }}">GitHub</a></div></footer>
+{% endif %}
+</body></html>

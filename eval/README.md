@@ -1,41 +1,28 @@
 # Evaluation pipeline
 
-ITPEval supports statement translation between Lean 4, Rocq, Isabelle/HOL,
-HOL Light, ACL2, Agda, HOL4, Metamath, Mizar, and PVS.
-
 ## Scope and modes
 
 | Mode | Input | Directed tasks |
 |---|---|---:|
 | `stmts` (default) | 2,634 items × ten provers, eight datasets | 237,060 |
+| `stmts --corpus published` | Published 390 items × four original provers | 4,680 |
 | `proofs` | 74 items with available proof records | 888 |
 
-Statement mode asks for the proposition in the target system, without proving it.
-Each target has its own representation: for example ACL2 predicates, Agda types,
-quoted HOL terms, and PVS Boolean definitions. Response extraction and structural
-validation precede native checks. Native acceptance alone does not establish
-semantic equivalence or theorem truth. Proof mode asks for a complete checked
-proof; admissions and prover-specific escape hatches are rejected.
-
-All ten provers share the statement interface. Proof pairs are drawn from the
-available records in `proofs.json`, currently covering Lean 4, Rocq, Isabelle/HOL,
-and HOL Light. Statement coverage does not imply completed proofs in every prover.
-See [data/README.md](data/README.md) for schemas, stable IDs, and export checks.
+Statement mode checks the generated proposition in the target prover. Semantic equivalence is a separate check. Proof mode requires a completed proof and rejects admissions. Its pairs come from `proofs.json`, covering Lean 4, Rocq, Isabelle/HOL, and HOL Light. [Record schemas and export checks](data/README.md)
 
 ## Setup
 
 From a repository checkout:
 
 ```bash
-pip install -e .
+pip install -e '.[evaluation]'
 cp eval/.env.example eval/.env
 ```
 
 Set only the provider keys needed for the run (`OPENAI_API_KEY`,
 `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, or `OPENROUTER_API_KEY`). Model identifiers
 are configured in `pipeline/config.py`; availability depends on the provider.
-Install the desired target provers using [the harness guide](../itpeval/README.md).
-Linux supports all ten adapters; see the guide for macOS limitations.
+Install the native target provers before running checks. [Toolchain setup](../docs/runtime/toolchains.md)
 
 ## Synchronous runs
 
@@ -45,13 +32,14 @@ python3 -m eval.pipeline.translation.run \
   --src lean4 --tgt pvs --model gpt-5.5 --dry-run
 ```
 
-`--dry-run` previews prompts without API calls, prover runs, or output-directory
-creation. Remove it to execute. Narrow the selection before a full run; the
-statement population contains 237,060 directed tasks per model/sample.
+`--dry-run` previews prompts without API calls, prover runs, or output files. Filter the task selection before running without it.
 
 | Option | Purpose |
 |---|---|
 | `--mode stmts` / `--mode proofs` | Translate statements or available proofs; default is `stmts` |
+| `--corpus published` | Select the published four-prover statement population and its original request IDs |
+| `--responses PATH` | Read a JSON object mapping selected request IDs to prerecorded response text |
+| `--output PATH` | Choose the destination of a new run |
 | `--sources` | Comma-separated dataset names |
 | `--ids` | Comma-separated release theorem IDs |
 | `--subset` | JSON list of `{source, theorem_id}` records |
@@ -83,19 +71,22 @@ python3 -m eval.pipeline.translation.batch_run collect \
   eval/results/batch_jobs/<timestamp>.json --workers 8
 ```
 
-Collection is resumable and uses the same response validation/native verifier
-as synchronous runs. Completed job files embed provider responses, so collecting
-those files does not require provider access. Generated results and checkpoint
-files stay local and are ignored by Git.
+Set `--job-file PATH` on submit to choose a durable job to resume. Submit writes the immutable request plan, model settings and per-chunk state before contacting the provider. If a connection drops during submission, check the provider dashboard for the batch ID. Rerun the same command with `--recover-batch LABEL=ID` to recover that job, or use `--retry-unconfirmed LABEL` after confirming that the provider did not create it. Collect writes one record for every submitted request, including missing outputs and provider errors. Supply `--output PATH` to select the verified output.
+
+The local prerecorded transport accepts `--responses PATH` in place of a model. It stores the exact request and response in the adjacent job spool and checks the receipt digest on collection.
+
+Collection can resume and uses the same verifier as synchronous runs. Completed job files contain the responses and can be collected offline. Git ignores generated results and checkpoints.
 
 ## Existing BEq and cycle experiments
 
-The BEq implementation accepts verified **Lean 4 targets** and reads the archived
-reference export `data/stmts.json`. It is not yet connected to the statement
-shards, so it must not be used to claim equivalence scores for this ten-prover
-release. Native acceptance and semantic equivalence are different checks.
-The cycle utilities use their own `minif2f_nl4itp.jsonl` input and
-`pipeline/cycle/` entrypoints; they do not define the statement population.
+The historical BEq runner accepts verified Lean 4 statement translations. Published records use `data/stmts.json`. Extended records use their dataset, theorem and target prover to find the reference in the checksum-verified shards. The result retains both directional checks and reports “equivalence not established” when bounded search is unsuccessful. Use `--output-dir PATH` to select a new result directory. The checker for extracted Lean declarations is documented separately. [Declaration equivalence](../docs/reference/python.md)
+
+The following command replays a published MiniF2F Lean→Rocq statement through synchronous generation, batch submit/collect and post-hoc verification. It uses recorded text and the local Rocq installation. Each result retains the raw fenced response, the extracted statement, and its native acceptance with an unbound target.
+
+```bash
+python -m eval.pipeline.published_qualification --output ./published-translation.json
+```
+For autoformalization and auto-informalization, `python -m eval.pipeline.cycle.run` generates English-to-formal-to-English-to-formal round trips from `minif2f_nl4itp.jsonl`. Choose Lean alone or all four paper provers. Then run `python -m eval.pipeline.cycle.verify` to check the generated formal statements. [Worked example and commands](../docs/guides/formalization-and-translation.md#round-trip-evaluation)
 
 ## Local verification
 

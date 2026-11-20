@@ -7,7 +7,11 @@ import sys
 from pathlib import Path
 from typing import Iterable
 
+from itpeval.atp.cli import add_commands as add_atp_commands
+
 from . import lib
+from .projects import add_commands
+from .toolchains import add_commands as add_toolchain_commands
 
 
 def selected_provers(args: argparse.Namespace) -> list[str]:
@@ -56,6 +60,10 @@ def command_stage(args: argparse.Namespace, *, command_name: str, stages: Iterab
                 run_dir=run_dir,
                 results_path=results_path,
                 task=task_name,
+                timeout_s=args.install_timeout_s if stage == "install" else args.check_timeout_s,
+                cpu_seconds=getattr(args, stage + "_cpu_seconds", None),
+                memory_bytes=getattr(args, stage + "_memory_bytes", None),
+                max_log_bytes=getattr(args, "max_log_bytes", 1 << 20),
             )
             if record["status"] == "failed":
                 overall_rc = 1
@@ -140,7 +148,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--prefix",
         default=str(lib.default_prefix()),
-        help="toolchain prefix (default: auto; /tmp/itpeval-toolchains when repo is under /efs, else itpeval/_toolchains)",
+        help="toolchain prefix (default: ITPEVAL_PREFIX, the selected user toolchains, or the checkout fallback)",
     )
     parser.add_argument("--run-dir", default=None, help="reuse a specific run directory")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -156,6 +164,12 @@ def build_parser() -> argparse.ArgumentParser:
     ):
         subparser = subparsers.add_parser(name, help=f"{name} selected provers")
         subparser.add_argument("provers", nargs="*", help="optional subset")
+        subparser.add_argument("--install-timeout-s", type=float, help="deadline for each native installation")
+        subparser.add_argument("--check-timeout-s", type=float, help="deadline for each native check")
+        for stage in stages:
+            subparser.add_argument(f"--{stage}-cpu-seconds", type=int, help="CPU seconds per native process")
+            subparser.add_argument(f"--{stage}-memory-bytes", type=int, help="virtual address space per native process")
+        subparser.add_argument("--max-log-bytes", type=int, default=1 << 20, help="retained bytes per stage log")
         if name in {"check", "run"}:
             subparser.add_argument(
                 "--task",
@@ -203,6 +217,9 @@ def build_parser() -> argparse.ArgumentParser:
                              help="file inside --task-dir selected for the prover adapter")
     eval_parser.set_defaults(func=command_eval)
 
+    add_commands(subparsers)
+    add_toolchain_commands(subparsers)
+    add_atp_commands(subparsers)
     return parser
 
 
@@ -211,7 +228,13 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.command == "report" and args.run_dir_arg and not args.run_dir:
         args.run_dir = args.run_dir_arg
-    return int(args.func(args))
+    try:
+        return int(args.func(args))
+    except (OSError, ValueError, NotImplementedError) as exc:
+        if args.command in {"prepare", "prepare-project", "extract", "verify-task", "dataset", "practice",
+                            "training-data", "toolchains", "atp"}:
+            parser.exit(2, f"itpeval {args.command}: {exc}\n")
+        raise
 
 
 __all__ = ["main", "build_parser"]

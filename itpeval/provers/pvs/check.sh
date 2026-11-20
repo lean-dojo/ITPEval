@@ -46,8 +46,12 @@ esac
 PVS_RELATIVE_FILE="${PVS_FILE#"${TASK_DIR}/"}"
 itpeval_validate_statement_file "pvs" "${PVS_FILE}"
 statement_mode=0
-if grep -Fq -- "Statement-only formalization of" "${PVS_FILE}" \
-  || grep -Fqi -- ":itpeval-statement-checked" "${PVS_FILE}"; then
+if [[ "${ITPEVAL_OPERATION:-legacy}" == statement ]]; then
+  statement_mode=1
+elif [[ "${ITPEVAL_OPERATION:-legacy}" == legacy ]] && {
+  grep -Fq -- "Statement-only formalization of" "${PVS_FILE}" ||
+    grep -Fqi -- ":itpeval-statement-checked" "${PVS_FILE}"
+}; then
   statement_mode=1
 fi
 
@@ -78,6 +82,16 @@ if command -v proveit >/dev/null 2>&1; then
   pushd "${WORK_DIR}" >/dev/null
   if [[ "${statement_mode}" -eq 1 ]]; then
     run proveit -T "${PVS_FILE}"
+  elif [[ "${ITPEVAL_OPERATION:-legacy}" == proof_completion ]]; then
+    rc=0
+    run proveit -l --disable-oracles -o itpeval "${PVS_FILE}" || rc=$?
+    if [[ -f "${WORK_DIR}/itpeval.summary" ]]; then
+      cat "${WORK_DIR}/itpeval.summary"
+    fi
+    if ((rc != 0)); then
+      [[ ! -f "${WORK_DIR}/itpeval.log" ]] || tail -100 "${WORK_DIR}/itpeval.log" >&2
+      exit "${rc}"
+    fi
   else
     run proveit "${PVS_FILE}"
   fi

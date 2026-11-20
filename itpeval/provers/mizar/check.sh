@@ -58,6 +58,11 @@ if [[ -x "${MIZAR_BIN_DIR}/accom" ]]; then
 fi
 if [[ -n "${ITPEVAL_MIZFILES:-}" ]]; then
   export MIZFILES="${ITPEVAL_MIZFILES}"
+  # Older installer wrappers always set the bundled library. The native vendor
+  # binaries honor the project-specific accommodated environment directly.
+  if [[ -x "${PREFIX}/mizar/vendor/bin/verifier" ]]; then
+    export PATH="${PREFIX}/mizar/vendor/bin:${PATH}"
+  fi
 fi
 
 make_work_dir() {

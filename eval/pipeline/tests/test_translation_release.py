@@ -35,7 +35,11 @@ class TranslationReleaseTests(unittest.TestCase):
                 ok=True, duration_ms=3, stdout="", stderr="")) as native:
             record = self.run_single("```pvs\n" + code + "```\n")
         self.assertTrue(record["verified"])
+        self.assertIsNone(record["task_success"])
+        self.assertEqual(record["evidence"]["completion_status"], "statement_accepted")
+        self.assertEqual(record["evidence"]["target_preservation"], "unbound")
         self.assertEqual(record["generated"], code)
+        self.assertEqual(record["raw_generated"], "```pvs\n" + code + "```\n")
         self.assertEqual(native.call_args.kwargs["code"], code)
         self.assertEqual(native.call_args.kwargs["timeout_s"], 300)
         self.assertEqual(record["corpus"], "extended")

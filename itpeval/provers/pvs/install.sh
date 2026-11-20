@@ -15,6 +15,10 @@ wrap_binary() {
   local binary_path="$1"
   local name="$2"
   local extra_exports="${3:-}"
+  if [[ "${binary_path}" == "${BIN_DIR}/${name}" ]]; then
+    link_into_prefix_bin "${binary_path}" "${name}"
+    return
+  fi
   cat >"${BIN_DIR}/${name}" <<EOF
 #!/bin/sh
 ${extra_exports}
@@ -61,7 +65,7 @@ relocate_pvspath_only() {
   done
   if [[ -f "${root}/provethem" ]]; then
     run chmod u+w "${root}/provethem"
-    run sed -i.bak -e "s,^\\$PVSPATH=.*$,\\$PVSPATH=\\\"${root}\\\";," "${root}/provethem"
+    run sed -i.bak -e 's,^[$]PVSPATH=.*,$PVSPATH="'"${root}"'";,' "${root}/provethem"
     run chmod a+x "${root}/provethem"
     rm -f "${root}/provethem.bak"
   fi
@@ -71,6 +75,32 @@ wire_installed_tree() {
   local root="$1"
   local exports=""
   exports="export PVSPATH=\"${root}\""
+
+  # An older Linux host can run the release with a private glibc. Scope the
+  # loader to the bundled SBCL process so helper programs keep the host libc.
+  if [[ -n "${ITPEVAL_PVS_GLIBC_DIR:-}" ]]; then
+    local libc_dir launcher
+    libc_dir="$(cd "${ITPEVAL_PVS_GLIBC_DIR}" && pwd -P)"
+    [[ -x "${libc_dir}/ld-linux-x86-64.so.2" ]] || fail "missing glibc loader in ${libc_dir}"
+    launcher="${root}/bin/ix86_64-Linux/runtime/pvs-sbclisp-bin"
+    [[ -f "${launcher}" ]] || fail "unsupported PVS SBCL launcher: ${launcher}"
+    python3 - "${launcher}" "${libc_dir}" <<'PY'
+from pathlib import Path
+from shlex import quote
+import sys
+
+launcher, libc = map(Path, sys.argv[1:])
+original = launcher.with_suffix(".vendor")
+if not original.exists():
+    original.write_bytes(launcher.read_bytes())
+text = original.read_text()
+command = 'exec "$script_dir/sbcl/bin/sbcl"'
+if text.count(command) != 1:
+    raise SystemExit("unrecognized PVS release launcher")
+loader = quote(str(libc / "ld-linux-x86-64.so.2"))
+launcher.write_text(text.replace(command, f'exec {loader} --library-path {quote(str(libc))} "$script_dir/sbcl/bin/sbcl"'))
+PY
+  fi
 
   if [[ -x "${root}/pvs" ]]; then
     wrap_binary "${root}/pvs" "pvs" "${exports}"
@@ -129,7 +159,7 @@ if [[ -n "${tarball_path}" ]]; then
   exit 0
 fi
 
-if command -v pvs >/dev/null 2>&1; then
+if [[ -z "${ITPEVAL_PVS_TARBALL:-}" ]] && command -v pvs >/dev/null 2>&1 && command -v proveit >/dev/null 2>&1; then
   pvs_path="$(command -v pvs)"
   pvs_dir="$(cd "$(dirname "${pvs_path}")" && pwd)"
   pvs_root="${pvs_dir}"

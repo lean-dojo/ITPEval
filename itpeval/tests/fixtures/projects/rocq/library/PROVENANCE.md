@@ -1,0 +1,1 @@
+StrictProp.v is a byte-for-byte copy of theories/Logic/StrictProp.v from rocq-stdlib 9.0.0, distributed under LGPL-2.1-only. Its SHA-256 is `6bde353b9ddfd0214c028ce2ba1d1401498762e70e1dcf97506e62158d8ac61e`. The client builds it in the project namespace to expose its exported declarations. [Rocq Stdlib source](https://github.com/rocq-prover/stdlib/tree/V9.0.0)

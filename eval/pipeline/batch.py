@@ -68,7 +68,7 @@ def openai_submit(
     return batch.id
 
 
-def openai_poll(batch_id: str) -> tuple[str, dict[str, str] | None]:
+def openai_poll(batch_id: str) -> tuple[str, dict[str, str | dict[str, str]] | None]:
     """Poll an OpenAI batch job.
 
     Returns (status, results) where results maps custom_id → generated text,
@@ -82,17 +82,24 @@ def openai_poll(batch_id: str) -> tuple[str, dict[str, str] | None]:
     client = openai.OpenAI(api_key=os.environ["OPENAI_API_KEY"])
     batch = client.batches.retrieve(batch_id)
 
-    if batch.status == "completed":
-        raw = client.files.content(batch.output_file_id).content.decode()
+    if batch.status in {"completed", "expired", "cancelled", "failed"}:
         results = {}
-        for line in raw.splitlines():
-            r = json.loads(line)
-            text = r["response"]["body"]["choices"][0]["message"]["content"]
-            results[r["custom_id"]] = text
-        return "completed", results
-
-    if batch.status in ("failed", "expired", "cancelled"):
-        return batch.status, None
+        for file_id in (batch.output_file_id, getattr(batch, "error_file_id", None)):
+            if not file_id:
+                continue
+            raw = client.files.content(file_id).content.decode()
+            for line in raw.splitlines():
+                row = json.loads(line)
+                ident = row["custom_id"]
+                if ident in results:
+                    raise ValueError(f"duplicate OpenAI batch response for {ident}")
+                body = (row.get("response") or {}).get("body") or {}
+                error = row.get("error") or body.get("error")
+                choices = body.get("choices") or []
+                content = (choices[0].get("message") or {}).get("content") if choices else None
+                results[ident] = content if isinstance(content, str) and not error else {
+                    "error": json.dumps(error, ensure_ascii=False) if error else "OpenAI returned no completion"}
+        return batch.status, results
 
     return batch.status, None
 
@@ -125,7 +132,7 @@ def anthropic_submit(
     return batch.id
 
 
-def anthropic_poll(batch_id: str) -> tuple[str, dict[str, str] | None]:
+def anthropic_poll(batch_id: str) -> tuple[str, dict[str, str | dict[str, str]] | None]:
     """Poll an Anthropic batch job.
 
     Returns (status, results) or (status, None) if not yet complete.
@@ -140,10 +147,14 @@ def anthropic_poll(batch_id: str) -> tuple[str, dict[str, str] | None]:
     if batch.processing_status == "ended":
         results = {}
         for result in client.messages.batches.results(batch_id):
+            if result.custom_id in results:
+                raise ValueError(f"duplicate Anthropic batch response for {result.custom_id}")
             if result.result.type == "succeeded":
-                results[result.custom_id] = result.result.message.content[0].text
+                blocks = [block.text for block in result.result.message.content if getattr(block, "type", "text") == "text"]
+                results[result.custom_id] = "".join(blocks) if blocks else {"error": "Anthropic returned no text blocks"}
             else:
-                results[result.custom_id] = ""
+                results[result.custom_id] = {"error": f"Anthropic batch result {result.result.type}: "
+                                             + str(getattr(result.result, "error", ""))}
         return "completed", results
 
     return batch.processing_status, None
@@ -226,7 +237,7 @@ def gemini_batch_submit(
     return batch_name
 
 
-def gemini_batch_poll(batch_name: str) -> tuple[str, dict[str, str] | None]:
+def gemini_batch_poll(batch_name: str) -> tuple[str, dict[str, str | dict[str, str]] | None]:
     """Poll a Gemini batch job submitted via gemini_batch_submit.
 
     Returns (status, results) or (status, None) if not yet complete.
@@ -245,12 +256,12 @@ def gemini_batch_poll(batch_name: str) -> tuple[str, dict[str, str] | None]:
     data = resp.json()
     state = data.get("metadata", {}).get("state", "")
 
-    if "SUCCEEDED" in state:
-        output_file = (
-            data.get("response", {}).get("responsesFile")
-            or data.get("metadata", {}).get("output", {}).get("responsesFile", "")
-        )
-        # Completed Gemini jobs return a file handle containing JSONL responses
+    terminal = next((name.lower() for name in ("FAILED", "CANCELLED", "EXPIRED") if name in state), None)
+    if "SUCCEEDED" in state or terminal:
+        output_file = (data.get("response", {}).get("responsesFile") or
+                       data.get("metadata", {}).get("output", {}).get("responsesFile", ""))
+        if not output_file:
+            return terminal or "completed", {}
         from google import genai
 
         client = genai.Client(api_key=api_key)
@@ -262,16 +273,16 @@ def gemini_batch_poll(batch_name: str) -> tuple[str, dict[str, str] | None]:
                 continue
             r = json.loads(line)
             key = r.get("key", "")
+            if key in results:
+                raise ValueError(f"duplicate Gemini batch response for {key}")
             candidates = r.get("response", {}).get("candidates", [])
-            text = ""
+            texts = []
             if candidates:
                 parts = candidates[0].get("content", {}).get("parts", [])
-                text = parts[0].get("text", "") if parts else ""
-            results[key] = text
-        return "completed", results
-
-    if "FAILED" in state or "CANCELLED" in state or "EXPIRED" in state:
-        return "failed", None
+                texts = [part["text"] for part in parts if "text" in part and not part.get("thought")]
+            results[key] = "".join(texts) if texts else {"error": json.dumps(
+                r.get("error") or r.get("status") or "Gemini returned no completion", ensure_ascii=False)}
+        return terminal or "completed", results
 
     return "running", None
 
@@ -297,7 +308,7 @@ def submit(model_cfg: dict, requests: list[dict], **kwargs) -> str:
         raise ValueError(f"Batch not supported for provider: {provider!r}")
 
 
-def poll(model_cfg: dict, batch_id: str) -> tuple[str, dict[str, str] | None]:
+def poll(model_cfg: dict, batch_id: str) -> tuple[str, dict[str, str | dict[str, str]] | None]:
     """Poll a batch job."""
     provider = model_cfg["provider"]
     if provider == "openai":

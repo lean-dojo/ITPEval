@@ -48,7 +48,7 @@ esac
 TASK_FILE_REL="${TASK_FILE#"${TASK_DIR}/"}"
 
 statement_mode=0
-if grep -Fqi -- ":itpeval-statement-checked" "${TASK_FILE}"; then
+if [[ "${ITPEVAL_OPERATION:-legacy}" == statement ]] || { [[ "${ITPEVAL_OPERATION:-legacy}" == legacy ]] && grep -Fqi -- ":itpeval-statement-checked" "${TASK_FILE}"; }; then
   statement_mode=1
   itpeval_validate_statement_file "acl2" "${TASK_FILE}"
 fi
@@ -83,10 +83,16 @@ if grep -Fq -- "ACL2 Error" "${tmp_output}" \
 fi
 
 if [[ "${statement_mode}" -eq 1 ]]; then
-  if ! grep -Fq -- ":ITPEVAL-STATEMENT-CHECKED" "${tmp_output}"; then
+  if [[ "${ITPEVAL_OPERATION:-legacy}" == legacy ]] && ! grep -Fq -- ":ITPEVAL-STATEMENT-CHECKED" "${tmp_output}"; then
     fail "ACL2 output is missing the statement-check sentinel"
   fi
   log "ACL2 statement script checked successfully"
+elif [[ "${ITPEVAL_OPERATION:-legacy}" == proof_completion ]] \
+  && grep -Fq -- "All goals have been proved!" "${tmp_output}" \
+  && grep -Fq -- ":ITPEVAL-TARGET-ADMITTED" "${tmp_output}"; then
+  # DEFTHM with :instructions prints the proof-builder completion message.
+  # The named theorem witness comes from the locked task's postcondition.
+  log "ACL2 proof-builder instructions replayed successfully"
 elif ! grep -Eq 'Q\.E\.D\.|Proof succeeded|Completed' "${tmp_output}"; then
   fail "ACL2 ran, but the smoke test output did not look like a successful proof"
 else

@@ -1,0 +1,1 @@
+real_1.miz is the original REAL_1 article from Mizar 8.1.15, MML 5.106.1517. Its SHA-256 is `cbb51e0152c925efb7cb156dea54123123d166409a50cc21be188ee9ff15b79b`. The copyright and licensing terms appear in the article header and the accompanying COPYING files. [Mizar distributions](https://mizar.uwb.edu.pl/system/)

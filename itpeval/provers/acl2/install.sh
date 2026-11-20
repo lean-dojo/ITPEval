@@ -153,7 +153,7 @@ fi
 
 tarball_path="${INSTALL_ROOT}/acl2-${ACL2_VERSION}.tar.gz"
 log "Downloading ACL2 ${ACL2_VERSION} source tarball"
-download_cached "${ACL2_TARBALL_URL}" "" "${tarball_path}"
+download_cached "${ACL2_TARBALL_URL}" "${ITPEVAL_ACL2_SHA256:-}" "${tarball_path}"
 
 rm -rf "${acl2_dir}"
 ensure_dir "${SRC_ROOT}"

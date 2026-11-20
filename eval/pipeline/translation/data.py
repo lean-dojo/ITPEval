@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 
-from eval.pipeline.config import EXTENDED_STMTS_MANIFEST, PROOFS_JSON, PROVERS
+from eval.pipeline.config import EXTENDED_STMTS_MANIFEST, PROOFS_JSON, PROVERS, STMTS_JSON
 
 
 def load_statement_records(*, sources: list[str] | None = None) -> list[dict]:
@@ -33,6 +33,7 @@ def load_pairs(
     tiers: list[str] | None = None,
     theorem_ids: list[int] | None = None,
     subset: set[tuple[str, int]] | None = None,
+    corpus: str | None = None,
 ) -> list[dict]:
     """Load translation pairs from flat eval JSON.
 
@@ -42,8 +43,13 @@ def load_pairs(
     """
     if mode not in {"stmts", "proofs"}:
         raise ValueError(f"unknown translation mode: {mode!r}")
+    corpus = corpus or ("extended" if mode == "stmts" else "proofs")
+    if corpus not in ({"extended", "published"} if mode == "stmts" else {"proofs"}):
+        raise ValueError(f"corpus {corpus!r} is unavailable for {mode}")
     if mode == "proofs":
         records = json.loads(PROOFS_JSON.read_text(encoding="utf-8"))
+    elif corpus == "published":
+        records = json.loads(STMTS_JSON.read_bytes())
     else:
         records = load_statement_records(sources=sources)
 
@@ -70,8 +76,10 @@ def load_pairs(
             raise ValueError("duplicate prover representation for one item")
         if not set(prover_map) <= set(PROVERS):
             raise ValueError("unknown prover in benchmark input")
-        if mode == "stmts" and set(prover_map) != set(PROVERS):
+        if corpus == "extended" and set(prover_map) != set(PROVERS):
             raise ValueError("statement item is not ten-way aligned")
+        if corpus == "published" and set(prover_map) != {"lean4", "hol-light", "isabelle", "rocq"}:
+            raise ValueError("the published statement population requires its four original provers")
         # For each theorem with n provers, emit all n * (n - 1) directed pairs
         for src_prover, src_rec in prover_map.items():
             for tgt_prover in prover_map:
@@ -84,7 +92,7 @@ def load_pairs(
                         "src_prover":  src_prover,
                         "tgt_prover":  tgt_prover,
                         "src_content": src_rec["content"],
-                        "corpus": "extended" if mode == "stmts" else "proofs",
+                        "corpus": corpus,
                         "source_sha256": src_rec.get("sha256") or hashlib.sha256(
                             src_rec["content"].encode("utf-8")
                         ).hexdigest(),

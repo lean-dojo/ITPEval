@@ -1,12 +1,18 @@
 from __future__ import annotations
+import os
 from pathlib import Path
+
+from eval.datasets import data_root
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 EVAL_DIR = REPO_ROOT / "eval"
 
-STMTS_JSON  = EVAL_DIR / "data" / "stmts.json"
-PROOFS_JSON = EVAL_DIR / "data" / "proofs.json"
-RESULTS_DIR       = EVAL_DIR / "results"
+DATA_DIR = data_root()
+STMTS_JSON = DATA_DIR / "stmts.json"
+PROOFS_JSON = DATA_DIR / "proofs.json"
+_state_home = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state"))
+_default_results = EVAL_DIR / "results" if (EVAL_DIR / "data/proofs.json").exists() else _state_home / "itpeval/results"
+RESULTS_DIR = Path(os.environ.get("ITPEVAL_RESULTS_DIR", _default_results)).expanduser()
 GENERATED_DIR     = RESULTS_DIR / "generated"
 VERIFIED_DIR      = RESULTS_DIR / "verified"
 BATCH_JOBS_DIR = RESULTS_DIR / "batch_jobs"
@@ -169,7 +175,7 @@ PROOF_TARGET_INSTRUCTIONS = {
     ),
 }
 
-EXTENDED_STMTS_MANIFEST = EVAL_DIR / "data" / "extended" / "manifest.json"
+EXTENDED_STMTS_MANIFEST = DATA_DIR / "extended" / "manifest.json"
 
 MODELS: list[dict] = [
     {"id": "gpt-5.5",                  "provider": "openai",      "label": "gpt-5.5"},

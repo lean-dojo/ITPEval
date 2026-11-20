@@ -21,6 +21,11 @@ def translation_custom_id(pair: dict[str, Any], *, sample_idx: int = 0) -> str:
 
 def translation_record_key(record: dict[str, Any]) -> str:
     custom_id = record.get("custom_id")
+    if record.get("task_id") or record.get("result_schema") == "itpeval-translation-v2":
+        schema = "itpeval-task-v1" if record.get("task_id") else record["result_schema"]
+        return json.dumps([schema, record.get("task_id"), custom_id,
+                           record.get("model"), record.get("model_id"), record.get("mode"),
+                           record.get("temperature"), record.get("sample_idx", 0)], ensure_ascii=False)
     if record.get("corpus") == "extended":
         # New-corpus checkpoints distinguish model/sampling conditions. Keep
         # the historical branch below unchanged for existing results and BEq.
@@ -80,6 +85,9 @@ def make_translation_record(
     cid = custom_id or translation_custom_id(pair, sample_idx=sample_idx)
     # Keep sync, batch, and post-hoc verification outputs on the same schema
     return {
+        "result_schema": "itpeval-translation-v2",
+        "task_success": None,
+        "evidence": None,
         "custom_id": cid,
         "theorem_id": pair["theorem_id"],
         "title": pair["title"],

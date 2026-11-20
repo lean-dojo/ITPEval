@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import fcntl
 import json
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Callable, Iterable, TypeVar
 
@@ -37,3 +39,40 @@ def write_jsonl_atomic(path: Path, records: Iterable[dict]) -> None:
         for record in records:
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
     tmp_path.replace(path)
+
+
+def repair_tail(path: Path) -> None:
+    """Discard one torn final append to an owned, manifest-bound output."""
+    if not path.exists() or path.stat().st_size == 0:
+        return
+    with path.open("r+b") as stream:
+        stream.seek(-1, 2)
+        if stream.read() == b"\n":
+            return
+        position = stream.tell()
+        while position:
+            start = max(position - 65536, 0)
+            stream.seek(start)
+            split = stream.read(position - start).rfind(b"\n")
+            if split >= 0:
+                position = start + split + 1
+                break
+            position = start
+        stream.seek(position)
+        tail = stream.read()
+        try:
+            json.loads(tail)
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            print(f"Ignoring incomplete final checkpoint row in {path}", flush=True)
+            stream.truncate(position)
+        else:
+            stream.write(b"\n")
+
+
+@contextmanager
+def result_writer(path: Path):
+    """Serialize jobs that select the same output and run manifest."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.with_suffix(path.suffix + ".lock").open("a") as stream:
+        fcntl.flock(stream, fcntl.LOCK_EX)
+        yield

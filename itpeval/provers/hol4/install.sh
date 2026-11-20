@@ -70,7 +70,7 @@ if [[ -n "${source_root}" ]]; then
   fi
 fi
 
-if command -v hol >/dev/null 2>&1 && command -v Holmake >/dev/null 2>&1; then
+if [[ -z "${ITPEVAL_PINNED_INSTALL:-}" ]] && command -v hol >/dev/null 2>&1 && command -v Holmake >/dev/null 2>&1; then
   wrap_binary "$(command -v hol)" "hol"
   wrap_binary "$(command -v Holmake)" "Holmake"
   log "HOL4 wired from PATH into ${INSTALL_ROOT}"
@@ -107,7 +107,7 @@ if [[ ! -x "${poly_bin}" ]]; then
   (
     cd "${POLYML_SRC}"
     run ./configure --prefix="${POLYML_PREFIX}"
-    jobs="$(command -v nproc >/dev/null 2>&1 && nproc || echo 2)"
+    jobs="${ITPEVAL_BUILD_JOBS:-$(command -v nproc >/dev/null 2>&1 && nproc || echo 2)}"
     run make -j"${jobs}"
     run make install
   )
@@ -131,7 +131,7 @@ if [[ ! -d "${SOURCE_DIR}/.git" ]]; then
   run git clone --depth 1 "${HOL4_REPO_URL}" "${SOURCE_DIR}"
 fi
 
-if [[ ! -x "${SOURCE_DIR}/bin/Holmake" || ! -x "${SOURCE_DIR}/bin/hol" ]]; then
+if [[ ! -f "${INSTALL_ROOT}/.build-complete" || ! -x "${SOURCE_DIR}/bin/Holmake" || ! -x "${SOURCE_DIR}/bin/hol" ]]; then
   log "Configuring HOL4 with Poly/ML"
   (
     cd "${SOURCE_DIR}"
@@ -139,6 +139,7 @@ if [[ ! -x "${SOURCE_DIR}/bin/Holmake" || ! -x "${SOURCE_DIR}/bin/hol" ]]; then
     log "Building HOL4 (this can take a while)"
     run bin/build
   )
+  touch "${INSTALL_ROOT}/.build-complete"
 fi
 
 if [[ ! -x "${SOURCE_DIR}/bin/Holmake" || ! -x "${SOURCE_DIR}/bin/hol" ]]; then

@@ -2,18 +2,20 @@ from __future__ import annotations
 
 import argparse
 import json
-import threading
+import hashlib
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-from eval.pipeline.config import EVAL_DIR, RESULTS_DIR
-from eval.pipeline.jsonl import load_jsonl
+from eval.pipeline.config import DATA_DIR, RESULTS_DIR
+from eval.pipeline.jsonl import load_jsonl, repair_tail, result_writer
+from eval.pipeline.manifests import records_digest
+from itpeval.learning.manifests import RunManifest
 from eval.pipeline.models import select_models
 from eval.pipeline.translate import translate
 
 CYCLE_DIR = RESULTS_DIR / "cycle"
-DATA_FILE = EVAL_DIR / "data" / "minif2f_nl4itp.jsonl"
+DATA_FILE = DATA_DIR / "minif2f_nl4itp.jsonl"
 
 _ITP_HEADERS = {
     "lean4":     "=== Lean 4 ===",
@@ -223,15 +225,6 @@ def _run_cycle2_record(record: dict, model_cfg: dict, max_tokens: int,
     return result
 
 
-def _load_done(out_path: Path) -> set[str]:
-    done: set[str] = set()
-    if not out_path.exists():
-        return done
-    for r in load_jsonl(out_path):
-        done.add(r["name"])
-    return done
-
-
 def run_cycle(
     *,
     cycle: int,
@@ -239,46 +232,41 @@ def run_cycle(
     records: list[dict],
     workers: int,
     max_tokens: int,
+    output_dir: Path | None = None,
 ) -> None:
-    sub_dir = CYCLE_DIR / f"cycle{cycle}"
-    sub_dir.mkdir(parents=True, exist_ok=True)
-
+    if cycle not in {1, 2} or min(workers, max_tokens) < 1:
+        raise ValueError("cycle, worker and token budgets must be valid")
+    if len({row["name"] for row in records}) != len(records):
+        raise ValueError("duplicate theorem names in cycle input")
+    sub_dir = (output_dir or CYCLE_DIR) / f"cycle{cycle}"
     runner = _run_cycle1_record if cycle == 1 else _run_cycle2_record
-
+    dataset = records_digest(records)
+    prompt = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
     for model_cfg in models:
         out_path = sub_dir / f"{model_cfg['label']}.jsonl"
-        done = _load_done(out_path)
-        remaining = [r for r in records if r["name"] not in done]
-
-        # Cycle outputs are append-only by model, so reruns resume by theorem name
-        print(f"\n--- cycle{cycle} model={model_cfg['label']} ---")
-        print(f"  {len(records)} records, {len(done)} already done, {len(remaining)} remaining")
-
-        if not remaining:
-            print("  Nothing to do.", flush=True)
-            continue
-
-        total = len(remaining)
-        write_lock = threading.Lock()
-
-        with out_path.open("a", encoding="utf-8") as out_f:
-            with ThreadPoolExecutor(max_workers=workers) as pool:
-                futures = {
-                    pool.submit(runner, rec, model_cfg, max_tokens, i, total): rec
-                    for i, rec in enumerate(remaining, 1)
-                }
-                for fut in as_completed(futures):
+        manifest = RunManifest((), (), f"translation_cycle.{cycle}.v1", dataset, prompt,
+                               model_cfg, None, {"max_tokens_per_call": max_tokens, "max_calls": 3})
+        with result_writer(out_path):
+            manifest.bind(out_path)
+            repair_tail(out_path)
+            previous = load_jsonl(out_path)
+            if any(row.get("run_id") != manifest.run_id for row in previous):
+                raise ValueError("saved cycle result differs from run manifest")
+            done = {row["name"] for row in previous}
+            remaining = [row for row in records if row["name"] not in done]
+            print(f"cycle{cycle} {model_cfg['label']}: {len(remaining)} remaining, {len(done)} complete")
+            with out_path.open("a", encoding="utf-8") as output, ThreadPoolExecutor(max_workers=workers) as pool:
+                futures = {pool.submit(runner, row, model_cfg, max_tokens, i, len(remaining)): row
+                           for i, row in enumerate(remaining, 1)}
+                for future in as_completed(futures):
                     try:
-                        rec_result = fut.result()
-                    except Exception as e:
-                        print(f"  [job error] {e}", flush=True)
-                        continue
-                    with write_lock:
-                        out_f.write(json.dumps(rec_result, ensure_ascii=False) + "\n")
-                        out_f.flush()
-
-        done_count = len(_load_done(out_path))
-        print(f"  Done: {done_count}/{len(records)} in {out_path}", flush=True)
+                        result = future.result()
+                    except Exception as error:
+                        row = futures[future]
+                        result = {"name": row["name"], "split": row["split"], "model": model_cfg["label"],
+                                  "nl_ref": row["nl"], "step1_error": str(error), "execution_outcome": "generation_error"}
+                    result["run_id"] = manifest.run_id
+                    print(json.dumps(result, ensure_ascii=False), file=output, flush=True)
 
 
 def main() -> None:
@@ -291,6 +279,7 @@ def main() -> None:
                         help="Parallel workers per model (default: 1)")
     parser.add_argument("--max-tokens", type=int, default=4096,
                         help="Max output tokens per API call (default: 4096)")
+    parser.add_argument("--output-dir", type=Path, help="new or resumable versioned result directory")
     parser.add_argument("--data",    default=str(DATA_FILE),
                         help=f"Input JSONL (default: {DATA_FILE})")
     parser.add_argument("--cycle100", action="store_true",
@@ -305,8 +294,8 @@ def main() -> None:
 
     data_path = Path(args.data)
     if not data_path.exists():
-        sys.exit(f"Data file not found: {data_path}\n"
-                 "Regenerate eval data with: python3 data/build_eval_jsons.py")
+        parser.exit(1, f"Data file not found: {data_path}\n"
+                       "Regenerate eval data with: python3 data/build_eval_jsons.py\n")
 
     records = load_jsonl(data_path)
     if args.cycle100:
@@ -325,7 +314,7 @@ def main() -> None:
             models=models,
             records=records,
             workers=args.workers,
-            max_tokens=args.max_tokens,
+            max_tokens=args.max_tokens, output_dir=args.output_dir,
         )
 
     print("\nDone.")

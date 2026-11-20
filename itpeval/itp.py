@@ -3,17 +3,35 @@ from __future__ import annotations
 
 import argparse
 import os
-import re
 import subprocess
 import sys
 import tempfile
-import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+
+if __package__ in (None, ""):  # Support python itpeval/itp.py from a checkout.
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from itpeval.adapter_paths import adapter_root
+from itpeval.staging import (
+    HOL4_TARGET_MARKER as HOL4_TARGET_MARKER,
+    hol4_wrapper_text as hol4_wrapper_text,
+    prepare_task_dir as _prepare_task_dir,
+)
+from itpeval.core.types import Budgets, TaskSpec, VerificationEvidence
+from itpeval.runtime.checker import execute_checker
+from itpeval.runtime.process import run_process, task_environment
+
+if TYPE_CHECKING:
+    from itpeval.environments import PreparedProject
 
 
 @dataclass(frozen=True)
 class RunResult:
+    """Outcome and bounded native diagnostics for a file or snippet check."""
+
     prover: str
     ok: bool
     returncode: int
@@ -22,6 +40,10 @@ class RunResult:
     workdir: Path
     stdout: str
     stderr: str
+    execution_outcome: str = "exited"
+    peak_process_rss_bytes: int | None = None
+    cpu_time_s: float | None = None
+    logs_truncated: bool = False
 
 
 def _itpeval_root() -> Path:
@@ -35,235 +57,27 @@ def _default_prefix() -> Path:
         return Path(env_prefix).expanduser().resolve()
     if str(root).startswith("/efs/"):
         return Path("/tmp/itpeval-toolchains").resolve()
-    return (root / "_toolchains").resolve()
+    installed = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share")) / "itpeval/toolchains"
+    # A versioned deployment can atomically select a qualified toolchain set.
+    current = installed / "current"
+    if current.is_dir():
+        return current.resolve()
+    if (root.parent / "pyproject.toml").is_file():
+        return (root / "_toolchains").resolve()
+    return installed
 
 
 def _check_script(prover: str) -> Path:
-    return _adapter_dir(prover) / "check.sh"
+    return adapter_root(prover) / "check.sh"
+
 
 def _install_script(prover: str) -> Path:
-    return _adapter_dir(prover) / "install.sh"
-
-
-HOL4_TARGET_MARKER = "(* ITPEVAL_AGENT_TARGET *)"
-
-
-def hol4_wrapper_text() -> str:
-    return "\n".join(
-        (
-            "open HolKernel Parse boolLib;",
-            "",
-            'val _ = new_theory "hello";',
-            "",
-            HOL4_TARGET_MARKER,
-            "",
-            "val _ = export_theory();",
-            "",
-        )
-    )
-
-
-def _adapter_dir(prover: str) -> Path:
-    """Return the native adapter directory for a prover."""
-    return _itpeval_root() / "provers" / prover
-
-
-def _write_text(path: Path, content: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(content if content.endswith("\n") else content + "\n", encoding="utf-8")
-
-
-def _uncomment_isabelle(code: str) -> str:
-    uncommented: list[str] = []
-    depth = 0
-    index = 0
-    while index < len(code):
-        if code.startswith("(*", index):
-            depth += 1
-            uncommented.extend("  ")
-            index += 2
-            continue
-        if depth and code.startswith("*)", index):
-            depth -= 1
-            uncommented.extend("  ")
-            index += 2
-            continue
-
-        char = code[index]
-        uncommented.append(char if depth == 0 or char == "\n" else " ")
-        index += 1
-
-    return "".join(uncommented)
-
-
-def _isabelle_theory_name(code: str) -> str:
-    match = re.search(
-        r'(?m)^\s*theory\s+"?([A-Za-z][A-Za-z0-9_\'.-]*)"?\b',
-        _uncomment_isabelle(code),
-    )
-    return match.group(1) if match else "Hello"
-
-
-def _isabelle_session_imports(code: str) -> list[str]:
-    header = re.search(
-        r"(?ms)^\s*theory\b.*?\bimports\b(?P<imports>.*?)^\s*begin\b",
-        _uncomment_isabelle(code),
-    )
-    if header is None:
-        return []
-
-    sessions = {
-        theory_name.split(".", maxsplit=1)[0]
-        for theory_name in re.findall(r'"([^"]+)"', header.group("imports"))
-        if "." in theory_name and theory_name.split(".", maxsplit=1)[0].startswith("HOL-")
-    }
-    return sorted(sessions)
-
-
-def _normalize_isabelle_placeholders(code: str) -> str:
-    return re.sub(r"(?m)^([ \t]*)by[ \t]+sorry[ \t]*$", r"\1sorry", code)
-
-
-def _agda_module_name(code: str) -> str:
-    uncommented = re.sub(r"(?m)--.*$", "", code)
-    match = re.search(
-        r"(?m)^\s*module\s+([^\s;]+)\s+where\b",
-        uncommented,
-    )
-    return match.group(1) if match else "Hello"
-
-
-def _agda_module_path(module_name: str) -> Path:
-    parts = module_name.split(".")
-    if any(
-        not part
-        or part in {".", ".."}
-        or "/" in part
-        or "\\" in part
-        for part in parts
-    ):
-        raise ValueError(f"unsafe Agda module name: {module_name!r}")
-    return Path(*parts[:-1], f"{parts[-1]}.agda")
-
-
-def _pvs_theory_name(code: str) -> str:
-    uncommented = re.sub(r"(?m)%.*$", "", code)
-    match = re.search(
-        r"(?im)^\s*([A-Za-z][A-Za-z0-9_?'-]*)"
-        r"(?:\s*\[[^\n]*\])?\s*:\s*THEORY\b",
-        uncommented,
-    )
-    return match.group(1) if match else "Hello"
-
-
-def _prepare_task_dir(
-    *,
-    prover: str,
-    code: str,
-    mode: str,
-    task_dir: Path,
-) -> Path | None:
-    """
-    Creates the minimal file layout expected by the selected prover adapter.
-
-    mode:
-      - raw: `code` is treated as the full file contents (except where a wrapper is mandatory).
-      - snippet: `code` is inserted into a small skeleton (only where a wrapper is mandatory).
-    """
-    mode = mode.lower().strip()
-    if mode not in {"raw", "snippet"}:
-        raise ValueError(f"unknown mode: {mode!r}")
-
-    if prover == "lean4":
-        _write_text(task_dir / "Hello.lean", code)
-        return None
-
-    if prover == "rocq":
-        _write_text(task_dir / "hello.v", code)
-        return None
-
-    if prover == "agda":
-        if mode == "snippet":
-            wrapped = "module Hello where\n\n" + code
-            relative = Path("Hello.agda")
-            _write_text(task_dir / relative, wrapped)
-        else:
-            relative = _agda_module_path(_agda_module_name(code))
-            _write_text(task_dir / relative, code)
-        return relative
-
-    if prover == "isabelle":
-        if mode == "snippet":
-            theory_name = "Hello"
-            session_name = "ITPEval_Hello"
-            thy = "theory Hello\n  imports Main\nbegin\n\n" + code + "\n\nend\n"
-        else:
-            theory_name = _isabelle_theory_name(code)
-            session_name = f"ITPEval_{theory_name}"
-            thy = _normalize_isabelle_placeholders(code)
-
-        root_lines = [f'session "{session_name}" = HOL +']
-        session_imports = _isabelle_session_imports(thy)
-        if session_imports:
-            root_lines.append("  sessions")
-            root_lines.extend(f'    "{session}"' for session in session_imports)
-        root_lines.extend(("  theories", f"    {theory_name}"))
-        _write_text(
-            task_dir / "ROOT",
-            "\n".join(root_lines),
-        )
-        _write_text(task_dir / f"{theory_name}.thy", thy)
-        return None
-
-    if prover == "hol-light":
-        _write_text(task_dir / "hello.ml", code)
-        return None
-
-    if prover == "hol4":
-        target = Path("AgentTarget.sml")
-        _write_text(task_dir / target, code)
-        _write_text(task_dir / "Holmakefile", "THEORIES = hello")
-        _write_text(task_dir / "helloScript.sml", hol4_wrapper_text())
-        return target
-
-    if prover in {"acl2", "acl2r"}:
-        _write_text(task_dir / "hello.lsp", code)
-        return Path("hello.lsp")
-
-    if prover == "metamath":
-        _write_text(task_dir / "hello.mm", code)
-        return Path("hello.mm")
-
-    if prover == "mizar":
-        if mode == "snippet":
-            wrapped = "environ\n\nbegin\n\n" + code + "\n"
-            _write_text(task_dir / "hello.miz", wrapped)
-        else:
-            _write_text(task_dir / "hello.miz", code)
-        return Path("hello.miz")
-
-    if prover == "pvs":
-        if mode == "snippet":
-            theory_name = "Hello"
-            wrapped = (
-                f"{theory_name}: THEORY\n"
-                "BEGIN\n\n"
-                f"{code}\n\n"
-                f"END {theory_name}\n"
-            )
-        else:
-            theory_name = _pvs_theory_name(code)
-            wrapped = code
-        target = Path(f"{theory_name}.pvs")
-        _write_text(task_dir / target, wrapped)
-        return target
-
-    raise NotImplementedError(f"unsupported prover: {prover}")
+    return adapter_root(prover) / "install.sh"
 
 
 def run_itp(
     *,
-    prover: str,
+    prover: str | None = None,
     code: str | None = None,
     code_path: Path | None = None,
     task_dir: Path | None = None,
@@ -272,7 +86,34 @@ def run_itp(
     prefix: Path | None = None,
     timeout_s: int | None = None,
     ensure_installed: bool = False,
-) -> RunResult:
+    install_timeout_s: int | None = None,
+    budgets: Budgets | None = None,
+    install_budgets: Budgets | None = None,
+    cancel=None,
+    task: TaskSpec | None = None,
+    candidate: str | None = None,
+    prepared: PreparedProject | None = None,
+    retain_dir: Path | None = None,
+) -> RunResult | VerificationEvidence:
+    """Run a locked task or a historical file, snippet or staged directory.
+
+    The task form returns the verifier's full evidence. Its lock and TaskSpec
+    supply the prover, operation and budgets. Legacy calls keep their original
+    RunResult, staging conventions and timeout behavior.
+    """
+    if task is not None:
+        if prepared is None or prover not in (None, task.prover):
+            raise ValueError("a typed task requires its matching prover and prepared project")
+        if (any(v is not None for v in (code, code_path, task_dir, task_file, prefix, timeout_s,
+                                        install_timeout_s, budgets, install_budgets))
+                or mode != "raw" or ensure_installed):
+            raise ValueError("a typed task supplies its own artifact, toolchain and budgets")
+        from itpeval.verification.service import verify
+        return verify(task, candidate, prepared=prepared, cancel=cancel, retain_dir=retain_dir)
+    if candidate is not None or prepared is not None or retain_dir is not None:
+        raise ValueError("candidate, prepared and retain_dir require a typed task")
+    if prover is None:
+        raise TypeError("run_itp requires a prover or a typed task")
     if task_file is not None and task_dir is None:
         raise ValueError("--task-file requires --task-dir")
 
@@ -305,7 +146,9 @@ def run_itp(
             task_dir=workdir,
         )
 
-    env = os.environ.copy()
+    env = task_environment()
+    env["ITPEVAL_OPERATION"] = "legacy"
+    env["ITPEVAL_PYTHON"] = sys.executable
     env["ITPEVAL_PREFIX"] = str(prefix)
     env["ITPEVAL_TASK_DIR"] = str(workdir)
     selected_task_file = task_file or prepared_task_file
@@ -332,16 +175,15 @@ def run_itp(
         install_env.pop("ITPEVAL_TASK_DIR", None)
         install_env.pop("ITPEVAL_TASK_FILE", None)
         install_log = workdir / ".itpeval.install.log"
-        with install_log.open("w", encoding="utf-8") as handle:
-            completed_install = subprocess.run(
-                ["/bin/bash", str(install_script)],
-                env=install_env,
-                cwd=str(_itpeval_root()),
-                stdout=handle,
-                stderr=subprocess.STDOUT,
-                check=False,
-                text=True,
-            )
+        install_limits = install_budgets or Budgets()
+        if install_timeout_s is None and install_budgets is not None:
+            install_timeout_s = install_budgets.timeout_s
+        completed_install = run_process(["/bin/bash", str(install_script)], env=install_env,
+                                        cwd=_itpeval_root(), timeout_s=install_timeout_s,
+                                        merge_stderr=True, cancel=cancel, cpu_seconds=install_limits.cpu_seconds,
+                                        memory_bytes=install_limits.memory_bytes,
+                                        max_log_bytes=install_limits.max_log_bytes)
+        install_log.write_text(completed_install.stdout, encoding="utf-8")
         if completed_install.returncode != 0:
             try:
                 tail = install_log.read_text(encoding="utf-8", errors="replace").splitlines()[-200:]
@@ -359,19 +201,17 @@ def run_itp(
                 ).rstrip()
             )
 
-    started = time.time()
-    completed = subprocess.run(
-        ["/bin/bash", str(script)],
-        env=env,
-        cwd=str(workdir),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        timeout=timeout_s,
-        check=False,
-        text=True,
-    )
-    duration_ms = int((time.time() - started) * 1000)
-    ok = completed.returncode == 0
+    command = ["/bin/bash", str(script)]
+    limits = budgets or Budgets()
+    if timeout_s is None and budgets is not None:
+        timeout_s = budgets.timeout_s
+    completed = execute_checker(script, workdir, env, timeout_s=timeout_s, cancel=cancel,
+                                memory_bytes=limits.memory_bytes, cpu_seconds=limits.cpu_seconds,
+                                max_log_bytes=limits.max_log_bytes)
+    if completed.outcome == "timeout":
+        raise subprocess.TimeoutExpired(command, timeout_s, completed.stdout, completed.stderr)
+    duration_ms = completed.duration_ms
+    ok = completed.outcome == "exited" and completed.returncode == 0
     return RunResult(
         prover=prover,
         ok=ok,
@@ -380,7 +220,9 @@ def run_itp(
         command=["/bin/bash", str(script)],
         workdir=workdir,
         stdout=completed.stdout,
-        stderr=completed.stderr,
+        stderr=completed.stderr, execution_outcome=completed.outcome,
+        peak_process_rss_bytes=completed.peak_process_rss_bytes, cpu_time_s=completed.cpu_time_s,
+        logs_truncated=completed.truncated,
     )
 
 

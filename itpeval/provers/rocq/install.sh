@@ -11,6 +11,19 @@ ROCQ_ROOT="$(itpeval_prefix)/${ROCQ_ID}"
 BIN_DIR="${ROCQ_ROOT}/bin"
 ensure_dir "${BIN_DIR}"
 
+if [[ -n "${ITPEVAL_ROCQ_BIN_DIR:-}" ]]; then
+  external_bin="$(cd "${ITPEVAL_ROCQ_BIN_DIR}" && pwd -P)"
+  [[ -x "${external_bin}/rocq" ]] || fail "missing Rocq compiler in ${external_bin}"
+  run "${external_bin}/rocq" --version
+  for name in rocq coqc coqidetop; do
+    if [[ -x "${external_bin}/${name}" ]]; then
+      ln -sf "${external_bin}/${name}" "${BIN_DIR}/${name}"
+      link_into_prefix_bin "${BIN_DIR}/${name}" "${name}"
+    fi
+  done
+  exit 0
+fi
+
 opam_cmd="opam"
 if [[ -x "${BIN_DIR}/opam" ]]; then
   opam_cmd="${BIN_DIR}/opam"
@@ -92,13 +105,19 @@ if command -v rpm >/dev/null 2>&1; then
   fi
 fi
 
-run "${opam_cmd}" repo add --root "${OPAMROOT}" --switch "${SWITCH_NAME}" -y rocq-released https://rocq-prover.org/opam/released || true
-if ! "${opam_cmd}" pin add --no-action --root "${OPAMROOT}" --switch "${SWITCH_NAME}" -y rocq-prover "${ROCQ_VERSION}"; then
-  log "Available rocq-prover versions:"
-  "${opam_cmd}" show --root "${OPAMROOT}" --switch "${SWITCH_NAME}" rocq-prover --all-versions || true
-  fail "rocq-prover has no known version ${ROCQ_VERSION}; set ROCQ_VERSION to one of the versions above"
+if [[ -n "${ITPEVAL_OPAM_PACKAGES:-}" ]]; then
+  # A qualified release locks core, runtime and Stdlib independently.
+  read -r -a packages <<< "${ITPEVAL_OPAM_PACKAGES}"
+  run "${opam_cmd}" install --root "${OPAMROOT}" --switch "${SWITCH_NAME}" -y "${packages[@]}"
+else
+  run "${opam_cmd}" repo add --root "${OPAMROOT}" --switch "${SWITCH_NAME}" -y rocq-released https://rocq-prover.org/opam/released || true
+  if ! "${opam_cmd}" pin add --no-action --root "${OPAMROOT}" --switch "${SWITCH_NAME}" -y rocq-prover "${ROCQ_VERSION}"; then
+    log "Available rocq-prover versions:"
+    "${opam_cmd}" show --root "${OPAMROOT}" --switch "${SWITCH_NAME}" rocq-prover --all-versions || true
+    fail "rocq-prover has no known version ${ROCQ_VERSION}; set ROCQ_VERSION to one of the versions above"
+  fi
+  run "${opam_cmd}" install --root "${OPAMROOT}" --switch "${SWITCH_NAME}" -y rocq-prover
 fi
-run "${opam_cmd}" install --root "${OPAMROOT}" --switch "${SWITCH_NAME}" -y rocq-prover
 
 run "${opam_cmd}" exec --root "${OPAMROOT}" --switch "${SWITCH_NAME}" -- rocq --version
 rocq_path="$("${opam_cmd}" exec --root "${OPAMROOT}" --switch "${SWITCH_NAME}" -- sh -c 'command -v rocq')"
@@ -122,6 +141,15 @@ else
 set -euo pipefail
 exec "${opam_cmd}" exec --root "${OPAMROOT}" --switch "${SWITCH_NAME}" -- "${rocq_path}" compile "\$@"
 EOF
+fi
+
+# The extractor queries the IDE protocol for every category of pending goal.
+# Keep the executable paired with the rocq compiler in this exact switch.
+ide_path="$(dirname "${rocq_path}")/coqidetop"
+if [[ -x "${ide_path}" ]]; then
+  ln -sf "${ide_path}" "${BIN_DIR}/coqidetop"
+elif [[ -n "${ITPEVAL_OPAM_PACKAGES:-}" ]]; then
+  fail "the pinned RocqIDE server is missing from ${SWITCH_NAME}"
 fi
 
 run chmod +x "${BIN_DIR}/rocq" "${BIN_DIR}/coqc"

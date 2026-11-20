@@ -4,10 +4,8 @@ import re
 from dataclasses import dataclass
 
 from eval.pipeline.config import STATEMENT_FENCE_ALIASES
-from itpeval.validation import (
-    validate_proof_no_escape,
-    validate_statement_only,
-)
+from eval.pipeline.translation.validation import validate_statement_only
+from itpeval.validation import validate_proof_no_escape
 
 
 class ScaffoldError(ValueError):
