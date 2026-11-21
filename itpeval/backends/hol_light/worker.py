@@ -222,7 +222,7 @@ class ForkedHOLLight:
         metrics = self._resources.enter_context(TemporaryFile())
         exe = self.prepared.prefix / "hol-light/bin/hollight-run"
         self._guardian = subprocess.Popen(
-            [sys.executable, str(_GUARDIAN), str(metrics.fileno()), "--metrics-v2", str(exe), str(loader)],
+            [sys.executable, "-S", str(_GUARDIAN), str(metrics.fileno()), str(exe), str(loader)],
             cwd=work, env={**_environment(self.prepared), "ITPEVAL_HOL_WORKER_SOCKET": address},
             stdin=subprocess.DEVNULL, stdout=logs, stderr=subprocess.STDOUT,
             pass_fds=(metrics.fileno(),), start_new_session=True,

@@ -20,6 +20,29 @@ For repeated checks with shared libraries, prepare the project and use an `Artif
 
 The returned `PreparedProject` contains an environment ID and a `lock_path`. Use `load_project(lock_path)` to reopen the environment on the same installation. Loading checks that its inputs still match the lock. [Environment manifest guide](../../guides/environment-manifest.md)
 
+## Check a file with external imports
+
+Suppose `client/Client.v` imports `From MyLib Require Import Base.` and `compiled/MyLib/Base.vo` was compiled as `MyLib.Base`. Bind its directory once and use the resulting lock for checks. For Agda, use `agda` and a `.agda` entrypoint, and point each library binding at its source include root, such as `agda-stdlib/src`. [Rocq library setup](../../provers/rocq.md#build-and-check-a-library) · [Agda library setup](../../provers/agda.md#build-and-check-a-library)
+
+```python
+from pathlib import Path
+
+from itpeval.cli.lib import default_prefix
+from itpeval.core.types import Artifact, TaskSpec
+from itpeval.environments import prepare_project
+from itpeval.verification import verify
+
+# Lock the client and the compiled Rocq modules under their logical name.
+project = prepare_project("rocq", Path("client"), prefix=default_prefix(),
+                          cache=Path("build/itpeval-cache"),
+                          libraries={"MyLib": Path("compiled/MyLib")})
+entrypoint = "Client.v"
+artifact = Artifact.from_files(entrypoint, {entrypoint: (project.project / entrypoint).read_bytes()})
+task = TaskSpec("rocq", project.environment_id, "check_artifact", artifact)
+result = verify(task, prepared=project)
+print(result.checker_outcome)
+```
+
 ## Check a candidate
 
 `get_backend(prover).build_task(project)` reads the completion manifest. Use `verify(task, candidate, prepared=project)` for a fragment or `verify_document(task, document, prepared=project)` for a full file or multi-file `Artifact`. The verifier checks that source outside the editable region matches the lock.

@@ -69,7 +69,8 @@ def run_process(command: Sequence[str], *, cwd: Path | None = None,
     guarded = sys.platform.startswith("linux") and Path("/proc/self/task").exists()
     metrics = tempfile.TemporaryFile() if guarded else None
     if guarded:
-        argv = [sys.executable, str(Path(__file__).with_name("_linux_job.py")), str(metrics.fileno()), "--metrics-v2", *argv]
+        # The guardian only uses the standard library. Skip Python site initialization on each launch.
+        argv = [sys.executable, "-S", str(Path(__file__).with_name("_linux_job.py")), str(metrics.fileno()), *argv]
     input_context = stdin_path.open("rb") if stdin_path is not None else nullcontext(subprocess.DEVNULL)
     with input_context as task_input:
         proc = subprocess.Popen(argv, cwd=cwd, env=env, start_new_session=True,
@@ -123,13 +124,10 @@ def run_process(command: Sequence[str], *, cwd: Path | None = None,
             payload = metrics.read()
             if payload:
                 info = json.loads(payload)
-                if isinstance(info, list):
-                    peak, cpu = info
-                else:
-                    peak, cpu = info["peak_rss_bytes"], info["cpu_seconds"]
-                    native_signal = info["signal"]
-                    if info["launch_error"] and outcome == "exited":
-                        outcome = "unavailable_environment"
+                peak, cpu = info["peak_rss_bytes"], info["cpu_seconds"]
+                native_signal = info["signal"]
+                if info["launch_error"] and outcome == "exited":
+                    outcome = "unavailable_environment"
     if outcome == "exited" and native_signal is not None:
         outcome = "resource_exhausted" if native_signal in (signal.SIGXCPU, signal.SIGXFSZ) else "crash"
     return ProcessResult(proc.returncode, outcome, streams["stdout"].text(), streams["stderr"].text(),

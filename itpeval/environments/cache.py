@@ -61,6 +61,7 @@ def _disk_key(identity):
 class _HashIndex:
     def __init__(self, cache):
         self.cache = cache
+        self.cache_key = os.fspath(cache)
         self.db = None
         self.pending = {}
 
@@ -83,7 +84,7 @@ class _HashIndex:
         return self.db
 
     def lookup(self, identity):
-        key = (self.cache, identity)
+        key = (self.cache_key, identity)
         value = _memory_hashes.get(key)
         if value is None:
             value = self.pending.get(identity)
@@ -96,7 +97,7 @@ class _HashIndex:
 
     def store(self, identity, value):
         self.pending[identity] = value
-        _remember_hash((self.cache, identity), value)
+        _remember_hash((self.cache_key, identity), value)
 
     def finish(self):
         if self.pending:
@@ -123,7 +124,7 @@ def hash_index(cache: Path):
 def _file_record(path: Path, info, db, stable_before: int):
     identity = (info.st_dev, info.st_ino, info.st_ctime_ns, info.st_mtime_ns,
                 info.st_size, info.st_mode)
-    stable = max(info.st_ctime_ns, info.st_mtime_ns) < stable_before
+    stable = info.st_ctime_ns < stable_before and info.st_mtime_ns < stable_before
     if stable:
         value = db.lookup(identity)
         if value is not None:
@@ -156,10 +157,10 @@ def inventory(root: Path, db, *, native: bool = False) -> dict:
                 raise ValueError(f"source symlink requires an explicit dependency: {path}")
             records[relative] = ["link", os.readlink(path)]
             try:
-                target = Path(path).resolve(strict=True)
+                target = os.path.realpath(path, strict=True)
             except FileNotFoundError:
                 return
-            visit(target, relative + "@", parents, target.lstat())
+            visit(target, relative + "@", parents, os.lstat(target))
             return
         if stat.S_ISREG(info.st_mode):
             records[relative] = ["file", bool(info.st_mode & 0o111), _file_record(path, info, db, stable_before)]
@@ -169,8 +170,9 @@ def inventory(root: Path, db, *, native: bool = False) -> dict:
             if key in parents:
                 return
             ancestors = parents | {key}
+            # The canonical digest sorts record keys, so walks can use directory order.
             with os.scandir(path) as children:
-                entries = sorted(children, key=lambda child: child.name)
+                entries = list(children)
             for child in entries:
                 if child.name != ".git":
                     visit(child.path, f"{relative}/{child.name}", ancestors,

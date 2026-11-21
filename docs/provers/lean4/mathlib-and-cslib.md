@@ -1,5 +1,41 @@
 # Mathlib and CSLib
 
+## Set up Mathlib
+
+Lean needs compiled modules (`.olean` files) for the Mathlib imports in your proof. You can download Mathlib's precompiled modules for your revision, use an existing build, or compile them with Lake. Use the Lean version pinned in `lean-toolchain` for both the build and ITPEval's checker. [Mathlib build instructions](https://github.com/leanprover-community/mathlib4#contributing)
+
+### Download the compiled modules
+
+Run this in your Mathlib checkout or in your Lake project if it already declares Mathlib as a dependency. The download fills the local build directories. Subsequent proof checks reuse those files. [Mathlib cache guide](https://github.com/leanprover-community/mathlib4/tree/master/Cache#quick-start)
+
+```bash
+# Download the compiled modules for the project's pinned Mathlib revision.
+lake exe cache get
+```
+
+### Build all of Mathlib from source
+
+Run this from the Mathlib checkout. Lake builds the `Mathlib` target and its dependencies. To recompile all modules for a clean build, start with a fresh checkout and run this step before fetching the cache.
+
+```bash
+# Compile the full Mathlib target and its dependencies.
+lake build Mathlib
+```
+
+### Check a file with ITPEval
+
+Once the imports are ready, run this from the Lake project that supplies them. Use an ITPEval prefix with the project's Lean version. If you need a separate prefix, see how to [link the matching compiler](#check-the-file-and-read-the-result) below.
+
+```bash
+# Give the checker Lake's compiled module paths, including indirect imports.
+ITPEVAL_LEAN4_LEAN_PATH="$(lake env printenv LEAN_PATH)" \
+  itpeval eval --prover lean4 --file MyProof.lean
+```
+
+For repeated checks or extraction, pass those compiled module directories to `prepare_project(libraries=...)` and reuse the resulting lock. ITPEval records the dependencies and checks your submitted file against them. [Prepare a project with imports](../../guides/environment-manifest.md) · [Python example](../../../examples/lean_libraries/run.py)
+
+## Example using both libraries
+
 This example uses Mathlib’s definition of a formal language and a theorem from CSLib. A language is a set of words. Over an empty alphabet, the only possible word is the empty word $\varepsilon$, so any language $L$ is one of these two sets.
 
 $$

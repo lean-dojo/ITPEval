@@ -61,7 +61,16 @@ The Mizar Mathematical Library (MML) accompanies the verifier. An article select
 - [REAL_1](https://mizar.uwb.edu.pl/version/current/html/real_1.html) — an MML article about real numbers.
 - [GROUP_1](https://mizar.uwb.edu.pl/version/current/html/group_1.html) — an MML article on groups.
 
-Mizar’s Accommodator resolves an article’s vocabulary, notation and imports against the installed MML. To use a different installation, pass the root of the installed library as `mizfiles`.
+### Build and check a library
+
+Use the database supplied by the matching Mizar Mathematical Library release. Mizar's Accommodator uses that database to resolve the vocabulary, notation and theorems in your article's `environ` section. To recreate the MML database from source, follow its native accommodation, verification and export workflow in the article order recorded in the release's `mml.lar`. [Mizar article checking](https://mizar.uwb.edu.pl/project/mizman.pdf) · [MML organization and processing order](https://mizar.uwb.edu.pl/people/romat/doi-10-1007-s10817-017-9440-6.pdf)
+
+```bash
+# Check one article against the MML supplied by the installed toolchain.
+itpeval eval --prover mizar --task-dir ./my-article --task-file example.miz
+```
+
+For a separately installed database, bind its root under the `mizfiles` role in a prepared project. ITPEval reports the result for the article you selected.
 
 ### Extract a library
 

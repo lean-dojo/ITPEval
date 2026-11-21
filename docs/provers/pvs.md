@@ -63,7 +63,19 @@ PVS loads its prelude automatically. Additional distributed theories and the NAS
 - [PVS libraries](https://github.com/SRI-CSL/PVS/tree/master/lib) — theories distributed with PVS, including finite sets.
 - [NASA PVS Library](https://github.com/nasa/pvslib) — research libraries for areas including analysis and geometry.
 
-Prepare a source context with the entry `.pvs` file and the theories it imports. Leave generated `.pvscontext` and `pvsbin` files out of the project. Some external libraries, including NASA’s, have additional context setup.
+### Build and check a library
+
+Use the prelude supplied by PVS. Set up external libraries such as NASALib using their matching PVS release and library search paths. To replay proofs across a collection, run `provethem` with the project's library list. For NASALib, use its `prove-all` script. [NASALib installation and batch scripts](https://github.com/nasa/pvslib#scripts)
+
+```bash
+# Run from the directory containing the libraries listed in libraries.txt.
+provethem libraries.txt
+
+# Check a selected theory with PVS's batch proof driver through ITPEval.
+itpeval eval --prover pvs --task-dir ./my-project --task-file top.pvs
+```
+
+Keep the source context, imported theories and proof files together. The adapter creates a fresh working context and calls `proveit` on the selected file. Check its summary for proof and type-correctness condition (TCC) coverage.
 
 ### Extract a library
 

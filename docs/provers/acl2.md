@@ -60,7 +60,16 @@ The ACL2 Community Books include the standard library under std/ and development
 - [Standard Library](https://github.com/acl2/acl2/tree/master/books/std) — lists, strings and other common data types.
 - [Arithmetic-5](https://github.com/acl2/acl2/tree/master/books/arithmetic-5) — arithmetic rewrite rules and proof support.
 
-Use a certified book compatible with the installed ACL2 world. A system book uses `:dir :system`. The extractor uses the project and the installed books tree and rejects extra named library paths.
+### Build and check a library
+
+Reuse certified Community Books from the matching ACL2 installation. To build a development, certify its books with the project's build targets or ACL2's `cert.pl`, which follows book dependencies. In the Community Books tree, `make basic` certifies the basic set and `make all` runs the full certification target. Use the matching ACL2 executable for certification. [ACL2 book tools](https://github.com/acl2/acl2/tree/master/books/build) · [Community Books build targets](https://github.com/acl2/acl2/blob/master/books/GNUmakefile)
+
+```bash
+# Import the certified books in check.lsp and have it admit a client theorem.
+itpeval eval --prover acl2 --task-dir ./my-project --task-file check.lsp
+```
+
+Use `:dir :system` for installed system books. Keep local books and their certificates at the paths the script imports. The extractor uses the prepared project and the installed books tree.
 
 ### Extract a library
 

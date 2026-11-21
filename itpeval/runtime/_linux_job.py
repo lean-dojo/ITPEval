@@ -6,7 +6,6 @@ import resource
 import signal
 import subprocess
 import sys
-from pathlib import Path
 
 
 def main():
@@ -22,11 +21,10 @@ def main():
 
     signal.signal(signal.SIGTERM, stop_job)
     metrics_fd = int(sys.argv[1])
-    version_two = sys.argv[2] == "--metrics-v2"
-    argv = sys.argv[3:] if version_two else sys.argv[2:]
+    argv = sys.argv[2:]
     native_signal = None
     launch_error = None
-    children = Path(f"/proc/self/task/{os.getpid()}/children")
+    children = f"/proc/self/task/{os.getpid()}/children"
     try:
         try:
             proc = subprocess.Popen(argv, start_new_session=True)
@@ -48,7 +46,8 @@ def main():
         # Direct children killed in each pass may themselves have children. After
         # waitpid these reparent to the guardian, even if they called setsid().
         while True:
-            pids = children.read_text().split()
+            with open(children, encoding="ascii") as stream:
+                pids = stream.read().split()
             if not pids:
                 break
             for pid in pids:
@@ -62,8 +61,8 @@ def main():
                 break
         usage = resource.getrusage(resource.RUSAGE_CHILDREN)
         peak, cpu = usage.ru_maxrss * 1024, usage.ru_utime + usage.ru_stime
-        summary = ({"peak_rss_bytes": peak, "cpu_seconds": cpu, "signal": native_signal,
-                    "launch_error": launch_error} if version_two else [peak, cpu])
+        summary = {"peak_rss_bytes": peak, "cpu_seconds": cpu, "signal": native_signal,
+                   "launch_error": launch_error}
         os.write(metrics_fd, json.dumps(summary).encode())
         os.close(metrics_fd)
 

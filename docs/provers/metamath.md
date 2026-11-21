@@ -63,7 +63,14 @@ A Metamath database supplies its axioms and syntax. set.mm develops classical ma
 - [set.mm](https://us.metamath.org/mpeuni/mmset.html) — classical logic and ZFC set theory.
 - [iset.mm](https://us.metamath.org/ileuni/mmil.html) — intuitionistic logic and constructive set theory.
 
-Keep included files at the paths named by `$[ ... $]`. Select the file that brings those includes together as the entrypoint. The extractor resolves dependencies from the database and its included files.
+### Build and check a library
+
+Use the database source as the input. Keep included files at the paths named by `$[ ... $]` and select the file that brings them together. ITPEval invokes Metamath's `verify proof *` to check every proof loaded from that entrypoint. [Metamath manual](https://us.metamath.org/downloads/metamath.pdf) · [Full `set.mm` measurements](../runtime/measurements/libraries.md#comparing-verifiers-on-the-same-library)
+
+```bash
+# Verify all proofs loaded from set.mm, including any included databases.
+itpeval eval --prover metamath --task-dir ./set-db --task-file set.mm
+```
 
 ### Extract a library
 

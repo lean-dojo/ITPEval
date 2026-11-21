@@ -64,7 +64,19 @@ HOL4 ships compiled theories and their source scripts. Further HOL4 projects, in
 - [HOL4 examples](https://github.com/HOL-Theorem-Prover/HOL/tree/develop/examples) — additional formal developments and theory scripts.
 - [CakeML](https://github.com/CakeML/cakeml) — a verified implementation of ML built using HOL4.
 
-The extractor expects a top-level `nameScript.sml` and runs Holmake before reading the theory database. Supply a clean source tree and its Holmake configuration. A development such as CakeML has its own build instructions and prerequisite theories.
+### Build and check a library
+
+Reuse the core theories supplied by the matching HOL4 installation. For your own theory directory, build its default targets with `Holmake`. For a larger development such as CakeML, use the project's build instructions to select its directories, targets and prerequisite theories. [HOL4 build tools](https://hol-theorem-prover.org/docs/trindemossen-2/Description/misc)
+
+```bash
+# Build the theory directory with HOL4's Holmake on PATH.
+(cd ./my-library && Holmake)
+
+# Have ITPEval run Holmake on a staged copy and return the verdict.
+itpeval eval --prover hol4 --task-dir ./my-library
+```
+
+Keep the `Holmakefile` and its required local sources together. The extractor runs Holmake for the prepared project's top-level `nameScript.sml` before reading the theory database.
 
 ### Extract a library
 

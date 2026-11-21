@@ -61,7 +61,17 @@ Agda ships primitive and builtin modules. The Agda standard library and the Cubi
 - [Standard Library](https://github.com/agda/agda-stdlib) — data types, algebra and proofs.
 - [Cubical Agda library](https://github.com/agda/cubical) — cubical type theory and homotopy type theory.
 
-Pass source directories that match the Agda module hierarchy as named libraries. The extractor uses explicit `-i` roots and disables the user’s library registry. Match Agda’s version and the library’s language mode, especially for cubical projects.
+### Build and check a library
+
+Install the source release that matches your Agda version. Agda can typecheck imported modules as it loads them, so you can start with the library's sources. To typecheck the standard library as a whole, use its generated umbrella module from the standard-library checkout. [Agda library management](https://agda.readthedocs.io/en/stable/tools/package-system.html) · [Standard library test workflow](https://github.com/agda/agda-stdlib/blob/v2.3/.github/workflows/ci-ubuntu.yml#L153-L159)
+
+```bash
+# Generate the umbrella module, including deprecated modules, using Cabal.
+cabal run GenerateEverything -- --include-deprecated
+agda -WnoUserWarning Everything.agda
+```
+
+For an ITPEval client importing modules such as `Data.Nat`, pass the standard library's `src` directory as a named library. Bind all required source roots explicitly and preserve any language options in the files. The checker and extractor use these roots with `-i`. [Check a client with external imports](../reference/python/checking.md#check-a-file-with-external-imports)
 
 ### Extract a library
 

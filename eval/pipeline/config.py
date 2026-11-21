@@ -43,45 +43,6 @@ PROVER_DISPLAY = {
     "pvs":       "PVS",
 }
 
-PROVER_EXTENSIONS = {
-    "lean4": ".lean",
-    "rocq": ".v",
-    "isabelle": ".thy",
-    "hol-light": ".ml",
-    "acl2": ".lsp",
-    "agda": ".agda",
-    "hol4": ".sml",
-    "metamath": ".mm",
-    "mizar": ".miz",
-    "pvs": ".pvs",
-}
-
-SOURCE_FILENAMES = {
-    "lean4": "source.lean",
-    "rocq": "source.v",
-    "isabelle": "Source.thy",
-    "hol-light": "source.ml",
-    "acl2": "source.lsp",
-    "agda": "Source.agda",
-    "hol4": "source.sml",
-    "metamath": "source.mm",
-    "mizar": "source.miz",
-    "pvs": "source.pvs",
-}
-
-TARGET_FILENAMES = {
-    "lean4": "Hello.lean",
-    "rocq": "hello.v",
-    "isabelle": "AgentTarget.thy",
-    "hol-light": "hello.ml",
-    "acl2": "AgentTarget.lsp",
-    "agda": "AgentTarget.agda",
-    "hol4": "AgentTarget.sml",
-    "metamath": "AgentTarget.mm",
-    "mizar": "AgentTarget.miz",
-    "pvs": "AgentTarget.pvs",
-}
-
 STATEMENT_FENCE_ALIASES = {
     "lean4": {"lean", "lean4"},
     "rocq": {"coq", "rocq"},
@@ -144,34 +105,6 @@ STATEMENT_TARGET_INSTRUCTIONS = {
     "pvs": (
         "Encode each proposition as a Boolean definition, not a LEMMA, "
         "THEOREM, AXIOM, or POSTULATE."
-    ),
-}
-
-PROOF_TARGET_INSTRUCTIONS = {
-    "lean4": "Return complete Lean declarations with checked proof terms.",
-    "rocq": "Return complete Rocq declarations ending in checked `Qed` proofs.",
-    "isabelle": "Return a complete Isabelle theory with checked proofs.",
-    "hol-light": "Use `prove` (or an equivalent checked theorem constructor).",
-    "acl2": (
-        "Use checked `defthm` events; do not use `skip-proofs`, `defaxiom`, "
-        "or constrained-event escape hatches."
-    ),
-    "agda": (
-        "Return a complete module with inhabitants for the translated "
-        "propositions; do not use `postulate` or holes."
-    ),
-    "hol4": (
-        "Use checked HOL4 proof commands, but do not call `new_theory` or "
-        "`export_theory`; the verifier owns the theory wrapper."
-    ),
-    "metamath": "Encode translated theorems as `$p` assertions with proofs.",
-    "mizar": (
-        "Return a complete checked article with real proof blocks; do not use "
-        "parser proof-suppression pragmas."
-    ),
-    "pvs": (
-        "Use LEMMA/THEOREM declarations with inline ProofLite `%|-` proof "
-        "scripts so `proveit` can check the file."
     ),
 }
 

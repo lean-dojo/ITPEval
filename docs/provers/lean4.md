@@ -62,7 +62,9 @@ Lean ships the initialization library and the standard library with its toolchai
 - [CSLib](https://www.cslib.io/) — formal computer science, including languages and automata.
 - [Batteries](https://github.com/leanprover-community/batteries) — data structures and utilities for Lean programs.
 
-Build the imports with the same Lean version as the checker. Pass each dependency’s compiled module directory to `prepare_project(libraries=...)`, including transitive dependencies. The [Mathlib and CSLib example](lean4/mathlib-and-cslib.md) checks a theorem and extracts its declaration from a client module.
+### Build and check a library
+
+Run `lake build` from your Lean project to build its default targets. For Mathlib, use an existing build, fetch compatible `.olean` files with `lake exe cache get`, or run `lake build Mathlib` from the Mathlib checkout. Use the same Lean version for the compiled imports and the ITPEval checker. [Set up Mathlib and check a file](lean4/mathlib-and-cslib.md#set-up-mathlib)
 
 ### Extract a library
 

@@ -62,7 +62,16 @@ HOL Light loads its foundational theories at startup. Its source tree includes t
 - [Multivariate](https://github.com/jrh13/hol-light/tree/master/Multivariate) — vectors, topology and multivariate analysis.
 - [Formalizing 100 Theorems](https://github.com/jrh13/hol-light/tree/master/100) — standalone mathematical developments.
 
-The native OCaml process loads the entry `.ml` file. Stage local dependencies where `needs` can find them. The extractor follows source files inside the project. Loading an installed development and extracting its own source declarations are different operations.
+### Build and check a library
+
+HOL Light loads developments as OCaml source. Its launcher loads the core first. To check a development, run its load script or create one that uses `needs` to load its constituent files. For example, `Multivariate/make.ml` is the entrypoint for the bundled Multivariate development. Reuse the installed HOL Light tree and keep local dependencies where `needs` can find them. [HOL Light setup](https://github.com/jrh13/hol-light/blob/master/README) · [Multivariate load script](https://github.com/jrh13/hol-light/blob/master/Multivariate/make.ml)
+
+```bash
+# Check by loading the installed Multivariate development and its dependencies.
+itpeval eval --prover hol-light --code 'needs "Multivariate/make.ml";;'
+```
+
+Use `--file` for your own load script. HOL Light loads the core and the selected developments on each fresh run. For large developments, increase `ITPEVAL_HOLLIGHT_CHECK_TIMEOUT` from its default of 300 seconds. To extract declarations from a library itself, include its source files in the prepared project.
 
 ### Extract a library
 

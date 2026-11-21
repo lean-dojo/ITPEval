@@ -62,7 +62,17 @@ Rocq provides its prelude through Corelib. Stdlib supplies the standard library.
 - [Mathematical Components](https://math-comp.github.io/) — algebra, finite groups and analysis.
 - [Iris](https://iris-project.org/) — higher-order concurrent separation logic.
 
-Compile dependencies with the project’s Rocq version. The extractor maps each named library to a logical root with `-Q`, and maps the project itself to `ITPProject`. Projects using extra plugins also need those plugins installed in the Rocq environment.
+### Build and check a library
+
+Reuse installed `.vo` files built with your project's Rocq version. Install Stdlib and any other packaged dependencies in the same Rocq environment. If a source checkout provides `_CoqProject`, build the files it lists with these commands. For projects with their own build instructions, follow those to include any required plugins. [Rocq project build guide](https://rocq-prover.org/doc/v9.2/refman/practical-tools/utilities.html)
+
+```bash
+# Run from the library root with the matching Rocq on PATH.
+rocq makefile -f _CoqProject -o CoqMakefile
+make -f CoqMakefile
+```
+
+For a client that imports `MyLib`, bind the compiled module directory as `libraries={"MyLib": compiled_root}`. ITPEval passes that path and logical name to Rocq with `-Q`. The extractor maps the client project itself to `ITPProject`. [Check a client with external imports](../reference/python/checking.md#check-a-file-with-external-imports)
 
 ### Extract a library
 

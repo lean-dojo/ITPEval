@@ -1,6 +1,6 @@
 # Provers and libraries
 
-Choose a prover to see how its logic works, read a proof in the native language, and load a project. Each guide also has a short proof you can edit yourself. [VS Code exercises](../start/proof-completion.md#choose-your-prover)
+Choose a prover to read a native proof and load your own project. Each library section explains what to build or install, what can be reused, and how to check a file, session, or database with ITPEval. [VS Code exercises](../start/proof-completion.md#choose-your-prover)
 
 | Prover | Worked proof | Logical foundation | Library examples |
 |---|---|---|---|

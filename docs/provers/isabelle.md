@@ -61,7 +61,19 @@ Isabelle/HOL projects usually build on the HOL session. The distribution include
 - [HOL-Analysis](https://isabelle.in.tum.de/library/HOL/HOL-Analysis/) — real and complex analysis.
 - [Archive of Formal Proofs](https://www.isa-afp.org/entries/Graph_Theory.html) — contributed sessions such as Graph Theory.
 
-The extractor starts the installed `HOL` heap and loads the entry theory. Put local imported theories in the project. An AFP entry may require another session, a prebuilt heap or a specific Isabelle release. Check its ROOT file before choosing an entrypoint.
+### Build and check a library
+
+The installed HOL heap supplies prebuilt `HOL` to dependent sessions. Use `-D` to build the sessions registered by a directory's `ROOT` or `ROOTS` files. Keep each `ROOT` file and its imports together. For an AFP development, use the matching Isabelle release and register any required session directories as described by AFP. [Isabelle session build manual](https://isabelle.in.tum.de/library/Doc/System/Sessions.html) · [Using AFP](https://devel.isa-afp.org/help/)
+
+```bash
+# Build the sessions registered for this directory.
+isabelle build -o quick_and_dirty=false -D ./my-library
+
+# Check a project whose ROOT starts with the session you want to check.
+itpeval eval --prover isabelle --task-dir ./my-library
+```
+
+The ITPEval command selects the first session in the top-level `ROOT` and uses a private build home. Keep dependencies available to that session. This file-check command can enable `quick_and_dirty` when it sees `sorry`. For a proof-completion verdict, use a [strict proof task](../reference/task-manifests.md). The extractor starts the installed `HOL` heap and loads the entry theory.
 
 ### Extract a library
 

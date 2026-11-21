@@ -6,6 +6,7 @@ Each adapter follows its prover's rules for filenames, load paths, and build fil
 |---|---|
 | A standalone source file | `itpeval eval --prover PROVER --file FILE` |
 | A directory with local imports or native build files | `itpeval eval --prover PROVER --task-dir DIR --task-file FILE` where the adapter accepts explicit file selection |
+| An entire library you want to build or verify | Follow the prover's **Build and check a library** instructions for its native build targets or entrypoints. [Choose a prover](../provers/index.md) |
 | A project you want to extract, compare or use in repeated checks | `prepare_project` or `itpeval prepare` to record the source and dependencies in a lock |
 | A theorem whose proof an agent should finish | Prepare the project with a completion manifest that identifies the theorem and the proof fragment to fill |
 
